@@ -18,6 +18,9 @@ pub use crate::player_configuration::PlayerOptions;
 use crate::status_tracker::StatusTracker;
 use crate::track_reader::read_tracks;
 
+/// Highest volume accepted; mpv itself allows amplifying up to 130.
+const MAX_VOLUME_PERCENT: u8 = 130;
+
 /// Size used for the first frames, before the UI reports its real picture area.
 const INITIAL_SURFACE: (u32, u32) = (1280, 720);
 
@@ -34,6 +37,12 @@ pub struct MpvPlayer {
 }
 
 impl MpvPlayer {
+    fn unpause_before_new_stream(&self) {
+        if let Err(error) = self.handle.set_property("pause", "no") {
+            tracing::warn!(%error, "could not clear the pause flag");
+        }
+    }
+
     /// Loads libmpv from `library_path` and starts an idle player.
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {
         let api = Arc::new(MpvApi::load(library_path)?);
@@ -112,6 +121,7 @@ impl VideoPlayer for MpvPlayer {
             .pending_subtitles
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = request.subtitles.clone();
+        self.unpause_before_new_stream();
         self.tracker.begin_loading();
         tracing::info!(url = %request.url, "mpv loadfile");
         let outcome = self.handle.command(&["loadfile", &request.url, "replace"]);
@@ -132,7 +142,20 @@ impl VideoPlayer for MpvPlayer {
     }
 
     fn stop(&self) -> Result<(), PlayerError> {
-        self.handle.command(&["stop"])
+        let outcome = self.handle.command(&["stop"]);
+        // mpv keeps `pause` across files, so a stream stopped while paused would make the next one
+        // start paused; the status and picture are reset here instead of waiting for mpv's event.
+        self.unpause_before_new_stream();
+        self.tracker.reset_to_idle();
+        if let Some(frames) = &self.frames {
+            frames.clear();
+        }
+        outcome
+    }
+
+    fn set_volume(&self, percent: u8) -> Result<(), PlayerError> {
+        self.handle
+            .set_property("volume", &percent.min(MAX_VOLUME_PERCENT).to_string())
     }
 
     fn status(&self) -> PlaybackStatus {

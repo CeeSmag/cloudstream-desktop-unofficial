@@ -105,3 +105,10 @@ export interface RepositoryEntry {
   name: string;
   added_at_ms: number;
 }
+
+/** One stream the player can switch to. */
+export interface SourceInfo {
+  index: number;
+  label: string;
+  selected: boolean;
+}

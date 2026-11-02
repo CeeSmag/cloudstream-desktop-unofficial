@@ -8,7 +8,6 @@ import {
   HomeItem,
   HomeSection,
   MediaDetails,
-  PlaybackStatus,
   ProviderInfo,
   RepositoryEntry,
   WatchProgress,
@@ -20,7 +19,8 @@ import { DetailsScreen } from './screens/DetailsScreen';
 import { PlayerOverlay } from './screens/PlayerOverlay';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { findEpisodeForKey, movieAsEpisode, playbackTitle } from './playback/episodeLookup';
+import { findEpisodeForKey, movieAsEpisode } from './playback/episodeLookup';
+import { usePlayback } from './hooks/usePlayback';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -47,17 +47,7 @@ export const App: React.FC = () => {
   const [activeDetails, setActiveDetails] = React.useState<MediaDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = React.useState(false);
 
-  // Player overlay states
-  const [activeEpisode, setActiveEpisode] = React.useState<Episode | null>(null);
-  const [activePlayerTitle, setActivePlayerTitle] = React.useState('');
-  const [playerStatus, setPlayerStatus] = React.useState<PlaybackStatus>({
-    state: 'Idle',
-    position_ms: 0,
-    duration_ms: 0,
-    has_video: false,
-    volume: 100,
-    tracks: [],
-  });
+  const playback = usePlayback();
 
   // Library & settings
   const [bookmarks, setBookmarks] = React.useState<Bookmark[]>([]);
@@ -135,24 +125,9 @@ export const App: React.FC = () => {
   });
 
   // Start Playback
-  // Plays one episode (or a movie's single stream) of `details`; the title page is recorded so
-  // the entry can be resumed later from Continue Watching.
-  const startEpisode = async (details: MediaDetails, ep: Episode) => {
-    const title = playbackTitle(details.name, ep.name);
-    await api.playMedia({
-      provider: details.provider,
-      media_key: ep.data,
-      title,
-      detail_url: details.url,
-      poster_url: ep.poster_url || details.poster_url || undefined,
-    });
-    setActivePlayerTitle(title);
-    setActiveEpisode(ep);
-  };
-
   const handlePlayEpisode = guard(async (ep: Episode) => {
     if (!activeDetails) throw new Error('Open a title before playing an episode.');
-    await startEpisode(activeDetails, ep);
+    await playback.start(activeDetails, ep);
   });
 
   const handlePlayItemDirect = guard(async (item: HomeItem) => {
@@ -161,7 +136,7 @@ export const App: React.FC = () => {
     if (!target) {
       throw new Error('This title has nothing to play.');
     }
-    await startEpisode(details, target);
+    await playback.start(details, target);
   });
 
   const handleResume = guard(async (progress: WatchProgress) => {
@@ -175,26 +150,16 @@ export const App: React.FC = () => {
     if (!target) {
       throw new Error(`"${progress.title}" is no longer listed by ${progress.provider}.`);
     }
-    await startEpisode(details, target);
+    await playback.start(details, target);
   });
-
-  // Player polling tick
-  React.useEffect(() => {
-    if (!activeEpisode) return;
-    const interval = setInterval(async () => {
-      const st = await api.getStatus();
-      setPlayerStatus(st);
-    }, 800);
-    return () => clearInterval(interval);
-  }, [activeEpisode]);
 
   // Stop player & return
   const handleStopPlayer = guard(async () => {
-    await api.stop();
-    setActiveEpisode(null);
-    // Refresh continue watching
-    const cw = await api.getContinueWatching();
-    setContinueWatching(cw);
+    try {
+      await playback.stop();
+    } finally {
+      setContinueWatching(await api.getContinueWatching());
+    }
   });
 
   // Toggle bookmark
@@ -224,29 +189,21 @@ export const App: React.FC = () => {
     setBookmarks(bms);
   });
 
-  // If player is active, render 100% transparent overlay over mpv
-  if (activeEpisode) {
+  if (playback.isOpen) {
     return (
       <>
         <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
         <PlayerOverlay
-        title={activePlayerTitle}
-        status={playerStatus}
-        onBack={handleStopPlayer}
-        onTogglePlay={guard(async () => {
-          if (playerStatus.state === 'Playing') {
-            await api.pause();
-          } else {
-            await api.resume();
-          }
-        })}
-        onSeek={guard(async (pos: number) => {
-          await api.seekTo(pos);
-        })}
-        onSelectTrack={guard(async (kind: 'audio' | 'subtitle', id: number | null) => {
-          await api.selectTrack(kind, id);
-        })}
-      />
+          title={playback.title}
+          status={playback.status}
+          sources={playback.sources}
+          onBack={handleStopPlayer}
+          onTogglePlay={guard(playback.togglePlay)}
+          onSeek={guard(playback.seek)}
+          onSelectTrack={guard(playback.selectTrack)}
+          onSelectSource={guard(playback.switchSource)}
+          onVolume={guard(playback.setVolume)}
+        />
       </>
     );
   }

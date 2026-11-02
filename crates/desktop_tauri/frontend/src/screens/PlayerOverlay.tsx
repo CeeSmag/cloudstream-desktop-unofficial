@@ -11,21 +11,26 @@ import {
   Minimize2,
   Subtitles,
   AudioLines,
+  Layers,
   Loader2,
 } from 'lucide-react';
-import { PlaybackStatus } from '../types';
+import { MediaTrack, PlaybackStatus, SourceInfo } from '../types';
 import { VideoCanvas } from '../components/VideoCanvas';
-import { TrackMenu } from '../components/TrackMenu';
+import { MenuOption, OptionMenu } from '../components/OptionMenu';
 import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
+import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
 
 interface PlayerOverlayProps {
   title: string;
   status: PlaybackStatus;
+  sources: SourceInfo[];
   onBack: () => void;
   onTogglePlay: () => void;
   onSeek: (positionMs: number) => void;
   onSelectTrack: (kind: 'audio' | 'subtitle', id: number | null) => void;
+  onSelectSource: (index: number) => void;
+  onVolume: (percent: number) => void;
 }
 
 /** How long the controls stay visible after the mouse stops moving. */
@@ -33,18 +38,28 @@ const CONTROLS_HIDE_DELAY_MS = 3500;
 const SKIP_MS = 10000;
 const ROUND_BUTTON = 'p-2 sm:p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-colors';
 
+/** The menu rows for the audio or subtitle tracks of the stream. */
+function trackOptions(tracks: MediaTrack[], kind: MediaTrack['kind']): MenuOption[] {
+  return tracks
+    .filter((track) => track.kind === kind)
+    .map((track) => ({ id: track.id, label: track.title, selected: track.selected }));
+}
+
 export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   title,
   status,
+  sources,
   onBack,
   onTogglePlay,
   onSeek,
   onSelectTrack,
+  onSelectSource,
+  onVolume,
 }) => {
   const [controlsVisible, setControlsVisible] = React.useState(true);
-  const [trackMenu, setTrackMenu] = React.useState<'none' | 'subtitles' | 'audio'>('none');
+  const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
   const [isFullscreen, setIsFullscreen] = React.useState(false);
-  const [volume, setVolume] = React.useState(100);
+  const [volume, setVolume] = React.useState(loadVolume);
   const [isMuted, setIsMuted] = React.useState(false);
   const hideTimerRef = React.useRef<number | null>(null);
 
@@ -69,6 +84,18 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, [resetHideTimer]);
+
+  // Pushes the chosen level to the player, also when the screen opens so it matches the saved one.
+  React.useEffect(() => {
+    onVolume(isMuted ? 0 : volume);
+  }, [volume, isMuted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeVolume = (value: number) => {
+    const next = clampVolume(value);
+    setVolume(next);
+    saveVolume(next);
+    if (next > 0) setIsMuted(false);
+  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -110,19 +137,31 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-none">
-          <TrackMenu
+          <OptionMenu
+            label="Sources"
+            icon={Layers}
+            options={sources.map((source) => ({ id: source.index, label: source.label, selected: source.selected }))}
+            allowOff={false}
+            open={trackMenu === 'sources'}
+            onToggle={() => setTrackMenu(trackMenu === 'sources' ? 'none' : 'sources')}
+            onSelect={(index) => {
+              setTrackMenu('none');
+              if (index !== null) onSelectSource(index);
+            }}
+          />
+          <OptionMenu
             label="Subtitles"
             icon={Subtitles}
-            tracks={status.tracks.filter((t) => t.kind === 'subtitle')}
+            options={trackOptions(status.tracks, 'subtitle')}
             allowOff
             open={trackMenu === 'subtitles'}
             onToggle={() => setTrackMenu(trackMenu === 'subtitles' ? 'none' : 'subtitles')}
             onSelect={selectTrack('subtitle')}
           />
-          <TrackMenu
+          <OptionMenu
             label="Audio Track"
             icon={AudioLines}
-            tracks={status.tracks.filter((t) => t.kind === 'audio')}
+            options={trackOptions(status.tracks, 'audio')}
             allowOff={false}
             open={trackMenu === 'audio'}
             onToggle={() => setTrackMenu(trackMenu === 'audio' ? 'none' : 'audio')}
@@ -187,11 +226,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
                   min="0"
                   max="100"
                   value={isMuted ? 0 : volume}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    setVolume(val);
-                    if (val > 0) setIsMuted(false);
-                  }}
+                  onChange={(e) => changeVolume(Number(e.target.value))}
                   className="hidden md:block w-24 h-1 accent-accent rounded-lg cursor-pointer"
                   aria-label="Volume"
                 />

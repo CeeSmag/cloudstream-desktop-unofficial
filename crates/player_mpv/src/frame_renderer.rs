@@ -48,6 +48,11 @@ impl FrameShared {
             .cloned()
     }
 
+    /// Drops the last picture so a finished stream does not stay on screen.
+    pub(crate) fn clear(&self) {
+        *self.slot.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
     fn publish(&self, frame: VideoFrame) {
         *self.slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(frame));
     }
