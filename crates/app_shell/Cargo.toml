@@ -1,14 +1,27 @@
 [package]
 name = "app_shell"
-description = "Wiring only: builds implementations and starts the app."
+description = "Wiring only: builds the real implementations and starts the app."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "cloudstream"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
+app_services = { path = "../app_services" }
+core_model = { path = "../core_model" }
+extension_api = { path = "../extension_api" }
+extension_repo = { path = "../extension_repo" }
+extension_runtime = { path = "../extension_runtime" }
+player_api = { path = "../player_api" }
+player_mpv = { path = "../player_mpv" }
+storage = { path = "../storage" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ui_app = { path = "../ui_app" }
 
 [lints]
 workspace = true

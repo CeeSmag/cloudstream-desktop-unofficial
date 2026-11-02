@@ -1,12 +1,20 @@
 [package]
 name = "ui_app"
-description = "Screens, widgets, theme and navigation."
+description = "Screens, widgets, theme and navigation (egui), mirroring the CloudStream layout."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
+app_services = { path = "../app_services" }
 core_model = { path = "../core_model" }
+egui = "0.37.0"
+eframe = "0.37.0"
+egui_extras = { version = "0.37.0", features = ["all_loaders"] }
+extension_api = { path = "../extension_api" }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+player_api = { path = "../player_api" }
+tracing.workspace = true
 
 [lints]
 workspace = true
