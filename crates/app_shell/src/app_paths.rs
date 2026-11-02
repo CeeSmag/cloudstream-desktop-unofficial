@@ -4,13 +4,18 @@ use anyhow::{anyhow, Result};
 
 /// Folders and files the app owns.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AppPaths {
+pub struct AppPaths {
     data_dir: PathBuf,
 }
 
 impl AppPaths {
+    /// Stores everything under `data_dir` (used by tests and portable setups).
+    pub fn for_directory(data_dir: PathBuf) -> Self {
+        Self { data_dir }
+    }
+
     /// Uses `CS_DATA_DIR`, else `%LOCALAPPDATA%\\CloudStreamRs`, else `~/.local/share/cloudstream-rs`.
-    pub(crate) fn from_environment() -> Result<Self> {
+    pub fn from_environment() -> Result<Self> {
         let data_dir = resolve_data_dir(
             std::env::var_os("CS_DATA_DIR").map(PathBuf::from),
             std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
@@ -20,19 +25,23 @@ impl AppPaths {
         Ok(Self { data_dir })
     }
 
-    pub(crate) fn data_dir(&self) -> &Path {
+    /// Root folder of everything the app stores.
+    pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
 
-    pub(crate) fn database_file(&self) -> PathBuf {
+    /// The SQLite database file.
+    pub fn database_file(&self) -> PathBuf {
         self.data_dir.join("cloudstream.db")
     }
 
-    pub(crate) fn extensions_dir(&self) -> PathBuf {
+    /// Folder that holds downloaded `.cs3` files.
+    pub fn extensions_dir(&self) -> PathBuf {
         self.data_dir.join("extensions")
     }
 
-    pub(crate) fn log_file(&self) -> PathBuf {
+    /// The log file.
+    pub fn log_file(&self) -> PathBuf {
         self.data_dir.join("logs").join("cloudstream.log")
     }
 }
