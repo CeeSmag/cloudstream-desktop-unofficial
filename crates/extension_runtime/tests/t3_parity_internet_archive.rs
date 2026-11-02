@@ -4,6 +4,8 @@
 //! Needs the real sidecar, so it is ignored by default. Run with:
 //! `CS_SIDECAR_HOME=... CS_SIDECAR_JAVA_HOME=... CS_TEST_IA_CS3=...\InternetArchiveProvider.cs3
 //!  cargo test -p extension_runtime --test t3_parity_internet_archive -- --ignored`
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)] // test code: failing fast is the point
+
 use std::path::PathBuf;
 
 use extension_api::ProviderGateway;
