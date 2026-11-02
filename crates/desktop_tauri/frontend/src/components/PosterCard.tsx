@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Star } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { HomeItem } from '../types';
 
 interface PosterCardProps {
@@ -60,11 +60,6 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
           )}
         </div>
 
-        {/* Bottom Rating Pill */}
-        <div className="absolute bottom-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-md bg-midnight/80 backdrop-blur-md border border-white/10 text-xs text-gold font-medium">
-          <Star className="w-3 h-3 fill-gold text-gold" />
-          <span>8.5</span>
-        </div>
       </div>
 
       {/* Title & Metadata */}

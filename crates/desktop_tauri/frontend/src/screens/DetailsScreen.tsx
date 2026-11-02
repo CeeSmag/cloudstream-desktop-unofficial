@@ -114,6 +114,26 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
 
             {/* Main Action Buttons */}
             <div className="flex items-center space-x-3.5">
+              {details.episodes.length === 0 && details.data_url && (
+                <button
+                  onClick={() =>
+                    onPlayEpisode({
+                      id: details.data_url ?? '',
+                      data: details.data_url ?? '',
+                      name: details.name,
+                      season: null,
+                      episode: null,
+                      poster_url: details.poster_url,
+                      description: null,
+                    })
+                  }
+                  className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Play</span>
+                </button>
+              )}
+
               {details.episodes.length > 0 && (
                 <button
                   onClick={() => {
