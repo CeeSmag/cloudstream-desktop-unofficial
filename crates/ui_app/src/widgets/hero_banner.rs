@@ -108,6 +108,12 @@ fn paint_poster(ui: &egui::Ui, rect: Rect, url: &str) {
         .fit_to_exact_size(size)
         .corner_radius(theme::ROUNDING)
         .paint_at(ui, poster);
+    ui.painter().rect_stroke(
+        poster,
+        theme::ROUNDING,
+        egui::Stroke::new(1.0, theme::BORDER_SUBTLE),
+        egui::StrokeKind::Inside,
+    );
 }
 
 fn draw_text(
@@ -115,16 +121,12 @@ fn draw_text(
     hero: &HeroData<'_>,
     buttons: &HeroButtons<'_>,
 ) -> Option<HeroClick> {
-    ui.label(
-        RichText::new(hero.eyebrow.to_uppercase())
-            .size(12.0)
-            .strong()
-            .color(theme::MUTED_TEXT),
-    );
+    draw_eyebrow_badge(ui, &hero.eyebrow);
+    ui.add_space(4.0);
     ui.add(
         egui::Label::new(
             RichText::new(hero.title)
-                .size(40.0)
+                .size(38.0)
                 .strong()
                 .color(theme::TEXT),
         )
@@ -150,4 +152,43 @@ fn draw_text(
         }
     });
     clicked
+}
+
+fn draw_eyebrow_badge(ui: &mut egui::Ui, eyebrow: &str) {
+    if eyebrow.is_empty() {
+        return;
+    }
+    let font = egui::FontId::proportional(11.0);
+    let text = eyebrow.to_uppercase();
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(text.clone(), font.clone(), theme::TEXT)
+        .size()
+        .x;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(text_width + 16.0, 22.0), Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 11, Color32::from_black_alpha(160));
+    ui.painter().rect_stroke(
+        rect,
+        11,
+        egui::Stroke::new(1.0, theme::BORDER_SUBTLE),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        font,
+        theme::TEXT,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hero_click_variants_are_distinct() {
+        assert_ne!(HeroClick::Primary, HeroClick::Secondary);
+    }
 }

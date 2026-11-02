@@ -106,10 +106,10 @@ fn eyebrow(provider: &str, item: &SearchResult) -> String {
 fn provider_picker(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
     ui.horizontal(|ui| {
         ui.add_space(theme::PAGE_MARGIN);
-        ui.label(RichText::new("Source").color(theme::MUTED_TEXT));
+        ui.label(RichText::new("Source").size(14.0).color(theme::MUTED_TEXT));
         let selected = model.selected_provider.clone().unwrap_or_default();
         egui::ComboBox::from_id_salt("provider_picker")
-            .selected_text(RichText::new(&selected).strong())
+            .selected_text(RichText::new(&selected).strong().color(theme::TEXT))
             .show_ui(ui, |ui| {
                 for provider in model.enabled_providers() {
                     let is_current = provider.name == selected;
@@ -118,7 +118,7 @@ fn provider_picker(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiActi
                     }
                 }
             });
-        if buttons::secondary(ui, "Reload").clicked() {
+        if buttons::secondary(ui, "\u{21bb} Reload").clicked() {
             actions.push(UiAction::RefreshHome);
         }
     });

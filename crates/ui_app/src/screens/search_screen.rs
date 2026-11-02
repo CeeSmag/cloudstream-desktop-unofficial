@@ -13,11 +13,14 @@ fn search_box(ui: &mut egui::Ui, model: &mut AppModel) -> bool {
         ui.add_space(theme::PAGE_MARGIN);
         let field = ui.add(
             egui::TextEdit::singleline(&mut model.search.input)
-                .hint_text("Search all providers")
-                .font(FontId::proportional(20.0))
+                .hint_text("Search titles, movies, series\u{2026}")
+                .font(FontId::proportional(18.0))
                 .margin(egui::Margin::symmetric(16, 10))
-                .desired_width(ui.available_width() - 180.0),
+                .desired_width(ui.available_width() - 190.0),
         );
+        if !model.search.input.is_empty() && buttons::secondary(ui, "\u{2715}").clicked() {
+            model.search.input.clear();
+        }
         let enter = field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
         let clicked = buttons::primary(ui, "Search", !model.search.loading).clicked();
         enter || clicked
