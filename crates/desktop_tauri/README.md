@@ -4,12 +4,12 @@ Tauri v2 application shell providing a modern web UI overlay over hardware-accel
 
 ## Purpose
 
-Hosts the React/Tailwind frontend inside a transparent WebView2 window on Windows, rendering modern frosted-glass controls directly over a native Direct3D/HWND libmpv video surface.
+Hosts the React/Tailwind frontend in an opaque window. libmpv renders frames into memory; the page draws them on a canvas and layers the controls on top.
 
 ## Public Architecture
 
 - `main.rs`: Entry point initializing `AppPaths`, logging, services, and native `wid` window handle binding.
-- `window_mpv.rs`: Safely extracts Win32 `HWND` from the Tauri window.
+- `video_commands.rs`: Delivers mpv's frames to the page as binary RGBA (the window itself is opaque).
 - `catalog_commands.rs`: IPC commands for provider discovery, home shelves, search, and details.
 - `playback_commands.rs`: IPC commands for stream resolution, player state, track selection, and seek.
 - `library_commands.rs`: Bookmarks and continue watching progress management.

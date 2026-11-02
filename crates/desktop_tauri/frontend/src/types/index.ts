@@ -92,6 +92,7 @@ export interface PlaybackStatus {
   has_video: boolean;
   volume: number;
   tracks: MediaTrack[];
+  error?: string | null;
 }
 
 export interface RepositoryEntry {

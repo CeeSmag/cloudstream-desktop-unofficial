@@ -62,12 +62,18 @@ export const api = {
 
   stop: () => invokeTauri<void>('stop_playback'),
 
+  setVideoSurface: (width: number, height: number) =>
+    invokeTauri<void>('set_video_surface', { width, height }),
+
+  /** The newest frame (16-byte header + RGBA), or an empty buffer when nothing is newer. */
+  getVideoFrame: (lastSerial: number) => invokeTauri<ArrayBuffer>('get_video_frame', { lastSerial }),
+
   /** Polled several times a second; a failed poll just reports an idle player. */
   async getStatus(): Promise<PlaybackStatus> {
     try {
       return await invokeTauri<PlaybackStatus>('get_playback_status');
     } catch {
-      return { state: 'Idle', position_ms: 0, duration_ms: 0, has_video: false, volume: 100, tracks: [] };
+      return { state: 'Idle', position_ms: 0, duration_ms: 0, has_video: false, volume: 100, tracks: [], error: null };
     }
   },
 
