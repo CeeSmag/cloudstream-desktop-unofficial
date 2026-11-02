@@ -1,0 +1,12 @@
+[package]
+name = "player_api"
+description = "Player-neutral contract: what the app asks of a video player and what it reports back."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

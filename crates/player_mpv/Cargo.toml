@@ -1,12 +1,14 @@
 [package]
 name = "player_mpv"
-description = "libmpv wrapper only."
+description = "libmpv implementation of the VideoPlayer contract (loaded at runtime)."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
-
+libloading = "0.8"
+player_api = { path = "../player_api" }
+tracing.workspace = true
 
 [lints]
 workspace = true
