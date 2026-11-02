@@ -91,10 +91,35 @@ fn map_progress(progress: WatchProgress) -> WatchProgressDto {
     let percentage = progress.fraction_watched();
     WatchProgressDto {
         media_id: progress.media_key,
+        provider: progress.provider,
+        detail_url: progress.detail_url,
+        poster_url: progress.poster_url,
         title: progress.title,
         position_ms: progress.position_ms,
         duration_ms: progress.duration_ms,
         percentage,
         updated_at: progress.updated_at_ms / 1000,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_keeps_provider_and_title_page() {
+        let progress = WatchProgress {
+            provider: "Archive".into(),
+            media_key: "ep-1".into(),
+            detail_url: "https://site.test/show".into(),
+            position_ms: 30,
+            duration_ms: 60,
+            ..WatchProgress::default()
+        };
+        let dto = map_progress(progress);
+        assert_eq!(dto.provider, "Archive");
+        assert_eq!(dto.detail_url, "https://site.test/show");
+        assert_eq!(dto.media_id, "ep-1");
+        assert!((dto.percentage - 0.5).abs() < f32::EPSILON);
     }
 }

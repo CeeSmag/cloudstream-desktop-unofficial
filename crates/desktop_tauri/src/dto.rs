@@ -162,8 +162,14 @@ pub struct BookmarkDto {
 /// Progress watch history record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchProgressDto {
-    /// Media ID.
+    /// Provider payload identifying the playable item (episode data or movie URL).
     pub media_id: String,
+    /// Provider the item belongs to.
+    pub provider: String,
+    /// Provider URL of the parent title; empty when it was never recorded.
+    pub detail_url: String,
+    /// Poster image URL.
+    pub poster_url: Option<String>,
     /// Title.
     pub title: String,
     /// Current position in milliseconds.
