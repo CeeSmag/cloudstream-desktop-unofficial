@@ -8,9 +8,13 @@ use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
 use crate::mpv_option_format::subtitle_label;
 use crate::status_tracker::StatusTracker;
+use crate::track_reader::read_tracks;
 
 /// How long the event thread waits per iteration; also its stop-latency.
 const EVENT_WAIT: Duration = Duration::from_millis(200);
+
+/// The track list is re-read every this many event iterations (about once a second).
+const TRACK_REFRESH_EVERY: u32 = 5;
 
 /// Background loop that turns mpv events and property polls into status updates.
 pub(crate) struct EventWorker {
@@ -22,16 +26,22 @@ pub(crate) struct EventWorker {
 
 impl EventWorker {
     pub(crate) fn run(self) {
+        let mut ticks: u32 = 0;
         while !self.stop_flag.load(Ordering::Relaxed) {
             let event = self.handle.wait_event(EVENT_WAIT);
             self.tracker.apply(event);
             if event == MpvEvent::FileLoaded {
                 self.attach_subtitles();
+                self.refresh_tracks();
             }
             if event == MpvEvent::Shutdown {
                 break;
             }
             self.poll_progress();
+            ticks += 1;
+            if ticks.is_multiple_of(TRACK_REFRESH_EVERY) {
+                self.refresh_tracks();
+            }
         }
     }
 
@@ -51,6 +61,12 @@ impl EventWorker {
                 tracing::warn!(%error, url = %subtitle.url, "could not attach subtitle");
             }
         }
+    }
+
+    /// Re-reads the track list (subtitles added after loading show up here too).
+    pub(crate) fn refresh_tracks(&self) {
+        self.tracker
+            .set_tracks(read_tracks(|name| self.handle.get_string(name)));
     }
 
     fn poll_progress(&self) {

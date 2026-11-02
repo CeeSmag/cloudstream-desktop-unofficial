@@ -1,6 +1,8 @@
+use app_services::StreamSelection;
 use core_model::{PlayableLink, SubtitleTrack};
+use player_api::TrackKind;
 
-use crate::app_model::{AppModel, PendingStreams, PlayTarget};
+use crate::app_model::{AppModel, PendingStreams, PlayTarget, PlayerMenu, PlayerView, SourceSet};
 use crate::notice::Notice;
 use crate::ui_event::UiEvent;
 
@@ -28,6 +30,10 @@ pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiA
             control(model, |p| p.set_paused(!paused), dispatcher);
         }
         UiAction::OpenPlayer => open_player(dispatcher, model),
+        UiAction::TogglePlayerMenu(menu) => toggle_menu(model, menu),
+        UiAction::SelectAudio(id) => select_track(dispatcher, model, TrackKind::Audio, id),
+        UiAction::SelectSubtitle(id) => select_track(dispatcher, model, TrackKind::Subtitle, id),
+        UiAction::SwitchSource(index) => switch_source(dispatcher, model, index),
         UiAction::ClosePlayer => {
             model.player.open = false;
             model.player.fullscreen = false;
@@ -74,12 +80,13 @@ fn choose_link(dispatcher: &Dispatcher, model: &mut AppModel, index: usize) {
     let Some(pending) = model.pending_streams.take() else {
         return;
     };
-    let Some(link) = pending.links.get(index).cloned() else {
+    if index >= pending.links.len() {
         return;
-    };
+    }
     let start = PlaybackStart {
         target: pending.target,
-        link,
+        links: pending.links,
+        selected: index,
         subtitles: pending.subtitles,
     };
     begin(dispatcher, model, start);
@@ -88,7 +95,10 @@ fn choose_link(dispatcher: &Dispatcher, model: &mut AppModel, index: usize) {
 /// Everything needed to start one stream.
 pub(super) struct PlaybackStart {
     pub(super) target: PlayTarget,
-    pub(super) link: PlayableLink,
+    /// Every stream found, best first.
+    pub(super) links: Vec<PlayableLink>,
+    /// Index into `links` of the one to play.
+    pub(super) selected: usize,
     pub(super) subtitles: Vec<SubtitleTrack>,
 }
 
@@ -97,21 +107,37 @@ pub(super) fn begin(dispatcher: &Dispatcher, model: &mut AppModel, start: Playba
     let Some(playback) = &dispatcher.services.playback else {
         return;
     };
+    let Some(link) = start.links.get(start.selected).cloned() else {
+        return;
+    };
     model.now_playing_title = Some(start.target.item.title.clone());
     let embedded = playback.is_embedded();
-    if let Err(error) = playback.start(start.target.item, &start.link, &start.subtitles) {
+    if let Err(error) = playback.start(start.target.item.clone(), &link, &start.subtitles) {
         model.notify(Notice::error(format!("Cannot start playback: {error}")));
         model.now_playing_title = None;
-    } else if embedded {
-        model.playback = player_api::PlaybackStatus {
-            state: player_api::PlaybackState::Loading,
-            ..player_api::PlaybackStatus::default()
-        };
-        model.player = crate::app_model::PlayerView {
+        return;
+    }
+    model.sources = SourceSet {
+        target: Some(start.target),
+        links: start.links,
+        subtitles: start.subtitles,
+        selected: start.selected,
+    };
+    model.tracks.clear();
+    if embedded {
+        model.playback = loading_status();
+        model.player = PlayerView {
             open: true,
             just_opened: true,
-            ..crate::app_model::PlayerView::default()
+            ..PlayerView::default()
         };
+    }
+}
+
+fn loading_status() -> player_api::PlaybackStatus {
+    player_api::PlaybackStatus {
+        state: player_api::PlaybackState::Loading,
+        ..player_api::PlaybackStatus::default()
     }
 }
 
@@ -131,18 +157,11 @@ pub(crate) fn handle_resolved(
             ));
         }
         Ok(found) => match found.links.as_slice() {
-            [only] => {
+            links if links.len() == 1 || same_source(links) => {
                 let start = PlaybackStart {
                     target,
-                    link: only.clone(),
-                    subtitles: found.subtitles.clone(),
-                };
-                begin(dispatcher, model, start);
-            }
-            links if same_source(links) => {
-                let start = PlaybackStart {
-                    target,
-                    link: links.first().cloned().unwrap_or_default(),
+                    links: found.links.clone(),
+                    selected: 0,
                     subtitles: found.subtitles.clone(),
                 };
                 begin(dispatcher, model, start);
@@ -176,6 +195,50 @@ fn same_source(links: &[core_model::PlayableLink]) -> bool {
     links
         .windows(2)
         .all(|pair| pair.first().map(|a| &a.source) == pair.get(1).map(|b| &b.source))
+}
+
+fn toggle_menu(model: &mut AppModel, menu: PlayerMenu) {
+    model.player.menu = if model.player.menu == Some(menu) {
+        None
+    } else {
+        Some(menu)
+    };
+}
+
+fn select_track(dispatcher: &Dispatcher, model: &mut AppModel, kind: TrackKind, id: Option<i64>) {
+    model.player.menu = None;
+    control(
+        model,
+        |playback| playback.select_track(kind, id),
+        dispatcher,
+    );
+}
+
+fn switch_source(dispatcher: &Dispatcher, model: &mut AppModel, index: usize) {
+    model.player.menu = None;
+    let Some(playback) = &dispatcher.services.playback else {
+        return;
+    };
+    let Some(target) = model.sources.target.clone() else {
+        return;
+    };
+    let Some(link) = model.sources.links.get(index).cloned() else {
+        return;
+    };
+    let position = model.playback.position_ms;
+    let stream = StreamSelection {
+        link: &link,
+        subtitles: &model.sources.subtitles,
+        start_position_ms: position,
+    };
+    match playback.start_at(target.item, &stream) {
+        Ok(()) => {
+            model.sources.selected = index;
+            model.tracks.clear();
+            model.playback = loading_status();
+        }
+        Err(error) => model.notify(Notice::error(format!("Cannot switch source: {error}"))),
+    }
 }
 
 #[cfg(test)]

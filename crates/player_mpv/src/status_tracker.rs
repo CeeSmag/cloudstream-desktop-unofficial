@@ -1,6 +1,6 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use player_api::{PlaybackState, PlaybackStatus};
+use player_api::{MediaTrack, PlaybackState, PlaybackStatus};
 
 use crate::mpv_event::{EndReason, MpvEvent};
 
@@ -8,6 +8,7 @@ use crate::mpv_event::{EndReason, MpvEvent};
 #[derive(Default)]
 pub(crate) struct StatusTracker {
     status: Mutex<PlaybackStatus>,
+    tracks: Mutex<Vec<MediaTrack>>,
 }
 
 impl StatusTracker {
@@ -20,8 +21,22 @@ impl StatusTracker {
         self.lock().clone()
     }
 
+    /// The latest track list.
+    pub(crate) fn tracks(&self) -> Vec<MediaTrack> {
+        self.tracks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Replaces the track list.
+    pub(crate) fn set_tracks(&self, tracks: Vec<MediaTrack>) {
+        *self.tracks.lock().unwrap_or_else(PoisonError::into_inner) = tracks;
+    }
+
     /// Marks a new stream as opening and clears the old position.
     pub(crate) fn begin_loading(&self) {
+        self.set_tracks(Vec::new());
         *self.lock() = PlaybackStatus {
             state: PlaybackState::Loading,
             ..PlaybackStatus::default()

@@ -57,6 +57,10 @@ impl Dispatcher {
             | UiAction::OpenPlayer
             | UiAction::ClosePlayer
             | UiAction::ToggleFullscreen
+            | UiAction::TogglePlayerMenu(_)
+            | UiAction::SelectAudio(_)
+            | UiAction::SelectSubtitle(_)
+            | UiAction::SwitchSource(_)
             | UiAction::StopPlayback => playback_actions::perform(self, model, action),
             UiAction::DismissNotice(index) => {
                 if index < model.notices.len() {
