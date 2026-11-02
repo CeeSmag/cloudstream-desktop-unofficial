@@ -1,12 +1,17 @@
 [package]
 name = "extension_repo"
-description = "Repository manifests and plugin install/update/remove."
+description = "Reads extension repositories and downloads plugin files."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
-extension_api = { path = "../extension_api" }
+core_model = { path = "../core_model" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ureq = "3"
 
 [lints]
 workspace = true
