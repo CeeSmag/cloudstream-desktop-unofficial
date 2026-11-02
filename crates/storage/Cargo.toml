@@ -1,12 +1,15 @@
 [package]
 name = "storage"
-description = "Settings, library, history and downloads persistence."
+description = "Settings, library, history and extension bookkeeping persisted in SQLite."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
 core_model = { path = "../core_model" }
+rusqlite = { version = "0.37", features = ["bundled"] }
+thiserror.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true
