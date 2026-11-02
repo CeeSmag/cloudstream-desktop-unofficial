@@ -1,14 +1,19 @@
 [package]
 name = "extension_runtime"
-description = "Loads and executes extensions behind the ExtensionRuntime trait."
+description = "Runs extensions out-of-process and exposes them through the ProviderGateway trait."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
+core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
-thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+ureq = { version = "3.5.1", features = ["json"] }
