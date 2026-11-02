@@ -11,6 +11,20 @@ const MAX_ATTEMPTS: u32 = 3;
 /// Link kinds a video player can open.
 const PLAYABLE_TYPES: &[&str] = &["VIDEO", "M3U8", "DASH"];
 
+/// File extensions of audio-only streams; they are offered after any video stream.
+const AUDIO_EXTENSIONS: &[&str] = &[".mp3", ".m4a", ".ogg", ".flac", ".wav", ".opus", ".aac"];
+
+fn is_audio_only(url: &str) -> bool {
+    let path = url
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(url)
+        .to_ascii_lowercase();
+    AUDIO_EXTENSIONS
+        .iter()
+        .any(|extension| path.ends_with(extension))
+}
+
 /// Keeps only links the player can open and sorts them best quality first.
 pub fn playable_links_best_first(links: Vec<PlayableLink>) -> Vec<PlayableLink> {
     let mut playable: Vec<PlayableLink> = links
@@ -19,7 +33,7 @@ pub fn playable_links_best_first(links: Vec<PlayableLink>) -> Vec<PlayableLink> 
             PLAYABLE_TYPES.contains(&link.link_type.as_str()) || link.link_type.is_empty()
         })
         .collect();
-    playable.sort_by_key(|link| std::cmp::Reverse(link.quality));
+    playable.sort_by_key(|link| (is_audio_only(&link.url), std::cmp::Reverse(link.quality)));
     playable
 }
 
@@ -116,6 +130,18 @@ mod tests {
         ]);
         let urls: Vec<_> = sorted.iter().map(|l| l.url.as_str()).collect();
         assert_eq!(urls, ["high", "low"]);
+    }
+
+    #[test]
+    fn audio_only_links_come_after_video_even_with_higher_quality() {
+        let sorted = playable_links_best_first(vec![
+            link("https://h/a.mp3", 720, "VIDEO"),
+            link("https://h/v.mp4", 400, "VIDEO"),
+        ]);
+        assert_eq!(
+            sorted.first().map(|l| l.url.as_str()),
+            Some("https://h/v.mp4")
+        );
     }
 
     #[test]

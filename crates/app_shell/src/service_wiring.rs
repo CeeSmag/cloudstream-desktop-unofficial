@@ -87,6 +87,7 @@ fn build_playback(
                 &library,
                 &PlayerOptions {
                     headless: options.headless_player,
+                    embedded: !options.headless_player,
                 },
             )
         })
