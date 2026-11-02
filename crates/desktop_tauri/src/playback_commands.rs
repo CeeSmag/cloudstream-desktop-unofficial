@@ -42,6 +42,7 @@ pub async fn play_media(
         links: playable,
         subtitles: resolved.subtitles,
         selected: 0,
+        position_ms: 0,
     });
     Ok(())
 }
@@ -106,6 +107,7 @@ pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), S
         .playback
         .as_ref()
         .ok_or_else(|| "Playback service unavailable".to_string())?;
+    tracing::debug!(percent, "setting volume");
     playback
         .set_volume(percent)
         .map_err(|error| error.to_string())
@@ -113,13 +115,19 @@ pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), S
 
 /// Retrieves the current snapshot of player state, time, buffer, and tracks.
 #[tauri::command]
-pub async fn get_playback_status(state: State<'_, AppState>) -> Result<PlaybackStatusDto, String> {
+pub async fn get_playback_status(
+    state: State<'_, AppState>,
+    sources: State<'_, SourceSession>,
+) -> Result<PlaybackStatusDto, String> {
     let services = state.read();
     let playback = match &services.playback {
         Some(playback) => playback,
         None => return Ok(PlaybackStatusDto::default()),
     };
     let status = playback.tick();
+    if matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
+        sources.remember_position(status.position_ms);
+    }
     let tracks = playback.tracks();
     Ok(map_playback_status(status, tracks))
 }

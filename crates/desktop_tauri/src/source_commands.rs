@@ -50,10 +50,15 @@ pub async fn switch_source(
         .playback
         .as_ref()
         .ok_or_else(|| "Playback service unavailable".to_owned())?;
+    let live_position_ms = playback.tick().position_ms;
     let stream = StreamSelection {
         link,
         subtitles: &active.subtitles,
-        start_position_ms: playback.tick().position_ms,
+        start_position_ms: if live_position_ms > 0 {
+            live_position_ms
+        } else {
+            active.position_ms
+        },
     };
     tracing::info!(index, url = %link.url, "switching source");
     playback
