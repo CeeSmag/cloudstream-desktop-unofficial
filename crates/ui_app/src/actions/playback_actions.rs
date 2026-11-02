@@ -137,6 +137,7 @@ pub(super) fn begin(dispatcher: &Dispatcher, model: &mut AppModel, start: Playba
 fn loading_status() -> player_api::PlaybackStatus {
     player_api::PlaybackStatus {
         state: player_api::PlaybackState::Loading,
+        has_video: true,
         ..player_api::PlaybackStatus::default()
     }
 }

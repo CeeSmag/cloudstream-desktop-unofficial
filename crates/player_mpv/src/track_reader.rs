@@ -10,6 +10,17 @@ pub(crate) fn read_tracks(get: impl Fn(&str) -> Option<String>) -> Vec<MediaTrac
         .collect()
 }
 
+/// Whether the file has a real video picture (cover art attached to audio does not count).
+pub(crate) fn has_video_track(get: impl Fn(&str) -> Option<String>) -> bool {
+    let count: usize = get("track-list/count")
+        .and_then(|text| text.parse().ok())
+        .unwrap_or(0);
+    (0..count).any(|index| {
+        let field = |name: &str| get(&format!("track-list/{index}/{name}"));
+        field("type").as_deref() == Some("video") && field("albumart").as_deref() != Some("yes")
+    })
+}
+
 fn read_track(get: &impl Fn(&str) -> Option<String>, index: usize) -> Option<MediaTrack> {
     let field = |name: &str| get(&format!("track-list/{index}/{name}"));
     let kind = match field("type")?.as_str() {
@@ -69,6 +80,24 @@ mod tests {
         assert!(tracks
             .get(2)
             .is_some_and(|t| t.kind == TrackKind::Subtitle && t.external));
+    }
+
+    #[test]
+    fn has_video_track_ignores_cover_art_and_audio_only_files() {
+        let with_video = properties(&[
+            ("track-list/count", "2"),
+            ("track-list/0/type", "audio"),
+            ("track-list/1/type", "video"),
+        ]);
+        assert!(has_video_track(with_video));
+        let audio_only = properties(&[("track-list/count", "1"), ("track-list/0/type", "audio")]);
+        assert!(!has_video_track(audio_only));
+        let cover = properties(&[
+            ("track-list/count", "1"),
+            ("track-list/0/type", "video"),
+            ("track-list/0/albumart", "yes"),
+        ]);
+        assert!(!has_video_track(cover));
     }
 
     #[test]
