@@ -142,7 +142,7 @@ fn body(ui: &mut egui::Ui, context: &DetailsContext<'_>, actions: &mut Vec<UiAct
         ui.vertical(|ui| {
             ui.set_width(reading_width);
             if let Some(tags) = details.tags.as_ref().filter(|tags| !tags.is_empty()) {
-                ui.horizontal_wrapped(|ui| tags_row(ui, tags));
+                tags_row(ui, tags, reading_width);
             }
             if let Some(plot) = &details.plot {
                 ui.add_space(10.0);
@@ -157,16 +157,52 @@ fn body(ui: &mut egui::Ui, context: &DetailsContext<'_>, actions: &mut Vec<UiAct
     });
 }
 
-fn tags_row(ui: &mut egui::Ui, tags: &[String]) {
-    for tag in tags.iter().take(8) {
-        egui::Frame::new()
-            .fill(theme::SURFACE_HIGH)
-            .corner_radius(theme::PILL_ROUNDING)
-            .inner_margin(egui::Margin::symmetric(12, 4))
-            .show(ui, |ui| {
-                ui.label(RichText::new(tag).size(13.0).color(theme::TEXT))
-            });
+/// Horizontal padding inside a tag chip, and the gap between chips.
+const CHIP_PADDING: f32 = 12.0;
+const CHIP_GAP: f32 = 6.0;
+
+/// Lays tags out in rows no wider than `max_width` (measured, so labels never get squeezed).
+fn tags_row(ui: &mut egui::Ui, tags: &[String], max_width: f32) {
+    let mut rows: Vec<Vec<&str>> = vec![Vec::new()];
+    let mut used = 0.0;
+    for tag in tags.iter().take(10) {
+        let width = chip_width(ui, tag);
+        if used + width > max_width && used > 0.0 {
+            rows.push(Vec::new());
+            used = 0.0;
+        }
+        if let Some(row) = rows.last_mut() {
+            row.push(tag);
+        }
+        used += width + CHIP_GAP;
     }
+    for row in rows {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = CHIP_GAP;
+            for tag in row {
+                chip(ui, tag);
+            }
+        });
+    }
+}
+
+fn chip_width(ui: &egui::Ui, tag: &str) -> f32 {
+    let font = egui::FontId::proportional(13.0);
+    ui.painter()
+        .layout_no_wrap(tag.to_owned(), font, theme::TEXT)
+        .size()
+        .x
+        + CHIP_PADDING * 2.0
+}
+
+fn chip(ui: &mut egui::Ui, tag: &str) {
+    egui::Frame::new()
+        .fill(theme::SURFACE_HIGH)
+        .corner_radius(theme::PILL_ROUNDING)
+        .inner_margin(egui::Margin::symmetric(12, 4))
+        .show(ui, |ui| {
+            ui.add(egui::Label::new(RichText::new(tag).size(13.0).color(theme::TEXT)).extend());
+        });
 }
 
 /// Provider, content kind and release year, for example `Internet Archive \u{00B7} Movie \u{00B7} 2019`.

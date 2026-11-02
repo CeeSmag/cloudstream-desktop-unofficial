@@ -20,10 +20,18 @@ pub(crate) fn format_time(milliseconds: i64) -> String {
 }
 
 /// Draws the playback controls as a floating glass pill; returns what the user pressed.
-pub(crate) fn show(ui: &mut egui::Ui, title: &str, status: &PlaybackStatus) -> Option<UiAction> {
+pub(crate) fn show(
+    ui: &mut egui::Ui,
+    title: &str,
+    status: &PlaybackStatus,
+    embedded: bool,
+) -> Option<UiAction> {
     let mut action = None;
     ui.horizontal(|ui| {
         action = controls(ui, status);
+        if embedded && buttons::secondary(ui, "Open player").clicked() {
+            action = Some(UiAction::OpenPlayer);
+        }
         ui.vertical(|ui| {
             ui.add(egui::Label::new(RichText::new(title).strong().color(theme::TEXT)).truncate());
             ui.label(

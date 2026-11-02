@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod actions;
+mod ambient_backdrop;
 mod app;
 mod app_model;
 mod event_handler;
@@ -12,6 +13,7 @@ mod task_runner;
 mod theme;
 mod ui_event;
 mod ui_services;
+mod video_presenter;
 mod widgets;
 
 pub use app::run_desktop_app;

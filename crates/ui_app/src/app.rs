@@ -5,11 +5,13 @@ use eframe::egui;
 use crate::actions::{Dispatcher, UiAction};
 use crate::app_model::AppModel;
 use crate::navigation::Tab;
+use crate::screens::player_screen::{self, PlayerScene};
 use crate::screens::{
     details_screen, downloads_screen, home_screen, library_screen, search_screen, settings_screen,
 };
 use crate::task_runner::TaskRunner;
 use crate::ui_services::UiServices;
+use crate::video_presenter::VideoPresenter;
 use crate::widgets::{notice_bar, now_playing_bar, stream_picker, top_bar};
 use crate::{event_handler, theme};
 
@@ -48,6 +50,8 @@ struct CloudStreamApp {
     dispatcher: Dispatcher,
     services: UiServices,
     last_poll: Instant,
+    presenter: VideoPresenter,
+    window_fullscreen: bool,
 }
 
 impl CloudStreamApp {
@@ -60,6 +64,8 @@ impl CloudStreamApp {
             dispatcher,
             services,
             last_poll: Instant::now(),
+            presenter: VideoPresenter::default(),
+            window_fullscreen: false,
         }
     }
 
@@ -129,7 +135,7 @@ impl CloudStreamApp {
         let Some(title) = self.model.now_playing_title.as_deref() else {
             return;
         };
-        if self.model.playback.state == player_api::PlaybackState::Idle {
+        if self.model.playback.state == player_api::PlaybackState::Idle || self.model.player.open {
             return;
         }
         egui::Area::new(egui::Id::unique("now_playing"))
@@ -147,9 +153,70 @@ impl CloudStreamApp {
                     })
                     .show(ui, |ui| {
                         ui.set_width(NOW_PLAYING_WIDTH);
-                        actions.extend(now_playing_bar::show(ui, title, &self.model.playback));
+                        actions.extend(now_playing_bar::show(
+                            ui,
+                            title,
+                            &self.model.playback,
+                            self.embedded(),
+                        ));
                     });
             });
+    }
+
+    fn embedded(&self) -> bool {
+        self.services
+            .playback
+            .as_ref()
+            .is_some_and(|playback| playback.is_embedded())
+    }
+
+    /// Draws the video screen instead of the normal ones.
+    fn draw_player(&mut self, ui: &mut egui::Ui, actions: &mut Vec<UiAction>) {
+        let context = ui.ctx().clone();
+        if let Some(playback) = &self.services.playback {
+            let size = ui.max_rect().size() * context.pixels_per_point();
+            self.presenter
+                .update(&context, playback, (size.x as u32, size.y as u32));
+        }
+        context.request_repaint_after(std::time::Duration::from_millis(16));
+        let title = self.model.now_playing_title.clone().unwrap_or_default();
+        let frame = egui::Frame::new().fill(egui::Color32::BLACK);
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
+            let scene = PlayerScene {
+                title: &title,
+                status: &self.model.playback,
+                presenter: &self.presenter,
+            };
+            player_screen::show(ui, &mut self.model.player, &scene, actions);
+        });
+    }
+
+    /// Closes the video screen once playback is over, and tells the user when it failed.
+    fn close_player_when_finished(&mut self) {
+        if !self.model.player.open {
+            return;
+        }
+        match &self.model.playback.state {
+            player_api::PlaybackState::Failed(reason) => {
+                let text = format!("Playback failed: {reason}");
+                self.model.notify(crate::notice::Notice::error(text));
+            }
+            player_api::PlaybackState::Ended => {}
+            _ => return,
+        }
+        if self.model.playback.state != player_api::PlaybackState::Loading {
+            self.model.player.open = false;
+            self.model.player.fullscreen = false;
+            self.presenter.reset();
+        }
+    }
+
+    /// Keeps the OS window in step with the model's fullscreen flag.
+    fn sync_fullscreen(&mut self, context: &egui::Context) {
+        if self.model.player.fullscreen != self.window_fullscreen {
+            self.window_fullscreen = self.model.player.fullscreen;
+            context.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.window_fullscreen));
+        }
     }
 
     fn draw_stream_choice(&self, context: &egui::Context, actions: &mut Vec<UiAction>) {
@@ -169,12 +236,18 @@ impl eframe::App for CloudStreamApp {
         self.apply_background_results();
         self.poll_player(&context);
         let mut actions = Vec::new();
-        self.draw_top_bar(ui, &mut actions);
-        self.draw_content(ui, &mut actions);
+        if self.model.player.open && self.embedded() {
+            self.draw_player(ui, &mut actions);
+        } else {
+            self.draw_top_bar(ui, &mut actions);
+            self.draw_content(ui, &mut actions);
+        }
         self.draw_now_playing(&context, &mut actions);
         self.draw_stream_choice(&context, &mut actions);
         for action in actions {
             self.dispatcher.perform(&mut self.model, action);
         }
+        self.close_player_when_finished();
+        self.sync_fullscreen(&context);
     }
 }

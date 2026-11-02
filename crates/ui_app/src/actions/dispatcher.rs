@@ -52,6 +52,11 @@ impl Dispatcher {
             | UiAction::DismissStreamChoice
             | UiAction::SetPaused(_)
             | UiAction::SeekBy(_)
+            | UiAction::SeekTo(_)
+            | UiAction::TogglePause
+            | UiAction::OpenPlayer
+            | UiAction::ClosePlayer
+            | UiAction::ToggleFullscreen
             | UiAction::StopPlayback => playback_actions::perform(self, model, action),
             UiAction::DismissNotice(index) => {
                 if index < model.notices.len() {

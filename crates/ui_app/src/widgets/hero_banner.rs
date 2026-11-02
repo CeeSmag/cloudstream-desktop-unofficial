@@ -1,5 +1,6 @@
 use egui::{Color32, Rect, RichText, Sense, UiBuilder, Vec2};
 
+use crate::ambient_backdrop;
 use crate::theme;
 use crate::widgets::buttons;
 use crate::widgets::gradient::{self, Direction};
@@ -46,28 +47,28 @@ pub(crate) fn show(
     clicked
 }
 
-/// Paints the banner art, cropped to a wide band, and darkens it for legible text.
+/// Paints the banner: a blurred wash of the artwork's colours, the sharp poster on the right, and
+/// fades so the text on the left and the shelf below stay legible.
 pub(crate) fn paint_backdrop(ui: &egui::Ui, rect: Rect, image_url: Option<&str>) {
     let painter = ui.painter();
     painter.rect_filled(rect, 0.0, theme::SURFACE);
     if let Some(url) = image_url {
-        let crop = Rect::from_min_max(egui::pos2(0.0, 0.12), egui::pos2(1.0, 0.62));
-        egui::Image::new(url)
-            .uv(crop)
-            .fit_to_exact_size(rect.size())
-            .paint_at(ui, rect);
+        paint_ambient(ui, rect, url);
+        paint_poster(ui, rect, url);
     }
+    painter.rect_filled(rect, 0.0, Color32::from_black_alpha(70));
+    let left = Rect::from_min_max(
+        rect.min,
+        egui::pos2(rect.left() + rect.width() * 0.7, rect.bottom()),
+    );
     gradient::fill(
         painter,
-        rect,
+        left,
         Direction::LeftToRight,
-        (
-            Color32::from_black_alpha(235),
-            Color32::from_black_alpha(40),
-        ),
+        (Color32::from_black_alpha(190), Color32::TRANSPARENT),
     );
     let bottom = Rect::from_min_max(
-        egui::pos2(rect.left(), rect.bottom() - rect.height() * 0.45),
+        egui::pos2(rect.left(), rect.bottom() - rect.height() * 0.4),
         rect.right_bottom(),
     );
     gradient::fill(
@@ -76,6 +77,37 @@ pub(crate) fn paint_backdrop(ui: &egui::Ui, rect: Rect, image_url: Option<&str>)
         Direction::TopToBottom,
         (Color32::TRANSPARENT, theme::BACKGROUND),
     );
+}
+
+fn paint_ambient(ui: &egui::Ui, rect: Rect, url: &str) {
+    if let Some(texture) = ambient_backdrop::texture_for(ui.ctx(), url) {
+        egui::Image::from_texture((texture.id(), texture.size_vec2())).paint_at(ui, rect);
+    }
+}
+
+fn paint_poster(ui: &egui::Ui, rect: Rect, url: &str) {
+    let height = rect.height() - 72.0;
+    let size = Vec2::new(height * 2.0 / 3.0, height);
+    let poster = Rect::from_min_size(
+        egui::pos2(
+            rect.right() - size.x - theme::PAGE_MARGIN - 24.0,
+            rect.top() + 28.0,
+        ),
+        size,
+    );
+    let shadow = egui::Shadow {
+        offset: [0, 14],
+        blur: 36,
+        spread: 0,
+        color: Color32::from_black_alpha(170),
+    };
+    ui.painter().add(shadow.as_shape(poster, theme::ROUNDING));
+    ui.painter()
+        .rect_filled(poster, theme::ROUNDING, theme::SURFACE_HIGH);
+    egui::Image::new(url)
+        .fit_to_exact_size(size)
+        .corner_radius(theme::ROUNDING)
+        .paint_at(ui, poster);
 }
 
 fn draw_text(
