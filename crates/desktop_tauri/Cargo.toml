@@ -1,0 +1,28 @@
+[package]
+name = "desktop_tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+raw-window-handle = "0.6"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+app_services = { path = "../app_services" }
+app_shell = { path = "../app_shell" }
+ui_app = { path = "../ui_app" }
+core_model = { path = "../core_model" }
+player_api = { path = "../player_api" }
+player_mpv = { path = "../player_mpv" }
+storage = { path = "../storage" }
+extension_api = { path = "../extension_api" }

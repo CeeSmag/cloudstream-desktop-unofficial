@@ -37,7 +37,10 @@ impl MpvPlayer {
     /// Loads libmpv from `library_path` and starts an idle player.
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {
         let api = Arc::new(MpvApi::load(library_path)?);
-        let embedded = options.embedded && !options.headless && api.render_api().is_some();
+        let embedded = options.embedded
+            && !options.headless
+            && options.wid.is_none()
+            && api.render_api().is_some();
         if options.embedded && !embedded && !options.headless {
             tracing::warn!("this libmpv has no render API; using mpv's own window");
         }
