@@ -1239,7 +1239,6 @@ dependencies = [
  "extension_api",
  "player_api",
  "player_mpv",
- "raw-window-handle",
  "serde",
  "serde_json",
  "storage",

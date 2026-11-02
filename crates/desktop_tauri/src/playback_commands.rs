@@ -122,6 +122,10 @@ fn map_playback_status(
     status: PlaybackStatus,
     tracks: Vec<player_api::MediaTrack>,
 ) -> PlaybackStatusDto {
+    let error = match &status.state {
+        PlaybackState::Failed(reason) => Some(failure_message(reason)),
+        _ => None,
+    };
     let state_str = match status.state {
         PlaybackState::Idle => "Idle",
         PlaybackState::Loading => "Loading",
@@ -152,5 +156,36 @@ fn map_playback_status(
         has_video: status.has_video,
         volume: 100.0,
         tracks: track_dtos,
+        error,
+    }
+}
+
+/// Turns the player's terse failure reason into something a person can act on.
+fn failure_message(reason: &str) -> String {
+    format!("This stream could not be played ({reason}). The host may have refused the request or the file may be restricted; try another source.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_state_carries_a_readable_error() {
+        let status = PlaybackStatus {
+            state: PlaybackState::Failed("mpv error -13".into()),
+            ..PlaybackStatus::default()
+        };
+        let dto = map_playback_status(status, Vec::new());
+        assert_eq!(dto.state, "Failed");
+        assert!(dto.error.is_some_and(|text| text.contains("mpv error -13")));
+    }
+
+    #[test]
+    fn healthy_states_have_no_error() {
+        let status = PlaybackStatus {
+            state: PlaybackState::Playing,
+            ..PlaybackStatus::default()
+        };
+        assert!(map_playback_status(status, Vec::new()).error.is_none());
     }
 }

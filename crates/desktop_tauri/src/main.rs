@@ -9,7 +9,7 @@ mod dto;
 mod library_commands;
 mod playback_commands;
 mod settings_commands;
-mod window_mpv;
+mod video_commands;
 
 use app_shell::{build_services, start_logging, AppPaths, ServiceOptions};
 use app_state::AppState;
@@ -50,17 +50,15 @@ fn build_app(paths: AppPaths) -> Builder<Wry> {
             settings_commands::remove_repository,
             settings_commands::get_disabled_providers,
             settings_commands::set_provider_enabled,
+            video_commands::set_video_surface,
+            video_commands::get_video_frame,
         ])
 }
 
 fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn std::error::Error>> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| anyhow::anyhow!("main window not found"))?;
-    let wid = window_mpv::extract_window_id(&window);
     let options = ServiceOptions {
         headless_player: false,
-        player_wid: wid,
+        player_wid: None,
     };
     let services = build_services(paths, &options)?;
     let extensions = services.extensions.clone();
