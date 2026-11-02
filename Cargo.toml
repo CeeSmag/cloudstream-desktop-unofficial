@@ -8,6 +8,7 @@ members = [
     "crates/network_client",
     "crates/html_parsing",
     "crates/extractors",
+    "crates/player_api",
     "crates/player_mpv",
     "crates/storage",
     "crates/ui_app",
