@@ -6,8 +6,8 @@ use player_api::SubtitleSource;
 
 use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
-use crate::mpv_option_format::subtitle_label;
 use crate::status_tracker::StatusTracker;
+use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
 use crate::track_reader::{has_video_track, read_tracks};
 
 /// How long the event thread waits per iteration; also its stop-latency.
@@ -22,6 +22,7 @@ pub(crate) struct EventWorker {
     pub(crate) tracker: Arc<StatusTracker>,
     pub(crate) pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) stream_generation: StreamGeneration,
 }
 
 impl EventWorker {
@@ -45,6 +46,7 @@ impl EventWorker {
         }
     }
 
+    /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
     fn attach_subtitles(&self) {
         let subtitles = std::mem::take(
             &mut *self
@@ -52,15 +54,11 @@ impl EventWorker {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner),
         );
-        for subtitle in &subtitles {
-            let label = subtitle_label(subtitle);
-            if let Err(error) = self
-                .handle
-                .command(&["sub-add", &subtitle.url, "auto", label])
-            {
-                tracing::warn!(%error, url = %subtitle.url, "could not attach subtitle");
-            }
+        if subtitles.is_empty() {
+            return;
         }
+        let generation = self.stream_generation.load(Ordering::SeqCst);
+        attach_in_background(&self.handle, &self.stream_generation, generation, subtitles);
     }
 
     /// Re-reads the track list (subtitles added after loading show up here too).
