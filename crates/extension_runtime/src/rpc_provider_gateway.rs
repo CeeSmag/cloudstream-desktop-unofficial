@@ -1,7 +1,10 @@
 use std::path::Path;
 use std::time::Duration;
 
-use core_model::{HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo, SearchPage};
+use core_model::{
+    DiscoveredRepository, HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo,
+    SearchPage,
+};
 use extension_api::{GatewayError, ProviderGateway};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -77,6 +80,10 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
         let params = json!({ "url": url, "referer": referer });
         self.call_typed("extract", params, PROVIDER_CALL_TIMEOUT)
     }
+
+    fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
+        self.call_typed("take_added_repositories", json!({}), PROVIDER_CALL_TIMEOUT)
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +138,18 @@ mod tests {
         assert_eq!(
             calls[0].1,
             json!({"provider":"Archive","query":"moon","page":2})
+        );
+    }
+
+    #[test]
+    fn take_added_repositories_decodes_the_runtime_reply() {
+        let reply = json!([{"name":"Repo","url":"https://r/repo.json","iconUrl":null}]);
+        let gateway = RpcProviderGateway::new(ScriptedTransport::replying(Ok(reply)));
+        let found = gateway.take_added_repositories().expect("call succeeds");
+        assert_eq!(found[0].url, "https://r/repo.json");
+        assert_eq!(
+            gateway.transport.calls.lock().expect("lock")[0].0,
+            "take_added_repositories"
         );
     }
 

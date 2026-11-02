@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use core_model::{PluginListing, RepositoryEntry};
+use core_model::{DiscoveredRepository, PluginListing, RepositoryEntry};
 use extension_repo::{HttpFetcher, RepositoryClient};
 use storage::RepositoryStore;
 
@@ -40,6 +40,41 @@ impl RepositoryService {
         self.store.add(&entry)?;
         tracing::info!(url, name = %entry.name, "repository added");
         Ok(entry)
+    }
+
+    /// Saves repositories an extension asked for, skipping ones already known and ones without a
+    /// URL. Nothing is downloaded: the extension already read each manifest. Returns how many are new.
+    pub fn import_discovered(&self, found: &[DiscoveredRepository]) -> Result<usize, ServiceError> {
+        let mut known: std::collections::HashSet<String> = self
+            .store
+            .list()?
+            .into_iter()
+            .map(|entry| entry.url)
+            .collect();
+        let mut added = 0;
+        for repository in found {
+            let url = repository.url.trim();
+            if url.is_empty() || !known.insert(url.to_owned()) {
+                continue;
+            }
+            let name = if repository.name.trim().is_empty() {
+                url
+            } else {
+                repository.name.trim()
+            };
+            self.store.add(&RepositoryEntry {
+                url: url.to_owned(),
+                name: name.to_owned(),
+                added_at_ms: self.clock.now_ms(),
+            })?;
+            added += 1;
+        }
+        tracing::info!(
+            offered = found.len(),
+            added,
+            "repositories imported from extensions"
+        );
+        Ok(added)
     }
 
     /// Forgets a repository (installed plugins stay).
@@ -112,6 +147,37 @@ mod tests {
         let service = service();
         assert!(service.add("https://nope/repo.json").is_err());
         assert!(service.list().expect("list").is_empty());
+    }
+
+    fn discovered(name: &str, url: &str) -> DiscoveredRepository {
+        DiscoveredRepository {
+            name: name.into(),
+            url: url.into(),
+            icon_url: None,
+        }
+    }
+
+    #[test]
+    fn import_discovered_adds_new_repositories_without_downloading_anything() {
+        let service = service();
+        service.add("https://r/repo.json").expect("adds");
+        let added = service
+            .import_discovered(&[
+                discovered("Known", "https://r/repo.json"),
+                discovered("New", "https://n/repo.json"),
+                discovered("", "https://unnamed/repo.json"),
+                discovered("No url", "  "),
+                discovered("Again", "https://n/repo.json"),
+            ])
+            .expect("imports");
+        assert_eq!(added, 2);
+        let names: Vec<String> = service
+            .list()
+            .expect("list")
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["R", "New", "https://unnamed/repo.json"]);
     }
 
     #[test]

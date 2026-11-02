@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use core_model::{InstalledExtension, PluginListing, ProviderInfo};
+use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
@@ -24,6 +25,8 @@ pub struct ExtensionService {
     installer: Arc<ExtensionInstaller<Arc<dyn HttpFetcher>>>,
     installed: InstalledExtensionStore,
     providers: Arc<Mutex<Vec<ProviderInfo>>>,
+    /// Provider names each extension file registered, so uninstalling can hide exactly those.
+    provided_by: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl ExtensionService {
@@ -38,6 +41,7 @@ impl ExtensionService {
             installer: Arc::new(installer),
             installed,
             providers: Arc::default(),
+            provided_by: Arc::default(),
         }
     }
 
@@ -72,11 +76,38 @@ impl ExtensionService {
         self.load_one(&path, record.trusted)
     }
 
-    /// Deletes the file and the record. A running runtime keeps the providers until restart.
+    /// Deletes the file and the record and stops offering its providers. The runtime keeps the
+    /// code in memory until the app restarts, but nothing can reach it any more.
     pub fn uninstall(&self, extension: &InstalledExtension) -> Result<(), ServiceError> {
         self.installer.uninstall(&extension.internal_name)?;
         self.installed.remove(&extension.file_name)?;
+        let names = self
+            .provided_by
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&extension.file_name)
+            .unwrap_or_default();
+        self.providers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|provider| !names.contains(&provider.name));
         Ok(())
+    }
+
+    /// Names of the providers an installed extension file registered.
+    pub fn providers_of(&self, file_name: &str) -> Vec<String> {
+        self.provided_by
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(file_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Repositories that extensions asked the app to add since the last call (the "Mega" plugin
+    /// does this on every start).
+    pub fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, ServiceError> {
+        Ok(self.gateway.take_added_repositories()?)
     }
 
     /// Changes whether an extension is trusted; takes effect the next time it is loaded.
@@ -111,6 +142,16 @@ impl ExtensionService {
 
     fn load_one(&self, path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, ServiceError> {
         let loaded = self.gateway.load_extension(path, trusted)?;
+        self.provided_by
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(
+                file_name_of(path),
+                loaded
+                    .iter()
+                    .map(|provider| provider.name.clone())
+                    .collect(),
+            );
         let mut known = self
             .providers
             .lock()
@@ -216,6 +257,23 @@ mod tests {
                 .expect("a load")
                 .1
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn uninstall_stops_offering_the_providers_of_that_extension_only() {
+        let (service, _, dir) = setup("hide");
+        service.install(&listing("Good"), "r").expect("installs");
+        service.install(&listing("Other"), "r").expect("installs");
+        let record = service
+            .installed()
+            .expect("list")
+            .into_iter()
+            .find(|e| e.internal_name == "Good")
+            .expect("recorded");
+        service.uninstall(&record).expect("uninstalls");
+        let names: Vec<String> = service.providers().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Other"]);
         let _ = fs::remove_dir_all(dir);
     }
 

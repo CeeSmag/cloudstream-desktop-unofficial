@@ -1,10 +1,12 @@
 import {
   Bookmark,
   HomeSection,
+  InstalledExtension,
   MediaDetails,
   PlaybackStatus,
   ProviderInfo,
   RepositoryEntry,
+  RepositoryPlugin,
   SearchItem,
   SourceInfo,
   WatchProgress,
@@ -104,4 +106,16 @@ export const api = {
   addRepository: (url: string) => invokeTauri<void>('add_repository', { url }),
 
   removeRepository: (url: string) => invokeTauri<void>('remove_repository', { url }),
+
+  getInstalledExtensions: () => invokeTauri<InstalledExtension[]>('get_installed_extensions'),
+
+  getRepositoryPlugins: (url: string) => invokeTauri<RepositoryPlugin[]>('get_repository_plugins', { url }),
+
+  installPlugin: (repositoryUrl: string, internalName: string) =>
+    invokeTauri<string[]>('install_plugin', { repositoryUrl, internalName }),
+
+  uninstallExtension: (internalName: string) => invokeTauri<void>('uninstall_extension', { internalName }),
+
+  setExtensionTrusted: (internalName: string, trusted: boolean) =>
+    invokeTauri<void>('set_extension_trusted', { internalName, trusted }),
 };

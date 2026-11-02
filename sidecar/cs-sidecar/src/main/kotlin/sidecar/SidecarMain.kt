@@ -43,5 +43,8 @@ private fun dispatch(service: ProviderService, method: String, params: JsonNode)
     "load" -> service.load(params["provider"].asText(), params["url"].asText())
     "load_links" -> service.loadLinks(params["provider"].asText(), params["data"].asText())
     "extract" -> service.extract(params["url"].asText(), params["referer"]?.asText())
+    "take_added_repositories" -> AddedRepositories.take().map {
+        mapOf("name" to it.name, "url" to it.url, "iconUrl" to it.iconUrl)
+    }
     else -> error("unknown method: $method")
 }

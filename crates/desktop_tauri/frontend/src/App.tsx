@@ -9,7 +9,6 @@ import {
   HomeSection,
   MediaDetails,
   ProviderInfo,
-  RepositoryEntry,
   WatchProgress,
 } from './types';
 import { Navigation } from './components/Navigation';
@@ -53,7 +52,6 @@ export const App: React.FC = () => {
   // Library & settings
   const [bookmarks, setBookmarks] = React.useState<Bookmark[]>([]);
   const [continueWatching, setContinueWatching] = React.useState<WatchProgress[]>([]);
-  const [repositories, setRepositories] = React.useState<RepositoryEntry[]>([]);
   const [isCurrentBookmarked, setIsCurrentBookmarked] = React.useState(false);
 
   // Loads providers and the first provider's home page.
@@ -62,8 +60,7 @@ export const App: React.FC = () => {
     setProviders(provs);
     const first = provs[0]?.name || '';
     setSelectedProvider((current) => (provs.some((p) => p.name === current) ? current : first));
-    const sections = await api.getHomeSections(first || undefined);
-    setHomeSections(sections);
+    setHomeSections(first ? await api.getHomeSections(first) : []);
   }, []);
 
   // Initial load
@@ -71,14 +68,9 @@ export const App: React.FC = () => {
     async function init() {
       try {
         await refreshProviders();
-        const [bms, cw, repos] = await Promise.all([
-          api.getBookmarks(),
-          api.getContinueWatching(),
-          api.getRepositories(),
-        ]);
+        const [bms, cw] = await Promise.all([api.getBookmarks(), api.getContinueWatching()]);
         setBookmarks(bms);
         setContinueWatching(cw);
-        setRepositories(repos);
       } finally {
         setHomeLoading(false);
       }
@@ -270,20 +262,7 @@ export const App: React.FC = () => {
               />
             )}
             {currentTab === 'settings' && (
-              <SettingsScreen
-                repositories={repositories}
-                providers={providers}
-                onAddRepo={guard(async (url: string) => {
-                  await api.addRepository(url);
-                  const repos = await api.getRepositories();
-                  setRepositories(repos);
-                })}
-                onRemoveRepo={guard(async (url: string) => {
-                  await api.removeRepository(url);
-                  const repos = await api.getRepositories();
-                  setRepositories(repos);
-                })}
-              />
+              <SettingsScreen providers={providers} onError={(error) => setErrorText(describeError(error))} />
             )}
           </>
         )}

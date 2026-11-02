@@ -33,7 +33,7 @@ impl RepositoryStore {
     pub fn list(&self) -> Result<Vec<RepositoryEntry>, StorageError> {
         self.database.with("list repositories", |connection| {
             let mut statement = connection
-                .prepare("SELECT url, name, added_at FROM repositories ORDER BY added_at, url")?;
+                .prepare("SELECT url, name, added_at FROM repositories ORDER BY added_at, rowid")?;
             let rows = statement.query_map([], |row| {
                 Ok(RepositoryEntry {
                     url: row.get(0)?,
