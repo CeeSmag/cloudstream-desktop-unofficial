@@ -30,23 +30,23 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }, [bookmarks, activeTab]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-8 max-w-7xl mx-auto w-full select-none space-y-10">
+    <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 max-w-[100rem] mx-auto w-full select-none space-y-8 sm:space-y-10">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Your Library</h1>
+          <h1 className="text-2xl sm:text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Your Library</h1>
           <p className="text-xs text-zinc-400 mt-1">
             {bookmarks.length} saved titles • {continueWatching.length} in progress
           </p>
         </div>
 
         {/* Category Tabs */}
-        <div className="flex items-center space-x-1.5 p-1 rounded-xl bg-surface-elevated border border-white/5">
+        <div className="flex items-center gap-1.5 p-1 max-w-full overflow-x-auto no-scrollbar rounded-xl bg-surface-elevated border border-white/5">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`flex-none whitespace-nowrap px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 activeTab === tab
                   ? 'bg-accent text-white font-semibold shadow-sm'
                   : 'text-zinc-400 hover:text-white'
@@ -66,7 +66,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <span>Continue Watching</span>
           </h2>
 
-          <div className="flex items-start space-x-4 overflow-x-auto no-scrollbar py-2">
+          <div className="flex items-start gap-4 overflow-x-auto no-scrollbar py-2">
             {continueWatching.map((item) => (
               <div
                 key={item.media_id}
@@ -81,7 +81,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     year: null,
                   })
                 }
-                className="group relative flex-shrink-0 w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
+                className="group relative flex-shrink-0 w-56 sm:w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
               >
                 <div className="relative aspect-video rounded-xl overflow-hidden bg-midnight mb-2.5 flex items-center justify-center">
                   <span className="text-2xl">📺</span>
@@ -115,7 +115,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <h2 className="text-lg font-bold text-white mb-4">Saved Bookmarks</h2>
 
         {filteredBookmarks.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+          <div className="poster-grid">
             {filteredBookmarks.map((b) => (
               <div key={`${b.provider}-${b.url}`} className="relative group/card">
                 <PosterCard

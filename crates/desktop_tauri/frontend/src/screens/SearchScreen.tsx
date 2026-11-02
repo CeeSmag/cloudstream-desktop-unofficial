@@ -39,9 +39,9 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   }, [query, onSearch]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-8 max-w-7xl mx-auto w-full select-none">
+    <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 max-w-[100rem] mx-auto w-full select-none">
       {/* Search Header Bar */}
-      <div className="relative max-w-2xl mx-auto mb-10">
+      <div className="relative max-w-2xl mx-auto mb-6 sm:mb-10">
         <div className="relative flex items-center">
           <SearchIcon className="absolute left-4 w-5 h-5 text-zinc-400" />
           <input
@@ -74,7 +74,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-6">
             Found {results.length} Results
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+          <div className="poster-grid">
             {results.map((item) => (
               <PosterCard
                 key={item.id}

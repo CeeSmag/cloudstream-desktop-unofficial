@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  /* Fluid type scale: every rem-based size grows from small windows up to 4K displays. */
+  html {
+    font-size: clamp(13px, 0.4vw + 11px, 24px);
+  }
+
   body {
     @apply m-0 p-0 overflow-hidden select-none;
     background-color: #0b0b12;
@@ -54,4 +59,32 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Responsive layout helpers shared by every screen */
+@layer components {
+  /* Horizontal page margin that breathes with the window width. */
+  .page-gutter {
+    padding-inline: clamp(1rem, 3vw, 3rem);
+  }
+
+  /* A poster inside a horizontally scrolling shelf. */
+  .shelf-item {
+    flex: none;
+    width: clamp(7.5rem, 13vw, 13rem);
+  }
+
+  /* Posters in a wrapping grid: as many columns as fit, never narrower than the minimum. */
+  .poster-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(clamp(7.5rem, 12vw, 12rem), 1fr));
+    gap: clamp(1rem, 1.6vw, 1.75rem);
+  }
+
+  /* Episode cards: one column when narrow, more as space allows. */
+  .episode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+    gap: 1rem;
+  }
 }

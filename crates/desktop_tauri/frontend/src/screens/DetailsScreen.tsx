@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Play, BookmarkPlus, Check, Star, Calendar, Tag } from 'lucide-react';
+import { ArrowLeft, Play, BookmarkPlus, Check, Calendar, Tag } from 'lucide-react';
 import { Episode, MediaDetails } from '../types';
 
 interface DetailsScreenProps {
@@ -36,7 +36,7 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
   return (
     <div className="flex-1 overflow-y-auto pb-24 select-none">
       {/* Top Floating Back Bar */}
-      <div className="sticky top-0 h-14 px-8 flex items-center z-30 bg-gradient-to-b from-midnight/90 to-transparent backdrop-blur-sm">
+      <div className="sticky top-0 h-14 page-gutter flex items-center z-30 bg-gradient-to-b from-midnight/90 to-transparent backdrop-blur-sm">
         <button
           onClick={onBack}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/10 transition-colors"
@@ -47,10 +47,10 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
       </div>
 
       {/* Hero Overview */}
-      <div className="max-w-7xl mx-auto px-8 pt-2">
-        <div className="flex flex-col md:flex-row items-start gap-8">
+      <div className="max-w-[100rem] mx-auto page-gutter pt-2">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8">
           {/* Vertical Poster */}
-          <div className="w-56 flex-shrink-0 rounded-2xl overflow-hidden bg-surface-elevated border border-white/10 shadow-2xl">
+          <div className="w-40 sm:w-48 lg:w-56 flex-shrink-0 rounded-2xl overflow-hidden bg-surface-elevated border border-white/10 shadow-2xl">
             {details.poster_url ? (
               <img
                 src={details.poster_url}
@@ -65,8 +65,8 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
           </div>
 
           {/* Details Column */}
-          <div className="flex-1">
-            <div className="flex items-center space-x-2.5 mb-2.5">
+          <div className="flex-1 min-w-0 w-full">
+            <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
               {details.media_type && (
                 <span className="px-2.5 py-0.5 rounded-md bg-accent/20 text-accent font-semibold text-xs border border-accent/30 uppercase tracking-wide">
                   {details.media_type}
@@ -81,13 +81,9 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
                   <span>{details.year}</span>
                 </span>
               )}
-              <span className="flex items-center space-x-1 text-gold text-xs font-medium">
-                <Star className="w-3.5 h-3.5 fill-gold" />
-                <span>8.6</span>
-              </span>
             </div>
 
-            <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mb-4">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight mb-4 break-words">
               {details.name}
             </h1>
 
@@ -113,7 +109,7 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
             )}
 
             {/* Main Action Buttons */}
-            <div className="flex items-center space-x-3.5">
+            <div className="flex flex-wrap items-center gap-3">
               {details.episodes.length === 0 && details.data_url && (
                 <button
                   onClick={() =>
@@ -173,18 +169,18 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
 
         {/* Episodes Section */}
         {details.episodes.length > 0 && (
-          <div className="mt-14">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+          <div className="mt-10 sm:mt-14">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4 mb-6">
               <h2 className="text-xl font-bold text-white">Episodes</h2>
 
               {/* Season Selector Tabs */}
               {seasonNumbers.length > 1 && (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2 max-w-full overflow-x-auto no-scrollbar">
                   {seasonNumbers.map((sn) => (
                     <button
                       key={sn}
                       onClick={() => setSelectedSeason(sn)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      className={`flex-none px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                         selectedSeason === sn
                           ? 'bg-accent text-white font-semibold shadow-sm'
                           : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
@@ -198,15 +194,15 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
             </div>
 
             {/* Episode Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="episode-grid">
               {activeEpisodes.map((ep) => (
                 <div
                   key={ep.id}
                   onClick={() => onPlayEpisode(ep)}
-                  className="group flex space-x-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
+                  className="group flex gap-3 sm:gap-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
                 >
                   {/* Thumbnail */}
-                  <div className="relative w-32 aspect-video rounded-xl overflow-hidden bg-midnight flex-shrink-0">
+                  <div className="relative w-28 sm:w-32 aspect-video rounded-xl overflow-hidden bg-midnight flex-shrink-0">
                     {ep.poster_url || details.poster_url ? (
                       <img
                         src={ep.poster_url || details.poster_url || ''}

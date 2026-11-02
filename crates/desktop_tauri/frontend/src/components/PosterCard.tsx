@@ -12,7 +12,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
   return (
     <div
       onClick={() => onClick(item)}
-      className="group relative flex-shrink-0 w-44 cursor-pointer select-none"
+      className="group relative w-full cursor-pointer select-none"
     >
       {/* Poster Image Container */}
       <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-surface-elevated border border-white/5 shadow-lg group-hover:border-accent/40 group-hover:shadow-accent/20 transition-all duration-300 transform group-hover:-translate-y-1">
