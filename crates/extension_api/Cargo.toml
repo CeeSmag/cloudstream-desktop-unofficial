@@ -1,12 +1,13 @@
 [package]
 name = "extension_api"
-description = "Traits and host-function contracts exposed to extensions."
+description = "Traits and error types the app uses to talk to extension providers."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
 core_model = { path = "../core_model" }
+thiserror.workspace = true
 
 [lints]
 workspace = true

@@ -1,20 +1,42 @@
-/// One entry returned by a provider search.
-#[derive(Debug, Clone, PartialEq, Eq)]
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
+/// One entry returned by a provider search or listed on a provider home page.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchResult {
     /// Display title shown in result lists.
-    pub title: String,
+    pub name: String,
     /// Provider-specific URL used to load the full details page.
-    pub detail_url: String,
+    pub url: String,
+    /// Name of the provider that produced this entry.
+    #[serde(default)]
+    pub api_name: String,
+    /// Content kind reported by the provider (for example `Movie`, `TvSeries`).
+    #[serde(default, rename = "type")]
+    pub media_type: Option<String>,
+    /// Poster image URL, if the provider has one.
+    #[serde(default)]
+    pub poster_url: Option<String>,
+    /// Release year, if known.
+    #[serde(default)]
+    pub year: Option<i32>,
+    /// Extra HTTP headers needed to download the poster.
+    #[serde(default)]
+    pub poster_headers: Option<HashMap<String, String>>,
 }
 
-impl SearchResult {
-    /// Builds a result, trimming surrounding whitespace from both fields.
-    pub fn new(title: &str, detail_url: &str) -> Self {
-        Self {
-            title: title.trim().to_owned(),
-            detail_url: detail_url.trim().to_owned(),
-        }
-    }
+/// One page of search results.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchPage {
+    /// Results on this page.
+    #[serde(default)]
+    pub items: Vec<SearchResult>,
+    /// Whether another page can be requested.
+    #[serde(default)]
+    pub has_next: bool,
 }
 
 #[cfg(test)]
@@ -22,9 +44,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_trims_whitespace_from_title_and_url() {
-        let result = SearchResult::new("  Title ", " https://a.test/x ");
-        assert_eq!(result.title, "Title");
-        assert_eq!(result.detail_url, "https://a.test/x");
+    fn deserialize_search_page_from_sidecar_reply_keeps_known_fields() {
+        let json = r#"{"items":[{"name":"Apollo","url":"https://a.test/1","apiName":"Archive",
+            "type":"Movie","posterUrl":"https://a.test/p.jpg","year":null,"id":null,"score":null}],
+            "hasNext":true}"#;
+        let page: SearchPage = serde_json::from_str(json).expect("valid sidecar JSON");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].media_type.as_deref(), Some("Movie"));
+        assert!(page.has_next);
+    }
+
+    #[test]
+    fn deserialize_search_page_tolerates_missing_optional_fields() {
+        let page: SearchPage = serde_json::from_str(r#"{"items":[{"name":"x","url":"u"}]}"#)
+            .expect("optional fields may be absent");
+        assert_eq!(page.items[0].api_name, "");
+        assert!(!page.has_next);
     }
 }
