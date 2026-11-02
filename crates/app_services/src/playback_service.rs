@@ -9,6 +9,17 @@ use crate::{Clock, ServiceError};
 /// Progress is saved when the position moved at least this far since the last save.
 const SAVE_EVERY_MS: i64 = 5_000;
 
+/// A stream to play, with the subtitles to offer and where to begin.
+#[derive(Debug, Clone, Copy)]
+pub struct StreamSelection<'a> {
+    /// The stream.
+    pub link: &'a PlayableLink,
+    /// External subtitles the provider offered.
+    pub subtitles: &'a [SubtitleTrack],
+    /// Where to begin, in milliseconds.
+    pub start_position_ms: i64,
+}
+
 /// What is being watched; carried into saved progress.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlaybackItem {
@@ -68,7 +79,29 @@ impl PlaybackService {
         subtitles: &[SubtitleTrack],
     ) -> Result<(), ServiceError> {
         let start_position_ms = self.resume_position_ms(&item)?;
-        let request = build_request(&item.title, link, subtitles, start_position_ms);
+        self.start_at(
+            item,
+            &StreamSelection {
+                link,
+                subtitles,
+                start_position_ms,
+            },
+        )
+    }
+
+    /// Plays `link` from an explicit position, for example after switching to another source.
+    pub fn start_at(
+        &self,
+        item: PlaybackItem,
+        stream: &StreamSelection<'_>,
+    ) -> Result<(), ServiceError> {
+        let start_position_ms = stream.start_position_ms;
+        let request = build_request(
+            &item.title,
+            stream.link,
+            stream.subtitles,
+            start_position_ms,
+        );
         self.player.play(&request)?;
         *self.active.lock().unwrap_or_else(PoisonError::into_inner) = Some(ActivePlayback {
             item,
@@ -91,6 +124,20 @@ impl PlaybackService {
     pub fn stop(&self) -> Result<(), ServiceError> {
         *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
         Ok(self.player.stop()?)
+    }
+
+    /// The audio and subtitle tracks of the current stream.
+    pub fn tracks(&self) -> Vec<player_api::MediaTrack> {
+        self.player.tracks()
+    }
+
+    /// Selects a track by id, or turns subtitles/audio off with `None`.
+    pub fn select_track(
+        &self,
+        kind: player_api::TrackKind,
+        id: Option<i64>,
+    ) -> Result<(), ServiceError> {
+        Ok(self.player.select_track(kind, id)?)
     }
 
     /// Whether pictures arrive through [`PlaybackService::latest_frame`].
@@ -267,6 +314,21 @@ mod tests {
                 .expect("saved")
                 .position_ms,
             6_000
+        );
+    }
+
+    #[test]
+    fn start_at_uses_the_given_position_instead_of_the_saved_one() {
+        let (service, player, _, _) = setup();
+        let stream = StreamSelection {
+            link: &link(),
+            subtitles: &[],
+            start_position_ms: 77_000,
+        };
+        service.start_at(item(), &stream).expect("starts");
+        assert_eq!(
+            player.requests.lock().expect("lock")[0].start_position_ms,
+            77_000
         );
     }
 

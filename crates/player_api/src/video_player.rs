@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{PlaybackRequest, PlaybackStatus, PlayerError, VideoFrame};
+use crate::{MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, TrackKind, VideoFrame};
 
 /// A video player the app can drive.
 pub trait VideoPlayer: Send + Sync {
@@ -18,6 +18,18 @@ pub trait VideoPlayer: Send + Sync {
 
     /// Returns the latest playback snapshot.
     fn status(&self) -> PlaybackStatus;
+
+    /// The audio and subtitle tracks of the current stream (empty until it has loaded).
+    fn tracks(&self) -> Vec<MediaTrack> {
+        Vec::new()
+    }
+
+    /// Selects a track of `kind` by id, or turns that kind off with `None` (subtitles only make
+    /// sense off; turning audio off mutes the stream).
+    fn select_track(&self, kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError> {
+        let _ = (kind, id);
+        Ok(())
+    }
 
     /// Whether pictures are delivered through [`VideoPlayer::latest_frame`] (embedded in the
     /// app window) instead of a separate player window.

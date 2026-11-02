@@ -17,7 +17,7 @@ pub use catalog_service::{CatalogService, ProviderSearchOutcome};
 pub use clock::{Clock, SystemClock};
 pub use extension_service::{ExtensionLoadReport, ExtensionService};
 pub use library_service::LibraryService;
-pub use playback_service::{PlaybackItem, PlaybackService};
+pub use playback_service::{PlaybackItem, PlaybackService, StreamSelection};
 pub use repository_service::RepositoryService;
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;

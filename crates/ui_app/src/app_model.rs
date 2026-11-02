@@ -5,7 +5,7 @@ use core_model::{
     Bookmark, HomePageSection, InstalledExtension, LoadDetails, PlayableLink, PluginListing,
     ProviderInfo, RepositoryEntry, SubtitleTrack, WatchProgress,
 };
-use player_api::PlaybackStatus;
+use player_api::{MediaTrack, PlaybackStatus};
 
 use crate::navigation::{Tab, TitleRef};
 use crate::notice::Notice;
@@ -69,6 +69,26 @@ pub(crate) struct SettingsState {
     pub(crate) adding_repository: bool,
 }
 
+/// The pop-up menus of the video screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayerMenu {
+    /// Audio track choice.
+    Audio,
+    /// Subtitle choice.
+    Subtitles,
+    /// Source (stream) choice.
+    Sources,
+}
+
+/// The streams found for what is playing, so the user can switch between them.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SourceSet {
+    pub(crate) target: Option<PlayTarget>,
+    pub(crate) links: Vec<PlayableLink>,
+    pub(crate) subtitles: Vec<SubtitleTrack>,
+    pub(crate) selected: usize,
+}
+
 /// State of the embedded video screen.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PlayerView {
@@ -80,6 +100,8 @@ pub(crate) struct PlayerView {
     pub(crate) just_opened: bool,
     /// Egui time of the last pointer or key activity.
     pub(crate) last_activity: f64,
+    /// The open pop-up menu, if any.
+    pub(crate) menu: Option<PlayerMenu>,
 }
 
 /// Everything the screens draw.
@@ -98,6 +120,8 @@ pub(crate) struct AppModel {
     pub(crate) pending_streams: Option<PendingStreams>,
     pub(crate) now_playing_title: Option<String>,
     pub(crate) player: PlayerView,
+    pub(crate) tracks: Vec<MediaTrack>,
+    pub(crate) sources: SourceSet,
     pub(crate) playback: PlaybackStatus,
     pub(crate) settings: SettingsState,
     pub(crate) notices: Vec<Notice>,

@@ -14,6 +14,7 @@ use crate::mpv_render_api::RenderApi;
 
 /// `mpv_format` values used here.
 const FORMAT_FLAG: c_int = 3;
+const FORMAT_STRING: c_int = 1;
 const FORMAT_DOUBLE: c_int = 5;
 /// `mpv_event_id` of the end-of-file event, whose payload is an `mpv_event_end_file`.
 const EVENT_END_FILE: c_int = 7;
@@ -53,6 +54,7 @@ pub(crate) struct MpvApi {
     wait_event: WaitEventFn,
     terminate_destroy: DestroyFn,
     error_string: ErrorStringFn,
+    free_memory: DestroyFn,
     render: Option<RenderApi>,
 }
 
@@ -90,6 +92,7 @@ impl MpvApi {
                 wait_event: symbol(&library, b"mpv_wait_event\0")?,
                 terminate_destroy: symbol(&library, b"mpv_terminate_destroy\0")?,
                 error_string: symbol(&library, b"mpv_error_string\0")?,
+                free_memory: symbol(&library, b"mpv_free\0")?,
                 render: RenderApi::load(&library).ok(),
                 _library: library,
             })
@@ -222,6 +225,31 @@ impl MpvHandle {
             )
         };
         (code >= 0).then_some(value)
+    }
+
+    /// Reads a property as text; `None` while it is unavailable.
+    pub(crate) fn get_string(&self, name: &str) -> Option<String> {
+        let name = CString::new(name).ok()?;
+        let mut text: *mut c_char = std::ptr::null_mut();
+        // SAFETY: `raw` is live; for FORMAT_STRING mpv stores a newly allocated C string in `text`.
+        let code = unsafe {
+            (self.api.get_property)(
+                self.raw,
+                name.as_ptr(),
+                FORMAT_STRING,
+                (&raw mut text).cast(),
+            )
+        };
+        if code < 0 || text.is_null() {
+            return None;
+        }
+        // SAFETY: on success `text` is a valid NUL-terminated string that we own until freed.
+        let value = unsafe { CStr::from_ptr(text) }
+            .to_string_lossy()
+            .into_owned();
+        // SAFETY: `text` was allocated by mpv and must be released with `mpv_free`, exactly once.
+        unsafe { (self.api.free_memory)(text.cast()) };
+        Some(value)
     }
 
     /// Reads a boolean property; `None` while it is unavailable.

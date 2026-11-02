@@ -1,6 +1,6 @@
 use core_model::{InstalledExtension, PluginListing};
 
-use crate::app_model::PlayTarget;
+use crate::app_model::{PlayTarget, PlayerMenu};
 use crate::navigation::{Tab, TitleRef};
 
 /// Something the user asked for.
@@ -24,6 +24,10 @@ pub(crate) enum UiAction {
     OpenPlayer,
     ClosePlayer,
     ToggleFullscreen,
+    TogglePlayerMenu(PlayerMenu),
+    SelectAudio(Option<i64>),
+    SelectSubtitle(Option<i64>),
+    SwitchSource(usize),
     AddRepository(String),
     RemoveRepository(String),
     LoadRepositoryPlugins(String),
