@@ -46,7 +46,7 @@ pub(crate) fn show(
         ui.add(
             egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
                 .desired_height(4.0)
-                .fill(egui::Color32::WHITE),
+                .fill(theme::ACCENT),
         );
     }
     action

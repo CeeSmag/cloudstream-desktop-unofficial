@@ -1,12 +1,15 @@
 use app_services::PlaybackItem;
-use core_model::{EpisodeInfo, LoadDetails};
+use core_model::LoadDetails;
 use egui::RichText;
 
 use crate::actions::UiAction;
 use crate::app_model::{AppModel, DetailsView, Loadable, PlayTarget};
 use crate::theme;
 use crate::widgets::hero_banner::{self, HeroButtons, HeroClick, HeroData};
-use crate::widgets::{buttons, empty_state, section_title};
+use crate::widgets::{buttons, empty_state};
+
+use super::details_episodes;
+pub(crate) use super::details_episodes::episode_title;
 
 /// Height of the backdrop banner on a title page.
 const BACKDROP_HEIGHT: f32 = 330.0;
@@ -14,10 +17,10 @@ const BACKDROP_HEIGHT: f32 = 330.0;
 const READING_WIDTH: f32 = 780.0;
 
 /// The loaded title and the state around it, shared by the sections of the page.
-struct DetailsContext<'a> {
-    model: &'a AppModel,
-    view: &'a DetailsView,
-    details: &'a LoadDetails,
+pub(crate) struct DetailsContext<'a> {
+    pub(crate) model: &'a AppModel,
+    pub(crate) view: &'a DetailsView,
+    pub(crate) details: &'a LoadDetails,
 }
 
 /// A title page: backdrop with title and actions, synopsis, genres and episodes.
@@ -152,7 +155,7 @@ fn body(ui: &mut egui::Ui, context: &DetailsContext<'_>, actions: &mut Vec<UiAct
                         .color(theme::TEXT),
                 );
             }
-            episodes(ui, context, actions);
+            details_episodes::show(ui, context, actions);
         });
     });
 }
@@ -250,67 +253,10 @@ fn play_target(view: &DetailsView, details: &LoadDetails, data: &str, title: &st
     }
 }
 
-fn episodes(ui: &mut egui::Ui, context: &DetailsContext<'_>, actions: &mut Vec<UiAction>) {
-    let (model, view, details) = (context.model, context.view, context.details);
-    if details.episodes.is_empty() {
-        return;
-    }
-    section_title::show(ui, &format!("Episodes ({})", details.episodes.len()));
-    for episode in &details.episodes {
-        let title = episode_title(episode);
-        let mut play = false;
-        egui::Frame::new()
-            .fill(theme::SURFACE)
-            .corner_radius(theme::ROUNDING)
-            .inner_margin(egui::Margin::symmetric(14, 8))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.add(egui::Label::new(RichText::new(&title).size(15.0)).truncate());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        play = ui
-                            .add_enabled(
-                                !model.resolving_streams,
-                                egui::Button::new("Play").corner_radius(theme::PILL_ROUNDING),
-                            )
-                            .clicked();
-                    });
-                });
-            });
-        ui.add_space(6.0);
-        if play {
-            let full_title = format!("{} - {title}", details.name);
-            actions.push(UiAction::Play(play_target(
-                view,
-                details,
-                &episode.data,
-                &full_title,
-            )));
-        }
-    }
-}
-
-/// `S1E3 - Name`, or just the name / number when parts are missing.
-pub(crate) fn episode_title(episode: &EpisodeInfo) -> String {
-    let number = match (episode.season, episode.episode) {
-        (Some(season), Some(number)) => format!("S{season}E{number}"),
-        (None, Some(number)) => format!("Episode {number}"),
-        _ => String::new(),
-    };
-    match (
-        number.is_empty(),
-        episode.name.as_deref().filter(|name| !name.is_empty()),
-    ) {
-        (false, Some(name)) => format!("{number} - {name}"),
-        (false, None) => number,
-        (true, Some(name)) => name.to_owned(),
-        (true, None) => "Episode".to_owned(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core_model::EpisodeInfo;
 
     #[test]
     fn strip_markup_removes_tags_and_decodes_basic_entities() {
@@ -318,34 +264,15 @@ mod tests {
     }
 
     #[test]
-    fn episode_title_combines_number_and_name() {
-        let episode = EpisodeInfo {
-            season: Some(1),
-            episode: Some(3),
-            name: Some("Pilot".into()),
-            ..EpisodeInfo::default()
-        };
-        assert_eq!(episode_title(&episode), "S1E3 - Pilot");
-    }
-
-    #[test]
-    fn episode_title_handles_missing_parts() {
-        let only_number = EpisodeInfo {
-            episode: Some(7),
-            ..EpisodeInfo::default()
-        };
-        assert_eq!(episode_title(&only_number), "Episode 7");
-        assert_eq!(episode_title(&EpisodeInfo::default()), "Episode");
-    }
-
-    #[test]
     fn meta_line_skips_missing_values() {
-        let details = LoadDetails {
-            api_name: "Archive".into(),
-            year: Some(2019),
-            ..LoadDetails::default()
-        };
-        assert_eq!(meta_line(&details), "Archive \u{00B7} 2019");
+        assert_eq!(
+            meta_line(&LoadDetails {
+                api_name: "Archive".into(),
+                year: Some(2019),
+                ..LoadDetails::default()
+            }),
+            "Archive \u{00B7} 2019"
+        );
     }
 
     #[test]
