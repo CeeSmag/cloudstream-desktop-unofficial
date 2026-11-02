@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod bookmark;
+mod discovered_repository;
 mod home_page;
 mod installed_extension;
 mod load_details;
@@ -13,6 +14,7 @@ mod search_result;
 mod watch_progress;
 
 pub use bookmark::Bookmark;
+pub use discovered_repository::DiscoveredRepository;
 pub use home_page::{HomePage, HomePageSection};
 pub use installed_extension::InstalledExtension;
 pub use load_details::{EpisodeInfo, LoadDetails};

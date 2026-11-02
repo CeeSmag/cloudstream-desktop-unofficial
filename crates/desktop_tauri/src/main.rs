@@ -6,8 +6,10 @@
 mod app_state;
 mod catalog_commands;
 mod dto;
+mod extension_commands;
 mod library_commands;
 mod playback_commands;
+mod repository_discovery;
 mod settings_commands;
 mod source_commands;
 mod source_session;
@@ -55,6 +57,11 @@ fn build_app(paths: AppPaths) -> Builder<Wry> {
             settings_commands::remove_repository,
             settings_commands::get_disabled_providers,
             settings_commands::set_provider_enabled,
+            extension_commands::get_installed_extensions,
+            extension_commands::get_repository_plugins,
+            extension_commands::install_plugin,
+            extension_commands::uninstall_extension,
+            extension_commands::set_extension_trusted,
             video_commands::set_video_surface,
             video_commands::get_video_frame,
         ])
@@ -67,9 +74,10 @@ fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn s
     };
     let services = build_services(paths, &options)?;
     let extensions = services.extensions.clone();
+    let repositories = services.repositories.clone();
     app.manage(AppState::new(services));
     app.manage(source_session::SourceSession::default());
-    spawn_extension_loading(app.handle().clone(), extensions);
+    spawn_extension_loading(app.handle().clone(), extensions, repositories);
     Ok(())
 }
 
@@ -77,7 +85,11 @@ fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn s
 pub const PROVIDERS_CHANGED_EVENT: &str = "providers-changed";
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).
-fn spawn_extension_loading(handle: tauri::AppHandle, extensions: app_services::ExtensionService) {
+fn spawn_extension_loading(
+    handle: tauri::AppHandle,
+    extensions: app_services::ExtensionService,
+    repositories: app_services::RepositoryService,
+) {
     let spawned = std::thread::Builder::new()
         .name("load-extensions".to_owned())
         .spawn(move || {
@@ -92,6 +104,8 @@ fn spawn_extension_loading(handle: tauri::AppHandle, extensions: app_services::E
             if let Err(error) = handle.emit(PROVIDERS_CHANGED_EVENT, ()) {
                 tracing::warn!(%error, "could not notify the UI about providers");
             }
+            // Some extensions add repositories on their own each time they load.
+            repository_discovery::watch(handle, extensions, repositories);
         });
     if let Err(error) = spawned {
         tracing::error!(%error, "cannot start extension loading");
