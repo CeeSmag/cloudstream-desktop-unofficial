@@ -1,0 +1,12 @@
+[package]
+name = "extension_repo"
+description = "Repository manifests and plugin install/update/remove."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+extension_api = { path = "../extension_api" }
+
+[lints]
+workspace = true

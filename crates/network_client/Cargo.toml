@@ -1,0 +1,12 @@
+[package]
+name = "network_client"
+description = "HTTP, cookies, headers and the web-resolver abstraction."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+
+[lints]
+workspace = true

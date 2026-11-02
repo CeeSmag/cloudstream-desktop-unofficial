@@ -1,0 +1,12 @@
+[package]
+name = "html_parsing"
+description = "DOM/selector layer with Jsoup-compatible behavior."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "storage"
+description = "Settings, library, history and downloads persistence."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+
+[lints]
+workspace = true

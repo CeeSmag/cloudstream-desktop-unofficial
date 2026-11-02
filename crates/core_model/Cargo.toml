@@ -1,0 +1,12 @@
+[package]
+name = "core_model"
+description = "Pure data types shared across the app. No I/O."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+
+[lints]
+workspace = true
