@@ -1,0 +1,12 @@
+[package]
+name = "extension_api"
+description = "Traits and host-function contracts exposed to extensions."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+
+[lints]
+workspace = true

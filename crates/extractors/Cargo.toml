@@ -1,0 +1,12 @@
+[package]
+name = "extractors"
+description = "Video extractors, one file per extractor."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+extension_api = { path = "../extension_api" }
+
+[lints]
+workspace = true

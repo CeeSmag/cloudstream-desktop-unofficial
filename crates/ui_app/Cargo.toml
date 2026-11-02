@@ -1,0 +1,12 @@
+[package]
+name = "ui_app"
+description = "Screens, widgets, theme and navigation."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+
+[lints]
+workspace = true
