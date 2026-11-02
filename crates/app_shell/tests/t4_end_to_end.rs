@@ -31,6 +31,7 @@ fn services_in(dir: std::path::PathBuf) -> UiServices {
         &paths,
         &ServiceOptions {
             headless_player: true,
+            ..ServiceOptions::default()
         },
     )
     .expect("services build")
