@@ -28,3 +28,10 @@ Real HTTP through the host (cookies, redirects, Cloudflare), binary bodies, larg
 1. Jackson shim + serializer-generation feasibility (decides the "100% recompile" claim).
 2. Port a thin `MainAPI` subset to `wasmWasi` and compile one real provider from the extension repos.
 3. Resource limits (epoch interruption, memory cap) for crash/hang isolation.
+
+## Addendum: errorcode26/CS3-desktop-client-unofficial (cloned to C:\cs3d, GPL-3.0)
+- Runs real `.cs3` by converting DEX to JVM bytecode in-process (dex2jar `dex-tools` 2.4.38 plus custom low-memory passes) and faking Android in an `android-stubs` module. No Wasm, no reimplementation of the extension API: the original `library` is a git submodule.
+- Verified here: `:plugin-runtime:test` passes (50 tests) on JDK 25; `:sandbox:run <folder>` converted third-party `MegaProvider.cs3` (6,929 B, self-similarity/MegaRepo) to a JVM jar and reported 100% of its Android API references resolved against the stubs. That path is static analysis only; it did not execute plugin code.
+- Gotchas: needs git `core.longpaths` or a short clone path on Windows; `:sandbox:run` passes `-Djava.security.manager=allow`, which JDK 24+ rejects, so use JDK 21 (IntelliJ JBR 21 worked). README's "official" extensions URL (recloudstream/cloudstream-extensions) now returns 404.
+- Not verified: dynamic `search()`/`load()` against a real site, Cloudflare/WebView behavior, the claimed AppContainer sandbox (not found in code).
+- Implication: the compatibility route is DEX->JVM + Android stubs behind our `ExtensionRuntime` trait (JVM sidecar). Wasm stays an optional second backend.
