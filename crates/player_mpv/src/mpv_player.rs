@@ -75,6 +75,11 @@ fn configure(handle: &MpvHandle, options: &PlayerOptions) -> Result<(), PlayerEr
     for (name, value) in fixed {
         handle.set_option(name, value)?;
     }
+    if std::env::var_os("CS_MPV_LOG").is_some() {
+        // Developer aid: mpv's own log to the console for diagnosing stream failures.
+        handle.set_option("terminal", "yes")?;
+        handle.set_option("msg-level", "all=v")?;
+    }
     if options.headless {
         for (name, value) in [("vo", "null"), ("ao", "null"), ("force-window", "no")] {
             handle.set_option(name, value)?;

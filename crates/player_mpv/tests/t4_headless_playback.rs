@@ -106,3 +106,21 @@ fn missing_library_is_reported_as_unavailable_not_a_panic() {
     .expect("must fail");
     assert!(matches!(error, player_api::PlayerError::Unavailable(_)));
 }
+
+#[test]
+#[ignore = "needs libmpv and network; set CS_TEST_STREAM_URL"]
+fn plays_the_stream_named_by_the_environment() {
+    let url = std::env::var("CS_TEST_STREAM_URL").expect("CS_TEST_STREAM_URL must be set");
+    let player = headless_player();
+    let request = PlaybackRequest {
+        url,
+        ..PlaybackRequest::default()
+    };
+    player.play(&request).expect("loadfile accepted");
+    let started = wait_for(
+        &player,
+        |s| *s == PlaybackState::Playing,
+        Duration::from_secs(60),
+    );
+    assert!(started, "state was {:?}", player.status().state);
+}
