@@ -148,6 +148,33 @@ fn stopping_while_paused_does_not_leave_the_next_stream_paused() {
 
 #[test]
 #[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn a_subtitle_that_never_downloads_does_not_freeze_the_progress() {
+    let player = headless_player();
+    let request = PlaybackRequest {
+        url: "av://lavfi:testsrc=duration=30:size=64x64:rate=10".to_owned(),
+        subtitles: vec![SubtitleSource {
+            // A non-routable address: the download hangs until mpv gives up.
+            url: "http://10.255.255.1/never.vtt".to_owned(),
+            language: "English".to_owned(),
+        }],
+        ..PlaybackRequest::default()
+    };
+    player.play(&request).expect("loadfile accepted");
+    assert!(wait_for(
+        &player,
+        |s| *s == PlaybackState::Playing,
+        Duration::from_secs(10)
+    ));
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(
+        player.status().position_ms >= 1_000,
+        "progress stayed at {} ms while the subtitle was downloading",
+        player.status().position_ms
+    );
+}
+
+#[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
 fn volume_changes_are_accepted_and_clamped() {
     let player = headless_player();
     player.set_volume(40).expect("volume accepted");

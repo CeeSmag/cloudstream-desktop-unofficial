@@ -36,25 +36,59 @@ impl MediaTrack {
     }
 }
 
-/// Expands the common ISO 639 codes; unknown codes are shown as given.
+/// Language names with the ISO 639 codes (two- and three-letter) that stand for them.
+const LANGUAGES: &[(&str, &[&str])] = &[
+    ("English", &["eng", "en"]),
+    ("Spanish", &["spa", "es"]),
+    ("French", &["fre", "fra", "fr"]),
+    ("German", &["ger", "deu", "de"]),
+    ("Italian", &["ita", "it"]),
+    ("Portuguese", &["por", "pt"]),
+    ("Russian", &["rus", "ru"]),
+    ("Japanese", &["jpn", "ja"]),
+    ("Korean", &["kor", "ko"]),
+    ("Chinese", &["chi", "zho", "zh"]),
+    ("Arabic", &["ara", "ar"]),
+    ("Turkish", &["tur", "tr"]),
+    ("Hindi", &["hin", "hi"]),
+    ("Tamil", &["tam", "ta"]),
+    ("Telugu", &["tel", "te"]),
+    ("Malayalam", &["mal", "ml"]),
+    ("Kannada", &["kan", "kn"]),
+    ("Bengali", &["ben", "bn"]),
+    ("Marathi", &["mar", "mr"]),
+    ("Punjabi", &["pan", "pa"]),
+    ("Urdu", &["urd", "ur"]),
+    ("Thai", &["tha", "th"]),
+    ("Vietnamese", &["vie", "vi"]),
+    ("Indonesian", &["ind", "id"]),
+    ("Malay", &["may", "msa", "ms"]),
+    ("Filipino", &["fil", "tl"]),
+    ("Polish", &["pol", "pl"]),
+    ("Dutch", &["dut", "nld", "nl"]),
+    ("Swedish", &["swe", "sv"]),
+    ("Danish", &["dan", "da"]),
+    ("Norwegian", &["nor", "no"]),
+    ("Finnish", &["fin", "fi"]),
+    ("Ukrainian", &["ukr", "uk"]),
+    ("Hebrew", &["heb", "he"]),
+    ("Greek", &["gre", "ell", "el"]),
+    ("Czech", &["cze", "ces", "cs"]),
+    ("Hungarian", &["hun", "hu"]),
+    ("Romanian", &["rum", "ron", "ro"]),
+    ("Bulgarian", &["bul", "bg"]),
+    ("Croatian", &["hrv", "hr"]),
+    ("Serbian", &["srp", "sr"]),
+    ("Persian", &["per", "fas", "fa"]),
+];
+
+/// Expands common ISO 639 codes; unknown codes are shown as given.
 fn language_name(code: &str) -> String {
-    let name = match code.to_ascii_lowercase().as_str() {
-        "eng" | "en" => "English",
-        "spa" | "es" => "Spanish",
-        "fre" | "fra" | "fr" => "French",
-        "ger" | "deu" | "de" => "German",
-        "ita" | "it" => "Italian",
-        "por" | "pt" => "Portuguese",
-        "rus" | "ru" => "Russian",
-        "jpn" | "ja" => "Japanese",
-        "kor" | "ko" => "Korean",
-        "chi" | "zho" | "zh" => "Chinese",
-        "ara" | "ar" => "Arabic",
-        "tur" | "tr" => "Turkish",
-        "hin" | "hi" => "Hindi",
-        _ => return code.to_owned(),
-    };
-    name.to_owned()
+    let lowered = code.to_ascii_lowercase();
+    LANGUAGES
+        .iter()
+        .find(|(_, codes)| codes.contains(&lowered.as_str()))
+        .map_or_else(|| code.to_owned(), |(name, _)| (*name).to_owned())
 }
 
 #[cfg(test)]
@@ -82,6 +116,13 @@ mod tests {
     fn label_falls_back_to_title_then_track_number() {
         assert_eq!(track("", "Director").label(), "Director");
         assert_eq!(track("", "").label(), "Track 2");
+    }
+
+    #[test]
+    fn label_names_languages_found_on_streaming_files() {
+        assert_eq!(track("ta", "").label(), "Tamil");
+        assert_eq!(track("TEL", "").label(), "Telugu");
+        assert_eq!(track("hin", "HDHub4u.Ag").label(), "Hindi - HDHub4u.Ag");
     }
 
     #[test]

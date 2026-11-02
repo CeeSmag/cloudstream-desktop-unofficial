@@ -9,6 +9,9 @@ interface PosterCardProps {
 }
 
 export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDirect }) => {
+  // A poster that fails to load falls back to the same placeholder as a missing one.
+  const [imageFailed, setImageFailed] = React.useState(false);
+
   return (
     <div
       onClick={() => onClick(item)}
@@ -16,8 +19,9 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
     >
       {/* Poster Image Container */}
       <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-surface-elevated border border-white/5 shadow-lg group-hover:border-accent/40 group-hover:shadow-accent/20 transition-all duration-300 transform group-hover:-translate-y-1">
-        {item.poster_url ? (
+        {item.poster_url && !imageFailed ? (
           <img
+            onError={() => setImageFailed(true)}
             src={item.poster_url}
             alt={item.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
