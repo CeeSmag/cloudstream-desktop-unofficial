@@ -25,6 +25,8 @@ use crate::unavailable_gateway::UnavailableGateway;
 pub struct ServiceOptions {
     /// Play without opening a window or producing sound (tests, CI).
     pub headless_player: bool,
+    /// Window ID to attach hardware-accelerated mpv video to directly.
+    pub player_wid: Option<i64>,
 }
 
 /// Builds every service from the real implementations.
@@ -87,7 +89,8 @@ fn build_playback(
                 &library,
                 &PlayerOptions {
                     headless: options.headless_player,
-                    embedded: !options.headless_player,
+                    embedded: !options.headless_player && options.player_wid.is_none(),
+                    wid: options.player_wid,
                 },
             )
         })

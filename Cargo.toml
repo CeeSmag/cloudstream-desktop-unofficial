@@ -14,6 +14,7 @@ members = [
     "crates/app_services",
     "crates/ui_app",
     "crates/app_shell",
+    "crates/desktop_tauri",
 ]
 
 [workspace.package]

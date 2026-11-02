@@ -5,3 +5,5 @@ build/
 .gradle/
 .kotlin/
 hs_err_pid*.log
+node_modules/
+dist/
