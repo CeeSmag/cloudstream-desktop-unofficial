@@ -2,41 +2,51 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
 
-use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoPlayer};
+use player_api::{
+    PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoFrame, VideoPlayer,
+};
 
+use crate::event_worker::EventWorker;
+use crate::frame_renderer::{FrameRenderer, FrameShared};
 use crate::mpv_api::{MpvApi, MpvHandle};
-use crate::mpv_event::MpvEvent;
-use crate::mpv_option_format::{header_fields, start_option, subtitle_label};
+use crate::mpv_option_format::{header_fields, start_option};
+use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
+use crate::player_configuration::configure;
+pub use crate::player_configuration::PlayerOptions;
 use crate::status_tracker::StatusTracker;
 
-/// How long the event thread waits per iteration; also its stop-latency.
-const EVENT_WAIT: Duration = Duration::from_millis(200);
+/// Size used for the first frames, before the UI reports its real picture area.
+const INITIAL_SURFACE: (u32, u32) = (1280, 720);
 
-/// How the player should be configured.
-#[derive(Debug, Clone, Default)]
-pub struct PlayerOptions {
-    /// Run without video/audio output (tests and CI).
-    pub headless: bool,
-}
-
-/// `VideoPlayer` backed by libmpv, with its own window and on-screen controller.
+/// `VideoPlayer` backed by libmpv: embedded (pictures handed to the app) or in mpv's own window.
 pub struct MpvPlayer {
-    handle: Arc<MpvHandle>,
     tracker: Arc<StatusTracker>,
     pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
     stop_flag: Arc<AtomicBool>,
     event_thread: Option<JoinHandle<()>>,
+    frames: Option<Arc<FrameShared>>,
+    // Dropped before `handle` (declaration order) so the render context never outlives mpv.
+    _renderer: Option<FrameRenderer>,
+    handle: Arc<MpvHandle>,
 }
 
 impl MpvPlayer {
     /// Loads libmpv from `library_path` and starts an idle player.
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {
         let api = Arc::new(MpvApi::load(library_path)?);
+        let embedded = options.embedded && !options.headless && api.render_api().is_some();
+        if options.embedded && !embedded && !options.headless {
+            tracing::warn!("this libmpv has no render API; using mpv's own window");
+        }
         let handle = Arc::new(MpvHandle::create(api)?);
-        configure(&handle, options)?;
+        configure(&handle, options, embedded)?;
         handle.initialize()?;
+        let (renderer, frames) = if embedded {
+            start_embedding(&handle)
+        } else {
+            (None, None)
+        };
         let tracker = Arc::new(StatusTracker::default());
         let pending_subtitles = Arc::new(Mutex::new(Vec::new()));
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -53,44 +63,36 @@ impl MpvPlayer {
                 PlayerError::Unavailable(format!("cannot start event thread: {error}"))
             })?;
         Ok(Self {
-            handle,
             tracker,
             pending_subtitles,
             stop_flag,
             event_thread: Some(event_thread),
+            frames,
+            _renderer: renderer,
+            handle,
         })
     }
 }
 
-fn configure(handle: &MpvHandle, options: &PlayerOptions) -> Result<(), PlayerError> {
-    let fixed = [
-        ("idle", "yes"),
-        ("keep-open", "no"),
-        ("osc", "yes"),
-        ("input-default-bindings", "yes"),
-        ("input-vo-keyboard", "yes"),
-        ("hwdec", "auto-safe"),
-        ("ytdl", "no"),
-    ];
-    for (name, value) in fixed {
-        handle.set_option(name, value)?;
-    }
-    if std::env::var_os("CS_MPV_LOG").is_some() {
-        // Developer aid: mpv's own log to the console for diagnosing stream failures.
-        handle.set_option("terminal", "yes")?;
-        handle.set_option("msg-level", "all=v")?;
-    }
-    if options.headless {
-        for (name, value) in [("vo", "null"), ("ao", "null"), ("force-window", "no")] {
-            handle.set_option(name, value)?;
+/// Starts frame rendering; on failure falls back to mpv's own window.
+fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Arc<FrameShared>>) {
+    let signal = Arc::new(FrameSignal::default());
+    let started =
+        MpvRenderContext::create(Arc::clone(handle), Arc::clone(&signal)).and_then(|context| {
+            let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
+            FrameRenderer::start(context, signal, Arc::clone(&shared))
+                .map(|renderer| (renderer, shared))
+        });
+    match started {
+        Ok((renderer, shared)) => (Some(renderer), Some(shared)),
+        Err(error) => {
+            tracing::warn!(%error, "embedded rendering failed; using mpv's own window");
+            if let Err(error) = handle.set_property("vo", "gpu") {
+                tracing::warn!(%error, "could not switch to a window");
+            }
+            (None, None)
         }
     }
-    if !options.headless {
-        // libmpv defaults to `vo=libmpv` (render API, no window); ask for a real window instead.
-        // Without `force-window`, it opens only when a file starts playing.
-        handle.set_option("vo", "gpu")?;
-    }
-    Ok(())
 }
 
 impl VideoPlayer for MpvPlayer {
@@ -131,6 +133,20 @@ impl VideoPlayer for MpvPlayer {
     fn status(&self) -> PlaybackStatus {
         self.tracker.snapshot()
     }
+
+    fn is_embedded(&self) -> bool {
+        self.frames.is_some()
+    }
+
+    fn set_surface_size(&self, width: u32, height: u32) {
+        if let Some(frames) = &self.frames {
+            frames.set_size(width, height);
+        }
+    }
+
+    fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
+        self.frames.as_ref()?.latest(last_seen_serial)
+    }
 }
 
 impl Drop for MpvPlayer {
@@ -141,62 +157,6 @@ impl Drop for MpvPlayer {
                 tracing::warn!("mpv event thread panicked");
             }
         }
-    }
-}
-
-/// Background loop that turns mpv events and property polls into status updates.
-struct EventWorker {
-    handle: Arc<MpvHandle>,
-    tracker: Arc<StatusTracker>,
-    pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
-    stop_flag: Arc<AtomicBool>,
-}
-
-impl EventWorker {
-    fn run(self) {
-        while !self.stop_flag.load(Ordering::Relaxed) {
-            let event = self.handle.wait_event(EVENT_WAIT);
-            self.tracker.apply(event);
-            if event == MpvEvent::FileLoaded {
-                self.attach_subtitles();
-            }
-            if event == MpvEvent::Shutdown {
-                break;
-            }
-            self.poll_progress();
-        }
-    }
-
-    fn attach_subtitles(&self) {
-        let subtitles = std::mem::take(
-            &mut *self
-                .pending_subtitles
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner),
-        );
-        for subtitle in &subtitles {
-            let label = subtitle_label(subtitle);
-            if let Err(error) = self
-                .handle
-                .command(&["sub-add", &subtitle.url, "auto", label])
-            {
-                tracing::warn!(%error, url = %subtitle.url, "could not attach subtitle");
-            }
-        }
-    }
-
-    fn poll_progress(&self) {
-        let (Some(position), Some(duration)) = (
-            self.handle.get_double("time-pos"),
-            self.handle.get_double("duration"),
-        ) else {
-            return;
-        };
-        let paused = self.handle.get_flag("pause").unwrap_or(false);
-        self.tracker.update_progress(
-            (position * 1000.0) as i64,
-            (duration * 1000.0) as i64,
-            paused,
-        );
+        // `renderer` (declared before `handle`) is dropped next and joins its thread.
     }
 }
