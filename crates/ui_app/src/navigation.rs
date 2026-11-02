@@ -1,4 +1,4 @@
-/// Top-level destinations in the bottom bar, in display order.
+/// Top-level destinations in the top bar, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum Tab {
     #[default]
@@ -10,7 +10,7 @@ pub(crate) enum Tab {
 }
 
 impl Tab {
-    /// All tabs in bottom-bar order.
+    /// All tabs in bar order.
     pub(crate) const ALL: [Tab; 5] = [
         Tab::Home,
         Tab::Search,
@@ -19,7 +19,7 @@ impl Tab {
         Tab::Settings,
     ];
 
-    /// Label shown under the icon.
+    /// Label shown in the top bar.
     pub(crate) fn label(self) -> &'static str {
         match self {
             Tab::Home => "Home",
@@ -27,17 +27,6 @@ impl Tab {
             Tab::Library => "Library",
             Tab::Downloads => "Downloads",
             Tab::Settings => "Settings",
-        }
-    }
-
-    /// Glyph used as the icon.
-    pub(crate) fn glyph(self) -> &'static str {
-        match self {
-            Tab::Home => "\u{2302}",
-            Tab::Search => "\u{1F50D}",
-            Tab::Library => "\u{2605}",
-            Tab::Downloads => "\u{2B07}",
-            Tab::Settings => "\u{2699}",
         }
     }
 }
