@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 /// Starts logging to the log file; falls back to stderr when the file cannot be opened.
-pub(crate) fn start(log_file: &Path) {
+pub fn start_logging(log_file: &Path) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let opened = log_file
         .parent()
