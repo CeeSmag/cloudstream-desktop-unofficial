@@ -69,6 +69,19 @@ pub(crate) struct SettingsState {
     pub(crate) adding_repository: bool,
 }
 
+/// State of the embedded video screen.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PlayerView {
+    /// The video screen replaces the normal screens while this is true.
+    pub(crate) open: bool,
+    /// The window is fullscreen.
+    pub(crate) fullscreen: bool,
+    /// Set when the screen just opened, so the controls start visible.
+    pub(crate) just_opened: bool,
+    /// Egui time of the last pointer or key activity.
+    pub(crate) last_activity: f64,
+}
+
 /// Everything the screens draw.
 #[derive(Default)]
 pub(crate) struct AppModel {
@@ -84,6 +97,7 @@ pub(crate) struct AppModel {
     pub(crate) resolving_streams: bool,
     pub(crate) pending_streams: Option<PendingStreams>,
     pub(crate) now_playing_title: Option<String>,
+    pub(crate) player: PlayerView,
     pub(crate) playback: PlaybackStatus,
     pub(crate) settings: SettingsState,
     pub(crate) notices: Vec<Notice>,

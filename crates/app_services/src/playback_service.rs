@@ -93,6 +93,24 @@ impl PlaybackService {
         Ok(self.player.stop()?)
     }
 
+    /// Whether pictures arrive through [`PlaybackService::latest_frame`].
+    pub fn is_embedded(&self) -> bool {
+        self.player.is_embedded()
+    }
+
+    /// Tells an embedded player the size of the picture area in physical pixels.
+    pub fn set_surface_size(&self, width: u32, height: u32) {
+        self.player.set_surface_size(width, height);
+    }
+
+    /// The newest picture, unless its serial is `last_seen_serial`.
+    pub fn latest_frame(
+        &self,
+        last_seen_serial: u64,
+    ) -> Option<std::sync::Arc<player_api::VideoFrame>> {
+        self.player.latest_frame(last_seen_serial)
+    }
+
     /// Polls the player; call about once a second. Saves progress when due and returns the snapshot.
     pub fn tick(&self) -> PlaybackStatus {
         let status = self.player.status();
