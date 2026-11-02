@@ -1,0 +1,12 @@
+[package]
+name = "wasmtime_host"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1.0.104"
+wasmtime = "50.0.1"
+wasmtime-wasi = "50.0.1"
