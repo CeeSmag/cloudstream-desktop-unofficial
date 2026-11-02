@@ -1,0 +1,18 @@
+[package]
+name = "app_services"
+description = "Use-case services the UI calls: extensions, catalog, playback, library, settings."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+extension_api = { path = "../extension_api" }
+extension_repo = { path = "../extension_repo" }
+player_api = { path = "../player_api" }
+storage = { path = "../storage" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

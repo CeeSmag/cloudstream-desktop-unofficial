@@ -14,6 +14,12 @@ pub trait HttpFetcher: Send + Sync {
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, RepoError>;
 }
 
+impl<T: HttpFetcher + ?Sized> HttpFetcher for std::sync::Arc<T> {
+    fn get_bytes(&self, url: &str) -> Result<Vec<u8>, RepoError> {
+        (**self).get_bytes(url)
+    }
+}
+
 /// `HttpFetcher` backed by `ureq`.
 pub struct UreqFetcher {
     agent: ureq::Agent,

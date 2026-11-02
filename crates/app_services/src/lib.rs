@@ -1,0 +1,24 @@
+//! Use-case services the UI calls: extensions, catalog, playback, library, settings.
+#![forbid(unsafe_code)]
+
+mod catalog_service;
+mod clock;
+mod extension_service;
+mod library_service;
+mod playback_service;
+mod repository_service;
+mod service_error;
+mod settings_service;
+mod stream_resolver;
+#[cfg(test)]
+mod test_support;
+
+pub use catalog_service::{CatalogService, ProviderSearchOutcome};
+pub use clock::{Clock, SystemClock};
+pub use extension_service::{ExtensionLoadReport, ExtensionService};
+pub use library_service::LibraryService;
+pub use playback_service::{PlaybackItem, PlaybackService};
+pub use repository_service::RepositoryService;
+pub use service_error::ServiceError;
+pub use settings_service::SettingsService;
+pub use stream_resolver::{playable_links_best_first, StreamResolver};
