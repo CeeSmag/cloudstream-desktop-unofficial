@@ -16,6 +16,8 @@ pub struct ActiveSources {
     pub subtitles: Vec<SubtitleTrack>,
     /// Index into `links` of the stream that is playing.
     pub selected: usize,
+    /// Last position seen while the stream was playing; a failed switch must not lose it.
+    pub position_ms: i64,
 }
 
 /// Tauri-managed holder of the current [`ActiveSources`].
@@ -43,6 +45,21 @@ impl SourceSession {
             .clone()
     }
 
+    /// Remembers how far playback got, ignoring the zero a failed or loading stream reports.
+    pub fn remember_position(&self, position_ms: i64) {
+        if position_ms <= 0 {
+            return;
+        }
+        if let Some(active) = self
+            .active
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+        {
+            active.position_ms = position_ms;
+        }
+    }
+
     /// Records that the stream at `index` is now playing.
     pub fn mark_selected(&self, index: usize) {
         if let Some(active) = self
@@ -66,6 +83,7 @@ mod tests {
             links: vec![PlayableLink::default(), PlayableLink::default()],
             subtitles: Vec::new(),
             selected: 0,
+            position_ms: 0,
         }
     }
 
@@ -85,6 +103,18 @@ mod tests {
         session.set(sources());
         session.mark_selected(1);
         assert_eq!(session.snapshot().map(|active| active.selected), Some(1));
+    }
+
+    #[test]
+    fn remembered_position_ignores_zero_from_a_failed_stream() {
+        let session = SourceSession::default();
+        session.set(sources());
+        session.remember_position(95_000);
+        session.remember_position(0);
+        assert_eq!(
+            session.snapshot().map(|active| active.position_ms),
+            Some(95_000)
+        );
     }
 
     #[test]
