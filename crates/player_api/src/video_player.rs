@@ -16,6 +16,12 @@ pub trait VideoPlayer: Send + Sync {
     /// Stops playback and closes the stream.
     fn stop(&self) -> Result<(), PlayerError>;
 
+    /// Sets the output volume as a percentage (0 is silent, 100 is the stream's own level).
+    fn set_volume(&self, percent: u8) -> Result<(), PlayerError> {
+        let _ = percent;
+        Ok(())
+    }
+
     /// Returns the latest playback snapshot.
     fn status(&self) -> PlaybackStatus;
 

@@ -50,6 +50,12 @@ impl StatusTracker {
         };
     }
 
+    /// Returns to the idle state at once, forgetting position, tracks and picture.
+    pub(crate) fn reset_to_idle(&self) {
+        self.set_tracks(Vec::new());
+        *self.lock() = PlaybackStatus::default();
+    }
+
     /// Applies an mpv event to the snapshot.
     pub(crate) fn apply(&self, event: MpvEvent) {
         let mut status = self.lock();
@@ -103,6 +109,16 @@ mod tests {
             (snapshot.state, snapshot.position_ms, snapshot.duration_ms),
             (PlaybackState::Playing, 1_500, 9_000)
         );
+    }
+
+    #[test]
+    fn reset_to_idle_clears_position_tracks_and_state() {
+        let tracker = StatusTracker::default();
+        tracker.apply(MpvEvent::FileLoaded);
+        tracker.update_progress(1_500, 9_000, true);
+        tracker.reset_to_idle();
+        assert_eq!(tracker.snapshot(), PlaybackStatus::default());
+        assert!(tracker.tracks().is_empty());
     }
 
     #[test]

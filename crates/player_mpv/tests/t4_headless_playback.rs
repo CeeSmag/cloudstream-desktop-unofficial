@@ -106,6 +106,58 @@ fn stop_returns_the_player_to_idle() {
 }
 
 #[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn stopping_while_paused_does_not_leave_the_next_stream_paused() {
+    let player = headless_player();
+    let request = PlaybackRequest {
+        url: "av://lavfi:testsrc=duration=30:size=64x64:rate=10".to_owned(),
+        ..PlaybackRequest::default()
+    };
+    player.play(&request).expect("loadfile accepted");
+    assert!(wait_for(
+        &player,
+        |s| *s == PlaybackState::Playing,
+        Duration::from_secs(10)
+    ));
+    player.set_paused(true).expect("pause accepted");
+    assert!(wait_for(
+        &player,
+        |s| *s == PlaybackState::Paused,
+        Duration::from_secs(5)
+    ));
+    player.stop().expect("stop accepted");
+    assert_eq!(
+        player.status().state,
+        PlaybackState::Idle,
+        "stop must reset at once"
+    );
+
+    player.play(&request).expect("loadfile accepted");
+    assert!(wait_for(
+        &player,
+        |s| *s == PlaybackState::Playing,
+        Duration::from_secs(10)
+    ));
+    std::thread::sleep(Duration::from_millis(800));
+    assert_eq!(
+        player.status().state,
+        PlaybackState::Playing,
+        "the new stream started paused"
+    );
+}
+
+#[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn volume_changes_are_accepted_and_clamped() {
+    let player = headless_player();
+    player.set_volume(40).expect("volume accepted");
+    player.set_volume(0).expect("mute accepted");
+    player
+        .set_volume(u8::MAX)
+        .expect("oversized volume is clamped, not rejected");
+}
+
+#[test]
 fn missing_library_is_reported_as_unavailable_not_a_panic() {
     let error = MpvPlayer::new(
         std::path::Path::new("definitely/not/libmpv.dll"),

@@ -2,13 +2,18 @@
 
 use crate::app_state::AppState;
 use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
+use crate::source_session::{ActiveSources, SourceSession};
 use app_services::{playable_links_best_first, PlaybackItem};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
 use tauri::State;
 
 /// Starts playing the requested media stream.
 #[tauri::command]
-pub async fn play_media(request: PlayRequestDto, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn play_media(
+    request: PlayRequestDto,
+    state: State<'_, AppState>,
+    sources: State<'_, SourceSession>,
+) -> Result<(), String> {
     let item = PlaybackItem {
         provider: request.provider,
         media_key: request.media_key,
@@ -30,8 +35,14 @@ pub async fn play_media(request: PlayRequestDto, state: State<'_, AppState>) -> 
         .first()
         .ok_or_else(|| "No playable stream links found".to_string())?;
     playback
-        .start(item, best_link, &resolved.subtitles)
+        .start(item.clone(), best_link, &resolved.subtitles)
         .map_err(|error| error.to_string())?;
+    sources.set(ActiveSources {
+        item,
+        links: playable,
+        subtitles: resolved.subtitles,
+        selected: 0,
+    });
     Ok(())
 }
 
@@ -74,13 +85,30 @@ pub async fn seek_to(position_ms: i64, state: State<'_, AppState>) -> Result<(),
 
 /// Stops playback and frees video resources.
 #[tauri::command]
-pub async fn stop_playback(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_playback(
+    state: State<'_, AppState>,
+    sources: State<'_, SourceSession>,
+) -> Result<(), String> {
+    sources.clear();
     let services = state.read();
     let playback = services
         .playback
         .as_ref()
         .ok_or_else(|| "Playback service unavailable".to_string())?;
     playback.stop().map_err(|error| error.to_string())
+}
+
+/// Sets the player volume, 0 to 100 percent (130 amplifies).
+#[tauri::command]
+pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), String> {
+    let services = state.read();
+    let playback = services
+        .playback
+        .as_ref()
+        .ok_or_else(|| "Playback service unavailable".to_string())?;
+    playback
+        .set_volume(percent)
+        .map_err(|error| error.to_string())
 }
 
 /// Retrieves the current snapshot of player state, time, buffer, and tracks.
@@ -137,15 +165,18 @@ fn map_playback_status(
 
     let track_dtos = tracks
         .into_iter()
-        .map(|track| MediaTrackDto {
-            id: track.id,
-            kind: match track.kind {
-                TrackKind::Audio => "audio".to_owned(),
-                TrackKind::Subtitle => "subtitle".to_owned(),
-            },
-            title: track.title,
-            language: Some(track.language),
-            selected: track.selected,
+        .map(|track| {
+            let label = track.label();
+            MediaTrackDto {
+                id: track.id,
+                kind: match track.kind {
+                    TrackKind::Audio => "audio".to_owned(),
+                    TrackKind::Subtitle => "subtitle".to_owned(),
+                },
+                title: label,
+                language: Some(track.language),
+                selected: track.selected,
+            }
         })
         .collect();
 
