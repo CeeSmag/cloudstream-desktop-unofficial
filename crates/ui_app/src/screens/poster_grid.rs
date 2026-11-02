@@ -2,6 +2,7 @@ use core_model::SearchResult;
 
 use crate::actions::UiAction;
 use crate::navigation::TitleRef;
+use crate::theme;
 use crate::widgets::poster_card::{self, PosterData};
 
 /// Draws search results as a wrapping grid and emits `OpenTitle` for a click.
@@ -12,7 +13,8 @@ pub(crate) fn show(
     actions: &mut Vec<UiAction>,
 ) {
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+        ui.add_space(theme::PAGE_MARGIN);
+        ui.spacing_mut().item_spacing = egui::vec2(18.0, 18.0);
         for item in items {
             let poster = PosterData {
                 title: &item.name,

@@ -3,6 +3,7 @@ use player_api::{PlaybackState, PlaybackStatus};
 
 use crate::actions::UiAction;
 use crate::theme;
+use crate::widgets::buttons;
 
 /// How far the skip buttons jump.
 const SKIP_MS: i64 = 10_000;
@@ -18,29 +19,18 @@ pub(crate) fn format_time(milliseconds: i64) -> String {
     }
 }
 
-/// Draws the playback controls for the mpv window; returns what the user pressed.
+/// Draws the playback controls as a floating glass pill; returns what the user pressed.
 pub(crate) fn show(ui: &mut egui::Ui, title: &str, status: &PlaybackStatus) -> Option<UiAction> {
     let mut action = None;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong().color(theme::TEXT));
-        ui.label(RichText::new(describe(status)).color(theme::MUTED_TEXT));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("\u{25A0}").on_hover_text("Stop").clicked() {
-                action = Some(UiAction::StopPlayback);
-            }
-            if ui.button("+10s").clicked() {
-                action = Some(UiAction::SeekBy(SKIP_MS));
-            }
-            let paused = status.state == PlaybackState::Paused;
-            if ui
-                .button(if paused { "\u{25B6}" } else { "\u{23F8}" })
-                .clicked()
-            {
-                action = Some(UiAction::SetPaused(!paused));
-            }
-            if ui.button("-10s").clicked() {
-                action = Some(UiAction::SeekBy(-SKIP_MS));
-            }
+        action = controls(ui, status);
+        ui.vertical(|ui| {
+            ui.add(egui::Label::new(RichText::new(title).strong().color(theme::TEXT)).truncate());
+            ui.label(
+                RichText::new(describe(status))
+                    .size(12.0)
+                    .color(theme::MUTED_TEXT),
+            );
         });
     });
     if status.duration_ms > 0 {
@@ -48,8 +38,26 @@ pub(crate) fn show(ui: &mut egui::Ui, title: &str, status: &PlaybackStatus) -> O
         ui.add(
             egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
                 .desired_height(4.0)
-                .fill(theme::PRIMARY),
+                .fill(egui::Color32::WHITE),
         );
+    }
+    action
+}
+
+fn controls(ui: &mut egui::Ui, status: &PlaybackStatus) -> Option<UiAction> {
+    let mut action = None;
+    let paused = status.state == PlaybackState::Paused;
+    if buttons::secondary(ui, "-10s").clicked() {
+        action = Some(UiAction::SeekBy(-SKIP_MS));
+    }
+    if buttons::primary(ui, if paused { "Resume" } else { "Pause" }, true).clicked() {
+        action = Some(UiAction::SetPaused(!paused));
+    }
+    if buttons::secondary(ui, "+10s").clicked() {
+        action = Some(UiAction::SeekBy(SKIP_MS));
+    }
+    if buttons::secondary(ui, "Stop").clicked() {
+        action = Some(UiAction::StopPlayback);
     }
     action
 }

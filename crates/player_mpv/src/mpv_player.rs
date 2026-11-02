@@ -84,8 +84,11 @@ fn configure(handle: &MpvHandle, options: &PlayerOptions) -> Result<(), PlayerEr
         for (name, value) in [("vo", "null"), ("ao", "null"), ("force-window", "no")] {
             handle.set_option(name, value)?;
         }
-    } else {
-        handle.set_option("force-window", "yes")?;
+    }
+    if !options.headless {
+        // libmpv defaults to `vo=libmpv` (render API, no window); ask for a real window instead.
+        // Without `force-window`, it opens only when a file starts playing.
+        handle.set_option("vo", "gpu")?;
     }
     Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::actions::UiAction;
 use crate::app_model::AppModel;
 use crate::navigation::TitleRef;
+use crate::theme;
 use crate::widgets::poster_card::{self, PosterData};
 use crate::widgets::{empty_state, section_title};
 
@@ -10,16 +11,20 @@ pub(crate) fn show(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiActi
         empty_state::show(
             ui,
             "Your library is empty",
-            "Open a title and press the star to save it here.",
+            "Open a title and choose Save to keep it here.",
         );
         return;
     }
-    section_title::show(ui, "Saved titles");
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(theme::PAGE_MARGIN);
+                section_title::show(ui, "Saved");
+            });
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+                ui.add_space(theme::PAGE_MARGIN);
+                ui.spacing_mut().item_spacing = egui::vec2(18.0, 18.0);
                 for bookmark in &model.bookmarks {
                     let poster = PosterData {
                         title: &bookmark.name,
@@ -35,5 +40,6 @@ pub(crate) fn show(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiActi
                     }
                 }
             });
+            ui.add_space(90.0);
         });
 }

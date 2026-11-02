@@ -10,19 +10,21 @@ use crate::screens::{
 };
 use crate::task_runner::TaskRunner;
 use crate::ui_services::UiServices;
-use crate::widgets::{bottom_bar, notice_bar, now_playing_bar, stream_picker};
+use crate::widgets::{notice_bar, now_playing_bar, stream_picker, top_bar};
 use crate::{event_handler, theme};
 
 /// How often the player is polled while something is playing.
 const PLAYBACK_POLL: Duration = Duration::from_millis(500);
+/// Width of the floating now-playing pill.
+const NOW_PLAYING_WIDTH: f32 = 620.0;
 
 /// Opens the main window and runs until it is closed.
 pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("CloudStream")
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([480.0, 600.0]),
+            .with_inner_size([1180.0, 780.0])
+            .with_min_inner_size([760.0, 560.0]),
         ..eframe::NativeOptions::default()
     };
     eframe::run_native(
@@ -81,31 +83,21 @@ impl CloudStreamApp {
         }
     }
 
-    fn draw_chrome(&mut self, ui: &mut egui::Ui, actions: &mut Vec<UiAction>) {
-        let frame = egui::Frame::new().fill(theme::CARD_BACKGROUND);
-        egui::Panel::bottom("bottom_navigation")
-            .exact_size(bottom_bar::HEIGHT)
+    fn draw_top_bar(&mut self, ui: &mut egui::Ui, actions: &mut Vec<UiAction>) {
+        let frame = egui::Frame::new().fill(theme::BACKGROUND);
+        egui::Panel::top("top_navigation")
+            .exact_size(top_bar::HEIGHT)
             .frame(frame)
             .show(ui, |ui| {
-                if let Some(tab) = bottom_bar::show(ui, self.model.tab) {
+                if let Some(tab) = top_bar::show(ui, self.model.tab) {
                     actions.push(UiAction::SwitchTab(tab));
                 }
             });
-        if self.model.now_playing_title.is_some()
-            && self.model.playback.state != player_api::PlaybackState::Idle
-        {
-            let title = self.model.now_playing_title.clone().unwrap_or_default();
-            let frame = egui::Frame::new()
-                .fill(theme::SURFACE)
-                .inner_margin(egui::Margin::symmetric(12, 6));
-            egui::Panel::bottom("now_playing")
-                .frame(frame)
-                .show(ui, |ui| {
-                    actions.extend(now_playing_bar::show(ui, &title, &self.model.playback));
-                });
-        }
         if !self.model.notices.is_empty() {
-            egui::Panel::top("notices").show(ui, |ui| {
+            let frame = egui::Frame::new()
+                .fill(theme::BACKGROUND)
+                .inner_margin(egui::Margin::symmetric(24, 4));
+            egui::Panel::top("notices").frame(frame).show(ui, |ui| {
                 if let Some(index) = notice_bar::show(ui, &self.model.notices) {
                     actions.push(UiAction::DismissNotice(index));
                 }
@@ -114,9 +106,7 @@ impl CloudStreamApp {
     }
 
     fn draw_content(&mut self, ui: &mut egui::Ui, actions: &mut Vec<UiAction>) {
-        let frame = egui::Frame::new()
-            .fill(theme::BACKGROUND)
-            .inner_margin(egui::Margin::same(12));
+        let frame = egui::Frame::new().fill(theme::BACKGROUND);
         egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             if let Some(view) = self.model.current_details().cloned() {
                 details_screen::show(ui, &self.model, &view, actions);
@@ -132,6 +122,34 @@ impl CloudStreamApp {
                 }
             }
         });
+    }
+
+    /// The glass pill with playback controls, floating above the content like Apple TV's mini player.
+    fn draw_now_playing(&self, context: &egui::Context, actions: &mut Vec<UiAction>) {
+        let Some(title) = self.model.now_playing_title.as_deref() else {
+            return;
+        };
+        if self.model.playback.state == player_api::PlaybackState::Idle {
+            return;
+        }
+        egui::Area::new(egui::Id::unique("now_playing"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -20.0))
+            .show(context, |ui| {
+                egui::Frame::new()
+                    .fill(theme::GLASS)
+                    .corner_radius(26)
+                    .inner_margin(egui::Margin::symmetric(18, 12))
+                    .shadow(egui::Shadow {
+                        offset: [0, 8],
+                        blur: 28,
+                        spread: 0,
+                        color: egui::Color32::from_black_alpha(160),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(NOW_PLAYING_WIDTH);
+                        actions.extend(now_playing_bar::show(ui, title, &self.model.playback));
+                    });
+            });
     }
 
     fn draw_stream_choice(&self, context: &egui::Context, actions: &mut Vec<UiAction>) {
@@ -151,8 +169,9 @@ impl eframe::App for CloudStreamApp {
         self.apply_background_results();
         self.poll_player(&context);
         let mut actions = Vec::new();
-        self.draw_chrome(ui, &mut actions);
+        self.draw_top_bar(ui, &mut actions);
         self.draw_content(ui, &mut actions);
+        self.draw_now_playing(&context, &mut actions);
         self.draw_stream_choice(&context, &mut actions);
         for action in actions {
             self.dispatcher.perform(&mut self.model, action);

@@ -1,50 +1,112 @@
+use core_model::{HomePageSection, SearchResult};
 use egui::RichText;
 
 use crate::actions::UiAction;
 use crate::app_model::{AppModel, Loadable};
 use crate::navigation::{Tab, TitleRef};
 use crate::theme;
-use crate::widgets::poster_card::{self, PosterData};
-use crate::widgets::{empty_state, section_title};
+use crate::widgets::hero_banner::{self, HeroButtons, HeroClick, HeroData};
+use crate::widgets::poster_card::PosterData;
+use crate::widgets::{buttons, empty_state, shelf};
 
-/// The home tab: provider picker, "continue watching" and the provider's rows.
+/// Height of the hero banner.
+const HERO_HEIGHT: f32 = 340.0;
+
+/// The home tab: hero banner, "continue watching" and the selected provider's shelves.
 pub(crate) fn show(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
     if model.extensions_loading {
         empty_state::loading(ui, "Loading extensions\u{2026}");
         return;
     }
     if model.providers.is_empty() {
-        empty_state::show(
-            ui,
-            "No extensions installed",
-            "Open Settings and add a repository to install providers.",
-        );
-        if ui.button("Go to Settings").clicked() {
-            actions.push(UiAction::SwitchTab(Tab::Settings));
-        }
+        onboarding(ui, actions);
         return;
     }
-    provider_picker(ui, model, actions);
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            continue_watching_row(ui, model, actions);
             match &model.home {
-                Loadable::Idle => {}
-                Loadable::Loading => empty_state::loading(ui, "Loading\u{2026}"),
-                Loadable::Failed(reason) => failed(ui, reason, actions),
-                Loadable::Ready(rows) if rows.is_empty() => empty_state::show(
-                    ui,
-                    "Nothing here",
-                    "This provider has no home page. Use Search to find titles.",
-                ),
-                Loadable::Ready(rows) => provider_rows(ui, model, rows, actions),
+                Loadable::Ready(rows) if !rows.is_empty() => {
+                    hero(ui, model, rows, actions);
+                    provider_picker(ui, model, actions);
+                }
+                _ => provider_picker(ui, model, actions),
             }
+            continue_watching(ui, model, actions);
+            body(ui, model, actions);
+            ui.add_space(90.0);
         });
+}
+
+fn onboarding(ui: &mut egui::Ui, actions: &mut Vec<UiAction>) {
+    empty_state::show(
+        ui,
+        "No extensions installed",
+        "Open Settings and add a repository to install providers.",
+    );
+    ui.vertical_centered(|ui| {
+        if buttons::primary(ui, "Open Settings", true).clicked() {
+            actions.push(UiAction::SwitchTab(Tab::Settings));
+        }
+    });
+}
+
+fn body(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
+    match &model.home {
+        Loadable::Idle => {}
+        Loadable::Loading => empty_state::loading(ui, "Loading\u{2026}"),
+        Loadable::Failed(reason) => failed(ui, reason, actions),
+        Loadable::Ready(rows) if rows.is_empty() => {
+            empty_state::show(
+                ui,
+                "Nothing here",
+                "This provider has no home page. Use Search to find titles.",
+            );
+        }
+        Loadable::Ready(rows) => shelves(ui, model, rows, actions),
+    }
+}
+
+fn hero(
+    ui: &mut egui::Ui,
+    model: &AppModel,
+    rows: &[HomePageSection],
+    actions: &mut Vec<UiAction>,
+) {
+    let Some(item) = rows.iter().find_map(|row| row.list.first()) else {
+        return;
+    };
+    let provider = model.selected_provider.clone().unwrap_or_default();
+    let data = HeroData {
+        title: &item.name,
+        eyebrow: eyebrow(&provider, item),
+        synopsis: None,
+        image_url: item.poster_url.as_deref(),
+    };
+    let buttons = HeroButtons {
+        primary: "Open",
+        primary_enabled: true,
+        secondary: None,
+    };
+    if hero_banner::show(ui, &data, HERO_HEIGHT, &buttons) == Some(HeroClick::Primary) {
+        actions.push(UiAction::OpenTitle(TitleRef {
+            provider,
+            url: item.url.clone(),
+        }));
+    }
+}
+
+fn eyebrow(provider: &str, item: &SearchResult) -> String {
+    match &item.media_type {
+        Some(kind) => format!("{provider} \u{00B7} {kind}"),
+        None => provider.to_owned(),
+    }
 }
 
 fn provider_picker(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
     ui.horizontal(|ui| {
+        ui.add_space(theme::PAGE_MARGIN);
+        ui.label(RichText::new("Source").color(theme::MUTED_TEXT));
         let selected = model.selected_provider.clone().unwrap_or_default();
         egui::ComboBox::from_id_salt("provider_picker")
             .selected_text(RichText::new(&selected).strong())
@@ -56,7 +118,7 @@ fn provider_picker(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiActi
                     }
                 }
             });
-        if ui.button("\u{21BB}").on_hover_text("Reload").clicked() {
+        if buttons::secondary(ui, "Reload").clicked() {
             actions.push(UiAction::RefreshHome);
         }
     });
@@ -65,69 +127,65 @@ fn provider_picker(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiActi
 fn failed(ui: &mut egui::Ui, reason: &str, actions: &mut Vec<UiAction>) {
     empty_state::show(ui, "Could not load this provider", reason);
     ui.vertical_centered(|ui| {
-        if ui.button("Try again").clicked() {
+        if buttons::primary(ui, "Try again", true).clicked() {
             actions.push(UiAction::RefreshHome);
         }
     });
 }
 
-fn continue_watching_row(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
+fn continue_watching(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
     if model.continue_watching.is_empty() {
         return;
     }
-    section_title::show(ui, "Continue watching");
-    egui::ScrollArea::horizontal()
-        .id_salt("continue_watching")
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for entry in &model.continue_watching {
-                    let poster = PosterData {
-                        title: &entry.title,
-                        image_url: entry.poster_url.as_deref(),
-                        caption: None,
-                        progress: Some(entry.fraction_watched()),
-                    };
-                    if poster_card::show(ui, &poster) && !entry.detail_url.is_empty() {
-                        actions.push(UiAction::OpenTitle(TitleRef {
-                            provider: entry.provider.clone(),
-                            url: entry.detail_url.clone(),
-                        }));
-                    }
-                }
-            });
-        });
+    let posters: Vec<PosterData<'_>> = model
+        .continue_watching
+        .iter()
+        .map(|entry| PosterData {
+            title: &entry.title,
+            image_url: entry.poster_url.as_deref(),
+            caption: None,
+            progress: Some(entry.fraction_watched()),
+        })
+        .collect();
+    if let Some(index) = shelf::show(ui, "continue_watching", "Continue Watching", &posters) {
+        if let Some(entry) = model
+            .continue_watching
+            .get(index)
+            .filter(|entry| !entry.detail_url.is_empty())
+        {
+            actions.push(UiAction::OpenTitle(TitleRef {
+                provider: entry.provider.clone(),
+                url: entry.detail_url.clone(),
+            }));
+        }
+    }
 }
 
-fn provider_rows(
+fn shelves(
     ui: &mut egui::Ui,
     model: &AppModel,
-    rows: &[core_model::HomePageSection],
+    rows: &[HomePageSection],
     actions: &mut Vec<UiAction>,
 ) {
     let provider = model.selected_provider.clone().unwrap_or_default();
     for (index, row) in rows.iter().enumerate() {
-        section_title::show(ui, &row.name);
-        egui::ScrollArea::horizontal()
-            .id_salt(("home_row", index))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for item in &row.list {
-                        let poster = PosterData {
-                            title: &item.name,
-                            image_url: item.poster_url.as_deref(),
-                            caption: item.media_type.clone(),
-                            progress: None,
-                        };
-                        if poster_card::show(ui, &poster) {
-                            actions.push(UiAction::OpenTitle(TitleRef {
-                                provider: provider.clone(),
-                                url: item.url.clone(),
-                            }));
-                        }
-                    }
-                });
-            });
+        let posters: Vec<PosterData<'_>> = row
+            .list
+            .iter()
+            .map(|item| PosterData {
+                title: &item.name,
+                image_url: item.poster_url.as_deref(),
+                caption: item.media_type.clone(),
+                progress: None,
+            })
+            .collect();
+        if let Some(clicked) = shelf::show(ui, ("home_row", index), &row.name, &posters) {
+            if let Some(item) = row.list.get(clicked) {
+                actions.push(UiAction::OpenTitle(TitleRef {
+                    provider: provider.clone(),
+                    url: item.url.clone(),
+                }));
+            }
+        }
     }
-    ui.add_space(8.0);
-    ui.label(RichText::new("").color(theme::MUTED_TEXT));
 }
