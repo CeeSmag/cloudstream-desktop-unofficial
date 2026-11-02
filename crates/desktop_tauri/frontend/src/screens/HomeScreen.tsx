@@ -59,10 +59,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {heroItem.name}
             </h1>
 
-            <p className="text-zinc-300 text-sm md:text-base max-w-xl line-clamp-3 mb-6 font-normal leading-relaxed">
-              Experience the cinematic adventure on CloudStream RS with native libmpv hardware-accelerated playback and high fidelity.
-            </p>
-
             {/* Action Buttons */}
             <div className="flex items-center space-x-3.5">
               <button

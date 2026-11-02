@@ -1,5 +1,7 @@
 import React from 'react';
-import { api } from './services/api';
+import { listen } from '@tauri-apps/api/event';
+import { api, describeError } from './services/api';
+import { ErrorToast } from './components/ErrorToast';
 import {
   Bookmark,
   Episode,
@@ -19,8 +21,36 @@ import { PlayerOverlay } from './screens/PlayerOverlay';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 
+/** Movies have no episode list; their single stream is described by `data_url`. */
+function movieAsEpisode(details: MediaDetails): Episode | null {
+  if (!details.data_url) return null;
+  return {
+    id: details.data_url,
+    data: details.data_url,
+    name: details.name,
+    season: null,
+    episode: null,
+    poster_url: details.poster_url,
+    description: null,
+  };
+}
+
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
+  const [errorText, setErrorText] = React.useState<string | null>(null);
+
+  // Runs an async action and shows its failure instead of dropping it.
+  const guard = React.useCallback(
+    <A extends unknown[]>(action: (...args: A) => Promise<void>) =>
+      async (...args: A): Promise<void> => {
+        try {
+          await action(...args);
+        } catch (error) {
+          setErrorText(describeError(error));
+        }
+      },
+    [],
+  );
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = React.useState('');
   const [homeSections, setHomeSections] = React.useState<HomeSection[]>([]);
@@ -48,22 +78,26 @@ export const App: React.FC = () => {
   const [repositories, setRepositories] = React.useState<RepositoryEntry[]>([]);
   const [isCurrentBookmarked, setIsCurrentBookmarked] = React.useState(false);
 
+  // Loads providers and the first provider's home page.
+  const refreshProviders = React.useCallback(async () => {
+    const provs = await api.getProviders();
+    setProviders(provs);
+    const first = provs[0]?.name || '';
+    setSelectedProvider((current) => (provs.some((p) => p.name === current) ? current : first));
+    const sections = await api.getHomeSections(first || undefined);
+    setHomeSections(sections);
+  }, []);
+
   // Initial load
   React.useEffect(() => {
     async function init() {
       try {
-        const provs = await api.getProviders();
-        setProviders(provs);
-        const first = provs[0]?.name || '';
-        setSelectedProvider(first);
-
-        const [sections, bms, cw, repos] = await Promise.all([
-          api.getHomeSections(first || undefined),
+        await refreshProviders();
+        const [bms, cw, repos] = await Promise.all([
           api.getBookmarks(),
           api.getContinueWatching(),
           api.getRepositories(),
         ]);
-        setHomeSections(sections);
         setBookmarks(bms);
         setContinueWatching(cw);
         setRepositories(repos);
@@ -72,10 +106,24 @@ export const App: React.FC = () => {
       }
     }
     init();
-  }, []);
+  }, [refreshProviders]);
+
+  // Extensions finish loading in the background; reload providers when the backend says so.
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen('providers-changed', () => {
+      setHomeLoading(true);
+      refreshProviders().finally(() => setHomeLoading(false));
+    })
+      .then((stop) => {
+        unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => unlisten?.();
+  }, [refreshProviders]);
 
   // Switch provider
-  const handleSelectProvider = async (p: string) => {
+  const handleSelectProvider = guard(async (p: string) => {
     setSelectedProvider(p);
     setHomeLoading(true);
     try {
@@ -84,10 +132,10 @@ export const App: React.FC = () => {
     } finally {
       setHomeLoading(false);
     }
-  };
+  });
 
   // Open Details Screen
-  const handleSelectItem = async (item: HomeItem) => {
+  const handleSelectItem = guard(async (item: HomeItem) => {
     setDetailsLoading(true);
     try {
       const details = await api.getDetails(item.provider, item.url);
@@ -97,29 +145,31 @@ export const App: React.FC = () => {
     } finally {
       setDetailsLoading(false);
     }
-  };
+  });
 
   // Start Playback
-  const handlePlayEpisode = async (ep: Episode, mediaName?: string) => {
+  const handlePlayEpisode = guard(async (ep: Episode, mediaName?: string) => {
     const parentTitle = mediaName || activeDetails?.name || 'Media';
-    setActiveEpisode(ep);
-    setActivePlayerTitle(`${parentTitle} - ${ep.name}`);
+    const title = `${parentTitle} - ${ep.name}`;
     await api.playMedia({
       provider: activeDetails?.provider || selectedProvider,
       media_key: ep.data,
-      title: `${parentTitle} - ${ep.name}`,
+      title,
       detail_url: activeDetails?.url,
       poster_url: ep.poster_url || activeDetails?.poster_url || undefined,
     });
-  };
+    setActivePlayerTitle(title);
+    setActiveEpisode(ep);
+  });
 
-  const handlePlayItemDirect = async (item: HomeItem) => {
+  const handlePlayItemDirect = guard(async (item: HomeItem) => {
     const details = await api.getDetails(item.provider, item.url);
-    const firstEp = details.episodes[0];
-    if (firstEp) {
-      handlePlayEpisode(firstEp, details.name);
+    const target = details.episodes[0] ?? movieAsEpisode(details);
+    if (!target) {
+      throw new Error('This title has nothing to play.');
     }
-  };
+    await handlePlayEpisode(target, details.name);
+  });
 
   // Player polling tick
   React.useEffect(() => {
@@ -132,16 +182,16 @@ export const App: React.FC = () => {
   }, [activeEpisode]);
 
   // Stop player & return
-  const handleStopPlayer = async () => {
+  const handleStopPlayer = guard(async () => {
     await api.stop();
     setActiveEpisode(null);
     // Refresh continue watching
     const cw = await api.getContinueWatching();
     setContinueWatching(cw);
-  };
+  });
 
   // Toggle bookmark
-  const handleToggleBookmark = async () => {
+  const handleToggleBookmark = guard(async () => {
     if (!activeDetails) return;
     if (isCurrentBookmarked) {
       await api.removeBookmark(activeDetails.provider, activeDetails.url);
@@ -159,40 +209,44 @@ export const App: React.FC = () => {
     }
     const bms = await api.getBookmarks();
     setBookmarks(bms);
-  };
+  });
 
-  const handleRemoveBookmark = async (provider: string, url: string) => {
+  const handleRemoveBookmark = guard(async (provider: string, url: string) => {
     await api.removeBookmark(provider, url);
     const bms = await api.getBookmarks();
     setBookmarks(bms);
-  };
+  });
 
   // If player is active, render 100% transparent overlay over mpv
   if (activeEpisode) {
     return (
-      <PlayerOverlay
+      <>
+        <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
+        <PlayerOverlay
         title={activePlayerTitle}
         status={playerStatus}
         onBack={handleStopPlayer}
-        onTogglePlay={async () => {
+        onTogglePlay={guard(async () => {
           if (playerStatus.state === 'Playing') {
             await api.pause();
           } else {
             await api.resume();
           }
-        }}
-        onSeek={async (pos) => {
+        })}
+        onSeek={guard(async (pos: number) => {
           await api.seekTo(pos);
-        }}
-        onSelectTrack={async (kind, id) => {
+        })}
+        onSelectTrack={guard(async (kind: 'audio' | 'subtitle', id: number | null) => {
           await api.selectTrack(kind, id);
-        }}
+        })}
       />
+      </>
     );
   }
 
   return (
     <div className="flex flex-col h-screen w-screen bg-midnight text-white overflow-hidden">
+      <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
       {/* Top Navigation */}
       <Navigation
         currentTab={currentTab}
@@ -251,16 +305,16 @@ export const App: React.FC = () => {
               <SettingsScreen
                 repositories={repositories}
                 providers={providers}
-                onAddRepo={async (url) => {
+                onAddRepo={guard(async (url: string) => {
                   await api.addRepository(url);
                   const repos = await api.getRepositories();
                   setRepositories(repos);
-                }}
-                onRemoveRepo={async (url) => {
+                })}
+                onRemoveRepo={guard(async (url: string) => {
                   await api.removeRepository(url);
                   const repos = await api.getRepositories();
                   setRepositories(repos);
-                }}
+                })}
               />
             )}
           </>

@@ -13,7 +13,7 @@ mod window_mpv;
 
 use app_shell::{build_services, start_logging, AppPaths, ServiceOptions};
 use app_state::AppState;
-use tauri::{Builder, Manager, Wry};
+use tauri::{Builder, Emitter, Manager, Wry};
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::from_environment()?;
@@ -63,6 +63,33 @@ fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn s
         player_wid: wid,
     };
     let services = build_services(paths, &options)?;
+    let extensions = services.extensions.clone();
     app.manage(AppState::new(services));
+    spawn_extension_loading(app.handle().clone(), extensions);
     Ok(())
+}
+
+/// Event the UI listens to so it can reload providers once extensions finish loading or change.
+pub const PROVIDERS_CHANGED_EVENT: &str = "providers-changed";
+
+/// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).
+fn spawn_extension_loading(handle: tauri::AppHandle, extensions: app_services::ExtensionService) {
+    let spawned = std::thread::Builder::new()
+        .name("load-extensions".to_owned())
+        .spawn(move || {
+            match extensions.load_installed() {
+                Ok(report) => tracing::info!(
+                    providers = report.providers.len(),
+                    failures = report.failures.len(),
+                    "installed extensions loaded"
+                ),
+                Err(error) => tracing::warn!(%error, "could not load installed extensions"),
+            }
+            if let Err(error) = handle.emit(PROVIDERS_CHANGED_EVENT, ()) {
+                tracing::warn!(%error, "could not notify the UI about providers");
+            }
+        });
+    if let Err(error) = spawned {
+        tracing::error!(%error, "cannot start extension loading");
+    }
 }
