@@ -156,7 +156,12 @@ dependencies = [
 name = "extension_repo"
 version = "0.1.0"
 dependencies = [
- "extension_api",
+ "core_model",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "ureq",
 ]
 
 [[package]]
