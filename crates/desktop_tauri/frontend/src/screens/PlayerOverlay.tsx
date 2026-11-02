@@ -177,6 +177,13 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         </div>
       )}
 
+      {!status.has_video && (status.state === 'Playing' || status.state === 'Paused') && (
+        <div className="self-center mx-4 flex flex-col items-center gap-2 text-zinc-400">
+          <AudioLines className="w-12 h-12 text-accent" />
+          <span className="text-sm font-medium">Audio only</span>
+        </div>
+      )}
+
       {status.state === 'Failed' && (
         <div
           role="alert"

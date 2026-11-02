@@ -25,6 +25,7 @@ import { usePlayback } from './hooks/usePlayback';
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
   const [errorText, setErrorText] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
 
   // Runs an async action and shows its failure instead of dropping it.
   const guard = React.useCallback(
@@ -253,6 +254,8 @@ export const App: React.FC = () => {
                 onSelectItem={handleSelectItem}
                 onPlayItem={handlePlayItemDirect}
                 selectedProvider={selectedProvider}
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
                 onSearch={(q) => api.search(q, selectedProvider || undefined)}
               />
             )}

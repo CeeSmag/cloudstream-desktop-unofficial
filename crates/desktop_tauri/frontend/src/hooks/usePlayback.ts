@@ -50,15 +50,12 @@ export function usePlayback() {
     setIsOpen(true);
   };
 
-  /** Closes the player screen even if stopping the stream fails, so the user is never stuck. */
+  /** Leaves the player screen at once; the stream is stopped right after, and a failure is reported. */
   const stop = async () => {
-    try {
-      await api.stop();
-    } finally {
-      setIsOpen(false);
-      setStatus(IDLE_STATUS);
-      setSources([]);
-    }
+    setIsOpen(false);
+    setStatus(IDLE_STATUS);
+    setSources([]);
+    await api.stop();
   };
 
   const togglePlay = async () => {

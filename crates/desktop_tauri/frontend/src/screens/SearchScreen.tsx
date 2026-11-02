@@ -7,6 +7,9 @@ interface SearchScreenProps {
   onSelectItem: (item: HomeItem) => void;
   onPlayItem: (item: HomeItem) => void;
   selectedProvider: string;
+  /** The search text lives in the app so it survives opening a title and coming back. */
+  query: string;
+  onQueryChange: (query: string) => void;
   onSearch: (query: string) => Promise<SearchItem[]>;
 }
 
@@ -14,9 +17,10 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   onSelectItem,
   onPlayItem,
   selectedProvider,
+  query,
+  onQueryChange,
   onSearch,
 }) => {
-  const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchItem[]>([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -47,14 +51,14 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
             placeholder={`Search titles across ${selectedProvider || 'all providers'}...`}
             autoFocus
             className="w-full pl-12 pr-12 py-3.5 rounded-2xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all shadow-xl backdrop-blur-md"
           />
           {query && (
             <button
-              onClick={() => setQuery('')}
+              onClick={() => onQueryChange('')}
               className="absolute right-4 p-1 rounded-full text-zinc-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
