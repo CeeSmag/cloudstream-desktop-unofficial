@@ -1,12 +1,14 @@
 //! Player-neutral contract: what the app asks of a video player and what it reports back.
 #![forbid(unsafe_code)]
 
+mod media_track;
 mod playback_request;
 mod playback_status;
 mod player_error;
 mod video_frame;
 mod video_player;
 
+pub use media_track::{MediaTrack, TrackKind};
 pub use playback_request::{PlaybackRequest, SubtitleSource};
 pub use playback_status::{PlaybackState, PlaybackStatus};
 pub use player_error::PlayerError;

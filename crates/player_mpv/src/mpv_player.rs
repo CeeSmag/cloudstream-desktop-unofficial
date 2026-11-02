@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use player_api::{
-    PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoFrame, VideoPlayer,
+    MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
+    VideoFrame, VideoPlayer,
 };
 
 use crate::event_worker::EventWorker;
@@ -15,6 +16,7 @@ use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
 use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
 use crate::status_tracker::StatusTracker;
+use crate::track_reader::read_tracks;
 
 /// Size used for the first frames, before the UI reports its real picture area.
 const INITIAL_SURFACE: (u32, u32) = (1280, 720);
@@ -132,6 +134,23 @@ impl VideoPlayer for MpvPlayer {
 
     fn status(&self) -> PlaybackStatus {
         self.tracker.snapshot()
+    }
+
+    fn tracks(&self) -> Vec<MediaTrack> {
+        self.tracker.tracks()
+    }
+
+    fn select_track(&self, kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError> {
+        let property = match kind {
+            TrackKind::Audio => "aid",
+            TrackKind::Subtitle => "sid",
+        };
+        let value = id.map_or_else(|| "no".to_owned(), |id| id.to_string());
+        self.handle.set_property(property, &value)?;
+        // Re-read at once so the menu shows the new choice without waiting for the next refresh.
+        self.tracker
+            .set_tracks(read_tracks(|name| self.handle.get_string(name)));
+        Ok(())
     }
 
     fn is_embedded(&self) -> bool {

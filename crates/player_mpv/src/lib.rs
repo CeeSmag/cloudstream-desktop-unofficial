@@ -11,6 +11,7 @@ mod mpv_player;
 mod mpv_render_api;
 mod player_configuration;
 mod status_tracker;
+mod track_reader;
 
 pub use libmpv_locator::locate_libmpv;
 pub use mpv_player::{MpvPlayer, PlayerOptions};

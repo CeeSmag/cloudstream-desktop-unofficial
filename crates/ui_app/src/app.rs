@@ -84,6 +84,9 @@ impl CloudStreamApp {
         }
         self.last_poll = Instant::now();
         self.model.playback = playback.tick();
+        if self.model.player.open {
+            self.model.tracks = playback.tracks();
+        }
         if self.model.playback.state != player_api::PlaybackState::Idle {
             context.request_repaint_after(PLAYBACK_POLL);
         }
@@ -186,6 +189,9 @@ impl CloudStreamApp {
                 title: &title,
                 status: &self.model.playback,
                 presenter: &self.presenter,
+                tracks: &self.model.tracks,
+                sources: &self.model.sources,
+                menu: self.model.player.menu,
             };
             player_screen::show(ui, &mut self.model.player, &scene, actions);
         });
