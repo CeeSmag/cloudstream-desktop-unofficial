@@ -146,6 +146,7 @@ impl CloudStreamApp {
             .show(context, |ui| {
                 egui::Frame::new()
                     .fill(theme::GLASS)
+                    .stroke(egui::Stroke::new(1.0, theme::BORDER_SUBTLE))
                     .corner_radius(26)
                     .inner_margin(egui::Margin::symmetric(18, 12))
                     .shadow(egui::Shadow {
