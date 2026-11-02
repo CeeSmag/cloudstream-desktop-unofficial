@@ -14,7 +14,8 @@ const PLAYABLE_TYPES: &[&str] = &["VIDEO", "M3U8", "DASH"];
 /// File extensions of audio-only streams; they are offered after any video stream.
 const AUDIO_EXTENSIONS: &[&str] = &[".mp3", ".m4a", ".ogg", ".flac", ".wav", ".opus", ".aac"];
 
-fn is_audio_only(url: &str) -> bool {
+/// Whether a stream URL points at an audio-only file (judged by its extension).
+pub fn is_audio_only_url(url: &str) -> bool {
     let path = url
         .split(['?', '#'])
         .next()
@@ -33,7 +34,12 @@ pub fn playable_links_best_first(links: Vec<PlayableLink>) -> Vec<PlayableLink> 
             PLAYABLE_TYPES.contains(&link.link_type.as_str()) || link.link_type.is_empty()
         })
         .collect();
-    playable.sort_by_key(|link| (is_audio_only(&link.url), std::cmp::Reverse(link.quality)));
+    playable.sort_by_key(|link| {
+        (
+            is_audio_only_url(&link.url),
+            std::cmp::Reverse(link.quality),
+        )
+    });
     playable
 }
 

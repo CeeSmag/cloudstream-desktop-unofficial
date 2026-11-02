@@ -291,3 +291,42 @@ fn audio_track_can_be_muted_and_restored() {
             .any(|x| x.selected)
     );
 }
+
+fn wait_until_playing(player: &MpvPlayer) -> player_api::PlaybackStatus {
+    assert!(
+        wait_for(
+            player,
+            |s| *s == PlaybackState::Playing,
+            Duration::from_secs(10)
+        ),
+        "never started"
+    );
+    // The track list is read right after the file loads; give the event thread a moment.
+    std::thread::sleep(Duration::from_millis(500));
+    player.status()
+}
+
+#[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn status_tells_audio_only_streams_from_video_streams() {
+    let player = headless_player();
+    let sound = PlaybackRequest {
+        url: "av://lavfi:sine=frequency=440:duration=10".to_owned(),
+        ..PlaybackRequest::default()
+    };
+    player.play(&sound).expect("audio loads");
+    assert!(
+        !wait_until_playing(&player).has_video,
+        "a sine tone has no picture"
+    );
+
+    let picture = PlaybackRequest {
+        url: "av://lavfi:testsrc=duration=10:size=160x90:rate=10".to_owned(),
+        ..PlaybackRequest::default()
+    };
+    player.play(&picture).expect("video loads");
+    assert!(
+        wait_until_playing(&player).has_video,
+        "a test pattern has a picture"
+    );
+}

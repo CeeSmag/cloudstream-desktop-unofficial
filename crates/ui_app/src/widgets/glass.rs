@@ -1,8 +1,8 @@
 use egui::{Color32, Rect, Shadow, Stroke, StrokeKind, TextureHandle, Ui};
 
 /// What lies behind a glass panel: a blurred picture and the screen area it covers.
-pub(crate) struct Backdrop<'a> {
-    pub(crate) texture: &'a TextureHandle,
+pub(crate) struct Backdrop {
+    pub(crate) texture: TextureHandle,
     /// The rectangle of the screen the whole texture is stretched over.
     pub(crate) area: Rect,
 }
@@ -32,7 +32,7 @@ pub(crate) fn uv_within(area: Rect, rect: Rect) -> Rect {
 
 /// Paints a frosted-glass panel: soft shadow, the blurred backdrop (when known), a tint, a hairline
 /// border and a faint top highlight.
-pub(crate) fn paint(ui: &Ui, rect: Rect, rounding: u8, backdrop: Option<&Backdrop<'_>>) {
+pub(crate) fn paint(ui: &Ui, rect: Rect, rounding: u8, backdrop: Option<&Backdrop>) {
     let painter = ui.painter();
     let shadow = Shadow {
         offset: [0, 10],
