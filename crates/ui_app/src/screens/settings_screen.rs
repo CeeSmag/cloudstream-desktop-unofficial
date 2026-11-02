@@ -4,9 +4,12 @@ use crate::actions::UiAction;
 use crate::app_model::AppModel;
 use crate::theme;
 use crate::ui_services::UiServices;
-use crate::widgets::section_title;
+use crate::widgets::{card, section_title};
 
 use super::extensions_panel;
+
+/// Width of the settings column.
+const COLUMN_WIDTH: f32 = 840.0;
 
 /// The settings tab: extensions, providers and environment status.
 pub(crate) fn show(
@@ -18,9 +21,19 @@ pub(crate) fn show(
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            extensions_panel::show(ui, model, actions);
-            providers_section(ui, model, actions);
-            status_section(ui, services);
+            ui.horizontal(|ui| {
+                ui.add_space(theme::PAGE_MARGIN);
+                ui.vertical(|ui| {
+                    ui.set_max_width(COLUMN_WIDTH);
+                    ui.add_space(12.0);
+                    card::show(ui, |ui| extensions_panel::show(ui, model, actions));
+                    ui.add_space(14.0);
+                    card::show(ui, |ui| providers_section(ui, model, actions));
+                    ui.add_space(14.0);
+                    card::show(ui, |ui| status_section(ui, services));
+                    ui.add_space(90.0);
+                });
+            });
         });
 }
 

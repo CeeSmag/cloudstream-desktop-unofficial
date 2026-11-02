@@ -1,28 +1,33 @@
-use egui::RichText;
+use egui::{FontId, RichText};
 
 use crate::actions::UiAction;
 use crate::app_model::AppModel;
 use crate::theme;
-use crate::widgets::{empty_state, section_title};
+use crate::widgets::{buttons, empty_state, section_title};
 
 use super::poster_grid;
 
 /// Draws the query box; true when the user submitted it.
 fn search_box(ui: &mut egui::Ui, model: &mut AppModel) -> bool {
     ui.horizontal(|ui| {
+        ui.add_space(theme::PAGE_MARGIN);
         let field = ui.add(
             egui::TextEdit::singleline(&mut model.search.input)
                 .hint_text("Search all providers")
-                .desired_width(ui.available_width() - 90.0),
+                .font(FontId::proportional(20.0))
+                .margin(egui::Margin::symmetric(16, 10))
+                .desired_width(ui.available_width() - 180.0),
         );
         let enter = field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        enter || ui.button("Search").clicked()
+        let clicked = buttons::primary(ui, "Search", !model.search.loading).clicked();
+        enter || clicked
     })
     .inner
 }
 
 /// The search tab: one query box, results grouped by provider.
 pub(crate) fn show(ui: &mut egui::Ui, model: &mut AppModel, actions: &mut Vec<UiAction>) {
+    ui.add_space(12.0);
     if search_box(ui, model) {
         actions.push(UiAction::Search(model.search.input.clone()));
     }
@@ -40,20 +45,38 @@ pub(crate) fn show(ui: &mut egui::Ui, model: &mut AppModel, actions: &mut Vec<Ui
         empty_state::show(ui, "Search", hint);
         return;
     }
+    results(ui, model, actions);
+}
+
+/// The scrolling list of per-provider results.
+fn results(ui: &mut egui::Ui, model: &AppModel, actions: &mut Vec<UiAction>) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for outcome in &model.search.outcomes {
-                section_title::show(ui, &outcome.provider);
+                ui.horizontal(|ui| {
+                    ui.add_space(theme::PAGE_MARGIN);
+                    section_title::show(ui, &outcome.provider);
+                });
                 match &outcome.result {
                     Err(error) => {
-                        ui.label(
-                            RichText::new(format!("Search failed: {error}")).color(theme::ERROR),
-                        );
+                        ui.horizontal(|ui| {
+                            ui.add_space(theme::PAGE_MARGIN);
+                            ui.label(
+                                RichText::new(format!("Search failed: {error}"))
+                                    .color(theme::ERROR),
+                            );
+                        });
                     }
-                    Ok(page) if page.items.is_empty() => section_title::muted(ui, "No results"),
+                    Ok(page) if page.items.is_empty() => {
+                        ui.horizontal(|ui| {
+                            ui.add_space(theme::PAGE_MARGIN);
+                            section_title::muted(ui, "No results");
+                        });
+                    }
                     Ok(page) => poster_grid::show(ui, &outcome.provider, &page.items, actions),
                 }
             }
+            ui.add_space(90.0);
         });
 }
