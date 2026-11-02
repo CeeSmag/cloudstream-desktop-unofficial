@@ -20,20 +20,7 @@ import { DetailsScreen } from './screens/DetailsScreen';
 import { PlayerOverlay } from './screens/PlayerOverlay';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-
-/** Movies have no episode list; their single stream is described by `data_url`. */
-function movieAsEpisode(details: MediaDetails): Episode | null {
-  if (!details.data_url) return null;
-  return {
-    id: details.data_url,
-    data: details.data_url,
-    name: details.name,
-    season: null,
-    episode: null,
-    poster_url: details.poster_url,
-    description: null,
-  };
-}
+import { findEpisodeForKey, movieAsEpisode, playbackTitle } from './playback/episodeLookup';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -148,18 +135,24 @@ export const App: React.FC = () => {
   });
 
   // Start Playback
-  const handlePlayEpisode = guard(async (ep: Episode, mediaName?: string) => {
-    const parentTitle = mediaName || activeDetails?.name || 'Media';
-    const title = `${parentTitle} - ${ep.name}`;
+  // Plays one episode (or a movie's single stream) of `details`; the title page is recorded so
+  // the entry can be resumed later from Continue Watching.
+  const startEpisode = async (details: MediaDetails, ep: Episode) => {
+    const title = playbackTitle(details.name, ep.name);
     await api.playMedia({
-      provider: activeDetails?.provider || selectedProvider,
+      provider: details.provider,
       media_key: ep.data,
       title,
-      detail_url: activeDetails?.url,
-      poster_url: ep.poster_url || activeDetails?.poster_url || undefined,
+      detail_url: details.url,
+      poster_url: ep.poster_url || details.poster_url || undefined,
     });
     setActivePlayerTitle(title);
     setActiveEpisode(ep);
+  };
+
+  const handlePlayEpisode = guard(async (ep: Episode) => {
+    if (!activeDetails) throw new Error('Open a title before playing an episode.');
+    await startEpisode(activeDetails, ep);
   });
 
   const handlePlayItemDirect = guard(async (item: HomeItem) => {
@@ -168,7 +161,21 @@ export const App: React.FC = () => {
     if (!target) {
       throw new Error('This title has nothing to play.');
     }
-    await handlePlayEpisode(target, details.name);
+    await startEpisode(details, target);
+  });
+
+  const handleResume = guard(async (progress: WatchProgress) => {
+    if (!progress.detail_url) {
+      throw new Error(
+        `"${progress.title}" was saved without its title page. Open it from Search or Home and play it once to make it resumable.`,
+      );
+    }
+    const details = await api.getDetails(progress.provider, progress.detail_url);
+    const target = findEpisodeForKey(details, progress.media_id);
+    if (!target) {
+      throw new Error(`"${progress.title}" is no longer listed by ${progress.provider}.`);
+    }
+    await startEpisode(details, target);
   });
 
   // Player polling tick
@@ -270,7 +277,7 @@ export const App: React.FC = () => {
           <DetailsScreen
             details={activeDetails}
             onBack={() => setActiveDetails(null)}
-            onPlayEpisode={(ep) => handlePlayEpisode(ep, activeDetails.name)}
+            onPlayEpisode={handlePlayEpisode}
             isBookmarked={isCurrentBookmarked}
             onToggleBookmark={handleToggleBookmark}
           />
@@ -298,6 +305,7 @@ export const App: React.FC = () => {
                 continueWatching={continueWatching}
                 onSelectItem={handleSelectItem}
                 onPlayItem={handlePlayItemDirect}
+                onResume={handleResume}
                 onRemoveBookmark={handleRemoveBookmark}
               />
             )}
