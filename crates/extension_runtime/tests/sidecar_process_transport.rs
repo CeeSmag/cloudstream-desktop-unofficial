@@ -1,4 +1,6 @@
 //! T2: the real process transport against the scripted fake sidecar.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)] // test code: failing fast is the point
+
 use std::time::Duration;
 
 use extension_api::GatewayError;
