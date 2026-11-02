@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use core_model::{HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo, SearchPage};
+use core_model::{
+    DiscoveredRepository, HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo,
+    SearchPage,
+};
 
 use crate::GatewayError;
 
@@ -31,4 +34,10 @@ pub trait ProviderGateway: Send + Sync {
 
     /// Resolves a hoster URL through the extractor registry.
     fn extract(&self, url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError>;
+
+    /// Hands over, and forgets, the repositories extensions asked the app to add since the last
+    /// call. Runtimes that cannot report any return an empty list.
+    fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
+        Ok(Vec::new())
+    }
 }

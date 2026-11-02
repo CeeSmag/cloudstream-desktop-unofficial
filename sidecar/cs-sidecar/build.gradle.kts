@@ -24,6 +24,7 @@ dependencies {
     implementation(project(":plugin-runtime"))
     implementation(project(":android-stubs"))
     implementation(project(":common"))
+    implementation(libs.nicehttp)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }

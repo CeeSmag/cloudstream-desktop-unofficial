@@ -103,7 +103,7 @@ export interface PlaybackStatus {
 export interface RepositoryEntry {
   url: string;
   name: string;
-  added_at_ms: number;
+  addedAtMs: number;
 }
 
 /** One stream the player can switch to. */
@@ -111,4 +111,26 @@ export interface SourceInfo {
   index: number;
   label: string;
   selected: boolean;
+}
+
+/** An extension that is installed on this computer. */
+export interface InstalledExtension {
+  internal_name: string;
+  version: number;
+  repository_url: string | null;
+  trusted: boolean;
+  providers: string[];
+}
+
+/** A plugin a repository offers. */
+export interface RepositoryPlugin {
+  internal_name: string;
+  name: string;
+  version: number;
+  description: string | null;
+  authors: string[];
+  language: string | null;
+  icon_url: string | null;
+  file_size: number | null;
+  installed_version: number | null;
 }
