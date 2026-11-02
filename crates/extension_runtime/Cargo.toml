@@ -1,0 +1,14 @@
+[package]
+name = "extension_runtime"
+description = "Loads and executes extensions behind the ExtensionRuntime trait."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+extension_api = { path = "../extension_api" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

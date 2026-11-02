@@ -1,0 +1,12 @@
+[package]
+name = "player_mpv"
+description = "libmpv wrapper only."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+
+[lints]
+workspace = true

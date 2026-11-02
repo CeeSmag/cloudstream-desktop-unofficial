@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core_model",
+    "crates/extension_api",
+    "crates/extension_runtime",
+    "crates/extension_repo",
+    "crates/network_client",
+    "crates/html_parsing",
+    "crates/extractors",
+    "crates/player_mpv",
+    "crates/storage",
+    "crates/ui_app",
+    "crates/app_shell",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "GPL-3.0-or-later"
+rust-version = "1.80"
+
+[workspace.dependencies]
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+cognitive_complexity = "warn"
+too_many_lines = "warn"
+too_many_arguments = "warn"
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
