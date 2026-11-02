@@ -8,5 +8,7 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.104"
+ego-tree = "0.11.1"
+scraper = "0.29.0"
 wasmtime = "50.0.1"
 wasmtime-wasi = "50.0.1"
