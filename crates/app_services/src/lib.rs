@@ -21,4 +21,4 @@ pub use playback_service::{PlaybackItem, PlaybackService, StreamSelection};
 pub use repository_service::RepositoryService;
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;
-pub use stream_resolver::{playable_links_best_first, StreamResolver};
+pub use stream_resolver::{is_audio_only_url, playable_links_best_first, StreamResolver};

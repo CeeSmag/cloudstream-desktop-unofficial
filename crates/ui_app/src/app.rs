@@ -183,6 +183,18 @@ impl CloudStreamApp {
         }
         context.request_repaint_after(std::time::Duration::from_millis(16));
         let title = self.model.now_playing_title.clone().unwrap_or_default();
+        let poster = self
+            .model
+            .sources
+            .target
+            .as_ref()
+            .and_then(|target| target.item.poster_url.clone());
+        let status = &self.model.playback;
+        let audio_only = !status.has_video
+            && matches!(
+                status.state,
+                player_api::PlaybackState::Playing | player_api::PlaybackState::Paused
+            );
         let frame = egui::Frame::new().fill(egui::Color32::BLACK);
         egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             let scene = PlayerScene {
@@ -192,6 +204,8 @@ impl CloudStreamApp {
                 tracks: &self.model.tracks,
                 sources: &self.model.sources,
                 menu: self.model.player.menu,
+                audio_only,
+                poster_url: poster.as_deref(),
             };
             player_screen::show(ui, &mut self.model.player, &scene, actions);
         });

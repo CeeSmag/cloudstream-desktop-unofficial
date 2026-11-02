@@ -4,7 +4,7 @@ use player_api::{MediaTrack, TrackKind};
 use crate::actions::UiAction;
 use crate::app_model::PlayerMenu;
 use crate::theme;
-use crate::widgets::glass::{self, Backdrop};
+use crate::widgets::glass;
 use crate::widgets::stream_picker;
 
 use super::player_screen::PlayerScene;
@@ -90,6 +90,15 @@ fn track_label(track: &MediaTrack) -> String {
 /// `1080p - Server (mp4)`: the hoster name when the link name is a long file name, plus the
 /// container hint in brackets when the name ends with one.
 pub(crate) fn source_label(link: &core_model::PlayableLink) -> String {
+    let label = base_source_label(link);
+    if app_services::is_audio_only_url(&link.url) {
+        format!("{label} \u{00B7} audio only")
+    } else {
+        label
+    }
+}
+
+fn base_source_label(link: &core_model::PlayableLink) -> String {
     let description = stream_picker::describe(link);
     if description.chars().count() <= 48 || link.source.is_empty() {
         return description;
@@ -132,10 +141,7 @@ pub(crate) fn show(
         ),
         Vec2::new(MENU_WIDTH, height),
     );
-    let backdrop = scene
-        .presenter
-        .blurred()
-        .map(|texture| Backdrop { texture, area });
+    let backdrop = super::player_screen::backdrop(ui, scene, area);
     glass::paint(ui, rect, 22, backdrop.as_ref());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(10.0)), |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -244,6 +250,23 @@ mod tests {
         );
         assert!(!rows[0].selected && rows[1].selected);
         assert!(matches!(rows[1].action, UiAction::SelectSubtitle(Some(3))));
+    }
+
+    #[test]
+    fn source_label_marks_audio_only_streams() {
+        let link = core_model::PlayableLink {
+            url: "https://h/a.mp3".into(),
+            name: "Talk (mp3)".into(),
+            quality: 400,
+            ..core_model::PlayableLink::default()
+        };
+        assert!(source_label(&link).ends_with("audio only"));
+        let video = core_model::PlayableLink {
+            url: "https://h/a.mp4".into(),
+            name: "Talk (mp4)".into(),
+            ..core_model::PlayableLink::default()
+        };
+        assert!(!source_label(&video).contains("audio only"));
     }
 
     #[test]

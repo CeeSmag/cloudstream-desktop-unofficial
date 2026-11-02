@@ -8,7 +8,7 @@ use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
 use crate::mpv_option_format::subtitle_label;
 use crate::status_tracker::StatusTracker;
-use crate::track_reader::read_tracks;
+use crate::track_reader::{has_video_track, read_tracks};
 
 /// How long the event thread waits per iteration; also its stop-latency.
 const EVENT_WAIT: Duration = Duration::from_millis(200);
@@ -65,8 +65,9 @@ impl EventWorker {
 
     /// Re-reads the track list (subtitles added after loading show up here too).
     pub(crate) fn refresh_tracks(&self) {
-        self.tracker
-            .set_tracks(read_tracks(|name| self.handle.get_string(name)));
+        let get = |name: &str| self.handle.get_string(name);
+        self.tracker.set_tracks(read_tracks(get));
+        self.tracker.set_has_video(has_video_track(get));
     }
 
     fn poll_progress(&self) {

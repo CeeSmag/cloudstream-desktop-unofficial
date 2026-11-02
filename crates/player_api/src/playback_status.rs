@@ -25,4 +25,9 @@ pub struct PlaybackStatus {
     pub position_ms: i64,
     /// Stream length in milliseconds, 0 when unknown.
     pub duration_ms: i64,
+    /// Whether the stream has a picture. `false` once loaded means audio only (for example an
+    /// `.mp3` source), so the app should not keep showing the previous picture.
+    /// Whether the stream has a picture. `false` once loaded means audio only (for example an
+    /// `.mp3` source), so the app should not keep showing the previous picture.
+    pub has_video: bool,
 }

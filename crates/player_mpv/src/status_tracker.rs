@@ -29,6 +29,11 @@ impl StatusTracker {
             .clone()
     }
 
+    /// Records whether the loaded stream has a picture.
+    pub(crate) fn set_has_video(&self, has_video: bool) {
+        self.lock().has_video = has_video;
+    }
+
     /// Replaces the track list.
     pub(crate) fn set_tracks(&self, tracks: Vec<MediaTrack>) {
         *self.tracks.lock().unwrap_or_else(PoisonError::into_inner) = tracks;
@@ -39,6 +44,8 @@ impl StatusTracker {
         self.set_tracks(Vec::new());
         *self.lock() = PlaybackStatus {
             state: PlaybackState::Loading,
+            // Assume a picture until the track list says otherwise, so nothing flickers.
+            has_video: true,
             ..PlaybackStatus::default()
         };
     }
