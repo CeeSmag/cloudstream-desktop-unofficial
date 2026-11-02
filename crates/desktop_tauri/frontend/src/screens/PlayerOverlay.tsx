@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { PlaybackStatus } from '../types';
+import { VideoCanvas } from '../components/VideoCanvas';
 
 interface PlayerOverlayProps {
   title: string;
@@ -90,7 +91,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-transparent flex flex-col justify-between transition-opacity duration-300 select-none ${
+      className={`fixed inset-0 z-50 bg-black flex flex-col justify-between transition-opacity duration-300 select-none ${
         controlsVisible ? 'cursor-default' : 'cursor-none'
       }`}
       onClick={(e) => {
@@ -99,6 +100,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         }
       }}
     >
+      <VideoCanvas visible={status.has_video} />
+
       {/* Top Floating Glass Bar */}
       <div
         className={`px-8 py-5 flex items-center justify-between bg-gradient-to-b from-midnight/90 via-midnight/40 to-transparent transition-opacity duration-300 ${
@@ -217,6 +220,23 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         <div className="self-center flex flex-col items-center justify-center p-6 rounded-2xl bg-midnight/70 backdrop-blur-md border border-white/10 shadow-2xl">
           <Loader2 className="w-10 h-10 text-accent animate-spin mb-3" />
           <span className="text-sm font-medium text-zinc-200">Loading stream...</span>
+        </div>
+      )}
+
+      {status.state === 'Failed' && (
+        <div
+          role="alert"
+          className="self-center max-w-md flex flex-col items-center p-6 text-center rounded-2xl bg-red-950/80 backdrop-blur-md border border-red-500/30 shadow-2xl"
+        >
+          <span className="text-sm font-medium text-red-100">
+            {status.error ?? 'This stream could not be played.'}
+          </span>
+          <button
+            onClick={onBack}
+            className="mt-4 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm"
+          >
+            Go back
+          </button>
         </div>
       )}
 

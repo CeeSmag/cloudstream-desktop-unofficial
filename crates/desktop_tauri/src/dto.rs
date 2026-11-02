@@ -32,6 +32,8 @@ pub struct PlaybackStatusDto {
     pub volume: f64,
     /// Audio and subtitle tracks.
     pub tracks: Vec<MediaTrackDto>,
+    /// Why playback failed, when `state` is "Failed".
+    pub error: Option<String>,
 }
 
 /// Audio or subtitle track info.
