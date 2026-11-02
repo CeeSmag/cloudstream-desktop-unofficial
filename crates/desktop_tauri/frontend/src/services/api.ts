@@ -6,6 +6,7 @@ import {
   ProviderInfo,
   RepositoryEntry,
   SearchItem,
+  SourceInfo,
   WatchProgress,
 } from '../types';
 
@@ -61,6 +62,12 @@ export const api = {
   seekTo: (positionMs: number) => invokeTauri<void>('seek_to', { positionMs }),
 
   stop: () => invokeTauri<void>('stop_playback'),
+
+  setVolume: (percent: number) => invokeTauri<void>('set_volume', { percent }),
+
+  getSources: () => invokeTauri<SourceInfo[]>('get_playback_sources'),
+
+  switchSource: (index: number) => invokeTauri<void>('switch_source', { index }),
 
   setVideoSurface: (width: number, height: number) =>
     invokeTauri<void>('set_video_surface', { width, height }),

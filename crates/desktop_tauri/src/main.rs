@@ -9,6 +9,8 @@ mod dto;
 mod library_commands;
 mod playback_commands;
 mod settings_commands;
+mod source_commands;
+mod source_session;
 mod video_commands;
 
 use app_shell::{build_services, start_logging, AppPaths, ServiceOptions};
@@ -40,6 +42,9 @@ fn build_app(paths: AppPaths) -> Builder<Wry> {
             playback_commands::stop_playback,
             playback_commands::get_playback_status,
             playback_commands::select_media_track,
+            playback_commands::set_volume,
+            source_commands::get_playback_sources,
+            source_commands::switch_source,
             library_commands::get_bookmarks,
             library_commands::add_bookmark,
             library_commands::remove_bookmark,
@@ -63,6 +68,7 @@ fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn s
     let services = build_services(paths, &options)?;
     let extensions = services.extensions.clone();
     app.manage(AppState::new(services));
+    app.manage(source_session::SourceSession::default());
     spawn_extension_loading(app.handle().clone(), extensions);
     Ok(())
 }

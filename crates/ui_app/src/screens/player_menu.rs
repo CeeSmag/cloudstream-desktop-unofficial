@@ -5,7 +5,6 @@ use crate::actions::UiAction;
 use crate::app_model::PlayerMenu;
 use crate::theme;
 use crate::widgets::glass;
-use crate::widgets::stream_picker;
 
 use super::player_screen::PlayerScene;
 
@@ -50,7 +49,7 @@ fn rows_for(menu: PlayerMenu, scene: &PlayerScene<'_>) -> Vec<MenuRow> {
             .iter()
             .enumerate()
             .map(|(index, link)| MenuRow {
-                label: source_label(link),
+                label: app_services::source_label(link),
                 selected: index == scene.sources.selected,
                 action: UiAction::SwitchSource(index),
             })
@@ -85,41 +84,6 @@ fn track_label(track: &MediaTrack) -> String {
     } else {
         track.label()
     }
-}
-
-/// `1080p - Server (mp4)`: the hoster name when the link name is a long file name, plus the
-/// container hint in brackets when the name ends with one.
-pub(crate) fn source_label(link: &core_model::PlayableLink) -> String {
-    let label = base_source_label(link);
-    if app_services::is_audio_only_url(&link.url) {
-        format!("{label} \u{00B7} audio only")
-    } else {
-        label
-    }
-}
-
-fn base_source_label(link: &core_model::PlayableLink) -> String {
-    let description = stream_picker::describe(link);
-    if description.chars().count() <= 48 || link.source.is_empty() {
-        return description;
-    }
-    let quality = if link.quality > 0 {
-        format!("{}p", link.quality)
-    } else {
-        "auto".to_owned()
-    };
-    match format_hint(&link.name) {
-        Some(hint) => format!("{quality} - {} ({hint})", link.source),
-        None => format!("{quality} - {}", link.source),
-    }
-}
-
-/// The text inside a trailing `(...)`, for example `mp4` in `Some Title (mp4)`.
-fn format_hint(name: &str) -> Option<&str> {
-    let trimmed = name.trim_end();
-    let inner = trimmed.strip_suffix(')')?;
-    let (_, hint) = inner.rsplit_once('(')?;
-    (!hint.is_empty() && hint.len() <= 8).then_some(hint)
 }
 
 /// Draws the open menu as a glass panel above the bottom controls and returns nothing; choices
@@ -250,40 +214,5 @@ mod tests {
         );
         assert!(!rows[0].selected && rows[1].selected);
         assert!(matches!(rows[1].action, UiAction::SelectSubtitle(Some(3))));
-    }
-
-    #[test]
-    fn source_label_marks_audio_only_streams() {
-        let link = core_model::PlayableLink {
-            url: "https://h/a.mp3".into(),
-            name: "Talk (mp3)".into(),
-            quality: 400,
-            ..core_model::PlayableLink::default()
-        };
-        assert!(source_label(&link).ends_with("audio only"));
-        let video = core_model::PlayableLink {
-            url: "https://h/a.mp4".into(),
-            name: "Talk (mp4)".into(),
-            ..core_model::PlayableLink::default()
-        };
-        assert!(!source_label(&video).contains("audio only"));
-    }
-
-    #[test]
-    fn format_hint_reads_a_short_trailing_bracket_only() {
-        assert_eq!(format_hint("Title (mp3)"), Some("mp3"));
-        assert_eq!(format_hint("Title"), None);
-        assert_eq!(format_hint("Title (a very long explanation)"), None);
-    }
-
-    #[test]
-    fn source_label_shortens_long_file_names_to_the_hoster() {
-        let link = core_model::PlayableLink {
-            source: "Internet Archive".into(),
-            name: "Women_s_History_Month_Nancy_Kopp_Interview_March_31_2023 (mp4)".into(),
-            quality: 400,
-            ..core_model::PlayableLink::default()
-        };
-        assert_eq!(source_label(&link), "400p - Internet Archive (mp4)");
     }
 }

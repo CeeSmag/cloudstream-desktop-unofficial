@@ -120,6 +120,11 @@ impl PlaybackService {
         Ok(self.player.seek_to(position_ms)?)
     }
 
+    /// Sets the output volume as a percentage.
+    pub fn set_volume(&self, percent: u8) -> Result<(), ServiceError> {
+        Ok(self.player.set_volume(percent)?)
+    }
+
     /// Stops the current stream.
     pub fn stop(&self) -> Result<(), ServiceError> {
         *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
