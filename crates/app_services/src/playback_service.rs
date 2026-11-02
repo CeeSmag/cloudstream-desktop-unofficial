@@ -77,6 +77,22 @@ impl PlaybackService {
         Ok(())
     }
 
+    /// Pauses or resumes the current stream.
+    pub fn set_paused(&self, paused: bool) -> Result<(), ServiceError> {
+        Ok(self.player.set_paused(paused)?)
+    }
+
+    /// Seeks to an absolute position in milliseconds.
+    pub fn seek_to(&self, position_ms: i64) -> Result<(), ServiceError> {
+        Ok(self.player.seek_to(position_ms)?)
+    }
+
+    /// Stops the current stream.
+    pub fn stop(&self) -> Result<(), ServiceError> {
+        *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        Ok(self.player.stop()?)
+    }
+
     /// Polls the player; call about once a second. Saves progress when due and returns the snapshot.
     pub fn tick(&self) -> PlaybackStatus {
         let status = self.player.status();
