@@ -8,6 +8,7 @@ interface LibraryScreenProps {
   continueWatching: WatchProgress[];
   onSelectItem: (item: HomeItem) => void;
   onPlayItem: (item: HomeItem) => void;
+  onResume: (progress: WatchProgress) => void;
   onRemoveBookmark: (provider: string, url: string) => void;
 }
 
@@ -16,6 +17,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   continueWatching,
   onSelectItem,
   onPlayItem,
+  onResume,
   onRemoveBookmark,
 }) => {
   const [activeTab, setActiveTab] = React.useState('All');
@@ -70,21 +72,15 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             {continueWatching.map((item) => (
               <div
                 key={item.media_id}
-                onClick={() =>
-                  onPlayItem({
-                    id: item.media_id,
-                    name: item.title,
-                    url: item.media_id,
-                    poster_url: null,
-                    provider: 'Local',
-                    media_type: null,
-                    year: null,
-                  })
-                }
+                onClick={() => onResume(item)}
                 className="group relative flex-shrink-0 w-56 sm:w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
               >
                 <div className="relative aspect-video rounded-xl overflow-hidden bg-midnight mb-2.5 flex items-center justify-center">
-                  <span className="text-2xl">📺</span>
+                  {item.poster_url ? (
+                    <img src={item.poster_url} alt={item.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl">📺</span>
+                  )}
                   <div className="absolute inset-0 bg-midnight/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg">
                       <Play className="w-4 h-4 fill-current ml-0.5" />

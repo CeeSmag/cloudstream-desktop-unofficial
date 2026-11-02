@@ -69,7 +69,12 @@ export interface Bookmark {
 }
 
 export interface WatchProgress {
+  /** Provider payload identifying the playable item (episode data or movie URL). */
   media_id: string;
+  provider: string;
+  /** Provider URL of the parent title; empty when it was never recorded. */
+  detail_url: string;
+  poster_url: string | null;
   title: string;
   position_ms: number;
   duration_ms: number;
