@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -35,7 +36,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         Arc::new(Database::open(&paths.database_file()).context("cannot open the database")?);
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let fetcher: Arc<dyn HttpFetcher> = Arc::new(UreqFetcher::default());
-    let gateway = build_gateway();
+    let gateway = build_gateway(&paths.data_dir().join("sidecar"));
 
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
     let (playback, player_problem) = build_playback(&database, &clock, options);
@@ -63,9 +64,10 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     })
 }
 
-fn build_gateway() -> Arc<dyn ProviderGateway> {
+fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
     match sidecar_discovery::discover() {
         Ok(config) => {
+            let config = config.with_data_dir(sidecar_data_dir);
             tracing::info!(program = %config.program.display(), "using JVM sidecar");
             Arc::new(RpcProviderGateway::new(SidecarProcessTransport::new(
                 config,

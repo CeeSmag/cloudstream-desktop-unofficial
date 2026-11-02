@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
@@ -29,6 +29,7 @@ pub struct MpvPlayer {
     tracker: Arc<StatusTracker>,
     pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
     stop_flag: Arc<AtomicBool>,
+    stream_generation: Arc<AtomicU64>,
     event_thread: Option<JoinHandle<()>>,
     frames: Option<Arc<FrameShared>>,
     // Dropped before `handle` (declaration order) so the render context never outlives mpv.
@@ -64,28 +65,33 @@ impl MpvPlayer {
         let tracker = Arc::new(StatusTracker::default());
         let pending_subtitles = Arc::new(Mutex::new(Vec::new()));
         let stop_flag = Arc::new(AtomicBool::new(false));
-        let worker = EventWorker {
+        let stream_generation = Arc::new(AtomicU64::new(0));
+        let event_thread = start_event_thread(EventWorker {
             handle: Arc::clone(&handle),
             tracker: Arc::clone(&tracker),
             pending_subtitles: Arc::clone(&pending_subtitles),
             stop_flag: Arc::clone(&stop_flag),
-        };
-        let event_thread = std::thread::Builder::new()
-            .name("mpv-events".to_owned())
-            .spawn(move || worker.run())
-            .map_err(|error| {
-                PlayerError::Unavailable(format!("cannot start event thread: {error}"))
-            })?;
+            stream_generation: Arc::clone(&stream_generation),
+        })?;
         Ok(Self {
             tracker,
             pending_subtitles,
             stop_flag,
+            stream_generation,
             event_thread: Some(event_thread),
             frames,
             _renderer: renderer,
             handle,
         })
     }
+}
+
+/// Runs the worker that turns mpv events into status updates on its own thread.
+fn start_event_thread(worker: EventWorker) -> Result<JoinHandle<()>, PlayerError> {
+    std::thread::Builder::new()
+        .name("mpv-events".to_owned())
+        .spawn(move || worker.run())
+        .map_err(|error| PlayerError::Unavailable(format!("cannot start event thread: {error}")))
 }
 
 /// Starts frame rendering; on failure falls back to mpv's own window.
@@ -121,6 +127,8 @@ impl VideoPlayer for MpvPlayer {
             .pending_subtitles
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = request.subtitles.clone();
+        // Any subtitle download still running belongs to the previous stream.
+        self.stream_generation.fetch_add(1, Ordering::SeqCst);
         self.unpause_before_new_stream();
         self.tracker.begin_loading();
         tracing::info!(url = %request.url, "mpv loadfile");
@@ -142,6 +150,7 @@ impl VideoPlayer for MpvPlayer {
     }
 
     fn stop(&self) -> Result<(), PlayerError> {
+        self.stream_generation.fetch_add(1, Ordering::SeqCst);
         let outcome = self.handle.command(&["stop"]);
         // mpv keeps `pause` across files, so a stream stopped while paused would make the next one
         // start paused; the status and picture are reset here instead of waiting for mpv's event.

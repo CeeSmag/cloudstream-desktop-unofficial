@@ -20,6 +20,7 @@ import { MenuOption, OptionMenu } from '../components/OptionMenu';
 import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
 import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
+import { numberDuplicateLabels } from '../utils/trackLabels';
 
 interface PlayerOverlayProps {
   title: string;
@@ -40,9 +41,9 @@ const ROUND_BUTTON = 'p-2 sm:p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text
 
 /** The menu rows for the audio or subtitle tracks of the stream. */
 function trackOptions(tracks: MediaTrack[], kind: MediaTrack['kind']): MenuOption[] {
-  return tracks
-    .filter((track) => track.kind === kind)
-    .map((track) => ({ id: track.id, label: track.title, selected: track.selected }));
+  const ofKind = tracks.filter((track) => track.kind === kind);
+  const labels = numberDuplicateLabels(ofKind.map((track) => track.title));
+  return ofKind.map((track, index) => ({ id: track.id, label: labels[index] ?? track.title, selected: track.selected }));
 }
 
 export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({

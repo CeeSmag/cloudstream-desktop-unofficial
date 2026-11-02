@@ -36,6 +36,14 @@ impl SidecarLaunchConfig {
         }
     }
 
+    /// Makes the sidecar keep the files extensions write (their settings and key/value data)
+    /// inside `data_dir` instead of in the user's profile.
+    pub fn with_data_dir(mut self, data_dir: &Path) -> Self {
+        let option = format!("-Dcloudstream.data.dir=\"{}\"", data_dir.display());
+        self.environment.push(("JAVA_OPTS".to_owned(), option));
+        self
+    }
+
     /// Reads `CS_SIDECAR_HOME` and optionally `CS_SIDECAR_JAVA_HOME`.
     pub fn from_environment() -> Result<Self, GatewayError> {
         let home = std::env::var_os(SIDECAR_HOME_VARIABLE).ok_or_else(|| {
@@ -60,6 +68,15 @@ mod tests {
                 || config.program.starts_with("/opt/sidecar\\bin")
         );
         assert!(config.environment.is_empty());
+    }
+
+    #[test]
+    fn with_data_dir_passes_the_folder_as_a_quoted_jvm_property() {
+        let config = SidecarLaunchConfig::for_install(Path::new("h"), None)
+            .with_data_dir(Path::new("/my data/sidecar"));
+        let (name, value) = &config.environment[0];
+        assert_eq!(name, "JAVA_OPTS");
+        assert!(value.starts_with("-Dcloudstream.data.dir=\"") && value.contains("my data"));
     }
 
     #[test]
