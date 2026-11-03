@@ -113,6 +113,14 @@ export interface SourceInfo {
   selected: boolean;
   /** True while the check of this stream has not finished. */
   checking: boolean;
+  /** `HLS`, `DASH`, a file type such as `MKV`, or `Video`. */
+  kind: string;
+  /** Host the stream is served from. */
+  host: string;
+  /** The stream address. */
+  url: string;
+  /** File size in bytes, null until the check learns it (and always for playlists). */
+  size_bytes: number | null;
 }
 
 /** An extension that is installed on this computer. */
