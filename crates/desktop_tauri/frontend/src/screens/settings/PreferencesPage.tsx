@@ -1,6 +1,7 @@
 import React from 'react';
-import { AudioLines, Check } from 'lucide-react';
+import { AudioLines, Check, Subtitles } from 'lucide-react';
 import { usePreferences } from '../../hooks/usePreferences';
+import { SubtitleLanguages } from './SubtitleLanguages';
 
 interface PreferencesPageProps {
   onError: (error: unknown) => void;
@@ -9,9 +10,9 @@ interface PreferencesPageProps {
 /** The value of the "no preference" entry of the list. */
 const STREAM_DEFAULT = '';
 
-/** What the viewer prefers: for now, which audio language plays when a stream offers several. */
+/** What the viewer prefers: the audio language, and which subtitle languages get a flag in the player. */
 export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => {
-  const { preferences, busy, saved, chooseAudio } = usePreferences(onError);
+  const { preferences, busy, saved, chooseAudio, chooseSubtitles } = usePreferences(onError);
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -53,6 +54,26 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             )}
           </span>
         </div>
+      </div>
+
+      <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Subtitles className="w-5 h-5 text-accent flex-none" />
+            <span>Preferred subtitles</span>
+          </h2>
+          <p className="text-xs text-zinc-400">
+            Choose up to three languages. When you open Sources in the player, each of these languages that the video
+            offers shows as a flag with the first two letters of its name; click a flag to turn those subtitles on or
+            off.
+          </p>
+        </div>
+        <SubtitleLanguages
+          languages={preferences?.languages ?? []}
+          chosen={preferences?.preferred_subtitles ?? []}
+          disabled={busy || preferences === null}
+          onChange={(codes) => void chooseSubtitles(codes)}
+        />
       </div>
     </div>
   );

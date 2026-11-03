@@ -63,6 +63,9 @@ export const api = {
   /** Saves the preferred audio language; null means the stream's own default track. */
   setPreferredAudio: (language: string | null) => invokeTauri<Preferences>('set_preferred_audio', { language }),
 
+  /** Saves the languages whose subtitles get a flag in the player (at most three). */
+  setPreferredSubtitles: (languages: string[]) => invokeTauri<Preferences>('set_preferred_subtitles', { languages }),
+
   getDebugLogging: () => invokeTauri<DebugLoggingInfo>('get_debug_logging'),
 
   setDebugLogging: (enabled: boolean) => invokeTauri<DebugLoggingInfo>('set_debug_logging', { enabled }),

@@ -18,7 +18,7 @@ import { DetailsScreen } from './screens/DetailsScreen';
 import { PlayerOverlay } from './screens/PlayerOverlay';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { findEpisodeForKey, movieAsEpisode } from './playback/episodeLookup';
+import { findEpisodeForKey } from './playback/episodeLookup';
 import { usePlayback } from './hooks/usePlayback';
 import { useStartup } from './hooks/useStartup';
 import { setDebugLogging } from './utils/logger';
@@ -135,15 +135,6 @@ export const App: React.FC = () => {
     await playback.start(activeDetails, ep);
   });
 
-  const handlePlayItemDirect = guard(async (item: HomeItem) => {
-    const details = await api.getDetails(item.provider, item.url);
-    const target = details.episodes[0] ?? movieAsEpisode(details);
-    if (!target) {
-      throw new Error('This title has nothing to play.');
-    }
-    await playback.start(details, target);
-  });
-
   const handleResume = guard(async (progress: WatchProgress) => {
     if (!progress.detail_url) {
       throw new Error(
@@ -255,14 +246,12 @@ export const App: React.FC = () => {
               <HomeScreen
                 sections={homeSections}
                 onSelectItem={handleSelectItem}
-                onPlayItem={handlePlayItemDirect}
                 loading={homeLoading}
               />
             )}
             {currentTab === 'search' && (
               <SearchScreen
                 onSelectItem={handleSelectItem}
-                onPlayItem={handlePlayItemDirect}
                 selectedProvider={selectedProvider}
                 query={searchQuery}
                 onQueryChange={setSearchQuery}
@@ -274,7 +263,6 @@ export const App: React.FC = () => {
                 bookmarks={bookmarks}
                 continueWatching={continueWatching}
                 onSelectItem={handleSelectItem}
-                onPlayItem={handlePlayItemDirect}
                 onResume={handleResume}
                 onRemoveBookmark={handleRemoveBookmark}
               />

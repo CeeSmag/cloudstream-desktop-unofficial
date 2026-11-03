@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use app_services::{PlaybackService, SettingsService};
+use app_services::{PlaybackService, SettingsService, MAX_PREFERRED_SUBTITLES};
 use player_api::{all_languages, find_language};
 use serde::Serialize;
 use tauri::State;
@@ -16,6 +16,8 @@ pub struct LanguageDto {
     pub code: String,
     /// Readable name, for example `English`.
     pub name: String,
+    /// Every code that stands for the language (`eng`, `en`), to recognise it on a track.
+    pub codes: Vec<String>,
 }
 
 /// The viewer's preferences and the choices on offer.
@@ -23,6 +25,8 @@ pub struct LanguageDto {
 pub struct PreferencesDto {
     /// Code of the preferred audio language; absent when the stream's own default is wanted.
     pub preferred_audio: Option<String>,
+    /// Codes of the languages whose subtitles get a flag in the player, in the chosen order.
+    pub preferred_subtitles: Vec<String>,
     /// Every language that can be chosen, English first.
     pub languages: Vec<LanguageDto>,
 }
@@ -69,17 +73,56 @@ pub async fn set_preferred_audio(
     describe(&services.settings)
 }
 
+/// Saves the languages whose subtitles get a flag in the player: at most three, each known.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(languages = ?languages), err)]
+pub async fn set_preferred_subtitles(
+    languages: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<PreferencesDto, String> {
+    let mut chosen = Vec::new();
+    for code in &languages {
+        let language = find_language(code).ok_or_else(|| format!("Unknown language: {code}"))?;
+        if !chosen.contains(&language) {
+            chosen.push(language);
+        }
+    }
+    if chosen.len() > MAX_PREFERRED_SUBTITLES {
+        return Err(format!(
+            "Choose at most {MAX_PREFERRED_SUBTITLES} subtitle languages."
+        ));
+    }
+    let services = state.read();
+    services
+        .settings
+        .set_preferred_subtitles(&chosen)
+        .map_err(|error| error.to_string())?;
+    describe(&services.settings)
+}
+
 fn describe(settings: &SettingsService) -> Result<PreferencesDto, String> {
     let preferred = settings
         .preferred_audio()
         .map_err(|error| error.to_string())?;
+    let subtitles = settings
+        .preferred_subtitles()
+        .map_err(|error| error.to_string())?;
     Ok(PreferencesDto {
         preferred_audio: preferred.map(|language| language.code().to_owned()),
+        preferred_subtitles: subtitles
+            .iter()
+            .map(|language| language.code().to_owned())
+            .collect(),
         languages: all_languages()
             .iter()
             .map(|language| LanguageDto {
                 code: language.code().to_owned(),
                 name: language.name.to_owned(),
+                codes: language
+                    .codes
+                    .iter()
+                    .map(|code| (*code).to_owned())
+                    .collect(),
             })
             .collect(),
     })
@@ -108,6 +151,15 @@ mod tests {
             Some("English")
         );
         assert!(described.languages.len() > 30);
+    }
+
+    #[test]
+    fn the_description_lists_the_preferred_subtitles_and_every_code_of_a_language() {
+        let settings = settings();
+        let described = describe(&settings).expect("describes");
+        assert_eq!(described.preferred_subtitles, ["eng"]);
+        let french = described.languages.iter().find(|l| l.name == "French");
+        assert_eq!(french.map(|l| l.codes.len()), Some(3));
     }
 
     #[test]

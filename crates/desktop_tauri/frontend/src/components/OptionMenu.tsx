@@ -19,6 +19,8 @@ interface OptionMenuProps {
   label: string;
   icon: LucideIcon;
   options: MenuOption[];
+  /** Extra content under the heading, such as quick switches. */
+  header?: React.ReactNode;
   /** Adds an "Off" entry, used for subtitles. */
   allowOff: boolean;
   /** Makes the dropdown wider, for rows that carry details. */
@@ -35,6 +37,7 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
   label,
   icon: Icon,
   options,
+  header,
   allowOff,
   wide = false,
   open,
@@ -61,6 +64,7 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
         } max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl glass-dropdown p-2 shadow-2xl z-50`}
       >
         <div className="px-3 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{label}</div>
+        {header}
         {allowOff && (
           <button onClick={() => onSelect(null)} className={`${ITEM_BASE} text-zinc-300 hover:bg-white/5`}>
             Off

@@ -8,6 +8,9 @@ const DEBUG_LOGGING_KEY: &str = "debug_logging";
 const PREFERRED_AUDIO_KEY: &str = "preferred_audio";
 /// Stored when the viewer wants the stream's own default audio track.
 const NO_AUDIO_PREFERENCE: &str = "none";
+const PREFERRED_SUBTITLES_KEY: &str = "preferred_subtitles";
+/// Most subtitle languages the viewer can prefer; the player shows one flag for each.
+pub const MAX_PREFERRED_SUBTITLES: usize = 3;
 const LIST_SEPARATOR: char = '\n';
 
 /// Typed access to the app's settings.
@@ -64,6 +67,30 @@ impl SettingsService {
         Ok(())
     }
 
+    /// The languages whose subtitles get a flag in the player (at most
+    /// [`MAX_PREFERRED_SUBTITLES`]), in the order the viewer chose them. English until changed.
+    pub fn preferred_subtitles(&self) -> Result<Vec<Language>, ServiceError> {
+        Ok(match self.store.get(PREFERRED_SUBTITLES_KEY)? {
+            None => vec![ENGLISH],
+            Some(raw) => raw
+                .split(',')
+                .filter_map(find_language)
+                .take(MAX_PREFERRED_SUBTITLES)
+                .collect(),
+        })
+    }
+
+    /// Remembers the preferred subtitle languages; only the first [`MAX_PREFERRED_SUBTITLES`] count.
+    pub fn set_preferred_subtitles(&self, languages: &[Language]) -> Result<(), ServiceError> {
+        let codes: Vec<&str> = languages
+            .iter()
+            .take(MAX_PREFERRED_SUBTITLES)
+            .map(Language::code)
+            .collect();
+        self.store.set(PREFERRED_SUBTITLES_KEY, &codes.join(","))?;
+        Ok(())
+    }
+
     /// Switches a provider on or off.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, enabled = ?enabled), err)]
     pub fn set_provider_enabled(&self, provider: &str, enabled: bool) -> Result<(), ServiceError> {
@@ -114,6 +141,22 @@ mod tests {
         assert_eq!(service.preferred_audio().expect("read"), None);
         service.set_preferred_audio(Some(ENGLISH)).expect("set");
         assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
+    }
+
+    #[test]
+    fn the_preferred_subtitles_are_english_until_changed_and_keep_their_order_and_limit() {
+        let service = service();
+        assert_eq!(service.preferred_subtitles().expect("read"), vec![ENGLISH]);
+        let chosen: Vec<Language> = ["spa", "fre", "ger", "ita"]
+            .iter()
+            .filter_map(|code| find_language(code))
+            .collect();
+        service.set_preferred_subtitles(&chosen).expect("set");
+        let saved = service.preferred_subtitles().expect("read");
+        let names: Vec<&str> = saved.iter().map(|language| language.name).collect();
+        assert_eq!(names, ["Spanish", "French", "German"], "three at most");
+        service.set_preferred_subtitles(&[]).expect("clear");
+        assert!(service.preferred_subtitles().expect("read").is_empty());
     }
 
     #[test]

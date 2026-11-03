@@ -206,12 +206,16 @@ export interface DebugLoggingInfo {
 export interface LanguageOption {
   code: string;
   name: string;
+  /** Every code that stands for the language, such as `eng` and `en`. */
+  codes: string[];
 }
 
 /** The viewer's preferences and the choices on offer. */
 export interface Preferences {
   /** Code of the preferred audio language; null when the stream's own default track is wanted. */
   preferred_audio: string | null;
+  /** Codes of the languages whose subtitles get a flag in the player, in order (at most three). */
+  preferred_subtitles: string[];
   languages: LanguageOption[];
 }
 
