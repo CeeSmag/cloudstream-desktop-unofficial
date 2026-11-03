@@ -92,3 +92,26 @@ fn missing_executable_is_reported_as_unavailable() {
         Err(GatewayError::Unavailable(_))
     ));
 }
+
+#[test]
+fn remembered_calls_are_repeated_on_a_restarted_process() {
+    let transport = transport();
+    transport.remember_for_restart("ping", Value::Null, SHORT);
+    // First start: nothing to repeat yet when the very first call arrives... except the remembered ping.
+    assert_eq!(transport.call("handled", Value::Null, SHORT), Ok(json!(2)));
+    // A crash discards the process; the next call starts a new one that first repeats the ping.
+    assert!(transport.call("crash", Value::Null, SHORT).is_err());
+    assert_eq!(
+        transport.call("handled", Value::Null, SHORT),
+        Ok(json!(2)),
+        "the new process must have seen the remembered ping before this call"
+    );
+}
+
+#[test]
+fn the_same_remembered_call_is_not_repeated_twice() {
+    let transport = transport();
+    transport.remember_for_restart("ping", Value::Null, SHORT);
+    transport.remember_for_restart("ping", Value::Null, SHORT);
+    assert_eq!(transport.call("handled", Value::Null, SHORT), Ok(json!(2)));
+}

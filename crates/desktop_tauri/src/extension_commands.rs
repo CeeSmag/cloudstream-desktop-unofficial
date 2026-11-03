@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::app_state::AppState;
 use crate::repository_discovery;
-use crate::PROVIDERS_CHANGED_EVENT;
+use crate::startup::PROVIDERS_CHANGED_EVENT;
 
 /// An extension that is installed on this computer.
 #[derive(Debug, Clone, Serialize)]

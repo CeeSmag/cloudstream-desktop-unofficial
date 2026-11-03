@@ -9,6 +9,7 @@ import {
   RepositoryPlugin,
   SearchItem,
   SourceInfo,
+  StartupStatus,
   WatchProgress,
 } from '../types';
 
@@ -38,6 +39,8 @@ async function invokeTauri<T>(cmd: string, args: Record<string, unknown> = {}): 
 }
 
 export const api = {
+  getStartupStatus: () => invokeTauri<StartupStatus>('get_startup_status'),
+
   getProviders: () => invokeTauri<ProviderInfo[]>('get_available_providers'),
 
   getHomeSections: (providerId?: string) =>
@@ -56,6 +59,9 @@ export const api = {
     detail_url?: string;
     poster_url?: string;
   }) => invokeTauri<void>('play_media', { request: params }),
+
+  /** Starts the video now on the best stream already known to work; the checks go on in the background. */
+  skipSourceCheck: () => invokeTauri<void>('skip_source_check'),
 
   pause: () => invokeTauri<void>('pause_playback'),
 

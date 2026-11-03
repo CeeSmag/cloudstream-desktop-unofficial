@@ -2,17 +2,25 @@
 
 use crate::app_state::AppState;
 use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
-use crate::source_session::{ActiveSources, SourceSession};
+use crate::source_manager::SourceManager;
+use crate::source_session::ActiveSources;
 use app_services::{playable_links_best_first, PlaybackItem};
+use core_model::{PlayableLink, SubtitleTrack};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
-use tauri::State;
+use tauri::{AppHandle, State};
+use ui_app::UiServices;
 
-/// Starts playing the requested media stream.
+/// Message of the error `play_media` returns when the video is closed before it could start.
+const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
+
+/// Opens a video: finds its streams, checks them (the viewer may skip the wait), then plays the
+/// best one that works. The checks go on in the background until they finish or the video closes.
 #[tauri::command]
 pub async fn play_media(
     request: PlayRequestDto,
+    app: AppHandle,
     state: State<'_, AppState>,
-    sources: State<'_, SourceSession>,
+    sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
     let item = PlaybackItem {
         provider: request.provider,
@@ -21,29 +29,63 @@ pub async fn play_media(
         detail_url: request.detail_url.unwrap_or_default(),
         poster_url: request.poster_url,
     };
+    let gate = sources.begin();
+    let opened_at = std::time::Instant::now();
     let services = state.read();
     let playback = services
         .playback
         .as_ref()
         .ok_or_else(|| "Playback service unavailable".to_string())?;
+    let (playable, subtitles) = find_streams(&services, &item)?;
+    if gate.is_cancelled() {
+        return Err(CLOSED_BEFORE_START.to_owned());
+    }
+    let active = ActiveSources::new(item.clone(), playable.clone(), subtitles.clone());
+    sources.run_checks(app, &gate, active);
+    let start = gate
+        .wait_for_start()
+        .ok_or_else(|| CLOSED_BEFORE_START.to_owned())?;
+    let start_link = playable
+        .get(start)
+        .ok_or_else(|| "No playable stream links found".to_string())?;
+    tracing::info!(
+        start,
+        total = playable.len(),
+        elapsed_ms = opened_at.elapsed().as_millis(),
+        url = %start_link.url,
+        "starting playback"
+    );
+    playback
+        .start(item, start_link, &subtitles)
+        .map_err(|error| error.to_string())?;
+    sources.session().mark_selected(start);
+    Ok(())
+}
+
+/// Asks the provider for the streams of `item`, best first.
+fn find_streams(
+    services: &UiServices,
+    item: &PlaybackItem,
+) -> Result<(Vec<PlayableLink>, Vec<SubtitleTrack>), String> {
     let resolved = services
         .streams
         .resolve(&item.provider, &item.media_key)
         .map_err(|error| error.to_string())?;
     let playable = playable_links_best_first(resolved.links);
-    let best_link = playable
-        .first()
-        .ok_or_else(|| "No playable stream links found".to_string())?;
-    playback
-        .start(item.clone(), best_link, &resolved.subtitles)
-        .map_err(|error| error.to_string())?;
-    sources.set(ActiveSources {
-        item,
-        links: playable,
-        subtitles: resolved.subtitles,
-        selected: 0,
-        position_ms: 0,
-    });
+    if playable.is_empty() {
+        return Err("No playable stream links found".to_string());
+    }
+    Ok((playable, resolved.subtitles))
+}
+
+/// Lets the viewer start now: the best stream known to work plays and the rest of the checks
+/// carry on in the background.
+#[tauri::command]
+pub async fn skip_source_check(
+    app: AppHandle,
+    sources: State<'_, SourceManager>,
+) -> Result<(), String> {
+    sources.skip(&app);
     Ok(())
 }
 
@@ -88,9 +130,9 @@ pub async fn seek_to(position_ms: i64, state: State<'_, AppState>) -> Result<(),
 #[tauri::command]
 pub async fn stop_playback(
     state: State<'_, AppState>,
-    sources: State<'_, SourceSession>,
+    sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
-    sources.clear();
+    sources.close();
     let services = state.read();
     let playback = services
         .playback
@@ -117,7 +159,7 @@ pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 pub async fn get_playback_status(
     state: State<'_, AppState>,
-    sources: State<'_, SourceSession>,
+    sources: State<'_, SourceManager>,
 ) -> Result<PlaybackStatusDto, String> {
     let services = state.read();
     let playback = match &services.playback {
@@ -126,7 +168,7 @@ pub async fn get_playback_status(
     };
     let status = playback.tick();
     if matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
-        sources.remember_position(status.position_ms);
+        sources.session().remember_position(status.position_ms);
     }
     let tracks = playback.tracks();
     Ok(map_playback_status(status, tracks))

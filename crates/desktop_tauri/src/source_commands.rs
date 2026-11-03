@@ -1,12 +1,12 @@
 //! Tauri commands for listing and switching the streams of the item that is playing.
 
 use app_services::{source_label, StreamSelection};
-use core_model::PlayableLink;
 use serde::Serialize;
 use tauri::State;
 
 use crate::app_state::AppState;
-use crate::source_session::SourceSession;
+use crate::source_manager::SourceManager;
+use crate::source_session::{ActiveSources, SourceHealth};
 
 /// One stream the player can switch to.
 #[derive(Debug, Clone, Serialize)]
@@ -17,18 +17,21 @@ pub struct SourceDto {
     pub label: String,
     /// True for the stream that is playing now.
     pub selected: bool,
+    /// True while the check of this stream has not finished.
+    pub checking: bool,
 }
 
-/// Lists the streams found for the item that is playing (empty when nothing is playing).
+/// Lists the streams worth offering for the item that is playing: the ones that answered the
+/// check and the ones still being checked (empty when nothing is playing).
 #[tauri::command]
 pub async fn get_playback_sources(
-    sources: State<'_, SourceSession>,
+    sources: State<'_, SourceManager>,
 ) -> Result<Vec<SourceDto>, String> {
-    let list = sources
+    Ok(sources
+        .session()
         .snapshot()
-        .map(|active| describe_sources(&active.links, active.selected))
-        .unwrap_or_default();
-    Ok(list)
+        .map(|active| describe_sources(&active))
+        .unwrap_or_default())
 }
 
 /// Switches to another stream of the same item, continuing from the current position.
@@ -36,9 +39,10 @@ pub async fn get_playback_sources(
 pub async fn switch_source(
     index: usize,
     state: State<'_, AppState>,
-    sources: State<'_, SourceSession>,
+    sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
     let active = sources
+        .session()
         .snapshot()
         .ok_or_else(|| "Nothing is playing.".to_owned())?;
     let link = active
@@ -64,43 +68,66 @@ pub async fn switch_source(
     playback
         .start_at(active.item.clone(), &stream)
         .map_err(|error| format!("Cannot switch source: {error}"))?;
-    sources.mark_selected(index);
+    sources.session().mark_selected(index);
     Ok(())
 }
 
-fn describe_sources(links: &[PlayableLink], selected: usize) -> Vec<SourceDto> {
-    links
+/// The streams to show: not known to be broken, plus the one that is playing.
+fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
+    active
+        .links
         .iter()
+        .zip(&active.health)
         .enumerate()
-        .map(|(index, link)| SourceDto {
+        .filter(|(index, (_, health))| {
+            **health != SourceHealth::Broken || *index == active.selected
+        })
+        .map(|(index, (link, health))| SourceDto {
             index,
             label: source_label(link),
-            selected: index == selected,
+            selected: index == active.selected,
+            checking: *health == SourceHealth::Checking,
         })
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    use core_model::PlayableLink;
+
     use super::*;
 
-    #[test]
-    fn describe_sources_marks_only_the_playing_one() {
-        let links = vec![
-            PlayableLink {
-                name: "A".into(),
+    fn active(health: &[SourceHealth], selected: usize) -> ActiveSources {
+        let links = health
+            .iter()
+            .enumerate()
+            .map(|(index, _)| PlayableLink {
+                name: format!("S{index}"),
                 quality: 720,
                 ..PlayableLink::default()
-            },
-            PlayableLink {
-                name: "B".into(),
-                quality: 360,
-                ..PlayableLink::default()
-            },
-        ];
-        let list = describe_sources(&links, 1);
+            })
+            .collect();
+        let mut sources = ActiveSources::new(Default::default(), links, Vec::new());
+        sources.health = health.to_vec();
+        sources.selected = selected;
+        sources
+    }
+
+    #[test]
+    fn broken_streams_are_hidden_and_checking_ones_are_marked() {
+        use SourceHealth::{Broken, Checking, Working};
+        let list = describe_sources(&active(&[Working, Broken, Checking, Working], 0));
+        let indexes: Vec<usize> = list.iter().map(|source| source.index).collect();
+        assert_eq!(indexes, [0, 2, 3], "index 1 is broken and hidden");
+        assert!(list[0].selected && !list[1].selected);
+        assert!(list[1].checking && !list[2].checking);
+        assert_eq!(list[0].label, "720p - S0");
+    }
+
+    #[test]
+    fn the_stream_that_is_playing_stays_listed_even_if_its_check_failed() {
+        use SourceHealth::{Broken, Working};
+        let list = describe_sources(&active(&[Working, Broken], 1));
         assert_eq!(list.len(), 2);
-        assert!(!list[0].selected && list[1].selected);
-        assert_eq!(list[0].label, "720p - A");
     }
 }
