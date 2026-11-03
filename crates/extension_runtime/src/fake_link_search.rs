@@ -218,7 +218,7 @@ impl Update {
             .iter()
             .map(|(position, language)| {
                 json!({
-                    "lang": language, "url": format!("https://subs.example.test/{position}.srt"),
+                    "lang": language, "url": format!("https://subs.example.test/{language}-{position}.srt"),
                     "headers": null, "langTag": null,
                 })
             })

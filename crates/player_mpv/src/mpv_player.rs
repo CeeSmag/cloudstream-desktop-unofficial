@@ -17,6 +17,7 @@ use crate::pending_subtitles::{queue_for_new_stream, PendingSubtitles};
 use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
 use crate::preferred_audio::{alang_value, AudioPreference};
+use crate::preferred_subtitles::SubtitlePreference;
 use crate::status_tracker::StatusTracker;
 use crate::track_reader::read_tracks;
 
@@ -33,6 +34,7 @@ pub struct MpvPlayer {
     stop_flag: Arc<AtomicBool>,
     stream_generation: Arc<AtomicU64>,
     audio_preference: Arc<AudioPreference>,
+    subtitle_preference: Arc<SubtitlePreference>,
     event_thread: Option<JoinHandle<()>>,
     frames: Option<Arc<FrameShared>>,
     // Dropped before `handle` (declaration order) so the render context never outlives mpv.
@@ -67,6 +69,7 @@ impl MpvPlayer {
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stream_generation = Arc::new(AtomicU64::new(0));
         let audio_preference = Arc::new(AudioPreference::default());
+        let subtitle_preference = Arc::new(SubtitlePreference::default());
         let event_thread = start_event_thread(EventWorker {
             handle: Arc::clone(&handle),
             tracker: Arc::clone(&tracker),
@@ -74,6 +77,7 @@ impl MpvPlayer {
             stop_flag: Arc::clone(&stop_flag),
             stream_generation: Arc::clone(&stream_generation),
             audio_preference: Arc::clone(&audio_preference),
+            subtitle_preference: Arc::clone(&subtitle_preference),
             reported_subtitle_tracks: std::sync::atomic::AtomicUsize::new(0),
         })?;
         Ok(Self {
@@ -82,6 +86,7 @@ impl MpvPlayer {
             stop_flag,
             stream_generation,
             audio_preference,
+            subtitle_preference,
             event_thread: Some(event_thread),
             frames,
             _renderer: renderer,
@@ -226,6 +231,11 @@ impl VideoPlayer for MpvPlayer {
         };
         let value = id.map_or_else(|| "no".to_owned(), |id| id.to_string());
         self.handle.set_property(property, &value)?;
+        if kind == TrackKind::Subtitle {
+            // From now on the viewer decides what shows.
+            let generation = self.stream_generation.load(Ordering::SeqCst);
+            self.subtitle_preference.mark_changed_by_viewer(generation);
+        }
         // Re-read at once so the menu shows the new choice without waiting for the next refresh.
         self.tracker
             .set_tracks(read_tracks(|name| self.handle.get_string(name)));
@@ -243,6 +253,10 @@ impl VideoPlayer for MpvPlayer {
         {
             tracing::warn!(%error, "could not tell mpv the preferred audio language");
         }
+    }
+
+    fn set_preferred_subtitles(&self, languages: &[Language]) {
+        self.subtitle_preference.set_languages(languages.to_vec());
     }
 
     fn is_embedded(&self) -> bool {

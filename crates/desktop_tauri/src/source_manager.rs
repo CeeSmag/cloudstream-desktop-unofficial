@@ -17,6 +17,8 @@ use crate::check_gate::{CheckGate, CheckProgress, Grace};
 use crate::failure_tally::FailureTally;
 use crate::source_discovery::{Discovery, SubtitleSink};
 use crate::source_session::{ActiveSources, SourceSession};
+use crate::subtitle_delivery::{Delivery, DeliveryParts, SubtitleWork};
+use subtitle_store::{KeepGoing, SubtitleLoader};
 
 /// Event the UI listens to so it can reload the list of streams.
 pub const SOURCES_CHANGED_EVENT: &str = "sources-changed";
@@ -45,12 +47,16 @@ pub struct SearchRequest {
     pub search: LinkSearch,
     /// Where subtitles found after playback started go.
     pub give_subtitles: SubtitleSink,
+    /// What the title's subtitles need: its key in the saved lists and the language order.
+    pub subtitles: SubtitleWork,
 }
 
 /// Tauri-managed owner of the current streams and the checks that test them.
 pub struct SourceManager {
     session: Arc<SourceSession>,
     checker: StreamChecker,
+    /// Downloads and keeps the subtitle files of the provider.
+    subtitles: Arc<SubtitleLoader>,
     /// How long a video waits for streams.
     grace: Grace,
     /// The wait of the video that is being opened or played.
@@ -59,10 +65,11 @@ pub struct SourceManager {
 
 impl SourceManager {
     /// Creates the manager.
-    pub fn new(checker: StreamChecker) -> Self {
+    pub fn new(checker: StreamChecker, subtitles: Arc<SubtitleLoader>) -> Self {
         Self {
             session: Arc::new(SourceSession::default()),
             checker,
+            subtitles,
             grace: Grace::default(),
             current: Mutex::new(None),
         }
@@ -138,9 +145,9 @@ impl SourceManager {
         }
     }
 
-    /// Follows the provider's search and checks its streams in the background; `tell` hears about
-    /// progress. Returns the two threads that do the work, which end when the search and the checks
-    /// are over or the video is closed.
+    /// Follows the provider's search, downloads its subtitle files and checks its streams in the
+    /// background; `tell` hears about progress. Returns the threads that do the work, which end
+    /// when everything is done or the video is closed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn discover_with(&self, tell: Tell, request: SearchRequest) -> Vec<JoinHandle<()>> {
         let SearchRequest {
@@ -148,8 +155,19 @@ impl SourceManager {
             generation,
             search,
             give_subtitles,
+            subtitles,
         } = request;
         tell(CheckUpdate::Progress(gate.progress()));
+        let delivery = Delivery::new(DeliveryParts {
+            session: Arc::clone(&self.session),
+            generation,
+            loader: Arc::clone(&self.subtitles),
+            work: subtitles,
+            tell: Arc::clone(&tell),
+            give_subtitles,
+        });
+        delivery.offer_saved();
+        let (prefetch, mut threads) = delivery.start_downloads(self.keep_going(&gate, generation));
         let job = Arc::new(Discovery {
             checker: self.checker.clone(),
             session: Arc::clone(&self.session),
@@ -158,20 +176,34 @@ impl SourceManager {
             queue: Arc::new(CheckQueue::default()),
             started: Instant::now(),
             tell,
-            give_subtitles,
+            prefetch,
             hosts: Mutex::default(),
             failures: FailureTally::default(),
         });
-        let searching = Arc::clone(&job);
-        let searched = spawn("source-search", move || searching.run_search(search));
-        let checking = Arc::clone(&job);
-        let checks = spawn("source-checks", move || checking.run_checks());
-        if searched.is_none() || checks.is_none() {
-            job.queue.stop();
-            gate.discovery_ended(Some("Cannot start looking for streams.".to_owned()));
-        }
-        searched.into_iter().chain(checks).collect()
+        threads.extend(start_search_and_checks(&job, search));
+        threads
     }
+
+    /// Whether anybody still wants the work of the video with this generation.
+    fn keep_going(&self, gate: &Arc<CheckGate>, generation: u64) -> KeepGoing {
+        let (session, gate) = (Arc::clone(&self.session), Arc::clone(gate));
+        Arc::new(move || session.is_current(generation) && !gate.is_cancelled())
+    }
+}
+
+/// Starts the search thread and the checks thread; if either cannot start, the work is given up.
+fn start_search_and_checks(job: &Arc<Discovery>, search: LinkSearch) -> Vec<JoinHandle<()>> {
+    let searching = Arc::clone(job);
+    let searched = spawn("source-search", move || searching.run_search(search));
+    let checking = Arc::clone(job);
+    let checks = spawn("source-checks", move || checking.run_checks());
+    if searched.is_none() || checks.is_none() {
+        job.queue.stop();
+        job.prefetch.stop();
+        job.gate
+            .discovery_ended(Some("Cannot start looking for streams.".to_owned()));
+    }
+    searched.into_iter().chain(checks).collect()
 }
 
 fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> Option<JoinHandle<()>> {

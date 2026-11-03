@@ -8,6 +8,7 @@ use app_services::{
     link_rank, stream_host, CheckQueue, LinkBatch, LinkHealth, LinkSearch, StreamChecker,
 };
 use core_model::SubtitleTrack;
+use subtitle_store::SubtitlePrefetch;
 
 use crate::check_gate::CheckGate;
 use crate::failure_tally::FailureTally;
@@ -36,7 +37,8 @@ pub struct Discovery {
     pub(crate) queue: Arc<CheckQueue>,
     pub(crate) started: Instant,
     pub(crate) tell: Arc<dyn Fn(CheckUpdate) + Send + Sync>,
-    pub(crate) give_subtitles: SubtitleSink,
+    /// Downloads the subtitle files the search names.
+    pub(crate) prefetch: SubtitlePrefetch,
     /// The host of every stream found, by index, for the failure log.
     pub(crate) hosts: Mutex<Vec<String>>,
     /// Why the checks of this video failed.
@@ -55,6 +57,7 @@ impl Discovery {
             if !self.wanted() {
                 search.cancel();
                 self.queue.stop();
+                self.prefetch.stop();
                 tracing::info!(
                     elapsed_ms = self.started.elapsed().as_millis(),
                     "stream search stopped: the video was closed"
@@ -119,14 +122,19 @@ impl Discovery {
         if batch.links.is_empty() && batch.subtitles.is_empty() {
             return false;
         }
+        let subtitles = batch.subtitles.len();
+        self.prefetch.submit(batch.subtitles);
+        if batch.links.is_empty() {
+            tracing::info!(subtitles, "subtitle files found; downloading them");
+            return true;
+        }
         let ranks: Vec<i32> = batch.links.iter().map(link_rank).collect();
         let found = batch.links.len();
-        let subtitles = batch.subtitles.len();
         let queued = batch.links.clone();
         let hosts: Vec<String> = queued.iter().map(stream_host).collect();
         let Some(first) = self
             .session
-            .append(self.generation, batch.links, batch.subtitles)
+            .append(self.generation, batch.links, Vec::new())
         else {
             return false;
         };
@@ -150,19 +158,12 @@ impl Discovery {
         );
         (self.tell)(CheckUpdate::Progress(progress));
         (self.tell)(CheckUpdate::SourcesChanged);
-        self.pass_on_subtitles();
         true
-    }
-
-    fn pass_on_subtitles(&self) {
-        let fresh = self.session.unsent_subtitles(self.generation);
-        if !fresh.is_empty() {
-            (self.give_subtitles)(&fresh);
-        }
     }
 
     fn end_search(&self, failure: Option<String>) {
         self.queue.close();
+        self.prefetch.finish();
         let progress = self.gate.discovery_ended(failure);
         (self.tell)(CheckUpdate::Progress(progress));
         tracing::info!(

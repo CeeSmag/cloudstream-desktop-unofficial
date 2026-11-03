@@ -218,6 +218,8 @@ export interface Preferences {
   preferred_audio: string | null;
   /** Codes of the languages whose subtitles get a flag in the player, in order (at most three). */
   preferred_subtitles: string[];
+  /** Whether the subtitle in the first of those languages the video has turns on by itself. */
+  auto_subtitles: boolean;
   languages: LanguageOption[];
 }
 

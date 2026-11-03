@@ -9,6 +9,7 @@ const french: LanguageOption = { code: 'fre', name: 'French', codes: ['fre', 'fr
 const preferences = (preferred: string[]): Preferences => ({
   preferred_audio: 'eng',
   preferred_subtitles: preferred,
+  auto_subtitles: true,
   languages: [english, arabic, french],
 });
 

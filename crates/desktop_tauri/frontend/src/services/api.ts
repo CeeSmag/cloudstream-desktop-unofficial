@@ -66,6 +66,9 @@ export const api = {
   /** Saves the languages whose subtitles get a flag in the player (at most three). */
   setPreferredSubtitles: (languages: string[]) => invokeTauri<Preferences>('set_preferred_subtitles', { languages }),
 
+  /** Switches on or off turning on a preferred-language subtitle by itself. */
+  setAutoSubtitles: (enabled: boolean) => invokeTauri<Preferences>('set_auto_subtitles', { enabled }),
+
   getDebugLogging: () => invokeTauri<DebugLoggingInfo>('get_debug_logging'),
 
   setDebugLogging: (enabled: boolean) => invokeTauri<DebugLoggingInfo>('set_debug_logging', { enabled }),

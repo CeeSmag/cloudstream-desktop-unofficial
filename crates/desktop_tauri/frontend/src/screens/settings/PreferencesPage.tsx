@@ -12,7 +12,7 @@ const STREAM_DEFAULT = '';
 
 /** What the viewer prefers: the audio language, and which subtitle languages get a flag under each source in the player. */
 export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => {
-  const { preferences, busy, saved, chooseAudio, chooseSubtitles } = usePreferences(onError);
+  const { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles } = usePreferences(onError);
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -68,6 +68,22 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             in a language shows no flag for it. Flags appear once the source has been checked.
           </p>
         </div>
+        <label className="flex items-start gap-3 text-sm text-zinc-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={preferences?.auto_subtitles ?? true}
+            disabled={busy || preferences === null}
+            onChange={(event) => void chooseAutoSubtitles(event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Turn on subtitles automatically
+            <span className="block text-xs text-zinc-400">
+              When a video has subtitles in one of these languages, the first language in your list is shown. Subtitles you
+              pick or switch off yourself are left alone.
+            </span>
+          </span>
+        </label>
         <SubtitleLanguages
           languages={preferences?.languages ?? []}
           chosen={preferences?.preferred_subtitles ?? []}

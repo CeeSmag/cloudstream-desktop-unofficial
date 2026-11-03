@@ -28,6 +28,11 @@ mod source_discovery;
 mod source_manager;
 mod source_session;
 mod startup;
+mod subtitle_delivery;
+#[cfg(test)]
+mod subtitle_tests;
+#[cfg(test)]
+mod test_subtitles;
 mod video_commands;
 mod video_opening;
 mod window_commands;
@@ -56,6 +61,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             preferences_commands::get_preferences,
             preferences_commands::set_preferred_audio,
             preferences_commands::set_preferred_subtitles,
+            preferences_commands::set_auto_subtitles,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
             debug_log_commands::open_logs_folder,
@@ -117,10 +123,37 @@ fn init_services(
     app.manage(AppState::new(services));
     app.manage(source_manager::SourceManager::new(
         app_services::StreamChecker::new(std::sync::Arc::new(extension_repo::UreqProbe::default())),
+        subtitle_loader(paths),
     ));
     app.manage(startup::StartupTracker::default());
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())
+}
+
+/// How long downloaded subtitle files and the per-title lists are kept.
+const SUBTITLE_KEEP: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+
+/// The loader that downloads, cleans and keeps subtitle files in the data folder; old ones are
+/// removed in the background.
+fn subtitle_loader(paths: &AppPaths) -> std::sync::Arc<subtitle_store::SubtitleLoader> {
+    let cache =
+        subtitle_store::SubtitleCache::new(paths.data_dir().join("subtitles"), SUBTITLE_KEEP);
+    let loader = std::sync::Arc::new(subtitle_store::SubtitleLoader::new(
+        cache,
+        std::sync::Arc::new(subtitle_store::UreqSubtitleFetcher::default()),
+        subtitle_store::LoadOptions::default(),
+    ));
+    let cleaner = std::sync::Arc::clone(&loader);
+    let spawned = std::thread::Builder::new()
+        .name("subtitle-cleanup".to_owned())
+        .spawn(move || {
+            let removed = cleaner.cache().prune();
+            tracing::info!(removed, "old subtitle files removed");
+        });
+    if let Err(error) = spawned {
+        tracing::warn!(%error, "cannot start the subtitle cleanup");
+    }
+    loader
 }
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).

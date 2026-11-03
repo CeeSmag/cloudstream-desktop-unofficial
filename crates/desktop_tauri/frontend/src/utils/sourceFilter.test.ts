@@ -5,6 +5,7 @@ import { Preferences, SourceInfo } from '../types';
 const preferences: Preferences = {
   preferred_audio: 'eng',
   preferred_subtitles: ['eng', 'ara'],
+  auto_subtitles: true,
   languages: [
     { code: 'eng', name: 'English', codes: ['eng', 'en'] },
     { code: 'ara', name: 'Arabic', codes: ['ara', 'ar'] },

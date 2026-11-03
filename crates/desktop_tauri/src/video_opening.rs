@@ -5,13 +5,16 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use app_services::{LinkSearch, PlaybackItem, PlaybackService, StreamResolver};
+use app_services::{LinkSearch, PlaybackItem, PlaybackService, SettingsService, StreamResolver};
+use player_api::find_language;
+use subtitle_store::LanguageRank;
 use tauri::State;
 
 use crate::app_state::AppState;
 use crate::check_gate::{CheckGate, StartDecision};
 use crate::dto::PlayRequestDto;
 use crate::source_manager::{SearchRequest, SourceManager, Tell};
+use crate::subtitle_delivery::SubtitleWork;
 
 /// Message of the error `play_media` returns when the video is closed before it could start.
 pub(crate) const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
@@ -30,6 +33,8 @@ pub(crate) fn item_from(request: PlayRequestDto) -> PlaybackItem {
 pub(crate) struct OpeningServices {
     pub(crate) streams: Arc<StreamResolver>,
     pub(crate) playback: Arc<PlaybackService>,
+    /// Which subtitle languages are downloaded first.
+    pub(crate) subtitle_rank: LanguageRank,
 }
 
 pub(crate) fn services_for_playing(state: &State<'_, AppState>) -> Result<OpeningServices, String> {
@@ -41,6 +46,20 @@ pub(crate) fn services_for_playing(state: &State<'_, AppState>) -> Result<Openin
     Ok(OpeningServices {
         streams: Arc::clone(&services.streams),
         playback,
+        subtitle_rank: subtitle_rank(&services.settings),
+    })
+}
+
+/// Ranks a subtitle language by its place among the viewer's preferred ones; others come last.
+fn subtitle_rank(settings: &SettingsService) -> LanguageRank {
+    let preferred = settings.preferred_subtitles().unwrap_or_else(|error| {
+        tracing::warn!(%error, "cannot read the preferred subtitle languages");
+        Vec::new()
+    });
+    Arc::new(move |label| {
+        find_language(label)
+            .and_then(|language| preferred.iter().position(|wanted| *wanted == language))
+            .unwrap_or(preferred.len())
     })
 }
 
@@ -68,6 +87,14 @@ pub(crate) fn open_video(
             generation,
             search,
             give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
+            subtitles: SubtitleWork {
+                title_key: format!(
+                    "{}
+{}",
+                    item.provider, item.media_key
+                ),
+                rank_of: Arc::clone(&services.subtitle_rank),
+            },
         },
     );
     let outcome = wait_for_start(&gate).and_then(|start| {
