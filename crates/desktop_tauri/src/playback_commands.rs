@@ -1,20 +1,21 @@
 //! Tauri commands for controlling video playback and player status.
 
+use std::sync::Arc;
+
 use crate::app_state::AppState;
+use crate::check_gate::StartDecision;
 use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
-use crate::source_manager::SourceManager;
-use crate::source_session::ActiveSources;
-use app_services::{playable_links_best_first, PlaybackItem};
-use core_model::{PlayableLink, SubtitleTrack};
+use crate::source_manager::{SearchRequest, SourceManager};
+use app_services::{PlaybackItem, PlaybackService};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
 use tauri::{AppHandle, State};
-use ui_app::UiServices;
 
 /// Message of the error `play_media` returns when the video is closed before it could start.
 const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
 
-/// Opens a video: finds its streams, checks them (the viewer may skip the wait), then plays the
-/// best one that works. The checks go on in the background until they finish or the video closes.
+/// Opens a video: the provider's streams are checked as they are found and the best working one
+/// plays a moment after the first is known (at once when the viewer skips the wait). The search
+/// and the checks go on in the background until they finish or the video closes.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn play_media(
@@ -23,60 +24,77 @@ pub async fn play_media(
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
-    let item = PlaybackItem {
+    let item = item_from(request);
+    let gate = sources.begin();
+    let opened_at = std::time::Instant::now();
+    let (streams, playback) = {
+        let services = state.read();
+        let playback = services
+            .playback
+            .clone()
+            .ok_or_else(|| "Playback service unavailable".to_string())?;
+        (Arc::clone(&services.streams), playback)
+    };
+    let search = streams
+        .open_search(&item.provider, &item.media_key)
+        .map_err(|error| error.to_string())?;
+    let generation = sources.open(item.clone());
+    let late_subtitles = Arc::clone(&playback);
+    let request = SearchRequest {
+        gate: Arc::clone(&gate),
+        generation,
+        search,
+        give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
+    };
+    sources.discover(app, request);
+    let start = match gate.wait_for_start() {
+        StartDecision::Start(index) => index,
+        StartDecision::Cancelled => return Err(CLOSED_BEFORE_START.to_owned()),
+        StartDecision::Failed(reason) => return Err(reason),
+    };
+    tracing::info!(
+        start,
+        elapsed_ms = opened_at.elapsed().as_millis(),
+        "starting playback"
+    );
+    start_stream(&sources, &playback, item, start)
+}
+
+fn item_from(request: PlayRequestDto) -> PlaybackItem {
+    PlaybackItem {
         provider: request.provider,
         media_key: request.media_key,
         title: request.title,
         detail_url: request.detail_url.unwrap_or_default(),
         poster_url: request.poster_url,
-    };
-    let gate = sources.begin();
-    let opened_at = std::time::Instant::now();
-    let services = state.read();
-    let playback = services
-        .playback
-        .as_ref()
-        .ok_or_else(|| "Playback service unavailable".to_string())?;
-    let (playable, subtitles) = find_streams(&services, &item)?;
-    if gate.is_cancelled() {
-        return Err(CLOSED_BEFORE_START.to_owned());
     }
-    let active = ActiveSources::new(item.clone(), playable.clone(), subtitles.clone());
-    sources.run_checks(app, &gate, active);
-    let start = gate
-        .wait_for_start()
-        .ok_or_else(|| CLOSED_BEFORE_START.to_owned())?;
-    let start_link = playable
-        .get(start)
-        .ok_or_else(|| "No playable stream links found".to_string())?;
-    tracing::info!(
-        start,
-        total = playable.len(),
-        elapsed_ms = opened_at.elapsed().as_millis(),
-        url = %start_link.url,
-        "starting playback"
-    );
-    playback
-        .start(item, start_link, &subtitles)
-        .map_err(|error| error.to_string())?;
-    sources.session().mark_selected(start);
-    Ok(())
 }
 
-/// Asks the provider for the streams of `item`, best first.
-fn find_streams(
-    services: &UiServices,
-    item: &PlaybackItem,
-) -> Result<(Vec<PlayableLink>, Vec<SubtitleTrack>), String> {
-    let resolved = services
-        .streams
-        .resolve(&item.provider, &item.media_key)
+/// Plays the stream at `start` of the open video and hands the player the subtitles found so far.
+fn start_stream(
+    sources: &SourceManager,
+    playback: &PlaybackService,
+    item: PlaybackItem,
+    start: usize,
+) -> Result<(), String> {
+    let active = sources
+        .session()
+        .start_snapshot()
+        .ok_or_else(|| CLOSED_BEFORE_START.to_owned())?;
+    let link = active
+        .links
+        .get(start)
+        .ok_or_else(|| "No playable stream links found".to_string())?;
+    tracing::info!(found = active.links.len(), url = %link.url, "playing stream");
+    playback
+        .start(item, link, &active.subtitles)
         .map_err(|error| error.to_string())?;
-    let playable = playable_links_best_first(resolved.links);
-    if playable.is_empty() {
-        return Err("No playable stream links found".to_string());
+    sources.session().mark_selected(start);
+    let late = sources.session().unsent_subtitles(active.generation);
+    if !late.is_empty() {
+        playback.add_subtitles(&late);
     }
-    Ok((playable, resolved.subtitles))
+    Ok(())
 }
 
 /// Lets the viewer start now: the best stream known to work plays and the rest of the checks

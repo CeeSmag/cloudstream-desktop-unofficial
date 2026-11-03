@@ -1,8 +1,9 @@
 use std::path::Path;
+use std::time::Duration;
 
 use core_model::{
-    DiscoveredRepository, HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo,
-    SearchPage,
+    DiscoveredRepository, HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry,
+    PlayableLinks, ProviderInfo, SearchPage,
 };
 
 use crate::GatewayError;
@@ -31,6 +32,36 @@ pub trait ProviderGateway: Send + Sync {
 
     /// Resolves the playable streams for a movie/episode payload.
     fn load_links(&self, provider: &str, data: &str) -> Result<PlayableLinks, GatewayError>;
+
+    /// Starts looking for the streams of a movie or episode and returns the id of the search at
+    /// once; [`ProviderGateway::poll_link_search`] then reports what it finds while it runs.
+    /// Runtimes that can only answer when the whole search is over return an error here, and the
+    /// caller falls back to [`ProviderGateway::load_links`].
+    fn start_link_search(&self, provider: &str, data: &str) -> Result<String, GatewayError> {
+        let _ = (provider, data);
+        Err(GatewayError::Unavailable(
+            "this runtime cannot report streams while it is still searching".to_owned(),
+        ))
+    }
+
+    /// What search `id` found after `cursor`, waiting up to `wait` for news when there is none yet.
+    fn poll_link_search(
+        &self,
+        id: &str,
+        cursor: LinkSearchCursor,
+        wait: Duration,
+    ) -> Result<LinkSearchUpdate, GatewayError> {
+        let _ = (id, cursor, wait);
+        Err(GatewayError::Unavailable(
+            "this runtime has no running link searches".to_owned(),
+        ))
+    }
+
+    /// Stops search `id`, which is no longer wanted.
+    fn cancel_link_search(&self, id: &str) -> Result<(), GatewayError> {
+        let _ = id;
+        Ok(())
+    }
 
     /// Resolves a hoster URL through the extractor registry.
     fn extract(&self, url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError>;

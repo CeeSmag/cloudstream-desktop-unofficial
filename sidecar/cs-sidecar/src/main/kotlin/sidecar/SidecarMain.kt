@@ -60,6 +60,12 @@ private fun dispatch(service: ProviderService, method: String, params: JsonNode)
     )
     "load" -> service.load(params["provider"].asText(), params["url"].asText())
     "load_links" -> service.loadLinks(params["provider"].asText(), params["data"].asText())
+    "start_link_search" -> service.startLinkSearch(params["provider"].asText(), params["data"].asText())
+    "poll_link_search" -> service.pollLinkSearch(
+        params["id"].asText(), params["fromLink"]?.asInt() ?: 0, params["fromSubtitle"]?.asInt() ?: 0,
+        params["waitMs"]?.asLong() ?: 0L,
+    )
+    "cancel_link_search" -> service.cancelLinkSearch(params["id"].asText())
     "extract" -> service.extract(params["url"].asText(), params["referer"]?.asText())
     "take_added_repositories" -> AddedRepositories.take().map {
         mapOf("name" to it.name, "url" to it.url, "iconUrl" to it.iconUrl)

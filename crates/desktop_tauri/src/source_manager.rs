@@ -1,26 +1,25 @@
-//! Tests the streams of the video that is being opened and tells the player what it found.
+//! Finds and tests the streams of the video that is being opened and tells the player what it
+//! found.
 //!
-//! Runs only when a video is opened: every stream is checked before playback starts, the
-//! viewer may skip the wait, and the checks go on in the background until they are done or the
-//! video is closed. The picker lists what the checks found.
+//! Runs only when a video is opened. The provider's streams are checked as they arrive; playback
+//! starts on the best working one a moment after the first is known (or when the viewer skips),
+//! and the search and checks go on in the background until they are done or the video is closed.
+//! The picker lists what the checks found.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
-use app_services::{LinkHealth, StreamChecker};
-use core_model::PlayableLink;
+use app_services::{CheckQueue, LinkSearch, PlaybackItem, StreamChecker};
 use tauri::{AppHandle, Emitter};
 
-use crate::check_gate::{CheckGate, CheckProgress};
-use crate::source_session::{ActiveSources, SourceHealth, SourceSession};
+use crate::check_gate::{CheckGate, CheckProgress, Grace};
+use crate::source_discovery::{Discovery, SubtitleSink};
+use crate::source_session::{ActiveSources, SourceSession};
 
 /// Event the UI listens to so it can reload the list of streams.
 pub const SOURCES_CHANGED_EVENT: &str = "sources-changed";
-/// Event carrying [`CheckProgress`] while the streams are being checked.
+/// Event carrying [`CheckProgress`] while the streams are being found and checked.
 pub const SOURCE_CHECK_PROGRESS_EVENT: &str = "source-check-progress";
-
-/// The picker is refreshed after this many new results.
-const NOTIFY_EVERY: usize = 8;
 
 /// Something the UI should hear about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +28,18 @@ pub enum CheckUpdate {
     Progress(CheckProgress),
     /// The list of streams worth offering changed.
     SourcesChanged,
+}
+
+/// What [`SourceManager::discover`] needs to follow one video's search.
+pub struct SearchRequest {
+    /// The wait of the video that is opening.
+    pub gate: Arc<CheckGate>,
+    /// Generation of the session opened for it.
+    pub generation: u64,
+    /// The provider's running search.
+    pub search: LinkSearch,
+    /// Where subtitles found after playback started go.
+    pub give_subtitles: SubtitleSink,
 }
 
 /// Tauri-managed owner of the current streams and the checks that test them.
@@ -57,7 +68,7 @@ impl SourceManager {
     /// Starts the opening of a new video and cancels the one before it, if any.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn begin(&self) -> Arc<CheckGate> {
-        let gate = Arc::new(CheckGate::default());
+        let gate = Arc::new(CheckGate::new(Grace::default()));
         let previous = self
             .current
             .lock()
@@ -67,6 +78,12 @@ impl SourceManager {
             previous.cancel();
         }
         gate
+    }
+
+    /// Opens an empty list of streams for `item`; returns its generation number.
+    pub fn open(&self, item: PlaybackItem) -> u64 {
+        self.session
+            .set(ActiveSources::new(item, Vec::new(), Vec::new()))
     }
 
     /// The video was closed: stops waiting, stops checking and forgets the streams.
@@ -97,102 +114,45 @@ impl SourceManager {
         }
     }
 
-    /// Remembers the streams and checks all of them in the background.
+    /// Follows the provider's search and checks its streams in the background.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn run_checks(&self, app: AppHandle, gate: &Arc<CheckGate>, sources: ActiveSources) {
-        let links: Vec<(usize, PlayableLink)> = sources.links.iter().cloned().enumerate().collect();
-        let generation = self.session.set(sources);
-        emit(&app, CheckUpdate::Progress(gate.set_total(links.len())));
-        let job = BackgroundChecks {
+    pub fn discover(&self, app: AppHandle, request: SearchRequest) {
+        let SearchRequest {
+            gate,
+            generation,
+            search,
+            give_subtitles,
+        } = request;
+        emit(&app, CheckUpdate::Progress(gate.progress()));
+        let job = Arc::new(Discovery {
             checker: self.checker.clone(),
             session: Arc::clone(&self.session),
-            gate: Arc::clone(gate),
+            gate: Arc::clone(&gate),
             generation,
+            queue: Arc::new(CheckQueue::default()),
             started: Instant::now(),
-            tell: Box::new(move |update| emit(&app, update)),
-        };
-        let spawned = std::thread::Builder::new()
-            .name("source-checks".to_owned())
-            .spawn(move || job.run(&links));
-        if let Err(error) = spawned {
-            tracing::warn!(%error, "cannot start the stream checks; playing the first stream");
-            gate.finish();
+            tell: Arc::new(move |update| emit(&app, update)),
+            give_subtitles,
+        });
+        let searching = Arc::clone(&job);
+        let searched = spawn("source-search", move || searching.run_search(search));
+        let checking = Arc::clone(&job);
+        let checks = spawn("source-checks", move || checking.run_checks());
+        if !(searched && checks) {
+            job.queue.stop();
+            gate.discovery_ended(Some("Cannot start looking for streams.".to_owned()));
         }
     }
 }
 
-fn to_health(found: &LinkHealth) -> SourceHealth {
-    if found.is_working() {
-        SourceHealth::Working
-    } else {
-        SourceHealth::Broken
+fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
+    let spawned = std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(work);
+    if let Err(error) = &spawned {
+        tracing::error!(%error, name, "cannot start a thread for the streams");
     }
-}
-
-/// Everything the check thread needs to test the streams of one title.
-struct BackgroundChecks {
-    checker: StreamChecker,
-    session: Arc<SourceSession>,
-    gate: Arc<CheckGate>,
-    generation: u64,
-    started: Instant,
-    tell: Box<dyn Fn(CheckUpdate) + Send + Sync>,
-}
-
-impl BackgroundChecks {
-    fn wanted(&self) -> bool {
-        self.session.is_current(self.generation) && !self.gate.is_cancelled()
-    }
-
-    fn run(&self, links: &[(usize, PlayableLink)]) {
-        self.checker
-            .check_all(links, &|| self.wanted(), &|index, found| {
-                self.record(index, &found)
-            });
-        let progress = self.gate.progress();
-        if !self.wanted() {
-            tracing::info!(
-                answered = progress.checked,
-                of = links.len(),
-                elapsed_ms = self.started.elapsed().as_millis(),
-                "stream checks cancelled: the video was closed"
-            );
-            return;
-        }
-        self.gate.finish();
-        (self.tell)(CheckUpdate::SourcesChanged);
-        tracing::info!(
-            checked = progress.checked,
-            working = progress.working,
-            elapsed_ms = self.started.elapsed().as_millis(),
-            "stream checks finished"
-        );
-    }
-
-    /// Stores one answer; `false` tells the checker nobody wants more answers.
-    fn record(&self, index: usize, found: &LinkHealth) -> bool {
-        if let LinkHealth::Broken(reason) = found {
-            tracing::debug!(index, %reason, "stream is not playable");
-        }
-        let progress = self.gate.record(index, found.is_working());
-        (self.tell)(CheckUpdate::Progress(progress));
-        if !self
-            .session
-            .set_health(self.generation, index, to_health(found))
-        {
-            return false;
-        }
-        if let LinkHealth::Working {
-            size_bytes: Some(size),
-        } = found
-        {
-            self.session.set_size(self.generation, index, *size);
-        }
-        if progress.checked.is_multiple_of(NOTIFY_EVERY) {
-            (self.tell)(CheckUpdate::SourcesChanged);
-        }
-        true
-    }
+    spawned.is_ok()
 }
 
 fn emit(app: &AppHandle, update: CheckUpdate) {
@@ -201,7 +161,7 @@ fn emit(app: &AppHandle, update: CheckUpdate) {
         CheckUpdate::SourcesChanged => app.emit(SOURCES_CHANGED_EVENT, ()),
     };
     if let Err(error) = sent {
-        tracing::warn!(%error, "could not tell the UI about the stream checks");
+        tracing::warn!(%error, "could not tell the UI about the streams");
     }
 }
 

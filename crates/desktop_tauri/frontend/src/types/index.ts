@@ -164,13 +164,15 @@ export interface StartupStatus {
   failures: StartupFailure[];
 }
 
-/** How far the check of a video's streams has come; `total` is 0 while the streams are still being looked up. */
+/** How far the search and check of a video's streams have come; `total` grows while streams are found. */
 export interface CheckProgress {
   checked: number;
   total: number;
   working: number;
   /** The viewer asked to start without waiting for the rest. */
   skipping: boolean;
+  /** The provider is still looking for streams. */
+  discovering: boolean;
 }
 
 /** A debug log file. */

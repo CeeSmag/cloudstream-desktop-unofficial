@@ -30,13 +30,22 @@ pub(crate) struct EventWorker {
 impl EventWorker {
     pub(crate) fn run(self) {
         let mut ticks: u32 = 0;
+        let mut loaded = false;
         while !self.stop_flag.load(Ordering::Relaxed) {
             let event = self.handle.wait_event(EVENT_WAIT);
             self.tracker.apply(event);
+            loaded = match event {
+                MpvEvent::FileLoaded => true,
+                MpvEvent::StartFile | MpvEvent::EndFile(_) => false,
+                _ => loaded,
+            };
             if event == MpvEvent::FileLoaded {
                 self.attach_subtitles();
                 self.refresh_tracks();
                 self.apply_audio_preference();
+            } else if loaded {
+                // Subtitles the provider found after the stream started.
+                self.attach_subtitles();
             }
             if event == MpvEvent::Shutdown {
                 break;
