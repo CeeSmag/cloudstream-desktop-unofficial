@@ -23,6 +23,9 @@ import { formatTime } from '../utils/playerTime';
 import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
 import { numberDuplicateLabels } from '../utils/trackLabels';
 import { sourceRow } from '../utils/sourceRows';
+import { useWindowFullscreen } from '../hooks/useWindowFullscreen';
+import { useStallWatch } from '../hooks/useStallWatch';
+import { logEvent } from '../utils/logger';
 
 interface PlayerOverlayProps {
   title: string;
@@ -66,18 +69,25 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 }) => {
   const [controlsVisible, setControlsVisible] = React.useState(true);
   const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const { fullscreen: isFullscreen, toggle: toggleFullscreen } = useWindowFullscreen();
   const [volume, setVolume] = React.useState(loadVolume);
   const [isMuted, setIsMuted] = React.useState(false);
   const hideTimerRef = React.useRef<number | null>(null);
 
   const isPlaying = status.state === 'Playing';
+  useStallWatch(() => `state=${status.state}, fullscreen=${isFullscreen}, controls=${controlsVisible}`);
+
+  const controlsShownRef = React.useRef(true);
 
   const resetHideTimer = React.useCallback(() => {
+    if (!controlsShownRef.current) logEvent('debug', 'controls shown again: the page received mouse movement');
+    controlsShownRef.current = true;
     setControlsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     if (isPlaying) {
       hideTimerRef.current = window.setTimeout(() => {
+        controlsShownRef.current = false;
+        logEvent('debug', 'controls hidden after a few seconds without mouse movement');
         setControlsVisible(false);
         setTrackMenu('none');
       }, CONTROLS_HIDE_DELAY_MS);
@@ -103,16 +113,6 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     setVolume(next);
     saveVolume(next);
     if (next > 0) setIsMuted(false);
-  };
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    }
   };
 
   const selectTrack = (kind: 'audio' | 'subtitle') => (id: number | null) => {
@@ -249,7 +249,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
                   aria-label="Volume"
                 />
               </div>
-              <button onClick={toggleFullscreen} className={ROUND_BUTTON} title="Toggle Fullscreen">
+              <button onClick={() => void toggleFullscreen()} className={ROUND_BUTTON} title="Toggle Fullscreen">
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
             </div>

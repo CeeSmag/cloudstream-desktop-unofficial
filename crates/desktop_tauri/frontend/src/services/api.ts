@@ -98,6 +98,9 @@ export const api = {
 
   switchSource: (index: number) => invokeTauri<void>('switch_source', { index }),
 
+  /** Puts the application window into or out of native fullscreen. */
+  setWindowFullscreen: (fullscreen: boolean) => invokeTauri<void>('set_window_fullscreen', { fullscreen }),
+
   setVideoSurface: (width: number, height: number) =>
     invokeTauri<void>('set_video_surface', { width, height }),
 
