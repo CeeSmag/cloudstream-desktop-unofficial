@@ -52,6 +52,13 @@ pub trait VideoPlayer: Send + Sync {
         let _ = language;
     }
 
+    /// Sets the subtitle languages, in order of preference, whose subtitles are turned on by
+    /// themselves once a stream has one; an empty list turns that off. A subtitle the viewer picks
+    /// by hand is never overridden.
+    fn set_preferred_subtitles(&self, languages: &[Language]) {
+        let _ = languages;
+    }
+
     /// Whether pictures are delivered through [`VideoPlayer::latest_frame`] (embedded in the
     /// app window) instead of a separate player window.
     fn is_embedded(&self) -> bool {

@@ -144,6 +144,12 @@ impl PlaybackService {
         self.player.set_preferred_audio(language);
     }
 
+    /// Sets the subtitle languages whose subtitles turn on by themselves; empty turns that off.
+    #[tracing::instrument(level = "debug", skip_all, fields(count = languages.len()))]
+    pub fn set_preferred_subtitles(&self, languages: &[player_api::Language]) {
+        self.player.set_preferred_subtitles(languages);
+    }
+
     /// Stops the current stream.
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn stop(&self) -> Result<(), ServiceError> {

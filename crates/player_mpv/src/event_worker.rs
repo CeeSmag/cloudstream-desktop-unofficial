@@ -9,6 +9,7 @@ use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
 use crate::pending_subtitles::{take_when_loaded, PendingSubtitles};
 use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
+use crate::preferred_subtitles::{preferred_subtitle_choice, SubtitleChoice, SubtitlePreference};
 use crate::status_tracker::StatusTracker;
 use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
 use crate::track_reader::{has_video_track, read_tracks};
@@ -27,6 +28,7 @@ pub(crate) struct EventWorker {
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stream_generation: StreamGeneration,
     pub(crate) audio_preference: Arc<AudioPreference>,
+    pub(crate) subtitle_preference: Arc<SubtitlePreference>,
     /// How many subtitle tracks the track list showed the last time it was logged.
     pub(crate) reported_subtitle_tracks: AtomicUsize,
 }
@@ -121,10 +123,42 @@ impl EventWorker {
     /// Re-reads the track list (subtitles added after loading show up here too).
     pub(crate) fn refresh_tracks(&self) {
         let get = |name: &str| self.handle.get_string(name);
-        let tracks = read_tracks(get);
+        let mut tracks = read_tracks(get);
+        if self.apply_subtitle_preference(&tracks) {
+            tracks = read_tracks(get);
+        }
         self.report_subtitle_tracks(&tracks);
         self.tracker.set_tracks(tracks);
         self.tracker.set_has_video(has_video_track(get));
+    }
+
+    /// Shows the subtitle in the viewer's preferred language, once per stream, as soon as one is
+    /// there and unless the viewer has chosen by hand. Returns whether a track was switched.
+    fn apply_subtitle_preference(&self, tracks: &[MediaTrack]) -> bool {
+        let generation = self.stream_generation.load(Ordering::SeqCst);
+        if !self.subtitle_preference.may_choose(generation) {
+            return false;
+        }
+        match preferred_subtitle_choice(tracks, &self.subtitle_preference.languages()) {
+            SubtitleChoice::NotYet => false,
+            SubtitleChoice::Keep => {
+                self.subtitle_preference.mark_chosen(generation);
+                false
+            }
+            SubtitleChoice::Switch { id } => {
+                self.subtitle_preference.mark_chosen(generation);
+                match self.handle.set_property("sid", &id.to_string()) {
+                    Ok(()) => {
+                        tracing::info!(id, "showing the subtitle in the preferred language");
+                        true
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, id, "could not show the subtitle in the preferred language");
+                        false
+                    }
+                }
+            }
+        }
     }
 
     /// Logs the subtitle tracks the player lists whenever their number changes, so a language

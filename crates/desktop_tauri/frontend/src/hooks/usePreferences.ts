@@ -40,5 +40,8 @@ export function usePreferences(report: (error: unknown) => void) {
   /** Saves the languages whose subtitles get a flag in the player (at most three). */
   const chooseSubtitles = (codes: string[]) => save(() => api.setPreferredSubtitles(codes));
 
-  return { preferences, busy, saved, chooseAudio, chooseSubtitles };
+  /** Switches the automatic turning on of a preferred-language subtitle on or off. */
+  const chooseAutoSubtitles = (enabled: boolean) => save(() => api.setAutoSubtitles(enabled));
+
+  return { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles };
 }

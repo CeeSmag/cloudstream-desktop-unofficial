@@ -27,6 +27,8 @@ pub struct PreferencesDto {
     pub preferred_audio: Option<String>,
     /// Codes of the languages whose subtitles get a flag in the player, in the chosen order.
     pub preferred_subtitles: Vec<String>,
+    /// Whether the subtitle in the first of those languages the video has turns on by itself.
+    pub auto_subtitles: bool,
     /// Every language that can be chosen, English first.
     pub languages: Vec<LanguageDto>,
 }
@@ -41,6 +43,21 @@ pub fn apply_saved(settings: &SettingsService, playback: Option<&Arc<PlaybackSer
         }
         Err(error) => tracing::warn!(%error, "cannot read the preferred audio language"),
     }
+    if let Some(playback) = playback {
+        playback.set_preferred_subtitles(&subtitle_languages_to_turn_on(settings));
+    }
+}
+
+/// The languages whose subtitles turn on by themselves: the preferred ones, or none when the
+/// viewer switched that off.
+fn subtitle_languages_to_turn_on(settings: &SettingsService) -> Vec<player_api::Language> {
+    if !settings.auto_select_subtitles().unwrap_or(true) {
+        return Vec::new();
+    }
+    settings.preferred_subtitles().unwrap_or_else(|error| {
+        tracing::warn!(%error, "cannot read the preferred subtitle languages");
+        Vec::new()
+    })
 }
 
 /// The current preferences and the languages that can be chosen.
@@ -97,7 +114,30 @@ pub async fn set_preferred_subtitles(
         .settings
         .set_preferred_subtitles(&chosen)
         .map_err(|error| error.to_string())?;
+    apply_subtitle_choice(&services);
     describe(&services.settings)
+}
+
+/// Switches the automatic subtitle choice on or off.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(enabled = ?enabled), err)]
+pub async fn set_auto_subtitles(
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<PreferencesDto, String> {
+    let services = state.read();
+    services
+        .settings
+        .set_auto_select_subtitles(enabled)
+        .map_err(|error| error.to_string())?;
+    apply_subtitle_choice(&services);
+    describe(&services.settings)
+}
+
+fn apply_subtitle_choice(services: &ui_app::UiServices) {
+    if let Some(playback) = &services.playback {
+        playback.set_preferred_subtitles(&subtitle_languages_to_turn_on(&services.settings));
+    }
 }
 
 fn describe(settings: &SettingsService) -> Result<PreferencesDto, String> {
@@ -108,6 +148,7 @@ fn describe(settings: &SettingsService) -> Result<PreferencesDto, String> {
         .preferred_subtitles()
         .map_err(|error| error.to_string())?;
     Ok(PreferencesDto {
+        auto_subtitles: settings.auto_select_subtitles().unwrap_or(true),
         preferred_audio: preferred.map(|language| language.code().to_owned()),
         preferred_subtitles: subtitles
             .iter()

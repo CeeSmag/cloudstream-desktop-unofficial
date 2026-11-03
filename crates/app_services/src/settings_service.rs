@@ -9,6 +9,9 @@ const PREFERRED_AUDIO_KEY: &str = "preferred_audio";
 /// Stored when the viewer wants the stream's own default audio track.
 const NO_AUDIO_PREFERENCE: &str = "none";
 const PREFERRED_SUBTITLES_KEY: &str = "preferred_subtitles";
+const AUTO_SUBTITLES_KEY: &str = "auto_subtitles";
+const ENABLED: &str = "yes";
+const DISABLED: &str = "no";
 /// Most subtitle languages the viewer can prefer; the player shows one flag for each.
 pub const MAX_PREFERRED_SUBTITLES: usize = 3;
 const LIST_SEPARATOR: char = '\n';
@@ -91,6 +94,19 @@ impl SettingsService {
         Ok(())
     }
 
+    /// Whether the subtitle in a preferred language turns on by itself when a video has one.
+    /// On until the viewer switches it off.
+    pub fn auto_select_subtitles(&self) -> Result<bool, ServiceError> {
+        Ok(self.store.get(AUTO_SUBTITLES_KEY)?.as_deref() != Some(DISABLED))
+    }
+
+    /// Remembers whether a preferred-language subtitle turns on by itself.
+    pub fn set_auto_select_subtitles(&self, enabled: bool) -> Result<(), ServiceError> {
+        self.store
+            .set(AUTO_SUBTITLES_KEY, if enabled { ENABLED } else { DISABLED })?;
+        Ok(())
+    }
+
     /// Switches a provider on or off.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, enabled = ?enabled), err)]
     pub fn set_provider_enabled(&self, provider: &str, enabled: bool) -> Result<(), ServiceError> {
@@ -157,6 +173,16 @@ mod tests {
         assert_eq!(names, ["Spanish", "French", "German"], "three at most");
         service.set_preferred_subtitles(&[]).expect("clear");
         assert!(service.preferred_subtitles().expect("read").is_empty());
+    }
+
+    #[test]
+    fn subtitles_turn_on_by_themselves_until_the_viewer_switches_that_off() {
+        let service = service();
+        assert!(service.auto_select_subtitles().expect("read"));
+        service.set_auto_select_subtitles(false).expect("set");
+        assert!(!service.auto_select_subtitles().expect("read"));
+        service.set_auto_select_subtitles(true).expect("set");
+        assert!(service.auto_select_subtitles().expect("read"));
     }
 
     #[test]
