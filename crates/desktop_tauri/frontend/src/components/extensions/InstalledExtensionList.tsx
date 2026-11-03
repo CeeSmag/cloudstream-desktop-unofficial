@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react';
 import { InstalledExtension } from '../../types';
+import { IconTile } from './IconTile';
 
 interface InstalledExtensionListProps {
   extensions: InstalledExtension[];
@@ -29,6 +30,7 @@ export const InstalledExtensionList: React.FC<InstalledExtensionListProps> = ({
         const working = busy === `uninstall:${name}` || busy === `trust:${name}`;
         return (
           <div key={name} className="flex items-center gap-3 px-3.5 py-2.5 bg-surface-elevated/50">
+            <IconTile url={extension.icon_url} name={name} size="sm" />
             <div className="min-w-0 flex-1">
               <h4 className="text-sm font-medium text-white break-words">
                 {name} <span className="text-xs font-normal text-zinc-500">v{extension.version}</span>

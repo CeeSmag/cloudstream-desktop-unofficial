@@ -17,4 +17,7 @@ pub struct InstalledExtension {
     /// Whether the user trusts the extension to run with full library access.
     #[serde(default)]
     pub trusted: bool,
+    /// Address of the extension's icon, when the repository listed one.
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
