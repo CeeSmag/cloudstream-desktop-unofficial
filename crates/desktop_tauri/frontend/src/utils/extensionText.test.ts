@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { RepositoryEntry, RepositoryPlugin } from '../types';
-import { filterRepositories, formatFileSize, pluginAction } from './extensionText';
+import {
+  filterPlugins,
+  filterRepositories,
+  formatFileSize,
+  pluginAction,
+  repositoryHost,
+  summarizePlugins,
+} from './extensionText';
 
 const repository = (name: string, url: string): RepositoryEntry => ({ name, url, addedAtMs: 0 });
 
@@ -47,5 +54,48 @@ describe('pluginAction', () => {
     expect(pluginAction(plugin(1, null))).toBe('install');
     expect(pluginAction(plugin(3, 2))).toBe('update');
     expect(pluginAction(plugin(2, 2))).toBe('installed');
+  });
+});
+
+describe('repositoryHost', () => {
+  it('shows only the host of an address', () => {
+    expect(repositoryHost('https://raw.githubusercontent.com/a/b/repo.json')).toBe('raw.githubusercontent.com');
+  });
+
+  it('keeps text that is not an address as it is', () => {
+    expect(repositoryHost('not an address')).toBe('not an address');
+  });
+});
+
+describe('filterPlugins and summarizePlugins', () => {
+  const named = (name: string, version: number, installed: number | null, extra: Partial<RepositoryPlugin> = {}) => ({
+    ...plugin(version, installed),
+    internal_name: name,
+    name,
+    ...extra,
+  });
+  const all = [
+    named('Alpha', 1, null, { description: 'Movies and series', authors: ['Dana'], language: 'en' }),
+    named('Beta', 2, 2),
+    named('Gamma', 3, 2),
+  ];
+
+  it('narrows by view', () => {
+    expect(filterPlugins(all, '', 'available').map((p) => p.name)).toEqual(['Alpha']);
+    expect(filterPlugins(all, '', 'installed').map((p) => p.name)).toEqual(['Beta', 'Gamma']);
+    expect(filterPlugins(all, '', 'updates').map((p) => p.name)).toEqual(['Gamma']);
+    expect(filterPlugins(all, '', 'all')).toHaveLength(3);
+  });
+
+  it('searches name, description, authors and language', () => {
+    expect(filterPlugins(all, 'series', 'all').map((p) => p.name)).toEqual(['Alpha']);
+    expect(filterPlugins(all, 'dana', 'all')).toHaveLength(1);
+    expect(filterPlugins(all, 'GAMMA', 'all')).toHaveLength(1);
+    expect(filterPlugins(all, 'zzz', 'all')).toHaveLength(0);
+  });
+
+  it('summarises how many extensions are installed and have updates', () => {
+    expect(summarizePlugins(all)).toBe('3 extensions · 2 installed · 1 update');
+    expect(summarizePlugins([all[0]])).toBe('1 extension · 0 installed');
   });
 });
