@@ -18,6 +18,7 @@ mod source_manager;
 mod source_session;
 mod startup;
 mod video_commands;
+mod window_commands;
 
 use app_shell::{build_services, start_logging, AppPaths, DebugLogs, ServiceOptions};
 use app_state::AppState;
@@ -75,6 +76,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             extension_commands::uninstall_extension,
             extension_commands::set_extension_trusted,
             video_commands::set_video_surface,
+            window_commands::set_window_fullscreen,
             video_commands::get_video_frame,
         ])
 }
