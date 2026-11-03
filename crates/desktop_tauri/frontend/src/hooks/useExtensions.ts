@@ -24,6 +24,7 @@ export function useExtensions(report: (error: unknown) => void) {
 
   React.useEffect(() => {
     void refreshInstalled();
+    void api.prepareExtensionCatalog().catch(() => undefined);
     void refreshRepositories().then(() =>
       api
         .refreshRepositoryIcons()

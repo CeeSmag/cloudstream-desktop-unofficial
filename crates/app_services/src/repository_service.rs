@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use core_model::{DiscoveredRepository, PluginListing, RepositoryEntry};
 use extension_repo::{HttpFetcher, RepositoryClient};
 use storage::RepositoryStore;
 
+use crate::plugin_index::{IndexedRepository, PluginHit, PluginIndex};
 use crate::{Clock, ServiceError};
 
 /// How many repositories are asked for their icon at the same time.
@@ -15,6 +16,10 @@ pub struct RepositoryService {
     client: Arc<RepositoryClient<Arc<dyn HttpFetcher>>>,
     store: RepositoryStore,
     clock: Arc<dyn Clock>,
+    /// Every extension of every repository, once it has been downloaded.
+    index: Arc<Mutex<Option<Arc<PluginIndex>>>>,
+    /// Held while the index is being built, so two searches do not both download everything.
+    building: Arc<Mutex<()>>,
 }
 
 impl RepositoryService {
@@ -28,6 +33,8 @@ impl RepositoryService {
             client: Arc::new(RepositoryClient::new(fetcher)),
             store,
             clock,
+            index: Arc::default(),
+            building: Arc::default(),
         }
     }
 
@@ -46,6 +53,7 @@ impl RepositoryService {
                 .filter(|icon| !icon.trim().is_empty()),
         };
         self.store.add(&entry)?;
+        self.forget_index();
         // The manifest was just read, so a repository without an icon is settled too.
         self.remember_icon(&entry.url, &manifest);
         tracing::info!(url, name = %entry.name, "repository added");
@@ -84,6 +92,9 @@ impl RepositoryService {
             })?;
             added += 1;
         }
+        if added > 0 {
+            self.forget_index();
+        }
         tracing::info!(
             offered = found.len(),
             added,
@@ -95,7 +106,9 @@ impl RepositoryService {
     /// Forgets a repository (installed plugins stay).
     #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     pub fn remove(&self, url: &str) -> Result<(), ServiceError> {
-        Ok(self.store.remove(url)?)
+        self.store.remove(url)?;
+        self.forget_index();
+        Ok(())
     }
 
     /// Lists the saved repositories.
@@ -140,6 +153,90 @@ impl RepositoryService {
         Ok(looked_at.load(std::sync::atomic::Ordering::SeqCst))
     }
 
+    /// Downloads the extensions of every saved repository (a few repositories at a time) so they
+    /// can be listed. Does nothing when that was already done. Returns how many extensions
+    /// there are. A repository that cannot be reached is left out until the next time.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn prepare_plugin_catalog(&self) -> Result<usize, ServiceError> {
+        Ok(self.plugin_index()?.plugin_count())
+    }
+
+    /// Every extension of every repository, each with the repository that offers it. The first
+    /// call downloads them all; later ones answer at once.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn all_plugins(&self) -> Result<Vec<PluginHit>, ServiceError> {
+        Ok(self.plugin_index()?.all())
+    }
+
+    fn plugin_index(&self) -> Result<Arc<PluginIndex>, ServiceError> {
+        let _building = self.building.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(index) = self.current_index() {
+            return Ok(index);
+        }
+        let started = std::time::Instant::now();
+        let index = Arc::new(PluginIndex::new(self.download_everything()?));
+        tracing::info!(
+            plugins = index.plugin_count(),
+            elapsed_ms = started.elapsed().as_millis(),
+            "extension list built"
+        );
+        *self.index.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&index));
+        Ok(index)
+    }
+
+    fn current_index(&self) -> Option<Arc<PluginIndex>> {
+        self.index
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn forget_index(&self) {
+        *self.index.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
+    fn download_everything(&self) -> Result<Vec<IndexedRepository>, ServiceError> {
+        let repositories = self.store.list()?;
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let found: Mutex<Vec<(usize, IndexedRepository)>> = Mutex::new(Vec::new());
+        std::thread::scope(|scope| {
+            for _ in 0..ICON_WORKERS.min(repositories.len()) {
+                scope.spawn(|| loop {
+                    let position = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let Some(entry) = repositories.get(position) else {
+                        break;
+                    };
+                    match self.client.fetch_manifest(&entry.url) {
+                        Ok(manifest) => {
+                            self.remember_icon(&entry.url, &manifest);
+                            let indexed = IndexedRepository {
+                                url: entry.url.clone(),
+                                name: entry.name.clone(),
+                                icon_url: manifest
+                                    .icon_url
+                                    .clone()
+                                    .filter(|icon| !icon.trim().is_empty())
+                                    .or_else(|| entry.icon_url.clone()),
+                                plugins: self.client.fetch_plugins(&manifest),
+                            };
+                            found
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .push((position, indexed));
+                        }
+                        Err(error) => tracing::debug!(url = %entry.url, %error, "repository left out of the extension list"),
+                    }
+                });
+            }
+        });
+        let mut found = found.into_inner().unwrap_or_else(PoisonError::into_inner);
+        found.sort_by_key(|(position, _)| *position);
+        Ok(found
+            .into_iter()
+            .map(|(_, repository)| repository)
+            .collect())
+    }
+
     fn remember_icon(&self, url: &str, manifest: &extension_repo::RepositoryManifest) {
         let icon = manifest
             .icon_url
@@ -152,138 +249,5 @@ impl RepositoryService {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use extension_repo::RepoError;
-    use storage::Database;
-
-    use super::*;
-    use crate::test_support::FixedClock;
-
-    struct MapFetcher(HashMap<String, Vec<u8>>);
-
-    impl HttpFetcher for MapFetcher {
-        fn get_bytes(&self, url: &str) -> Result<Vec<u8>, RepoError> {
-            self.0.get(url).cloned().ok_or(RepoError::Download {
-                url: url.into(),
-                reason: "404".into(),
-            })
-        }
-    }
-
-    fn service() -> RepositoryService {
-        let files = HashMap::from([
-            (
-                "https://r/repo.json".to_owned(),
-                br#"{"name":"R","pluginLists":["https://r/plugins.json"]}"#.to_vec(),
-            ),
-            (
-                "https://r/plugins.json".to_owned(),
-                br#"[{"internalName":"A","url":"https://r/A.cs3"}]"#.to_vec(),
-            ),
-        ]);
-        let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
-        RepositoryService::new(
-            Arc::new(MapFetcher(files)),
-            store,
-            Arc::new(FixedClock::at(42)),
-        )
-    }
-
-    #[test]
-    fn add_validates_stores_and_stamps_the_time() {
-        let service = service();
-        let entry = service.add("  https://r/repo.json ").expect("adds");
-        assert_eq!((entry.name.as_str(), entry.added_at_ms), ("R", 42));
-        assert_eq!(service.list().expect("list").len(), 1);
-    }
-
-    #[test]
-    fn add_rejects_an_unreachable_repository_and_stores_nothing() {
-        let service = service();
-        assert!(service.add("https://nope/repo.json").is_err());
-        assert!(service.list().expect("list").is_empty());
-    }
-
-    fn discovered(name: &str, url: &str) -> DiscoveredRepository {
-        DiscoveredRepository {
-            name: name.into(),
-            url: url.into(),
-            icon_url: None,
-        }
-    }
-
-    #[test]
-    fn import_discovered_adds_new_repositories_without_downloading_anything() {
-        let service = service();
-        service.add("https://r/repo.json").expect("adds");
-        let added = service
-            .import_discovered(&[
-                discovered("Known", "https://r/repo.json"),
-                discovered("New", "https://n/repo.json"),
-                discovered("", "https://unnamed/repo.json"),
-                discovered("No url", "  "),
-                discovered("Again", "https://n/repo.json"),
-            ])
-            .expect("imports");
-        assert_eq!(added, 2);
-        let names: Vec<String> = service
-            .list()
-            .expect("list")
-            .into_iter()
-            .map(|e| e.name)
-            .collect();
-        assert_eq!(names, ["R", "New", "https://unnamed/repo.json"]);
-    }
-
-    #[test]
-    fn the_icon_of_a_repository_is_saved_when_it_is_added_and_looked_up_for_old_ones() {
-        let files = HashMap::from([
-            (
-                "https://i/repo.json".to_owned(),
-                br#"{"name":"I","iconUrl":"https://i/icon.png","pluginLists":[]}"#.to_vec(),
-            ),
-            (
-                "https://n/repo.json".to_owned(),
-                br#"{"name":"N","pluginLists":[]}"#.to_vec(),
-            ),
-        ]);
-        let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
-        let service = RepositoryService::new(
-            Arc::new(MapFetcher(files)),
-            store,
-            Arc::new(FixedClock::at(1)),
-        );
-        let added = service.add("https://i/repo.json").expect("adds");
-        assert_eq!(added.icon_url.as_deref(), Some("https://i/icon.png"));
-
-        // Repositories found by an extension have no icon looked up yet.
-        service
-            .import_discovered(&[
-                discovered("N", "https://n/repo.json"),
-                discovered("Gone", "https://gone/repo.json"),
-            ])
-            .expect("imports");
-        let looked_at = service.refresh_missing_icons().expect("refreshes");
-        assert_eq!(looked_at, 1, "the unreachable one is left for next time");
-        let icons: Vec<Option<String>> = service
-            .list()
-            .expect("list")
-            .into_iter()
-            .map(|e| e.icon_url)
-            .collect();
-        assert_eq!(icons, [Some("https://i/icon.png".to_owned()), None, None]);
-        assert_eq!(
-            service.refresh_missing_icons().expect("again"),
-            0,
-            "nothing left to look up but the unreachable one"
-        );
-    }
-
-    #[test]
-    fn plugins_lists_what_the_repository_offers() {
-        let plugins = service().plugins("https://r/repo.json").expect("lists");
-        assert_eq!(plugins[0].internal_name, "A");
-    }
-}
+#[path = "repository_service_tests.rs"]
+mod tests;
