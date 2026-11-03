@@ -1,0 +1,41 @@
+{
+ "name": "Spider-Man: Brand New Day",
+ "url": "{\"id\":\"tt22084616\",\"type\":\"movie\"}",
+ "apiName": "CineStream",
+ "type": "Movie",
+ "dataUrl": "{\"title\":\"Spider-Man: Brand New Day\",\"id\":\"tt22084616\",\"tmdbId\":null,\"tvtype\":\"movie\",\"year\":\"2026\",\"season\":null,\"episode\":null,\"firstAired\":null,\"isAnime\":false,\"isBollywood\":false,\"isAsian\":false,\"isCartoon\":false,\"imdb_id\":null,\"imdbSeason\":null,\"imdbEpisode\":null,\"isKitsu\":false,\"anilistId\":null,\"malId\":null,\"kitsuId\":null}",
+ "posterUrl": "https://host3.example.test/file",
+ "year": 2026,
+ "plot": "[𝟭 𝗻𝗼𝗺𝗶𝗻𝗮𝘁𝗶𝗼𝗻 𝘁𝗼𝘁𝗮𝗹] A forgotten Peter Parker lives alone as a full-time Spider-Man until mounting pressure triggers a dangerous change and a powerful new enemy emerges.",
+ "score": {
+  "data": 800000000
+ },
+ "tags": [
+  "Action",
+  "Adventure"
+ ],
+ "duration": null,
+ "trailers": [],
+ "recommendations": null,
+ "actors": [
+  {
+   "actor": {
+    "name": "Tom Holland",
+    "image": "https://host4.example.test/file"
+   },
+   "role": null,
+   "roleString": "Peter Parker / Spider-Man",
+   "voiceActor": null
+  }
+ ],
+ "comingSoon": false,
+ "syncData": {
+  "": "{\"Imdb\":\"tt22084616\"}"
+ },
+ "posterHeaders": null,
+ "backgroundPosterUrl": "https://host5.example.test/file",
+ "logoUrl": "https://host6.example.test/file",
+ "contentRating": "IMDB",
+ "uniqueUrl": "{\"id\":\"tt22084616\",\"type\":\"movie\"}",
+ "rating": 8000
+}

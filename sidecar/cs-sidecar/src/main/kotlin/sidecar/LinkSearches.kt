@@ -28,7 +28,21 @@ data class LinkSearchUpdate(
 )
 
 /** How long a link search may run at most; hosts that have not answered by then are left out. */
-private const val SEARCH_DEADLINE_SECONDS = 120L
+const val SEARCH_DEADLINE_SECONDS = 120L
+
+/** What a search needs from a provider: look for the streams of a title and report each as found. */
+fun interface LinkSource {
+    suspend fun loadLinks(
+        data: String,
+        onSubtitle: (SubtitleFile) -> Unit,
+        onLink: (ExtractorLink) -> Unit,
+    ): Boolean
+}
+
+/** The link source of a provider plugin. */
+fun MainAPI.asLinkSource() = LinkSource { data, onSubtitle, onLink ->
+    loadLinks(data, false, onSubtitle, onLink)
+}
 
 /** A finished search nobody collected is forgotten after this long. */
 private const val FORGET_AFTER_MS = 10 * 60 * 1000L
@@ -68,7 +82,12 @@ private class LinkSearch(val providerName: String) {
  * Link searches that report what they find while they run, so the app can start playing the first
  * good stream instead of waiting for every host. Providers query many hosts and some never answer.
  */
-class LinkSearches(private val findProvider: (String) -> MainAPI) {
+class LinkSearches(
+    private val findSource: (String) -> LinkSource,
+    private val deadlineSeconds: Long = SEARCH_DEADLINE_SECONDS,
+    /** Runs right after [poll] copied the links, so a test can make the search move on at that exact point. */
+    private val onSnapshotTaken: () -> Unit = {},
+) {
     private val searches = ConcurrentHashMap<String, LinkSearch>()
     private val workers = Executors.newCachedThreadPool { task ->
         Thread(task, "link-search").apply { isDaemon = true }
@@ -77,12 +96,12 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
     /** Starts a search and returns its id at once. */
     fun start(providerName: String, data: String): String {
         forgetOldSearches()
-        val provider = findProvider(providerName)
+        val source = findSource(providerName)
         val id = UUID.randomUUID().toString()
         val search = LinkSearch(providerName)
         searches[id] = search
         SidecarLog.info("$providerName: link search $id started")
-        workers.submit { run(search, provider, data) }
+        workers.submit { run(search, source, data) }
         return id
     }
 
@@ -97,6 +116,7 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
         val finished = search.done
         val links = synchronized(search.links) { search.links.drop(fromLink) }
         val subtitles = synchronized(search.subtitles) { search.subtitles.drop(fromSubtitle) }
+        onSnapshotTaken()
         val update = LinkSearchUpdate(
             links = links,
             subtitles = subtitles,
@@ -121,12 +141,11 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
         search.changed()
     }
 
-    private fun run(search: LinkSearch, provider: MainAPI, data: String) {
+    private fun run(search: LinkSearch, source: LinkSource, data: String) {
         val collecting = workers.submit<Boolean> {
             runBlocking {
-                provider.loadLinks(
+                source.loadLinks(
                     data,
-                    false,
                     { subtitle -> search.subtitles.add(subtitle); search.changed() },
                     { link -> search.links.add(link); search.changed() },
                 )
@@ -136,13 +155,13 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
         // Cancelled before the task was recorded.
         if (search.done) collecting.cancel(true)
         try {
-            search.success = collecting.get(SEARCH_DEADLINE_SECONDS, TimeUnit.SECONDS)
+            search.success = collecting.get(deadlineSeconds, TimeUnit.SECONDS)
         } catch (_: CancellationException) {
             SidecarLog.info("${search.providerName}: link search stopped before it finished")
         } catch (_: TimeoutException) {
             collecting.cancel(true)
             search.success = search.links.isNotEmpty()
-            SidecarLog.warn("${search.providerName}: stopped searching after ${SEARCH_DEADLINE_SECONDS}s; hosts that had not answered were left out")
+            SidecarLog.warn("${search.providerName}: stopped searching after ${deadlineSeconds}s; hosts that had not answered were left out")
         } catch (failure: ExecutionException) {
             search.failure = (failure.cause ?: failure).toString()
             SidecarLog.error("${search.providerName}: link search failed: ${search.failure}", failure.cause)

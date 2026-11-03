@@ -12,6 +12,8 @@ mod dto;
 mod extension_commands;
 mod failure_tally;
 mod library_commands;
+#[cfg(test)]
+mod opening_flow_tests;
 mod playback_commands;
 mod plugin_catalog_commands;
 mod preferences_commands;

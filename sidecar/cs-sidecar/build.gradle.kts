@@ -15,6 +15,13 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
+tasks.test {
+    useJUnitPlatform()
+    // The race tests run many threads for a few seconds; a hang must fail the build, not stall it.
+    systemProperty("junit.jupiter.execution.timeout.default", "60 s")
+    testLogging { events("failed", "skipped", "passed") }
+}
+
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) }
 }
@@ -41,6 +48,7 @@ kotlin.sourceSets.named("main") {
 tasks.named("compileKotlin") { dependsOn(copyVendorStubs) }
 
 dependencies {
+    testImplementation(kotlin("test"))
     implementation(project(":library"))
     implementation(project(":plugin-runtime"))
     implementation(project(":android-stubs"))

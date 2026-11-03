@@ -26,3 +26,6 @@ player_mpv = { path = "../player_mpv" }
 storage = { path = "../storage" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }
+
+[dev-dependencies]
+extension_runtime = { path = "../extension_runtime", features = ["test-support"] }

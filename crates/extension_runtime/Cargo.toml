@@ -15,5 +15,15 @@ tracing.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Test doubles (a scripted link search, a fake sidecar) used by this and other crates' tests.
+test-support = []
+
+[[bin]]
+name = "fake_sidecar"
+path = "src/bin/fake_sidecar.rs"
+required-features = ["test-support"]
+
 [dev-dependencies]
+extension_runtime = { path = ".", features = ["test-support"] }
 ureq = { version = "3.5.1", features = ["json"] }

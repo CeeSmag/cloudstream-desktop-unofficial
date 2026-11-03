@@ -1,0 +1,105 @@
+{
+ "engName": null,
+ "japName": null,
+ "name": "The Walking Dead: Dead City",
+ "url": "{\"id\":\"tt18546730\",\"type\":\"series\"}",
+ "apiName": "CineStream",
+ "type": "TvSeries",
+ "posterUrl": "https://host0.example.test/file",
+ "year": 2023,
+ "episodes": {
+  "Subbed": [
+   {
+    "data": "{\"title\":\"The Walking Dead: Dead City\",\"id\":\"tt18546730\",\"tmdbId\":null,\"tvtype\":\"series\",\"year\":\"2023–\",\"season\":1,\"episode\":1,\"firstAired\":\"2023-06-19T05:00:00.000Z\",\"isAnime\":false,\"isBollywood\":false,\"isAsian\":false,\"isCartoon\":false,\"imdb_id\":\"tt18546730\",\"imdbSeason\":1,\"imdbEpisode\":1,\"isKitsu\":false,\"anilistId\":null,\"malId\":null,\"kitsuId\":null}",
+    "name": "Old Acquaintances",
+    "season": 1,
+    "episode": 1,
+    "posterUrl": "https://host1.example.test/file",
+    "score": {
+     "data": 0
+    },
+    "description": "Maggie finds Negan, and they travel to Manhattan; a marshal named Armstrong follows Negan; meeting a quiet young girl named Ginny.",
+    "date": 1687150800000,
+    "runTime": null,
+    "rating": 0
+   },
+   {
+    "data": "{\"title\":\"The Walking Dead: Dead City\",\"id\":\"tt18546730\",\"tmdbId\":null,\"tvtype\":\"series\",\"year\":\"2023–\",\"season\":1,\"episode\":2,\"firstAired\":\"2023-06-26T05:00:00.000Z\",\"isAnime\":false,\"isBollywood\":false,\"isAsian\":false,\"isCartoon\":false,\"imdb_id\":\"tt18546730\",\"imdbSeason\":1,\"imdbEpisode\":2,\"isKitsu\":false,\"anilistId\":null,\"malId\":null,\"kitsuId\":null}",
+    "name": "Who's There?",
+    "season": 1,
+    "episode": 2,
+    "posterUrl": "https://host2.example.test/file",
+    "score": {
+     "data": 0
+    },
+    "description": "Maggie and Negan encounter native New Yorkers; Armstrong revisits a trauma; Ginny attempts to adapt to change.",
+    "date": 1687755600000,
+    "runTime": null,
+    "rating": 0
+   },
+   {
+    "data": "{\"title\":\"The Walking Dead: Dead City\",\"id\":\"tt18546730\",\"tmdbId\":null,\"tvtype\":\"series\",\"year\":\"2023–\",\"season\":1,\"episode\":3,\"firstAired\":\"2023-07-03T05:00:00.000Z\",\"isAnime\":false,\"isBollywood\":false,\"isAsian\":false,\"isCartoon\":false,\"imdb_id\":\"tt18546730\",\"imdbSeason\":1,\"imdbEpisode\":3,\"isKitsu\":false,\"anilistId\":null,\"malId\":null,\"kitsuId\":null}",
+    "name": "People Are a Resource",
+    "season": 1,
+    "episode": 3,
+    "posterUrl": "https://host3.example.test/file",
+    "score": {
+     "data": 0
+    },
+    "description": "Dark instincts reveal themselves as Maggie and Negan form a strategy; Armstrong is tested; Ginny embarks on a daring journey.",
+    "date": 1688360400000,
+    "runTime": null,
+    "rating": 0
+   }
+  ]
+ },
+ "showStatus": null,
+ "plot": "[𝟭 𝘄𝗶𝗻 & 𝟳 𝗻𝗼𝗺𝗶𝗻𝗮𝘁𝗶𝗼𝗻𝘀 𝘁𝗼𝘁𝗮𝗹] Maggie and Negan travel into a post-apocalyptic Manhattan long ago cut off from the mainland. The city is filled with the dead and denizens who have made New York City their own world.",
+ "tags": [
+  "Action",
+  "Adventure",
+  "Drama"
+ ],
+ "synonyms": null,
+ "score": {
+  "data": 700000000
+ },
+ "duration": null,
+ "trailers": [],
+ "recommendations": null,
+ "actors": [
+  {
+   "actor": {
+    "name": "Lauren Cohan",
+    "image": "https://host4.example.test/file"
+   },
+   "role": null,
+   "roleString": "Maggie Rhee",
+   "voiceActor": null
+  },
+  {
+   "actor": {
+    "name": "Jeffrey Dean Morgan",
+    "image": "https://host5.example.test/file"
+   },
+   "role": null,
+   "roleString": "Negan",
+   "voiceActor": null
+  }
+ ],
+ "comingSoon": false,
+ "syncData": {
+  "": "{\"Imdb\":\"tt18546730\"}"
+ },
+ "posterHeaders": null,
+ "nextAiring": null,
+ "seasonNames": null,
+ "backgroundPosterUrl": "https://host6.example.test/file",
+ "logoUrl": "https://host0.example.test/file",
+ "contentRating": "IMDB",
+ "uniqueUrl": "{\"id\":\"tt18546730\",\"type\":\"series\"}",
+ "latestEpisodes": {
+  "Subbed": 3
+ },
+ "rating": 7000
+}

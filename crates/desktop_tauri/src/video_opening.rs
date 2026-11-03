@@ -2,6 +2,8 @@
 //! search, waiting for the first good stream, and starting it.
 
 use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::Instant;
 
 use app_services::{LinkSearch, PlaybackItem, PlaybackService, StreamResolver};
 use tauri::State;
@@ -9,7 +11,7 @@ use tauri::State;
 use crate::app_state::AppState;
 use crate::check_gate::{CheckGate, StartDecision};
 use crate::dto::PlayRequestDto;
-use crate::source_manager::SourceManager;
+use crate::source_manager::{SearchRequest, SourceManager, Tell};
 
 /// Message of the error `play_media` returns when the video is closed before it could start.
 pub(crate) const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
@@ -24,16 +26,63 @@ pub(crate) fn item_from(request: PlayRequestDto) -> PlaybackItem {
     }
 }
 
-/// The services playing a video needs, taken out so the lock is not held while waiting.
-pub(crate) fn services_for_playing(
-    state: &State<'_, AppState>,
-) -> Result<(Arc<StreamResolver>, Arc<PlaybackService>), String> {
+/// The services opening a video needs, taken out so the lock is not held while waiting.
+pub(crate) struct OpeningServices {
+    pub(crate) streams: Arc<StreamResolver>,
+    pub(crate) playback: Arc<PlaybackService>,
+}
+
+pub(crate) fn services_for_playing(state: &State<'_, AppState>) -> Result<OpeningServices, String> {
     let services = state.read();
     let playback = services
         .playback
         .clone()
         .ok_or_else(|| "Playback service unavailable".to_string())?;
-    Ok((Arc::clone(&services.streams), playback))
+    Ok(OpeningServices {
+        streams: Arc::clone(&services.streams),
+        playback,
+    })
+}
+
+/// Opens a video: starts the provider's search, waits until the best working stream may play
+/// (never longer than the gate's limit), and plays it. Returns how that ended and the threads that
+/// go on searching and checking in the background; they end when the search and the checks are over
+/// or the video is closed.
+pub(crate) fn open_video(
+    sources: &SourceManager,
+    services: &OpeningServices,
+    item: PlaybackItem,
+    tell: Tell,
+) -> (Result<(), String>, Vec<JoinHandle<()>>) {
+    let gate = sources.begin();
+    let opened_at = Instant::now();
+    let (generation, search) = match start_search(sources, &gate, &services.streams, &item) {
+        Ok(started) => started,
+        Err(error) => return (Err(error), Vec::new()),
+    };
+    let late_subtitles = Arc::clone(&services.playback);
+    let background = sources.discover_with(
+        tell,
+        SearchRequest {
+            gate: Arc::clone(&gate),
+            generation,
+            search,
+            give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
+        },
+    );
+    let outcome = wait_for_start(&gate).and_then(|start| {
+        tracing::info!(
+            start,
+            elapsed_ms = opened_at.elapsed().as_millis(),
+            "starting playback"
+        );
+        start_stream(
+            sources,
+            &services.playback,
+            StreamStart { item, start, gate },
+        )
+    });
+    (outcome, background)
 }
 
 /// Starts the provider's search and the list of streams for `item`. Fails when the viewer already
@@ -57,13 +106,9 @@ pub(crate) fn start_search(
     }
 }
 
-/// Waits (off the async worker threads) until playback may begin and says which stream to play.
-pub(crate) async fn wait_for_start(gate: &Arc<CheckGate>) -> Result<usize, String> {
-    let waiting = Arc::clone(gate);
-    let decision = tauri::async_runtime::spawn_blocking(move || waiting.wait_for_start())
-        .await
-        .map_err(|error| error.to_string())?;
-    match decision {
+/// Waits until playback may begin and says which stream to play.
+fn wait_for_start(gate: &CheckGate) -> Result<usize, String> {
+    match gate.wait_for_start() {
         StartDecision::Start(index) => Ok(index),
         StartDecision::Cancelled => Err(CLOSED_BEFORE_START.to_owned()),
         StartDecision::Failed(reason) => Err(reason),

@@ -4,12 +4,10 @@ use std::sync::Arc;
 
 use crate::app_state::AppState;
 use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
-use crate::source_manager::{SearchRequest, SourceManager};
-use crate::video_opening::{
-    item_from, services_for_playing, start_search, start_stream, wait_for_start, StreamStart,
-};
+use crate::source_manager::{emit, SourceManager, Tell};
+use crate::video_opening::{item_from, open_video, services_for_playing};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// Opens a video: the provider's streams are checked as they are found and the best working one
 /// plays a moment after the first is known, but never later than five seconds after the viewer
@@ -21,27 +19,19 @@ pub async fn play_media(
     request: PlayRequestDto,
     app: AppHandle,
     state: State<'_, AppState>,
-    sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
     let item = item_from(request);
-    let gate = sources.begin();
-    let opened_at = std::time::Instant::now();
-    let (streams, playback) = services_for_playing(&state)?;
-    let (generation, search) = start_search(&sources, &gate, &streams, &item)?;
-    let late_subtitles = Arc::clone(&playback);
-    sources.discover(
-        app,
-        SearchRequest {
-            gate: Arc::clone(&gate),
-            generation,
-            search,
-            give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
-        },
-    );
-    let start = wait_for_start(&gate).await?;
-    let elapsed_ms = opened_at.elapsed().as_millis();
-    tracing::info!(start, elapsed_ms, "starting playback");
-    start_stream(&sources, &playback, StreamStart { item, start, gate })
+    let services = services_for_playing(&state)?;
+    let events = app.clone();
+    let tell: Tell = Arc::new(move |update| emit(&events, update));
+    // The wait blocks, so it runs off the async worker threads.
+    let (outcome, _background) = tauri::async_runtime::spawn_blocking(move || {
+        let sources = app.state::<SourceManager>();
+        open_video(&sources, &services, item, tell)
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    outcome
 }
 
 /// Lets the viewer start now: the best stream known to work plays and the rest of the checks

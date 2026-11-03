@@ -43,7 +43,7 @@ private const val MAX_LOGGED_DATA = 200
 
 /** Thin, protocol-agnostic facade over the loaded CloudStream providers. */
 class ProviderService {
-    private val linkSearches = LinkSearches(::findProvider)
+    private val linkSearches = LinkSearches(findSource = { name -> findProvider(name).asLinkSource() })
 
     fun loadExtension(path: String, trusted: Boolean): List<ProviderInfo> {
         SidecarLog.debug { "loadExtension path=$path trusted=$trusted" }

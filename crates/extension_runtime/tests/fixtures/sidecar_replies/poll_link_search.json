@@ -1,0 +1,179 @@
+[
+ {
+  "links": [
+   {
+    "source": "Allmovieland [English]",
+    "name": "Allmovieland [English]",
+    "url": "https://host1.example.test/file.m3u8",
+    "referer": "https://host2.example.test/file",
+    "quality": 1080,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "Allmovieland [Hindi Subbed]",
+    "name": "Allmovieland [Hindi Subbed]",
+    "url": "https://host3.example.test/file.m3u8",
+    "referer": "https://host4.example.test/file",
+    "quality": 1080,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   }
+  ],
+  "subtitles": [],
+  "nextLink": 2,
+  "nextSubtitle": 0,
+  "done": false,
+  "success": false,
+  "failure": null
+ },
+ {
+  "links": [
+   {
+    "source": "Allmovieland [Hindi]",
+    "name": "Allmovieland [Hindi]",
+    "url": "https://host5.example.test/file.m3u8",
+    "referer": "https://host6.example.test/file",
+    "quality": 1080,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   }
+  ],
+  "subtitles": [],
+  "nextLink": 3,
+  "nextSubtitle": 0,
+  "done": false,
+  "success": false,
+  "failure": null
+ },
+ {
+  "links": [
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host0.example.test/file.m3u8",
+    "referer": "https://host1.example.test/file",
+    "quality": 360,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host2.example.test/file.m3u8",
+    "referer": "https://host3.example.test/file",
+    "quality": 720,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host4.example.test/file.m3u8",
+    "referer": "https://host5.example.test/file",
+    "quality": 1080,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host6.example.test/file.m3u8",
+    "referer": "https://host0.example.test/file",
+    "quality": 400,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   }
+  ],
+  "subtitles": [],
+  "nextLink": 7,
+  "nextSubtitle": 0,
+  "done": false,
+  "success": false,
+  "failure": null
+ },
+ {
+  "links": [
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host1.example.test/file.m3u8",
+    "referer": "https://host2.example.test/file",
+    "quality": 360,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host3.example.test/file.m3u8",
+    "referer": "https://host4.example.test/file",
+    "quality": 720,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host5.example.test/file.m3u8",
+    "referer": "https://host6.example.test/file",
+    "quality": 1080,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   },
+   {
+    "source": "VaPlayer",
+    "name": "VaPlayer",
+    "url": "https://host0.example.test/file.m3u8",
+    "referer": "https://host1.example.test/file",
+    "quality": 400,
+    "headers": {},
+    "extractorData": null,
+    "type": "M3U8",
+    "audioTracks": []
+   }
+  ],
+  "subtitles": [],
+  "nextLink": 11,
+  "nextSubtitle": 0,
+  "done": false,
+  "success": false,
+  "failure": null
+ },
+ {
+  "links": [],
+  "subtitles": [
+   {
+    "lang": "English",
+    "url": "https://host2.example.test/file.srt",
+    "headers": null,
+    "langTag": "en"
+   }
+  ],
+  "nextLink": 11,
+  "nextSubtitle": 1,
+  "done": false,
+  "success": false,
+  "failure": null
+ }
+]

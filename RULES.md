@@ -138,6 +138,13 @@ Every change ships with tests at the appropriate tiers. Tiers run in order; a lo
 - Tests are as clean as production code (naming, size, no coupling).
 - No flaky tests: fix or delete, never retry-until-green.
 
+### Boundary tests (the Rust app and the JVM sidecar)
+
+- **Recorded replies**: the shapes the real sidecar sends (search, home page, details of a movie and of a series, link search updates) are kept as trimmed, address-free fixtures in `crates/extension_runtime/tests/fixtures/sidecar_replies/` and decoded through the gateway in `t2_recorded_sidecar_replies.rs`. A reply the Rust types cannot read must fail there. When the sidecar's output changes, re-record with `scripts/record_sidecar_replies.py` and review the diff.
+- **Protocol tests**: `t2_streaming_search_protocol.rs` drives the real JSON-lines process transport against `fake_sidecar`, whose scripted link search follows the real one's rules and counts what was started and cancelled.
+- **Opening-flow tests**: `opening_flow_tests.rs` runs the whole opening of a video (gateway, search, checks, wait, playback, closing) against a scripted provider and asserts that playback starts within the limit, the search goes on in the background, and closing (or opening and closing fifty videos) leaves nothing running.
+- **Sidecar tests**: the Kotlin tests in `sidecar/cs-sidecar/src/test` run with `scripts/test_sidecar.ps1`.
+
 ### Race tests (mandatory for concurrent code)
 
 Any file that shares state between threads (`Mutex`, `RwLock`, `Condvar`, atomics, channels, spawned threads, async tasks) or coordinates work that can be cancelled or replaced while it runs (a video opened, closed or switched while its search, checks or subtitles are still going) **must have real race tests**, in the same change that adds or edits it. Tests that only wake a waiter after a short sleep are not race tests.

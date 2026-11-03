@@ -1,0 +1,43 @@
+{
+ "items": [
+  {
+   "name": "Spider-Man: Brand New Day",
+   "url": "{\"id\":\"tt22084616\",\"type\":\"movie\"}",
+   "apiName": "CineStream",
+   "type": "Movie",
+   "posterUrl": "https://host5.example.test/file",
+   "year": null,
+   "id": null,
+   "quality": null,
+   "posterHeaders": null,
+   "score": null
+  },
+  {
+   "name": "Spider-Man: The Animated Series",
+   "url": "{\"id\":\"tt0112175\",\"type\":\"series\"}",
+   "apiName": "CineStream",
+   "type": "Movie",
+   "posterUrl": "https://host6.example.test/file",
+   "year": null,
+   "id": null,
+   "quality": null,
+   "posterHeaders": null,
+   "score": null
+  },
+  {
+   "name": "Spider-Man: Into The Spider-Verse",
+   "url": "{\"id\":\"kitsu:42218\",\"type\":\"movie\"}",
+   "apiName": "CineStream",
+   "type": "Movie",
+   "posterUrl": "https://host0.example.test/file",
+   "year": null,
+   "id": null,
+   "quality": null,
+   "posterHeaders": null,
+   "score": {
+    "data": 820000000
+   }
+  }
+ ],
+ "hasNext": false
+}
