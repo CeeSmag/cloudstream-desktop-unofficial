@@ -96,7 +96,7 @@ impl TitleCache {
     }
 
     /// The saved sources of the title, if there are usable ones.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn load(&self, title_key: &str) -> Lookup {
         let path = self.path_of(title_key);
         let stored = match read_stored(&path, self.limits.max_file_bytes) {
@@ -151,7 +151,7 @@ impl TitleCache {
 
     /// Saves the title's links (put in playing order, deduplicated, cut to the limit), replacing
     /// what was saved. The save time is now.
-    #[tracing::instrument(level = "debug", skip(self, title))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn save(
         &self,
         title_key: &str,
@@ -214,7 +214,7 @@ impl TitleCache {
 
     /// Removes the saved sources of the title (it was watched to the end). Returns whether there
     /// was a file.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn forget(&self, title_key: &str) -> Result<bool, TitleCacheError> {
         let _lock = self.write_lock();
         let path = self.path_of(title_key);
