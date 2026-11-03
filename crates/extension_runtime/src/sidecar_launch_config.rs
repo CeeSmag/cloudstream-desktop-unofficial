@@ -40,8 +40,39 @@ impl SidecarLaunchConfig {
     /// inside `data_dir` instead of in the user's profile.
     pub fn with_data_dir(mut self, data_dir: &Path) -> Self {
         let option = format!("-Dcloudstream.data.dir=\"{}\"", data_dir.display());
-        self.environment.push(("JAVA_OPTS".to_owned(), option));
+        self.add_java_option(&option);
+        // Everything the sidecar prints is read as UTF-8, whatever the Windows code page is.
+        self.add_java_option(
+            "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dfile.encoding=UTF-8",
+        );
         self
+    }
+
+    /// On Windows, makes the sidecar trust the certificates Windows trusts and fetch missing
+    /// intermediate certificates. The bundled JVM only knows its own short list, so sites that
+    /// every browser accepts would otherwise fail with "unable to find valid certification path".
+    pub fn with_system_trust_store(mut self) -> Self {
+        if cfg!(windows) {
+            self.add_java_option("-Djavax.net.ssl.trustStoreType=Windows-ROOT");
+            self.add_java_option("-Dcom.sun.security.enableAIAcaIssuers=true");
+        }
+        self
+    }
+
+    fn add_java_option(&mut self, option: &str) {
+        let existing = self
+            .environment
+            .iter_mut()
+            .find(|(name, _)| name == "JAVA_OPTS");
+        match existing {
+            Some((_, value)) => {
+                value.push(' ');
+                value.push_str(option);
+            }
+            None => self
+                .environment
+                .push(("JAVA_OPTS".to_owned(), option.to_owned())),
+        }
     }
 
     /// Reads `CS_SIDECAR_HOME` and optionally `CS_SIDECAR_JAVA_HOME`.
@@ -77,6 +108,26 @@ mod tests {
         let (name, value) = &config.environment[0];
         assert_eq!(name, "JAVA_OPTS");
         assert!(value.starts_with("-Dcloudstream.data.dir=\"") && value.contains("my data"));
+    }
+
+    #[test]
+    fn java_options_are_combined_into_one_variable() {
+        let config = SidecarLaunchConfig::for_install(Path::new("h"), None)
+            .with_data_dir(Path::new("/d"))
+            .with_system_trust_store();
+        let options: Vec<&String> = config
+            .environment
+            .iter()
+            .filter(|(name, _)| name == "JAVA_OPTS")
+            .map(|(_, value)| value)
+            .collect();
+        assert_eq!(options.len(), 1, "one JAVA_OPTS entry");
+        assert!(options[0].contains("cloudstream.data.dir"));
+        assert_eq!(
+            options[0].contains("Windows-ROOT"),
+            cfg!(windows),
+            "trust store option only on Windows"
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@
 
 mod app_state;
 mod catalog_commands;
+mod check_gate;
 mod dto;
 mod extension_commands;
 mod library_commands;
@@ -12,12 +13,14 @@ mod playback_commands;
 mod repository_discovery;
 mod settings_commands;
 mod source_commands;
+mod source_manager;
 mod source_session;
+mod startup;
 mod video_commands;
 
 use app_shell::{build_services, start_logging, AppPaths, ServiceOptions};
 use app_state::AppState;
-use tauri::{Builder, Emitter, Manager, Wry};
+use tauri::{Builder, Manager, Wry};
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::from_environment()?;
@@ -33,11 +36,13 @@ fn build_app(paths: AppPaths) -> Builder<Wry> {
     tauri::Builder::default()
         .setup(move |app| init_services(app, &paths))
         .invoke_handler(tauri::generate_handler![
+            startup::get_startup_status,
             catalog_commands::get_available_providers,
             catalog_commands::get_home_sections,
             catalog_commands::search_media,
             catalog_commands::get_media_details,
             playback_commands::play_media,
+            playback_commands::skip_source_check,
             playback_commands::pause_playback,
             playback_commands::resume_playback,
             playback_commands::seek_to,
@@ -76,13 +81,13 @@ fn init_services(app: &mut tauri::App, paths: &AppPaths) -> Result<(), Box<dyn s
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
     app.manage(AppState::new(services));
-    app.manage(source_session::SourceSession::default());
+    app.manage(source_manager::SourceManager::new(
+        app_services::StreamChecker::new(std::sync::Arc::new(extension_repo::UreqProbe::default())),
+    ));
+    app.manage(startup::StartupTracker::default());
     spawn_extension_loading(app.handle().clone(), extensions, repositories);
     Ok(())
 }
-
-/// Event the UI listens to so it can reload providers once extensions finish loading or change.
-pub const PROVIDERS_CHANGED_EVENT: &str = "providers-changed";
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).
 fn spawn_extension_loading(
@@ -93,17 +98,7 @@ fn spawn_extension_loading(
     let spawned = std::thread::Builder::new()
         .name("load-extensions".to_owned())
         .spawn(move || {
-            match extensions.load_installed() {
-                Ok(report) => tracing::info!(
-                    providers = report.providers.len(),
-                    failures = report.failures.len(),
-                    "installed extensions loaded"
-                ),
-                Err(error) => tracing::warn!(%error, "could not load installed extensions"),
-            }
-            if let Err(error) = handle.emit(PROVIDERS_CHANGED_EVENT, ()) {
-                tracing::warn!(%error, "could not notify the UI about providers");
-            }
+            startup::load_extensions(&handle, &extensions);
             // Some extensions add repositories on their own each time they load.
             repository_discovery::watch(handle, extensions, repositories);
         });

@@ -111,6 +111,8 @@ export interface SourceInfo {
   index: number;
   label: string;
   selected: boolean;
+  /** True while the check of this stream has not finished. */
+  checking: boolean;
 }
 
 /** An extension that is installed on this computer. */
@@ -133,4 +135,28 @@ export interface RepositoryPlugin {
   icon_url: string | null;
   file_size: number | null;
   installed_version: number | null;
+}
+
+/** An extension that could not be loaded at start-up. */
+export interface StartupFailure {
+  name: string;
+  reason: string;
+}
+
+/** How far the app's start-up (loading the installed extensions) has come. */
+export interface StartupStatus {
+  ready: boolean;
+  finished: number;
+  total: number;
+  current: string;
+  failures: StartupFailure[];
+}
+
+/** How far the check of a video's streams has come; `total` is 0 while the streams are still being looked up. */
+export interface CheckProgress {
+  checked: number;
+  total: number;
+  working: number;
+  /** The viewer asked to start without waiting for the rest. */
+  skipping: boolean;
 }

@@ -11,6 +11,12 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.runtime.loader.ExtensionLoader
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicLong
 
 data class SearchPage(val items: List<SearchResponse>, val hasNext: Boolean)
 
@@ -31,8 +37,21 @@ data class PlayableLinks(
     val subtitles: List<SubtitleFile>,
 )
 
+/** How long link collection may take before it returns what it has. */
+private const val LINK_DEADLINE_SECONDS = 30L
+
+/** Marks that no stream has arrived yet. */
+private const val NO_LINK_YET = -1L
+
+/** How often the log says that link collection is still going. */
+private const val PROGRESS_SECONDS = 5L
+
 /** Thin, protocol-agnostic facade over the loaded CloudStream providers. */
 class ProviderService {
+    private val linkWorkers = Executors.newCachedThreadPool { task ->
+        Thread(task, "load-links").apply { isDaemon = true }
+    }
+
     fun loadExtension(path: String, trusted: Boolean): List<ProviderInfo> {
         val file = File(path)
         require(file.isFile) { "extension file not found: $path" }
@@ -62,11 +81,53 @@ class ProviderService {
         findProvider(providerName).load(url)
     }
 
-    fun loadLinks(providerName: String, data: String): PlayableLinks = runBlocking {
+    /**
+     * Collects the streams of one title. Providers query many hosts and some never answer, so
+     * once [LINK_DEADLINE_SECONDS] have passed and at least one stream is known, the collection
+     * stops and returns what was gathered. Progress is reported to the log every few seconds.
+     */
+    fun loadLinks(providerName: String, data: String): PlayableLinks {
         val links = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
         val subtitles = java.util.Collections.synchronizedList(mutableListOf<SubtitleFile>())
-        val success = findProvider(providerName).loadLinks(data, false, { subtitles.add(it) }, { links.add(it) })
-        PlayableLinks(success, links.toList(), subtitles.toList())
+        val provider = findProvider(providerName)
+        val startedAt = System.nanoTime()
+        val firstLinkAt = AtomicLong(NO_LINK_YET)
+        val collecting = linkWorkers.submit<Boolean> {
+            runBlocking {
+                provider.loadLinks(data, false, { subtitles.add(it) }, {
+                    firstLinkAt.compareAndSet(NO_LINK_YET, System.nanoTime())
+                    links.add(it)
+                })
+            }
+        }
+        val success = awaitLinks(collecting, providerName) { links.size }
+        logLinkSummary(providerName, startedAt, firstLinkAt.get(), links.size)
+        return PlayableLinks(success, links.toList(), subtitles.toList())
+    }
+
+    private fun logLinkSummary(providerName: String, startedAt: Long, firstLinkAt: Long, streams: Int) {
+        val total = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt)
+        val first = if (firstLinkAt == NO_LINK_YET) "never" else "${TimeUnit.NANOSECONDS.toSeconds(firstLinkAt - startedAt)}s"
+        System.err.println("[sidecar] $providerName: $streams streams in ${total}s (first stream after $first)")
+    }
+
+    private fun awaitLinks(collecting: Future<Boolean>, providerName: String, streamsSoFar: () -> Int): Boolean {
+        val startedAt = System.nanoTime()
+        while (true) {
+            try {
+                return collecting.get(PROGRESS_SECONDS, TimeUnit.SECONDS)
+            } catch (_: TimeoutException) {
+                val waited = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt)
+                System.err.println("[sidecar] $providerName: still collecting after ${waited}s, ${streamsSoFar()} streams so far")
+                if (waited >= LINK_DEADLINE_SECONDS && streamsSoFar() > 0) {
+                    collecting.cancel(true)
+                    System.err.println("[sidecar] $providerName: stopped collecting; hosts that had not answered were left out")
+                    return true
+                }
+            } catch (failure: ExecutionException) {
+                throw failure.cause ?: failure
+            }
+        }
     }
 
     /** Resolves a hoster URL through the library's extractor registry. */

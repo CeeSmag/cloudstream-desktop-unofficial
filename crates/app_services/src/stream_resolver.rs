@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use core_model::{PlayableLink, PlayableLinks};
 use extension_api::{GatewayError, ProviderGateway};
@@ -60,10 +61,21 @@ impl StreamResolver {
     /// Resolves the streams and subtitles for `data` (a movie payload or an episode payload).
     pub fn resolve(&self, provider: &str, data: &str) -> Result<PlayableLinks, ServiceError> {
         let mut last = PlayableLinks::default();
+        let started = Instant::now();
+        tracing::info!(provider, "finding streams");
         for attempt in 1..=MAX_ATTEMPTS {
             match self.gateway.load_links(provider, data) {
                 Ok(found) if !playable_links_best_first(found.links.clone()).is_empty() => {
-                    return Ok(self.finish(found));
+                    let found = self.finish(found);
+                    tracing::info!(
+                        provider,
+                        attempt,
+                        streams = found.links.len(),
+                        subtitles = found.subtitles.len(),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "streams found"
+                    );
+                    return Ok(found);
                 }
                 Ok(empty) => {
                     tracing::warn!(provider, attempt, "provider returned no playable streams");

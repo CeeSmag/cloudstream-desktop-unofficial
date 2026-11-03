@@ -20,6 +20,8 @@ import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { findEpisodeForKey, movieAsEpisode } from './playback/episodeLookup';
 import { usePlayback } from './hooks/usePlayback';
+import { useStartup } from './hooks/useStartup';
+import { StartupScreen } from './components/StartupScreen';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -48,6 +50,7 @@ export const App: React.FC = () => {
   const [detailsLoading, setDetailsLoading] = React.useState(false);
 
   const playback = usePlayback();
+  const startup = useStartup();
 
   // Library & settings
   const [bookmarks, setBookmarks] = React.useState<Bookmark[]>([]);
@@ -182,6 +185,10 @@ export const App: React.FC = () => {
     setBookmarks(bms);
   });
 
+  if (!startup.ready) {
+    return <StartupScreen status={startup} />;
+  }
+
   if (playback.isOpen) {
     return (
       <>
@@ -190,6 +197,8 @@ export const App: React.FC = () => {
           title={playback.title}
           status={playback.status}
           sources={playback.sources}
+          check={playback.check}
+          onSkipCheck={guard(playback.skipCheck)}
           onBack={handleStopPlayer}
           onTogglePlay={guard(playback.togglePlay)}
           onSeek={guard(playback.seek)}

@@ -14,7 +14,8 @@ import {
   Layers,
   Loader2,
 } from 'lucide-react';
-import { MediaTrack, PlaybackStatus, SourceInfo } from '../types';
+import { CheckProgress, MediaTrack, PlaybackStatus, SourceInfo } from '../types';
+import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
 import { MenuOption, OptionMenu } from '../components/OptionMenu';
 import { SeekBar } from '../components/SeekBar';
@@ -26,6 +27,9 @@ interface PlayerOverlayProps {
   title: string;
   status: PlaybackStatus;
   sources: SourceInfo[];
+  /** Progress of the stream check before playback; null once the video plays. */
+  check: CheckProgress | null;
+  onSkipCheck: () => void;
   onBack: () => void;
   onTogglePlay: () => void;
   onSeek: (positionMs: number) => void;
@@ -50,6 +54,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   title,
   status,
   sources,
+  check,
+  onSkipCheck,
   onBack,
   onTogglePlay,
   onSeek,
@@ -141,7 +147,11 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <OptionMenu
             label="Sources"
             icon={Layers}
-            options={sources.map((source) => ({ id: source.index, label: source.label, selected: source.selected }))}
+            options={sources.map((source) => ({
+              id: source.index,
+              label: source.checking ? `${source.label} · checking…` : source.label,
+              selected: source.selected,
+            }))}
             allowOff={false}
             open={trackMenu === 'sources'}
             onToggle={() => setTrackMenu(trackMenu === 'sources' ? 'none' : 'sources')}
@@ -171,7 +181,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         </div>
       </div>
 
-      {status.state === 'Loading' && (
+      {check && <SourceCheckPanel progress={check} onSkip={onSkipCheck} />}
+
+      {!check && status.state === 'Loading' && (
         <div className="self-center mx-4 flex flex-col items-center justify-center p-6 rounded-2xl bg-midnight/70 backdrop-blur-md border border-white/10 shadow-2xl">
           <Loader2 className="w-10 h-10 text-accent animate-spin mb-3" />
           <span className="text-sm font-medium text-zinc-200">Loading stream...</span>
@@ -199,7 +211,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 
       {/* Bottom bar: seek, play controls, volume, fullscreen */}
       <div
-        className={`page-gutter pb-4 sm:pb-6 pt-10 [@media(max-height:480px)]:pt-4 bg-gradient-to-t from-midnight/95 via-midnight/60 to-transparent transition-opacity duration-300 ${fade}`}
+        className={`page-gutter pb-4 sm:pb-6 pt-10 [@media(max-height:480px)]:pt-4 bg-gradient-to-t from-midnight/95 via-midnight/60 to-transparent transition-opacity duration-300 ${check ? 'invisible' : fade}`}
       >
         <div className="max-w-5xl 2xl:max-w-7xl mx-auto space-y-1 sm:space-y-2">
           <SeekBar positionMs={status.position_ms} durationMs={status.duration_ms} onSeek={onSeek} />

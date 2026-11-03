@@ -67,7 +67,9 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
 fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
     match sidecar_discovery::discover() {
         Ok(config) => {
-            let config = config.with_data_dir(sidecar_data_dir);
+            let config = config
+                .with_data_dir(sidecar_data_dir)
+                .with_system_trust_store();
             tracing::info!(program = %config.program.display(), "using JVM sidecar");
             Arc::new(RpcProviderGateway::new(SidecarProcessTransport::new(
                 config,
