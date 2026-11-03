@@ -88,3 +88,15 @@
     gap: 1rem;
   }
 }
+
+/* The pop-up in the middle of the player that confirms what the viewer just did. */
+@keyframes feedback-pop {
+  0% { opacity: 0; transform: scale(0.9); }
+  15% { opacity: 1; transform: scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.feedback-pop {
+  animation: feedback-pop 900ms ease-out forwards;
+}

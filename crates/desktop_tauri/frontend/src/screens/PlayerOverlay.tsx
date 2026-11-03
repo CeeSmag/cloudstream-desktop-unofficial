@@ -20,12 +20,13 @@ import { VideoCanvas } from '../components/VideoCanvas';
 import { MenuOption, OptionMenu } from '../components/OptionMenu';
 import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
-import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
+import { sourceText, trackText } from '../utils/feedbackText';
 import { numberDuplicateLabels } from '../utils/trackLabels';
 import { sourceRow } from '../utils/sourceRows';
-import { useWindowFullscreen } from '../hooks/useWindowFullscreen';
 import { useStallWatch } from '../hooks/useStallWatch';
-import { logEvent } from '../utils/logger';
+import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
+import { usePlayerControls } from '../hooks/usePlayerControls';
+import { FeedbackPopup } from '../components/FeedbackPopup';
 
 interface PlayerOverlayProps {
   title: string;
@@ -42,8 +43,6 @@ interface PlayerOverlayProps {
   onVolume: (percent: number) => void;
 }
 
-/** How long the controls stay visible after the mouse stops moving. */
-const CONTROLS_HIDE_DELAY_MS = 3500;
 const SKIP_MS = 10000;
 const ROUND_BUTTON = 'p-2 sm:p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-colors';
 
@@ -67,57 +66,23 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onSelectSource,
   onVolume,
 }) => {
-  const [controlsVisible, setControlsVisible] = React.useState(true);
   const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
-  const { fullscreen: isFullscreen, toggle: toggleFullscreen } = useWindowFullscreen();
-  const [volume, setVolume] = React.useState(loadVolume);
-  const [isMuted, setIsMuted] = React.useState(false);
-  const hideTimerRef = React.useRef<number | null>(null);
-
   const isPlaying = status.state === 'Playing';
-  useStallWatch(() => `state=${status.state}, fullscreen=${isFullscreen}, controls=${controlsVisible}`);
-
-  const controlsShownRef = React.useRef(true);
-
-  const resetHideTimer = React.useCallback(() => {
-    if (!controlsShownRef.current) logEvent('debug', 'controls shown again: the page received mouse movement');
-    controlsShownRef.current = true;
-    setControlsVisible(true);
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    if (isPlaying) {
-      hideTimerRef.current = window.setTimeout(() => {
-        controlsShownRef.current = false;
-        logEvent('debug', 'controls hidden after a few seconds without mouse movement');
-        setControlsVisible(false);
-        setTrackMenu('none');
-      }, CONTROLS_HIDE_DELAY_MS);
-    }
-  }, [isPlaying]);
-
-  React.useEffect(() => {
-    resetHideTimer();
-    window.addEventListener('mousemove', resetHideTimer);
-    return () => {
-      window.removeEventListener('mousemove', resetHideTimer);
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    };
-  }, [resetHideTimer]);
-
-  // Pushes the chosen level to the player, also when the screen opens so it matches the saved one.
-  React.useEffect(() => {
-    onVolume(isMuted ? 0 : volume);
-  }, [volume, isMuted]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const changeVolume = (value: number) => {
-    const next = clampVolume(value);
-    setVolume(next);
-    saveVolume(next);
-    if (next > 0) setIsMuted(false);
-  };
+  const { visible: controlsVisible, reveal } = useControlsAutoHide(isPlaying, () => setTrackMenu('none'));
+  const controls = usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reveal });
+  useStallWatch(() => `state=${status.state}, fullscreen=${controls.fullscreen}, controls=${controlsVisible}`);
 
   const selectTrack = (kind: 'audio' | 'subtitle') => (id: number | null) => {
+    const label = trackOptions(status.tracks, kind).find((option) => option.id === id)?.label ?? null;
+    controls.show({ icon: kind === 'audio' ? 'audio' : 'subtitles', text: trackText(kind, label) });
     onSelectTrack(kind, id);
     setTrackMenu('none');
+  };
+
+  const selectSource = (index: number) => {
+    const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
+    controls.show({ icon: 'source', text: sourceText(label) });
+    onSelectSource(index);
   };
 
   const fade = controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
@@ -128,10 +93,14 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         controlsVisible ? 'cursor-default' : 'cursor-none'
       }`}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onTogglePlay();
+        if (e.target === e.currentTarget) controls.clicks.onClick();
+      }}
+      onDoubleClick={(e) => {
+        if (e.target === e.currentTarget) controls.clicks.onDoubleClick();
       }}
     >
       <VideoCanvas visible={status.has_video} />
+      <FeedbackPopup feedback={controls.popup} />
 
       {/* Top bar: back, title, track menus */}
       <div
@@ -155,7 +124,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             onToggle={() => setTrackMenu(trackMenu === 'sources' ? 'none' : 'sources')}
             onSelect={(index) => {
               setTrackMenu('none');
-              if (index !== null) onSelectSource(index);
+              if (index !== null) selectSource(index);
             }}
           />
           <OptionMenu
@@ -212,21 +181,21 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         className={`page-gutter pb-4 sm:pb-6 pt-10 [@media(max-height:480px)]:pt-4 bg-gradient-to-t from-midnight/95 via-midnight/60 to-transparent transition-opacity duration-300 ${check ? 'invisible' : fade}`}
       >
         <div className="max-w-5xl 2xl:max-w-7xl mx-auto space-y-1 sm:space-y-2">
-          <SeekBar positionMs={status.position_ms} durationMs={status.duration_ms} onSeek={onSeek} />
+          <SeekBar positionMs={status.position_ms} durationMs={status.duration_ms} onSeek={controls.jumpTo} />
 
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex items-center gap-2 sm:gap-3">
               <button
-                onClick={onTogglePlay}
+                onClick={controls.togglePlay}
                 className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-lg glow-accent transition-transform duration-150 active:scale-95"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
-              <button onClick={() => onSeek(status.position_ms - SKIP_MS)} className={ROUND_BUTTON} title="Rewind 10s">
+              <button onClick={() => controls.seekBy(-SKIP_MS)} className={ROUND_BUTTON} title="Rewind 10s">
                 <RotateCcw className="w-4 h-4" />
               </button>
-              <button onClick={() => onSeek(status.position_ms + SKIP_MS)} className={ROUND_BUTTON} title="Forward 10s">
+              <button onClick={() => controls.seekBy(SKIP_MS)} className={ROUND_BUTTON} title="Forward 10s">
                 <RotateCw className="w-4 h-4" />
               </button>
               <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 ml-1 sm:ml-2 tracking-wide font-mono whitespace-nowrap">
@@ -236,21 +205,21 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 border border-white/10">
-                <button onClick={() => setIsMuted(!isMuted)} className="text-zinc-300 hover:text-white" title="Mute">
-                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+                <button onClick={controls.toggleMute} className="text-zinc-300 hover:text-white" title="Mute">
+                  {controls.muted || controls.volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
                 </button>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => changeVolume(Number(e.target.value))}
+                  value={controls.muted ? 0 : controls.volume}
+                  onChange={(e) => controls.changeVolume(Number(e.target.value))}
                   className="hidden md:block w-24 h-1 accent-accent rounded-lg cursor-pointer"
                   aria-label="Volume"
                 />
               </div>
-              <button onClick={() => void toggleFullscreen()} className={ROUND_BUTTON} title="Toggle Fullscreen">
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              <button onClick={() => void controls.toggleFullscreen()} className={ROUND_BUTTON} title="Toggle Fullscreen">
+                {controls.fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
             </div>
           </div>
