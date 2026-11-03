@@ -19,6 +19,7 @@ fn manager() -> SourceManager {
     SourceManager::new(
         StreamChecker::new(Arc::new(Unreachable)),
         crate::test_subtitles::unused_loader(),
+        crate::test_titles::unused_titles(),
     )
 }
 

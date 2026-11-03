@@ -158,6 +158,15 @@ fn scripted_search(script: Vec<LinkSearchUpdate>) -> (LinkSearch, Arc<ScriptedSe
     (search, gateway)
 }
 
+/// A ledger over a cache nobody reads, for jobs that are not about saving.
+fn test_ledger() -> Arc<LinkLedger> {
+    Arc::new(LinkLedger::new(
+        crate::test_titles::unused_titles(),
+        "P\ndata".to_owned(),
+        title_cache::CachedTitle::default(),
+    ))
+}
+
 /// Like [`job`], with `give_subtitles` as where subtitles that become ready go; also returns the
 /// fake subtitle host.
 fn job_with_subtitles(
@@ -206,6 +215,7 @@ data"
         prefetch,
         hosts: Mutex::default(),
         failures: FailureTally::default(),
+        ledger: test_ledger(),
     };
     (job, search, gateway, updates, subtitles)
 }

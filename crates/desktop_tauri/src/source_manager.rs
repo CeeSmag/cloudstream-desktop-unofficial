@@ -2,9 +2,9 @@
 //! found.
 //!
 //! Runs only when a video is opened. The provider's streams are checked as they arrive; playback
-//! starts on the best working one a moment after the first is known (or when the viewer skips),
-//! and the search and checks go on in the background until they are done or the video is closed.
-//! The picker lists what the checks found.
+//! starts on the best working one once the search and all checks are done (or when the viewer
+//! skips, or at once from sources saved a short while ago), and the search and checks go on in the
+//! background until they are done or the video is closed. The picker lists what the checks found.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -15,10 +15,13 @@ use tauri::{AppHandle, Emitter};
 
 use crate::check_gate::{CheckGate, CheckProgress, WaitLimits};
 use crate::failure_tally::FailureTally;
+use crate::link_ledger::LinkLedger;
+use crate::saved_start::SavedStart;
 use crate::source_discovery::{Discovery, SubtitleSink};
 use crate::source_session::{ActiveSources, SourceSession};
 use crate::subtitle_delivery::{Delivery, DeliveryParts, SubtitleWork};
 use subtitle_store::{KeepGoing, SubtitleLoader};
+use title_cache::TitleCache;
 
 /// Event the UI listens to so it can reload the list of streams.
 pub const SOURCES_CHANGED_EVENT: &str = "sources-changed";
@@ -49,6 +52,8 @@ pub struct SearchRequest {
     pub give_subtitles: SubtitleSink,
     /// What the title's subtitles need: its key in the saved lists and the language order.
     pub subtitles: SubtitleWork,
+    /// The key of the title in the saved sources.
+    pub title_key: String,
 }
 
 /// Tauri-managed owner of the current streams and the checks that test them.
@@ -57,6 +62,8 @@ pub struct SourceManager {
     checker: StreamChecker,
     /// Downloads and keeps the subtitle files of the provider.
     subtitles: Arc<SubtitleLoader>,
+    /// The streams found for titles opened before.
+    titles: Arc<TitleCache>,
     /// How long a video waits for its provider.
     limits: WaitLimits,
     /// The wait of the video that is being opened or played.
@@ -65,11 +72,16 @@ pub struct SourceManager {
 
 impl SourceManager {
     /// Creates the manager.
-    pub fn new(checker: StreamChecker, subtitles: Arc<SubtitleLoader>) -> Self {
+    pub fn new(
+        checker: StreamChecker,
+        subtitles: Arc<SubtitleLoader>,
+        titles: Arc<TitleCache>,
+    ) -> Self {
         Self {
             session: Arc::new(SourceSession::default()),
             checker,
             subtitles,
+            titles,
             limits: WaitLimits::default(),
             current: Mutex::new(None),
         }
@@ -151,8 +163,9 @@ impl SourceManager {
     }
 
     /// Follows the provider's search, downloads its subtitle files and checks its streams in the
-    /// background; `tell` hears about progress. Returns the threads that do the work, which end
-    /// when everything is done or the video is closed.
+    /// background; `tell` hears about progress. Streams saved for the title by an earlier opening
+    /// are put in the list first. Returns the threads that do the work, which end when everything
+    /// is done or the video is closed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn discover_with(&self, tell: Tell, request: SearchRequest) -> Vec<JoinHandle<()>> {
         let SearchRequest {
@@ -161,8 +174,8 @@ impl SourceManager {
             search,
             give_subtitles,
             subtitles,
+            title_key,
         } = request;
-        tell(CheckUpdate::Progress(gate.progress()));
         let delivery = Delivery::new(DeliveryParts {
             session: Arc::clone(&self.session),
             generation,
@@ -173,20 +186,48 @@ impl SourceManager {
         });
         delivery.offer_saved();
         let (prefetch, mut threads) = delivery.start_downloads(self.keep_going(&gate, generation));
+        let (ledger, queue) = self.plant_saved(&gate, generation, title_key);
+        tell(CheckUpdate::Progress(gate.progress()));
         let job = Arc::new(Discovery {
             checker: self.checker.clone(),
             session: Arc::clone(&self.session),
-            gate: Arc::clone(&gate),
+            gate,
             generation,
-            queue: Arc::new(CheckQueue::default()),
+            queue,
             started: Instant::now(),
             tell,
             prefetch,
             hosts: Mutex::default(),
             failures: FailureTally::default(),
+            ledger,
         });
         threads.extend(start_search_and_checks(&job, search));
         threads
+    }
+
+    /// Puts the streams saved for the title in the list and the queue of checks.
+    fn plant_saved(
+        &self,
+        gate: &Arc<CheckGate>,
+        generation: u64,
+        title_key: String,
+    ) -> (Arc<LinkLedger>, Arc<CheckQueue>) {
+        let saved = SavedStart::find(&self.titles, &title_key);
+        let ledger = Arc::new(LinkLedger::new(
+            Arc::clone(&self.titles),
+            title_key,
+            saved.rest.clone(),
+        ));
+        let queue = Arc::new(CheckQueue::default());
+        queue.push(saved.plant((gate, &self.session, generation), &ledger));
+        (ledger, queue)
+    }
+
+    /// Notes that the stream at `url` played well for the title, so it is tried first next time.
+    pub fn note_played(&self, title_key: &str, url: &str) {
+        if let Err(error) = self.titles.mark_played_well(title_key, url) {
+            tracing::warn!(%error, "cannot note the stream that played well");
+        }
     }
 
     /// Whether anybody still wants the work of the video with this generation.
