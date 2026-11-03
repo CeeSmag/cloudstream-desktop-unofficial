@@ -19,7 +19,7 @@ pub use discovered_repository::DiscoveredRepository;
 pub use home_page::{HomePage, HomePageSection};
 pub use installed_extension::InstalledExtension;
 pub use link_search::{LinkSearchCursor, LinkSearchUpdate};
-pub use load_details::{EpisodeInfo, LoadDetails};
+pub use load_details::{CastMember, EpisodeInfo, LoadDetails};
 pub use playable_link::{PlayableLink, PlayableLinks, SubtitleTrack};
 pub use plugin_listing::PluginListing;
 pub use provider_info::{MainPageEntry, ProviderInfo};

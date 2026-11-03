@@ -163,5 +163,12 @@ fn map_media_details(details: LoadDetails, provider: &str) -> MediaDetailsDto {
         plot: details.plot,
         tags: details.tags.unwrap_or_default(),
         episodes,
+        background_url: details.background_poster_url,
+        rating: details
+            .rating
+            .filter(|rating| *rating > 0)
+            .map(|rating| rating as f32 / 1000.0),
+        duration_minutes: details.duration.filter(|minutes| *minutes > 0),
+        cast: details.actors,
     }
 }
