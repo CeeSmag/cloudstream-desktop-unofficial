@@ -2,6 +2,8 @@
 
 use crate::app_state::AppState;
 use crate::dto::{BookmarkDto, WatchProgressDto};
+use crate::source_manager::SourceManager;
+use crate::video_opening::title_key_of;
 use core_model::{Bookmark, WatchProgress};
 use tauri::State;
 
@@ -79,6 +81,44 @@ pub async fn get_continue_watching(
         .continue_watching()
         .map_err(|error| error.to_string())?;
     Ok(list.into_iter().map(map_progress).collect())
+}
+
+/// Takes one title out of Continue Watching and forgets what was kept for it on disk (saved
+/// sources and subtitle files), so it opens from scratch next time.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
+pub async fn remove_continue_watching(
+    provider: String,
+    media_id: String,
+    state: State<'_, AppState>,
+    sources: State<'_, SourceManager>,
+) -> Result<(), String> {
+    let services = state.read();
+    services
+        .library
+        .remove_progress(&provider, &media_id)
+        .map_err(|error| error.to_string())?;
+    sources.forget_title(&title_key_of(&provider, &media_id));
+    Ok(())
+}
+
+/// Empties Continue Watching and forgets what was kept on disk for each of its titles.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
+pub async fn clear_continue_watching(
+    state: State<'_, AppState>,
+    sources: State<'_, SourceManager>,
+) -> Result<(), String> {
+    let services = state.read();
+    let removed = services
+        .library
+        .clear_continue_watching()
+        .map_err(|error| error.to_string())?;
+    for entry in &removed {
+        sources.forget_title(&title_key_of(&entry.provider, &entry.media_key));
+    }
+    tracing::info!(count = removed.len(), "continue watching cleared");
+    Ok(())
 }
 
 fn map_bookmark(bookmark: Bookmark) -> BookmarkDto {

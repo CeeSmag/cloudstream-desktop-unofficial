@@ -144,6 +144,13 @@ export const api = {
 
   getContinueWatching: () => invokeTauri<WatchProgress[]>('get_continue_watching'),
 
+  /** Takes one title out of Continue Watching and forgets what was kept on disk for it. */
+  removeContinueWatching: (provider: string, mediaId: string) =>
+    invokeTauri<void>('remove_continue_watching', { provider, mediaId }),
+
+  /** Empties Continue Watching and forgets what was kept on disk for its titles. */
+  clearContinueWatching: () => invokeTauri<void>('clear_continue_watching'),
+
   getRepositories: () => invokeTauri<RepositoryEntry[]>('get_repositories'),
 
   addRepository: (url: string) => invokeTauri<void>('add_repository', { url }),

@@ -244,3 +244,32 @@ fn the_title_that_played_well_is_remembered_even_when_the_video_is_closed_at_onc
         played.first().map(String::as_str)
     );
 }
+
+/// Taking a title out of Continue Watching must leave nothing of it on disk.
+#[test]
+fn forgetting_a_title_removes_its_saved_sources_and_its_subtitle_files() {
+    let mut with_subtitles = script(3, Duration::from_millis(100));
+    with_subtitles.subtitles = vec![(Duration::from_millis(50), "English".to_owned())];
+    let rig = rig(with_subtitles, limits(5_000, 30_000));
+    let (outcome, background, _) = open(&rig);
+    assert_eq!(outcome, Ok(()));
+    join_within(background, TIME_LIMIT);
+    let key = title_key(&item());
+    assert!(matches!(rig.titles.cache.load(&key), Lookup::Hit(_)));
+    assert!(!rig
+        .subtitles
+        .loader
+        .cache()
+        .cached_for_title(&key)
+        .is_empty());
+
+    rig.sources.forget_title(&key);
+
+    assert!(matches!(rig.titles.cache.load(&key), Lookup::Miss(_)));
+    assert!(rig
+        .subtitles
+        .loader
+        .cache()
+        .cached_for_title(&key)
+        .is_empty());
+}

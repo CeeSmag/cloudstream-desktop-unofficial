@@ -56,6 +56,30 @@ impl LibraryService {
             .take(CONTINUE_WATCHING_LIMIT as usize)
             .collect())
     }
+
+    /// Takes one item out of "continue watching" by forgetting its progress. Returns whether it
+    /// was there.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
+    pub fn remove_progress(&self, provider: &str, media_key: &str) -> Result<bool, ServiceError> {
+        Ok(self.progress.remove(provider, media_key)?)
+    }
+
+    /// Empties "continue watching": forgets the progress of every item it can show, however many
+    /// there are, and returns them. Items it never shows (not started, finished) are left alone.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn clear_continue_watching(&self) -> Result<Vec<WatchProgress>, ServiceError> {
+        let mut removed = Vec::new();
+        loop {
+            let shown = self.continue_watching()?;
+            if shown.is_empty() {
+                return Ok(removed);
+            }
+            for entry in shown {
+                self.progress.remove(&entry.provider, &entry.media_key)?;
+                removed.push(entry);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -100,6 +124,41 @@ mod tests {
             .map(|e| e.media_key)
             .collect();
         assert_eq!(keys, ["midway"]);
+    }
+
+    #[test]
+    fn removing_one_item_leaves_the_others_in_continue_watching() {
+        let (library, store) = service();
+        for key in ["a", "b"] {
+            store.save(&entry(key, 10, 100, 1)).expect("save");
+        }
+        assert!(library.remove_progress("P", "a").expect("removed"));
+        assert!(!library.remove_progress("P", "a").expect("already gone"));
+        let keys: Vec<_> = library
+            .continue_watching()
+            .expect("list")
+            .into_iter()
+            .map(|e| e.media_key)
+            .collect();
+        assert_eq!(keys, ["b"]);
+    }
+
+    #[test]
+    fn clearing_continue_watching_removes_every_shown_item_even_past_the_list_limit() {
+        let (library, store) = service();
+        for n in 0..45 {
+            store
+                .save(&entry(&format!("k{n}"), 10, 100, i64::from(n)))
+                .expect("save");
+        }
+        store.save(&entry("unstarted", 0, 100, 99)).expect("save");
+        let removed = library.clear_continue_watching().expect("cleared");
+        assert_eq!(removed.len(), 45);
+        assert!(library.continue_watching().expect("list").is_empty());
+        assert!(
+            store.get("P", "unstarted").expect("get").is_some(),
+            "never shown, never touched"
+        );
     }
 
     #[test]

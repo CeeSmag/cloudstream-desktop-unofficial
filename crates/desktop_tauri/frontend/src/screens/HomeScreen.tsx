@@ -1,18 +1,27 @@
 import React from 'react';
-import { Info, ChevronRight, ChevronLeft } from 'lucide-react';
-import { HomeItem, HomeSection } from '../types';
+import { Info, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
+import { HomeItem, HomeSection, WatchProgress } from '../types';
 import { PosterCard } from '../components/PosterCard';
+import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
+import { continueKey } from '../utils/continueWatching';
 
 interface HomeScreenProps {
   sections: HomeSection[];
   onSelectItem: (item: HomeItem) => void;
   loading: boolean;
+  continueWatching: WatchProgress[];
+  /** Opens the title page of a Continue Watching entry. */
+  onOpenContinue: (progress: WatchProgress) => void;
+  onRemoveContinue: (progress: WatchProgress) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   sections,
   onSelectItem,
   loading,
+  continueWatching,
+  onOpenContinue,
+  onRemoveContinue,
 }) => {
   const heroItem = sections[0]?.items[0];
 
@@ -73,6 +82,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* Sections / Shelves */}
       <div className="max-w-[100rem] mx-auto page-gutter space-y-8 sm:space-y-10 mt-4">
+        {continueWatching.length > 0 && (
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2 mb-4">
+              <Clock className="w-4 h-4 text-accent" />
+              <span>Continue Watching</span>
+            </h2>
+            <div className="flex items-start gap-4 overflow-x-auto no-scrollbar py-2 -my-2">
+              {continueWatching.map((item) => (
+                <ContinueWatchingCard
+                  key={continueKey(item)}
+                  item={item}
+                  onOpen={onOpenContinue}
+                  onRemove={onRemoveContinue}
+                />
+              ))}
+            </div>
+          </div>
+        )}
         {loading && sections.length === 0 ? (
           <div className="flex items-center justify-center py-24 text-zinc-500">
             <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mb-4" />
