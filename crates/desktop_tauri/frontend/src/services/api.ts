@@ -5,6 +5,7 @@ import {
   InstalledExtension,
   MediaDetails,
   PlaybackStatus,
+  Preferences,
   ProviderInfo,
   RepositoryEntry,
   RepositoryPlugin,
@@ -55,6 +56,11 @@ async function invokeTauri<T>(cmd: string, args: Record<string, unknown> = {}): 
 
 export const api = {
   getStartupStatus: () => invokeTauri<StartupStatus>('get_startup_status'),
+
+  getPreferences: () => invokeTauri<Preferences>('get_preferences'),
+
+  /** Saves the preferred audio language; null means the stream's own default track. */
+  setPreferredAudio: (language: string | null) => invokeTauri<Preferences>('set_preferred_audio', { language }),
 
   getDebugLogging: () => invokeTauri<DebugLoggingInfo>('get_debug_logging'),
 

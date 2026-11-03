@@ -11,6 +11,7 @@ mod dto;
 mod extension_commands;
 mod library_commands;
 mod playback_commands;
+mod preferences_commands;
 mod repository_discovery;
 mod settings_commands;
 mod source_commands;
@@ -41,6 +42,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
         .setup(move |app| init_services(app, &paths, debug_logs))
         .invoke_handler(tauri::generate_handler![
             startup::get_startup_status,
+            preferences_commands::get_preferences,
+            preferences_commands::set_preferred_audio,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
             debug_log_commands::open_logs_folder,
@@ -93,6 +96,7 @@ fn init_services(
     let services = build_services(paths, &options)?;
     let debug_on = debug_log_commands::restore_saved_choice(&services.settings, &debug_logs);
     app.manage(debug_logs);
+    preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
     app.manage(AppState::new(services));
