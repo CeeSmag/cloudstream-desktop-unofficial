@@ -2,6 +2,10 @@
 #![forbid(unsafe_code)]
 
 mod call_timeouts;
+#[cfg(feature = "test-support")]
+pub mod fake_link_search;
+#[cfg(feature = "test-support")]
+pub mod fake_search_runtime;
 mod rpc_message;
 mod rpc_provider_gateway;
 mod rpc_transport;
