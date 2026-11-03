@@ -30,7 +30,7 @@ pub use playback_service::{PlaybackItem, PlaybackService, StreamSelection};
 pub use plugin_index::{IndexedRepository, PluginHit, PluginIndex};
 pub use repository_service::RepositoryService;
 pub use service_error::ServiceError;
-pub use settings_service::SettingsService;
+pub use settings_service::{SettingsService, MAX_PREFERRED_SUBTITLES};
 pub use stream_checker::{LinkHealth, StreamChecker};
 pub use stream_label::{describe_link, full_label, source_label, stream_host, stream_kind};
 pub use stream_resolver::{

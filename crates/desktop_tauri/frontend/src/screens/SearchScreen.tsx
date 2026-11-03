@@ -5,7 +5,6 @@ import { PosterCard } from '../components/PosterCard';
 
 interface SearchScreenProps {
   onSelectItem: (item: HomeItem) => void;
-  onPlayItem: (item: HomeItem) => void;
   selectedProvider: string;
   /** The search text lives in the app so it survives opening a title and coming back. */
   query: string;
@@ -15,7 +14,6 @@ interface SearchScreenProps {
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({
   onSelectItem,
-  onPlayItem,
   selectedProvider,
   query,
   onQueryChange,
@@ -92,7 +90,6 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                   year: item.year,
                 }}
                 onClick={onSelectItem}
-                onPlayDirect={onPlayItem}
               />
             ))}
           </div>

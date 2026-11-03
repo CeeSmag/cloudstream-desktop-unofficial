@@ -7,7 +7,6 @@ interface LibraryScreenProps {
   bookmarks: Bookmark[];
   continueWatching: WatchProgress[];
   onSelectItem: (item: HomeItem) => void;
-  onPlayItem: (item: HomeItem) => void;
   onResume: (progress: WatchProgress) => void;
   onRemoveBookmark: (provider: string, url: string) => void;
 }
@@ -16,7 +15,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   bookmarks,
   continueWatching,
   onSelectItem,
-  onPlayItem,
   onResume,
   onRemoveBookmark,
 }) => {
@@ -125,7 +123,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     year: null,
                   }}
                   onClick={onSelectItem}
-                  onPlayDirect={onPlayItem}
                 />
                 {/* Delete Bookmark Icon */}
                 <button

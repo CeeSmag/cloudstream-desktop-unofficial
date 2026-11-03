@@ -141,6 +141,7 @@ fn job(
         gate: Arc::new(CheckGate::new(Grace {
             high_quality: Duration::from_millis(10),
             other: Duration::from_millis(50),
+            max_wait: Duration::from_secs(30),
         })),
         generation,
         queue: Arc::new(CheckQueue::default()),
