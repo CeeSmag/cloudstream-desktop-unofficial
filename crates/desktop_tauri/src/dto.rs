@@ -121,6 +121,14 @@ pub struct MediaDetailsDto {
     pub tags: Vec<String>,
     /// List of available episodes.
     pub episodes: Vec<EpisodeDto>,
+    /// Wide background picture.
+    pub background_url: Option<String>,
+    /// Rating out of 10, when the provider gives one.
+    pub rating: Option<f32>,
+    /// Running time in minutes.
+    pub duration_minutes: Option<i32>,
+    /// The cast.
+    pub cast: Vec<core_model::CastMember>,
 }
 
 /// An episode belonging to a series.

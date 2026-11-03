@@ -1,4 +1,68 @@
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// A person in the cast of a title.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CastMember {
+    /// Name of the person.
+    pub name: String,
+    /// Photo.
+    pub image: Option<String>,
+    /// Main, supporting or background, when the provider says.
+    pub role: Option<String>,
+}
+
+/// How providers send one cast entry: the person nested inside the entry.
+#[derive(Deserialize)]
+struct RawCastMember {
+    actor: RawActor,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawActor {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    image: Option<String>,
+}
+
+fn cast_list<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<CastMember>, D::Error> {
+    let raw = Option::<Vec<RawCastMember>>::deserialize(deserializer)?;
+    Ok(raw
+        .unwrap_or_default()
+        .into_iter()
+        .map(|entry| CastMember {
+            name: entry.actor.name,
+            image: entry.actor.image,
+            role: entry.role,
+        })
+        .collect())
+}
+
+/// Providers send episodes either as one list or, for anime, grouped by language
+/// (`{"Subbed": [...], "Dubbed": [...]}`). The same episodes repeat in every group, so the first
+/// group that has any is used.
+fn episodes_list_or_groups<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<EpisodeInfo>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Shape {
+        List(Vec<EpisodeInfo>),
+        Groups(BTreeMap<String, Vec<EpisodeInfo>>),
+    }
+    Ok(match Option::<Shape>::deserialize(deserializer)? {
+        None => Vec::new(),
+        Some(Shape::List(list)) => list,
+        Some(Shape::Groups(groups)) => groups
+            .into_values()
+            .find(|list| !list.is_empty())
+            .unwrap_or_default(),
+    })
+}
 
 /// One episode of a series, as reported by a provider.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -55,8 +119,20 @@ pub struct LoadDetails {
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     /// Episodes, for series-like titles.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "episodes_list_or_groups")]
     pub episodes: Vec<EpisodeInfo>,
+    /// Wide background picture.
+    #[serde(default)]
+    pub background_poster_url: Option<String>,
+    /// Rating from 0 to 10000 (7.5 out of 10 is 7500).
+    #[serde(default)]
+    pub rating: Option<i32>,
+    /// Running time in minutes.
+    #[serde(default)]
+    pub duration: Option<i32>,
+    /// The cast.
+    #[serde(default, deserialize_with = "cast_list")]
+    pub actors: Vec<CastMember>,
 }
 
 #[cfg(test)]
@@ -71,5 +147,27 @@ mod tests {
         assert_eq!(details.data_url.as_deref(), Some("ID123"));
         assert_eq!(details.tags, Some(vec!["Space".to_owned()]));
         assert!(details.episodes.is_empty());
+    }
+
+    #[test]
+    fn a_series_with_grouped_episodes_nulls_and_nested_cast_is_read() {
+        let json = r#"{"name":"Dead City","type":"TvSeries","rating":7000,
+            "backgroundPosterUrl":"https://bg","duration":null,"recommendations":null,
+            "episodes":{"Dubbed":[],"Subbed":[{"data":"d1","season":1,"episode":1},
+                                              {"data":"d2","season":1,"episode":2}]},
+            "actors":[{"actor":{"name":"Lauren Cohan","image":"https://p"},"role":null}]}"#;
+        let details: LoadDetails = serde_json::from_str(json).expect("valid series JSON");
+        assert_eq!(details.episodes.len(), 2, "the first non-empty group");
+        assert_eq!(details.rating, Some(7000));
+        assert_eq!(details.background_poster_url.as_deref(), Some("https://bg"));
+        assert_eq!(details.actors[0].name, "Lauren Cohan");
+        assert_eq!(details.actors[0].image.as_deref(), Some("https://p"));
+    }
+
+    #[test]
+    fn null_episodes_and_actors_mean_none() {
+        let json = r#"{"name":"X","episodes":null,"actors":null}"#;
+        let details: LoadDetails = serde_json::from_str(json).expect("valid JSON");
+        assert!(details.episodes.is_empty() && details.actors.is_empty());
     }
 }

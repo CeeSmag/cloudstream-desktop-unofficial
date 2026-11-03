@@ -55,7 +55,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight drop-shadow-md mb-3 max-w-2xl line-clamp-3">
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight drop-shadow-md mb-3 max-w-2xl break-words">
               {heroItem.name}
             </h1>
 
