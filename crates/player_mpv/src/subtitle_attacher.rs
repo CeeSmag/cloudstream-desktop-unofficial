@@ -20,6 +20,7 @@ pub(crate) type StreamGeneration = Arc<AtomicU64>;
 
 /// Starts workers that add `subtitles` to the stream identified by `generation`. They stop as
 /// soon as another stream has started, so a slow download can never land on the wrong stream.
+#[tracing::instrument(level = "debug", skip_all)]
 pub(crate) fn attach_in_background(
     handle: &Arc<MpvHandle>,
     current: &StreamGeneration,
@@ -52,6 +53,7 @@ struct Job {
 }
 
 impl Job {
+    #[tracing::instrument(level = "debug", skip_all)]
     fn run(self) {
         while self.current.load(Ordering::SeqCst) == self.generation {
             let Some(subtitle) = self.next() else { break };
@@ -65,6 +67,7 @@ impl Job {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     fn next(&self) -> Option<SubtitleSource> {
         self.queue
             .lock()

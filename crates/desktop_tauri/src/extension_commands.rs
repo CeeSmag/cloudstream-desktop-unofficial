@@ -49,6 +49,7 @@ pub struct PluginDto {
 
 /// Lists the installed extensions.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_installed_extensions(
     state: State<'_, AppState>,
 ) -> Result<Vec<InstalledExtensionDto>, String> {
@@ -65,6 +66,7 @@ pub async fn get_installed_extensions(
 
 /// Lists what a repository offers, marking what is already installed.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
 pub async fn get_repository_plugins(
     url: String,
     state: State<'_, AppState>,
@@ -86,6 +88,7 @@ pub async fn get_repository_plugins(
 
 /// Downloads a plugin from a repository, loads it, and starts collecting any repositories it adds.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(repository_url = ?repository_url, internal_name = ?internal_name), err)]
 pub async fn install_plugin(
     repository_url: String,
     internal_name: String,
@@ -120,6 +123,7 @@ pub async fn install_plugin(
 
 /// Removes an installed extension and the providers it offered.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(internal_name = ?internal_name), err)]
 pub async fn uninstall_extension(
     internal_name: String,
     app: AppHandle,
@@ -138,6 +142,7 @@ pub async fn uninstall_extension(
 
 /// Changes whether an extension is trusted; it applies the next time the app starts.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(internal_name = ?internal_name, trusted = ?trusted), err)]
 pub async fn set_extension_trusted(
     internal_name: String,
     trusted: bool,

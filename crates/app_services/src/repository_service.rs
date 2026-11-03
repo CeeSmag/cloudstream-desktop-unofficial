@@ -29,6 +29,7 @@ impl RepositoryService {
     }
 
     /// Validates a repository URL by downloading its manifest, then remembers it.
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     pub fn add(&self, url: &str) -> Result<RepositoryEntry, ServiceError> {
         let url = url.trim();
         let manifest = self.client.fetch_manifest(url)?;
@@ -44,6 +45,7 @@ impl RepositoryService {
 
     /// Saves repositories an extension asked for, skipping ones already known and ones without a
     /// URL. Nothing is downloaded: the extension already read each manifest. Returns how many are new.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn import_discovered(&self, found: &[DiscoveredRepository]) -> Result<usize, ServiceError> {
         let mut known: std::collections::HashSet<String> = self
             .store
@@ -78,16 +80,19 @@ impl RepositoryService {
     }
 
     /// Forgets a repository (installed plugins stay).
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     pub fn remove(&self, url: &str) -> Result<(), ServiceError> {
         Ok(self.store.remove(url)?)
     }
 
     /// Lists the saved repositories.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn list(&self) -> Result<Vec<RepositoryEntry>, ServiceError> {
         Ok(self.store.list()?)
     }
 
     /// Downloads the plugin list of one repository.
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     pub fn plugins(&self, url: &str) -> Result<Vec<PluginListing>, ServiceError> {
         let manifest = self.client.fetch_manifest(url)?;
         Ok(self.client.fetch_plugins(&manifest))

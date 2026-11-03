@@ -7,6 +7,7 @@ use tauri::State;
 
 /// Returns the list of installed providers.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_available_providers(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProviderInfo>, String> {
@@ -16,6 +17,7 @@ pub async fn get_available_providers(
 
 /// Retrieves home page sections for the specified provider.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider_id = ?provider_id), err)]
 pub async fn get_home_sections(
     provider_id: Option<String>,
     state: State<'_, AppState>,
@@ -38,6 +40,7 @@ pub async fn get_home_sections(
 
 /// Searches media across active providers.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(query = ?query, provider_id = ?provider_id), err)]
 pub async fn search_media(
     query: String,
     provider_id: Option<String>,
@@ -69,6 +72,7 @@ pub async fn search_media(
 
 /// Fetches detailed metadata and episode list for a media URL.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider_id = ?provider_id, url = ?url), err)]
 pub async fn get_media_details(
     provider_id: String,
     url: String,

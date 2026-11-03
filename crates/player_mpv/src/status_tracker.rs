@@ -65,11 +65,13 @@ impl StatusTracker {
             MpvEvent::EndFile(EndReason::Finished) => status.state = PlaybackState::Ended,
             MpvEvent::EndFile(EndReason::Stopped) => status.state = PlaybackState::Idle,
             MpvEvent::EndFile(EndReason::Failed(code)) => {
+                tracing::warn!(code, "mpv could not play the stream");
                 status.state = PlaybackState::Failed(format!("mpv error {code}"));
             }
             MpvEvent::Shutdown => status.state = PlaybackState::Idle,
-            MpvEvent::Nothing | MpvEvent::Other => {}
+            MpvEvent::Nothing | MpvEvent::Other => return,
         }
+        tracing::debug!(?event, state = ?status.state, "player event applied");
     }
 
     /// Records the latest position/length and pause flag while a stream is active.

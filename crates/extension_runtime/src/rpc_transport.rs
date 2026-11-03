@@ -14,4 +14,10 @@ pub trait RpcTransport: Send + Sync {
     fn remember_for_restart(&self, method: &str, params: Value, timeout: Duration) {
         let _ = (method, params, timeout);
     }
+
+    /// Like [`Self::remember_for_restart`] for a setting: only the latest value of `method` is
+    /// repeated, so switching a setting on and off leaves it as the viewer last chose.
+    fn remember_setting_for_restart(&self, method: &str, params: Value, timeout: Duration) {
+        let _ = (method, params, timeout);
+    }
 }

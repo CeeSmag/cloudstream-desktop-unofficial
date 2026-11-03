@@ -18,6 +18,7 @@ impl RepositoryStore {
     }
 
     /// Adds a repository; adding the same URL again keeps the original entry.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn add(&self, entry: &RepositoryEntry) -> Result<(), StorageError> {
         self.database.with("add repository", |connection| {
             connection
@@ -30,6 +31,7 @@ impl RepositoryStore {
     }
 
     /// Lists repositories in the order they were added.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn list(&self) -> Result<Vec<RepositoryEntry>, StorageError> {
         self.database.with("list repositories", |connection| {
             let mut statement = connection
@@ -46,6 +48,7 @@ impl RepositoryStore {
     }
 
     /// Removes a repository by URL.
+    #[tracing::instrument(level = "trace", skip_all, fields(url = ?url), err)]
     pub fn remove(&self, url: &str) -> Result<(), StorageError> {
         self.database.with("remove repository", |connection| {
             connection

@@ -43,6 +43,7 @@ impl StreamChecker {
     }
 
     /// Asks the host of one stream for its first bytes.
+    #[tracing::instrument(level = "debug", skip_all, fields(host = link.url.split('/').nth(2).unwrap_or_default()))]
     pub fn check(&self, link: &PlayableLink) -> LinkHealth {
         match self.probe.probe(&link.url, &request_headers(link)) {
             Ok(response) => classify(&link.link_type, &response),
@@ -55,6 +56,7 @@ impl StreamChecker {
     /// before every new check, so nothing starts once the answers are no longer wanted (a check
     /// already on its way finishes, within the probe time limit); `on_result` returning `false`
     /// says the same from the other side.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn check_all(
         &self,
         links: &[(usize, PlayableLink)],

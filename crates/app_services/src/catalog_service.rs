@@ -27,6 +27,7 @@ impl CatalogService {
     }
 
     /// Searches every given provider (page 1) and reports each outcome separately.
+    #[tracing::instrument(level = "debug", skip_all, fields(query = ?query))]
     pub fn search(&self, providers: &[ProviderInfo], query: &str) -> Vec<ProviderSearchOutcome> {
         providers
             .iter()
@@ -44,6 +45,7 @@ impl CatalogService {
     }
 
     /// Loads one home page category of a provider.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
     pub fn home(
         &self,
         provider: &str,
@@ -53,6 +55,7 @@ impl CatalogService {
     }
 
     /// Loads the details of a title.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, url = ?url), err)]
     pub fn details(&self, provider: &str, url: &str) -> Result<LoadDetails, ServiceError> {
         self.gateway
             .load(provider, url)?
