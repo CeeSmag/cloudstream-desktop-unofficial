@@ -1238,6 +1238,7 @@ dependencies = [
  "core_model",
  "extension_api",
  "extension_repo",
+ "extension_runtime",
  "player_api",
  "player_mpv",
  "serde",
@@ -1783,6 +1784,7 @@ version = "0.1.0"
 dependencies = [
  "core_model",
  "extension_api",
+ "extension_runtime",
  "serde",
  "serde_json",
  "tracing",
