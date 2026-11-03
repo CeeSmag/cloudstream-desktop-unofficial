@@ -7,6 +7,24 @@ pub struct SubtitleSource {
     pub language: String,
 }
 
+/// The languages of `subtitles` with how many files each has, for log lines: `Arabic=4, English=12`.
+pub fn describe_languages(subtitles: &[SubtitleSource]) -> String {
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for subtitle in subtitles {
+        let language = if subtitle.language.is_empty() {
+            "unknown"
+        } else {
+            subtitle.language.as_str()
+        };
+        *counts.entry(language).or_default() += 1;
+    }
+    counts
+        .iter()
+        .map(|(language, count)| format!("{language}={count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Everything a player needs to start one stream.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlaybackRequest {
