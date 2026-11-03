@@ -14,14 +14,17 @@ import {
   Layers,
   Loader2,
 } from 'lucide-react';
-import { CheckProgress, MediaTrack, PlaybackStatus, SourceInfo } from '../types';
+import { CheckProgress, PlaybackStatus, SourceInfo } from '../types';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
-import { MenuOption, OptionMenu } from '../components/OptionMenu';
+import { OptionMenu } from '../components/OptionMenu';
 import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
 import { sourceText, trackText } from '../utils/feedbackText';
-import { numberDuplicateLabels } from '../utils/trackLabels';
+import { trackOptions } from '../utils/trackMenu';
+import { filterSourcesBySubtitles } from '../utils/sourceFilter';
+import { preferredFlags } from '../utils/subtitleFlags';
+import { SubtitleFilter } from '../components/SubtitleFilter';
 import { sourceRow } from '../utils/sourceRows';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
@@ -47,13 +50,6 @@ interface PlayerOverlayProps {
 const SKIP_MS = 10000;
 const ROUND_BUTTON = 'p-2 sm:p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-colors';
 
-/** The menu rows for the audio or subtitle tracks of the stream. */
-function trackOptions(tracks: MediaTrack[], kind: MediaTrack['kind']): MenuOption[] {
-  const ofKind = tracks.filter((track) => track.kind === kind);
-  const labels = numberDuplicateLabels(ofKind.map((track) => track.title));
-  return ofKind.map((track, index) => ({ id: track.id, label: labels[index] ?? track.title, selected: track.selected }));
-}
-
 export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   title,
   status,
@@ -74,13 +70,18 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   useStallWatch(() => `state=${status.state}, fullscreen=${controls.fullscreen}, controls=${controlsVisible}`);
 
   const selectTrack = (kind: 'audio' | 'subtitle') => (id: number | null) => {
-    const label = trackOptions(status.tracks, kind).find((option) => option.id === id)?.label ?? null;
+    const label = trackOptions(status.tracks, kind, preferences).find((option) => option.id === id)?.label ?? null;
     controls.show({ icon: kind === 'audio' ? 'audio' : 'subtitles', text: trackText(kind, label) });
     onSelectTrack(kind, id);
     setTrackMenu('none');
   };
 
   const preferences = usePlayerPreferences();
+  const [subtitleFilter, setSubtitleFilter] = React.useState<string[]>([]);
+  const toggleSubtitleFilter = (code: string) =>
+    setSubtitleFilter((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]));
+  const visibleSources = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
+  const filterLanguages = preferences ? preferredFlags(preferences) : [];
 
   const selectSource = (index: number) => {
     const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
@@ -121,7 +122,16 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <OptionMenu
             label="Sources"
             icon={Layers}
-            options={sources.map((source) => sourceRow(source, preferences))}
+            options={visibleSources.map((source) => sourceRow(source, preferences))}
+            header={
+              <SubtitleFilter
+                languages={filterLanguages}
+                toggled={subtitleFilter}
+                onToggle={toggleSubtitleFilter}
+                shown={visibleSources.length}
+                total={sources.length}
+              />
+            }
             allowOff={false}
             wide
             open={trackMenu === 'sources'}
@@ -134,7 +144,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <OptionMenu
             label="Subtitles"
             icon={Subtitles}
-            options={trackOptions(status.tracks, 'subtitle')}
+            options={trackOptions(status.tracks, 'subtitle', preferences)}
             allowOff
             open={trackMenu === 'subtitles'}
             onToggle={() => setTrackMenu(trackMenu === 'subtitles' ? 'none' : 'subtitles')}
