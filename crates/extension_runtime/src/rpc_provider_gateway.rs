@@ -2,8 +2,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use core_model::{
-    DiscoveredRepository, HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo,
-    SearchPage,
+    DiscoveredRepository, HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry,
+    PlayableLinks, ProviderInfo, SearchPage,
 };
 use extension_api::{GatewayError, ProviderGateway};
 use serde::de::DeserializeOwned;
@@ -60,7 +60,10 @@ fn call_target(params: &Value) -> String {
 /// Calls made in bulk or on a timer (home page rows, the poll for added repositories); they
 /// are only logged at debug level unless they fail or are slow.
 fn is_background_poll(method: &str) -> bool {
-    matches!(method, "main_page" | "take_added_repositories")
+    matches!(
+        method,
+        "main_page" | "take_added_repositories" | "poll_link_search"
+    )
 }
 
 /// Leaves a trace of every call: how long it took and whether it worked.
@@ -119,6 +122,32 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
     fn load_links(&self, provider: &str, data: &str) -> Result<PlayableLinks, GatewayError> {
         let params = json!({ "provider": provider, "data": data });
         self.call_typed("load_links", params, LINK_RESOLVE_TIMEOUT)
+    }
+
+    fn start_link_search(&self, provider: &str, data: &str) -> Result<String, GatewayError> {
+        let params = json!({ "provider": provider, "data": data });
+        self.call_typed("start_link_search", params, PROVIDER_CALL_TIMEOUT)
+    }
+
+    fn poll_link_search(
+        &self,
+        id: &str,
+        cursor: LinkSearchCursor,
+        wait: Duration,
+    ) -> Result<LinkSearchUpdate, GatewayError> {
+        let params = json!({
+            "id": id,
+            "fromLink": cursor.links,
+            "fromSubtitle": cursor.subtitles,
+            "waitMs": wait.as_millis(),
+        });
+        self.call_typed("poll_link_search", params, wait + PROVIDER_CALL_TIMEOUT)
+    }
+
+    fn cancel_link_search(&self, id: &str) -> Result<(), GatewayError> {
+        let params = json!({ "id": id });
+        self.call_typed::<Value>("cancel_link_search", params, PROVIDER_CALL_TIMEOUT)
+            .map(drop)
     }
 
     fn extract(&self, url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError> {

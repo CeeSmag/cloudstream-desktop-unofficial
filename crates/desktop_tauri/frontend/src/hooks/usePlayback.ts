@@ -21,7 +21,13 @@ const IDLE_STATUS: PlaybackStatus = {
 const LOADING_STATUS: PlaybackStatus = { ...IDLE_STATUS, state: 'Loading', has_video: true };
 
 /** The check shown from the moment a video is opened, before the backend has counted any streams. */
-const OPENING: CheckProgress = { checked: 0, total: 0, working: 0, skipping: false };
+const OPENING: CheckProgress = {
+  checked: 0,
+  total: 0,
+  working: 0,
+  skipping: false,
+  discovering: true,
+};
 
 /** Everything about the video player screen: what is playing, its state, and the actions on it. */
 export function usePlayback() {

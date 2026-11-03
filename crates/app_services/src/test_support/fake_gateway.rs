@@ -1,9 +1,11 @@
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
 
 use core_model::{
-    HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo, SearchPage, SearchResult,
+    HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry, PlayableLinks,
+    ProviderInfo, SearchPage, SearchResult,
 };
 use extension_api::{GatewayError, ProviderGateway};
 
@@ -17,6 +19,10 @@ pub(crate) struct FakeGateway {
     pub(crate) load_links_calls: Mutex<u32>,
     pub(crate) searched: Mutex<Vec<String>>,
     pub(crate) load_reply: Mutex<Option<Result<Option<LoadDetails>, GatewayError>>>,
+    /// Answers to link-search polls; `None` means the runtime cannot stream links.
+    pub(crate) search_updates: Mutex<Option<VecDeque<Result<LinkSearchUpdate, GatewayError>>>>,
+    pub(crate) searches_started: Mutex<u32>,
+    pub(crate) searches_cancelled: Mutex<u32>,
 }
 
 fn unavailable<T>() -> Result<T, GatewayError> {
@@ -114,6 +120,45 @@ impl ProviderGateway for FakeGateway {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or_else(unavailable)
+    }
+
+    fn start_link_search(&self, _provider: &str, _data: &str) -> Result<String, GatewayError> {
+        let scripted = self
+            .search_updates
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some();
+        if !scripted {
+            return unavailable();
+        }
+        let mut started = self
+            .searches_started
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        *started += 1;
+        Ok(format!("search-{started}"))
+    }
+
+    fn poll_link_search(
+        &self,
+        _id: &str,
+        _cursor: LinkSearchCursor,
+        _wait: Duration,
+    ) -> Result<LinkSearchUpdate, GatewayError> {
+        self.search_updates
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+            .and_then(VecDeque::pop_front)
+            .unwrap_or_else(unavailable)
+    }
+
+    fn cancel_link_search(&self, _id: &str) -> Result<(), GatewayError> {
+        *self
+            .searches_cancelled
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) += 1;
+        Ok(())
     }
 
     fn extract(&self, _url: &str, _referer: Option<&str>) -> Result<PlayableLinks, GatewayError> {
