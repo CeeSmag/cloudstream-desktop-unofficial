@@ -78,6 +78,19 @@ impl WatchProgressStore {
         })
     }
 
+    /// Forgets the saved progress of one item. Returns whether there was any.
+    #[tracing::instrument(level = "trace", skip_all, fields(provider = ?provider, media_key = ?media_key), err)]
+    pub fn remove(&self, provider: &str, media_key: &str) -> Result<bool, StorageError> {
+        self.database.with("remove watch progress", |connection| {
+            connection
+                .execute(
+                    "DELETE FROM watch_progress WHERE provider = ?1 AND media_key = ?2",
+                    params![provider, media_key],
+                )
+                .map(|rows| rows > 0)
+        })
+    }
+
     /// Lists the most recently watched items, newest first.
     #[tracing::instrument(level = "trace", skip_all, fields(limit = ?limit), err)]
     pub fn recent(&self, limit: u32) -> Result<Vec<WatchProgress>, StorageError> {
@@ -124,6 +137,18 @@ mod tests {
                 .position_ms,
             55
         );
+    }
+
+    #[test]
+    fn remove_forgets_only_that_item_and_says_whether_it_was_there() {
+        let store = store();
+        store.save(&progress("a", 10, 1)).expect("save");
+        store.save(&progress("b", 10, 2)).expect("save");
+        assert!(store.remove("P", "a").expect("remove"));
+        assert!(!store.remove("P", "a").expect("remove again"));
+        assert!(!store.remove("Other", "b").expect("other provider"));
+        assert_eq!(store.get("P", "a").expect("get"), None);
+        assert!(store.get("P", "b").expect("get").is_some());
     }
 
     #[test]

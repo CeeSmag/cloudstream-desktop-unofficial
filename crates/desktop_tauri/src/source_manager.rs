@@ -18,6 +18,7 @@ use crate::failure_tally::FailureTally;
 use crate::link_ledger::LinkLedger;
 use crate::saved_start::SavedStart;
 use crate::source_discovery::{Discovery, SubtitleSink};
+use crate::source_fallback::FallbackController;
 use crate::source_session::{ActiveSources, SourceSession};
 use crate::subtitle_delivery::{Delivery, DeliveryParts, SubtitleWork};
 use subtitle_store::{KeepGoing, SubtitleLoader};
@@ -61,9 +62,11 @@ pub struct SourceManager {
     session: Arc<SourceSession>,
     checker: StreamChecker,
     /// Downloads and keeps the subtitle files of the provider.
-    subtitles: Arc<SubtitleLoader>,
+    pub(crate) subtitles: Arc<SubtitleLoader>,
     /// The streams found for titles opened before.
-    titles: Arc<TitleCache>,
+    pub(crate) titles: Arc<TitleCache>,
+    /// Switches to the next source when the one that plays fails.
+    fallback: FallbackController,
     /// How long a video waits for its provider.
     limits: WaitLimits,
     /// The wait of the video that is being opened or played.
@@ -82,6 +85,7 @@ impl SourceManager {
             checker,
             subtitles,
             titles,
+            fallback: FallbackController::default(),
             limits: WaitLimits::default(),
             current: Mutex::new(None),
         }
@@ -97,6 +101,11 @@ impl SourceManager {
     /// The streams of the item that is playing.
     pub fn session(&self) -> &SourceSession {
         &self.session
+    }
+
+    /// Replaces a source that failed while playing.
+    pub fn fallback(&self) -> &FallbackController {
+        &self.fallback
     }
 
     /// Starts the opening of a new video and cancels the one before it, if any.
@@ -221,13 +230,6 @@ impl SourceManager {
         let queue = Arc::new(CheckQueue::default());
         queue.push(saved.plant((gate, &self.session, generation), &ledger));
         (ledger, queue)
-    }
-
-    /// Notes that the stream at `url` played well for the title, so it is tried first next time.
-    pub fn note_played(&self, title_key: &str, url: &str) {
-        if let Err(error) = self.titles.mark_played_well(title_key, url) {
-            tracing::warn!(%error, "cannot note the stream that played well");
-        }
     }
 
     /// Whether anybody still wants the work of the video with this generation.

@@ -12,54 +12,16 @@ use extension_repo::{HttpProbe, ProbeResponse, RepoError};
 use extension_runtime::fake_link_search::{FakeLinkSearches, SearchScript};
 use extension_runtime::fake_search_runtime::FakeSearchRuntime;
 use extension_runtime::RpcProviderGateway;
-use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoPlayer};
+use player_api::VideoPlayer;
 use storage::{Database, WatchProgressStore};
 
 use crate::check_gate::WaitLimits;
 use crate::race_tests::{join_within, TIME_LIMIT};
+use crate::recording_player::RecordingPlayer;
 use crate::source_manager::{SourceManager, Tell};
 use crate::test_subtitles::TestSubtitles;
 use crate::test_titles::TestTitles;
 use crate::video_opening::{open_video, OpeningServices};
-
-/// Records what the player was asked to play.
-#[derive(Default)]
-pub(crate) struct RecordingPlayer {
-    pub(crate) played: Mutex<Vec<String>>,
-    /// The subtitle files each stream was started with.
-    pub(crate) started_with: Mutex<Vec<Vec<SubtitleSource>>>,
-    /// Subtitle files given to a stream that was already playing.
-    pub(crate) added_later: Mutex<Vec<SubtitleSource>>,
-}
-
-impl VideoPlayer for RecordingPlayer {
-    fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError> {
-        self.played.lock().expect("lock").push(request.url.clone());
-        self.started_with
-            .lock()
-            .expect("lock")
-            .push(request.subtitles.clone());
-        Ok(())
-    }
-    fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
-        self.added_later
-            .lock()
-            .expect("lock")
-            .extend_from_slice(subtitles);
-    }
-    fn set_paused(&self, _: bool) -> Result<(), PlayerError> {
-        Ok(())
-    }
-    fn seek_to(&self, _: i64) -> Result<(), PlayerError> {
-        Ok(())
-    }
-    fn stop(&self) -> Result<(), PlayerError> {
-        Ok(())
-    }
-    fn status(&self) -> PlaybackStatus {
-        PlaybackStatus::default()
-    }
-}
 
 /// Every stream is a working video, except the ones whose address holds a word of `dead`.
 struct ProbeByAddress(Arc<Mutex<Vec<String>>>);

@@ -174,6 +174,24 @@ impl SubtitleCache {
             .collect()
     }
 
+    /// Forgets everything kept for one title: the files its list names and the list itself.
+    /// Returns how many files were removed.
+    pub fn forget_title(&self, title_key: &str) -> usize {
+        let list = self.title_list(title_key);
+        let Ok(text) = fs::read_to_string(&list) else {
+            return 0;
+        };
+        let removed = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<TitleEntry>(line).ok())
+            .filter(|entry| fs::remove_file(self.files().join(&entry.file)).is_ok())
+            .count();
+        if let Err(error) = fs::remove_file(&list) {
+            tracing::warn!(%error, "cannot remove the subtitle list of a title");
+        }
+        removed
+    }
+
     /// Deletes files and lists older than the time to live; returns how many were removed.
     pub fn prune(&self) -> usize {
         [self.files(), self.root.join(TITLES_DIR)]

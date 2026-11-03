@@ -55,6 +55,31 @@ fn a_stored_file_is_found_again_by_its_address() {
 }
 
 #[test]
+fn forgetting_a_title_removes_its_list_and_files_and_nothing_of_other_titles() {
+    let scratch = Scratch::new();
+    let cache = scratch.cache(WEEK);
+    let mine = ready(&cache, "https://s.test/mine.srt", "English");
+    let theirs = ready(&cache, "https://s.test/theirs.srt", "English");
+    cache
+        .remember_for_title("P\nmine", &mine)
+        .expect("remembered");
+    cache
+        .remember_for_title("P\ntheirs", &theirs)
+        .expect("remembered");
+
+    assert_eq!(cache.forget_title("P\nmine"), 1);
+
+    assert!(cache.cached_for_title("P\nmine").is_empty());
+    let lists = fs::read_dir(scratch.0.join(TITLES_DIR))
+        .expect("folder")
+        .count();
+    assert_eq!(lists, 1, "only the list of the other title is left on disk");
+    assert_eq!(cache.lookup("https://s.test/mine.srt"), None);
+    assert_eq!(cache.cached_for_title("P\ntheirs").len(), 1);
+    assert_eq!(cache.forget_title("P\nmine"), 0, "nothing left to forget");
+}
+
+#[test]
 fn a_file_is_never_left_half_written() {
     let scratch = Scratch::new();
     let cache = scratch.cache(WEEK);

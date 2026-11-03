@@ -1,6 +1,8 @@
 //! Tauri commands for listing and switching the streams of the item that is playing.
 
-use app_services::{full_label, link_rank, stream_host, stream_kind, StreamSelection};
+use app_services::{
+    full_label, link_rank, stream_host, stream_kind, PlaybackService, StreamSelection,
+};
 use core_model::PlayableLink;
 use serde::Serialize;
 use tauri::State;
@@ -55,6 +57,21 @@ pub async fn switch_source(
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
+    let services = state.read();
+    let playback = services
+        .playback
+        .as_ref()
+        .ok_or_else(|| "Playback service unavailable".to_owned())?;
+    switch_to(&sources, playback, index)
+}
+
+/// Starts the stream at `index` where the video stopped. The viewer chose it, so the count of
+/// automatic fallbacks starts over.
+pub(crate) fn switch_to(
+    sources: &SourceManager,
+    playback: &PlaybackService,
+    index: usize,
+) -> Result<(), String> {
     let active = sources
         .session()
         .start_snapshot()
@@ -63,11 +80,6 @@ pub async fn switch_source(
         .links
         .get(index)
         .ok_or_else(|| format!("There is no source number {}.", index + 1))?;
-    let services = state.read();
-    let playback = services
-        .playback
-        .as_ref()
-        .ok_or_else(|| "Playback service unavailable".to_owned())?;
     let live_position_ms = playback.tick().position_ms;
     let stream = StreamSelection {
         link,
@@ -78,7 +90,8 @@ pub async fn switch_source(
             active.position_ms
         },
     };
-    tracing::info!(index, url = %link.url, "switching source");
+    tracing::info!(index, stream = %title_cache::redact_url(&link.url), "switching source");
+    sources.fallback().reset();
     playback
         .start_at(active.item.clone(), &stream)
         .map_err(|error| format!("Cannot switch source: {error}"))?;

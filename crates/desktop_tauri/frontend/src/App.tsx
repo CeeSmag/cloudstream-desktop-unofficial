@@ -18,11 +18,13 @@ import { DetailsScreen } from './screens/DetailsScreen';
 import { PlayerOverlay } from './screens/PlayerOverlay';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { findEpisodeForKey } from './playback/episodeLookup';
 import { usePlayback } from './hooks/usePlayback';
 import { useStartup } from './hooks/useStartup';
 import { setDebugLogging } from './utils/logger';
 import { StartupScreen } from './components/StartupScreen';
+import { ContextMenu } from './components/ContextMenu';
+import { useContextMenu } from './hooks/useContextMenu';
+import { canOpenTitlePage, missingPageMessage, titlePageItem } from './utils/continueWatching';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -52,6 +54,7 @@ export const App: React.FC = () => {
 
   const playback = usePlayback();
   const startup = useStartup();
+  const contextMenu = useContextMenu();
 
   // Library & settings
   const [bookmarks, setBookmarks] = React.useState<Bookmark[]>([]);
@@ -135,18 +138,21 @@ export const App: React.FC = () => {
     await playback.start(activeDetails, ep);
   });
 
-  const handleResume = guard(async (progress: WatchProgress) => {
-    if (!progress.detail_url) {
-      throw new Error(
-        `"${progress.title}" was saved without its title page. Open it from Search or Home and play it once to make it resumable.`,
-      );
-    }
-    const details = await api.getDetails(progress.provider, progress.detail_url);
-    const target = findEpisodeForKey(details, progress.media_id);
-    if (!target) {
-      throw new Error(`"${progress.title}" is no longer listed by ${progress.provider}.`);
-    }
-    await playback.start(details, target);
+  // A Continue Watching card opens the title page; playing happens only there.
+  const handleOpenContinue = guard(async (progress: WatchProgress) => {
+    if (!canOpenTitlePage(progress)) throw new Error(missingPageMessage(progress));
+    await handleSelectItem(titlePageItem(progress));
+  });
+
+  // Takes a title out of Continue Watching; the backend also forgets its saved sources and subtitles.
+  const handleRemoveContinue = guard(async (progress: WatchProgress) => {
+    await api.removeContinueWatching(progress.provider, progress.media_id);
+    setContinueWatching(await api.getContinueWatching());
+  });
+
+  const handleClearContinue = guard(async () => {
+    await api.clearContinueWatching();
+    setContinueWatching(await api.getContinueWatching());
   });
 
   // Stop player & return
@@ -193,6 +199,7 @@ export const App: React.FC = () => {
     return (
       <>
         <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
+        <ContextMenu menu={contextMenu.menu} onClose={contextMenu.close} />
         <PlayerOverlay
           title={playback.title}
           status={playback.status}
@@ -213,6 +220,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen bg-midnight text-white overflow-hidden">
       <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
+      <ContextMenu menu={contextMenu.menu} onClose={contextMenu.close} />
       {/* Top Navigation */}
       <Navigation
         currentTab={currentTab}
@@ -247,6 +255,9 @@ export const App: React.FC = () => {
                 sections={homeSections}
                 onSelectItem={handleSelectItem}
                 loading={homeLoading}
+                continueWatching={continueWatching}
+                onOpenContinue={handleOpenContinue}
+                onRemoveContinue={handleRemoveContinue}
               />
             )}
             {currentTab === 'search' && (
@@ -263,7 +274,9 @@ export const App: React.FC = () => {
                 bookmarks={bookmarks}
                 continueWatching={continueWatching}
                 onSelectItem={handleSelectItem}
-                onResume={handleResume}
+                onOpenContinue={handleOpenContinue}
+                onRemoveContinue={handleRemoveContinue}
+                onClearContinue={handleClearContinue}
                 onRemoveBookmark={handleRemoveBookmark}
               />
             )}
