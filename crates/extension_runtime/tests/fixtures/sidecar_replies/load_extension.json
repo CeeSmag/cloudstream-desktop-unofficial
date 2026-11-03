@@ -1,0 +1,32 @@
+[
+ {
+  "name": "CineStream",
+  "mainUrl": "https://host1.example.test/file",
+  "lang": "en",
+  "types": [
+   "Movie",
+   "TvSeries",
+   "AsianDrama",
+   "Anime",
+   "Torrent"
+  ],
+  "hasMainPage": true,
+  "mainPage": [
+   {
+    "name": "Top Movies",
+    "data": "https://host2.example.test/file",
+    "horizontalImages": false
+   },
+   {
+    "name": "Top Series",
+    "data": "https://host3.example.test/file",
+    "horizontalImages": false
+   },
+   {
+    "name": "Airing Anime",
+    "data": "https://host4.example.test/file",
+    "horizontalImages": false
+   }
+  ]
+ }
+]

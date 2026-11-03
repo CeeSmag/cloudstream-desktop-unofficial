@@ -7,6 +7,7 @@
 //! The picker lists what the checks found.
 
 use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::Instant;
 
 use app_services::{CheckQueue, LinkSearch, PlaybackItem, StreamChecker};
@@ -31,7 +32,10 @@ pub enum CheckUpdate {
     SourcesChanged,
 }
 
-/// What [`SourceManager::discover`] needs to follow one video's search.
+/// How the UI hears about the search and the checks.
+pub type Tell = Arc<dyn Fn(CheckUpdate) + Send + Sync>;
+
+/// What [`SourceManager::discover_with`] needs to follow one video's search.
 pub struct SearchRequest {
     /// The wait of the video that is opening.
     pub gate: Arc<CheckGate>,
@@ -47,6 +51,8 @@ pub struct SearchRequest {
 pub struct SourceManager {
     session: Arc<SourceSession>,
     checker: StreamChecker,
+    /// How long a video waits for streams.
+    grace: Grace,
     /// The wait of the video that is being opened or played.
     current: Mutex<Option<Arc<CheckGate>>>,
 }
@@ -57,8 +63,16 @@ impl SourceManager {
         Self {
             session: Arc::new(SourceSession::default()),
             checker,
+            grace: Grace::default(),
             current: Mutex::new(None),
         }
+    }
+
+    /// The same manager with other waiting times, so tests do not have to wait for real ones.
+    #[cfg(test)]
+    pub fn with_grace(mut self, grace: Grace) -> Self {
+        self.grace = grace;
+        self
     }
 
     /// The streams of the item that is playing.
@@ -69,7 +83,7 @@ impl SourceManager {
     /// Starts the opening of a new video and cancels the one before it, if any.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn begin(&self) -> Arc<CheckGate> {
-        let gate = Arc::new(CheckGate::new(Grace::default()));
+        let gate = Arc::new(CheckGate::new(self.grace));
         let previous = self
             .current
             .lock()
@@ -124,16 +138,18 @@ impl SourceManager {
         }
     }
 
-    /// Follows the provider's search and checks its streams in the background.
+    /// Follows the provider's search and checks its streams in the background; `tell` hears about
+    /// progress. Returns the two threads that do the work, which end when the search and the checks
+    /// are over or the video is closed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn discover(&self, app: AppHandle, request: SearchRequest) {
+    pub fn discover_with(&self, tell: Tell, request: SearchRequest) -> Vec<JoinHandle<()>> {
         let SearchRequest {
             gate,
             generation,
             search,
             give_subtitles,
         } = request;
-        emit(&app, CheckUpdate::Progress(gate.progress()));
+        tell(CheckUpdate::Progress(gate.progress()));
         let job = Arc::new(Discovery {
             checker: self.checker.clone(),
             session: Arc::clone(&self.session),
@@ -141,7 +157,7 @@ impl SourceManager {
             generation,
             queue: Arc::new(CheckQueue::default()),
             started: Instant::now(),
-            tell: Arc::new(move |update| emit(&app, update)),
+            tell,
             give_subtitles,
             hosts: Mutex::default(),
             failures: FailureTally::default(),
@@ -150,24 +166,26 @@ impl SourceManager {
         let searched = spawn("source-search", move || searching.run_search(search));
         let checking = Arc::clone(&job);
         let checks = spawn("source-checks", move || checking.run_checks());
-        if !(searched && checks) {
+        if searched.is_none() || checks.is_none() {
             job.queue.stop();
             gate.discovery_ended(Some("Cannot start looking for streams.".to_owned()));
         }
+        searched.into_iter().chain(checks).collect()
     }
 }
 
-fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
+fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> Option<JoinHandle<()>> {
     let spawned = std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(work);
     if let Err(error) = &spawned {
         tracing::error!(%error, name, "cannot start a thread for the streams");
     }
-    spawned.is_ok()
+    spawned.ok()
 }
 
-fn emit(app: &AppHandle, update: CheckUpdate) {
+/// Tells the UI about the search and the checks.
+pub(crate) fn emit(app: &AppHandle, update: CheckUpdate) {
     let sent = match update {
         CheckUpdate::Progress(progress) => app.emit(SOURCE_CHECK_PROGRESS_EVENT, progress),
         CheckUpdate::SourcesChanged => app.emit(SOURCES_CHANGED_EVENT, ()),

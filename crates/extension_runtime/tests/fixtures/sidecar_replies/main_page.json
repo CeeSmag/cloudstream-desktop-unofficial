@@ -1,0 +1,39 @@
+{
+ "items": [
+  {
+   "name": "Top Movies",
+   "list": [
+    {
+     "name": "Obsession",
+     "url": "{\"id\":\"tt37287335\",\"type\":\"movie\"}",
+     "apiName": "CineStream",
+     "type": "Movie",
+     "posterUrl": "https://host1.example.test/file",
+     "year": null,
+     "id": null,
+     "quality": null,
+     "posterHeaders": null,
+     "score": {
+      "data": 780000000
+     }
+    },
+    {
+     "name": "Hocus Pocus",
+     "url": "{\"id\":\"tt0107120\",\"type\":\"movie\"}",
+     "apiName": "CineStream",
+     "type": "Movie",
+     "posterUrl": "https://host2.example.test/file",
+     "year": null,
+     "id": null,
+     "quality": null,
+     "posterHeaders": null,
+     "score": {
+      "data": 690000000
+     }
+    }
+   ],
+   "isHorizontalImages": false
+  }
+ ],
+ "hasNext": true
+}
