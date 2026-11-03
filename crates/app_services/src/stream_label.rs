@@ -17,6 +17,48 @@ pub fn describe_link(link: &PlayableLink) -> String {
     format!("{} - {name}", quality_text(link))
 }
 
+/// The complete description of a stream: quality and the link's own full name, with audio-only
+/// streams marked. Nothing is shortened.
+pub fn full_label(link: &PlayableLink) -> String {
+    let label = describe_link(link);
+    if is_audio_only_url(&link.url) {
+        format!("{label} \u{00B7} audio only")
+    } else {
+        label
+    }
+}
+
+/// What kind of stream it is: `HLS`, `DASH`, the file extension of a plain video (`MP4`, `MKV`),
+/// or `Video` when the address says nothing.
+pub fn stream_kind(link: &PlayableLink) -> String {
+    match link.link_type.as_str() {
+        "M3U8" => "HLS".to_owned(),
+        "DASH" => "DASH".to_owned(),
+        _ => file_extension(&link.url).unwrap_or_else(|| "Video".to_owned()),
+    }
+}
+
+/// The host the stream is served from, for example `cdn.example.com`.
+pub fn stream_host(link: &PlayableLink) -> String {
+    link.url
+        .split("//")
+        .nth(1)
+        .and_then(|rest| rest.split(['/', '?', '#']).next())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn file_extension(url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next()?;
+    let extension = path.rsplit('/').next()?.rsplit_once('.')?.1;
+    let known = [
+        "mp4", "mkv", "webm", "avi", "mov", "m4v", "ts", "mp3", "m4a",
+    ];
+    known
+        .contains(&extension.to_ascii_lowercase().as_str())
+        .then(|| extension.to_ascii_uppercase())
+}
+
 /// `1080p - Server (mp4)`: the hoster name when the link name is a long file name, plus the
 /// container hint in brackets when the name ends with one. Audio-only streams are marked.
 pub fn source_label(link: &PlayableLink) -> String {
@@ -58,6 +100,41 @@ fn format_hint(name: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_full_label_keeps_a_long_file_name() {
+        let link = PlayableLink {
+            name: "Spider-Man.Brand.New.Day.2026.2160p.WEB-DL.DDP5.1.Atmos.H.265-GROUP.mkv".into(),
+            source: "Hub-Cloud".into(),
+            quality: 2160,
+            ..PlayableLink::default()
+        };
+        assert!(full_label(&link).ends_with("GROUP.mkv"));
+        assert!(source_label(&link).starts_with("2160p - Hub-Cloud"));
+    }
+
+    #[test]
+    fn the_kind_comes_from_the_link_type_or_the_file_extension() {
+        let kind = |url: &str, link_type: &str| {
+            stream_kind(&PlayableLink {
+                url: url.into(),
+                link_type: link_type.into(),
+                ..PlayableLink::default()
+            })
+        };
+        assert_eq!(kind("https://h/a/master.m3u8?x=1", "M3U8"), "HLS");
+        assert_eq!(kind("https://h/a/movie.mkv?sig=2", "VIDEO"), "MKV");
+        assert_eq!(kind("https://h/download/12345", "VIDEO"), "Video");
+    }
+
+    #[test]
+    fn the_host_is_read_from_the_address() {
+        let link = PlayableLink {
+            url: "https://cdn.example.com:8443/a/b.mp4?x=1".into(),
+            ..PlayableLink::default()
+        };
+        assert_eq!(stream_host(&link), "cdn.example.com:8443");
+    }
 
     #[test]
     fn describe_shows_quality_and_name() {

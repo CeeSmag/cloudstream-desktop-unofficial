@@ -1,6 +1,6 @@
 //! Tauri commands for listing and switching the streams of the item that is playing.
 
-use app_services::{source_label, StreamSelection};
+use app_services::{full_label, stream_host, stream_kind, StreamSelection};
 use serde::Serialize;
 use tauri::State;
 
@@ -13,8 +13,16 @@ use crate::source_session::{ActiveSources, SourceHealth};
 pub struct SourceDto {
     /// Position in the list; pass it to `switch_source`.
     pub index: usize,
-    /// Readable name such as `1080p - Server (mp4)`.
+    /// The complete description: quality and the full name of the stream.
     pub label: String,
+    /// `HLS`, `DASH`, a file type such as `MKV`, or `Video`.
+    pub kind: String,
+    /// Host the stream is served from.
+    pub host: String,
+    /// The stream address, shown in full.
+    pub url: String,
+    /// File size in bytes, when the check learned it.
+    pub size_bytes: Option<u64>,
     /// True for the stream that is playing now.
     pub selected: bool,
     /// True while the check of this stream has not finished.
@@ -86,7 +94,11 @@ fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
         })
         .map(|(index, (link, health))| SourceDto {
             index,
-            label: source_label(link),
+            label: full_label(link),
+            kind: stream_kind(link),
+            host: stream_host(link),
+            url: link.url.clone(),
+            size_bytes: active.sizes.get(index).copied().flatten(),
             selected: index == active.selected,
             checking: *health == SourceHealth::Checking,
         })

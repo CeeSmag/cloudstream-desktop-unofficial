@@ -18,7 +18,10 @@ const DEFAULT_USER_AGENT: &str = "libmpv";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkHealth {
     /// The host answered with a video, playlist or manifest.
-    Working,
+    Working {
+        /// Size of the video file in bytes; unknown for playlists and when the host did not say.
+        size_bytes: Option<u64>,
+    },
     /// The host did not answer properly; the reason is fit for a log line.
     Broken(String),
 }
@@ -26,7 +29,7 @@ pub enum LinkHealth {
 impl LinkHealth {
     /// True for [`LinkHealth::Working`].
     pub fn is_working(&self) -> bool {
-        matches!(self, Self::Working)
+        matches!(self, Self::Working { .. })
     }
 }
 
@@ -111,13 +114,13 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     let head = String::from_utf8_lossy(&response.head);
     let head = head.trim_start();
     if head.starts_with("#EXTM3U") {
-        return LinkHealth::Working;
+        return LinkHealth::Working { size_bytes: None };
     }
     if link_type == "M3U8" {
         return LinkHealth::Broken("not an HLS playlist".to_owned());
     }
     if link_type == "DASH" && (head.starts_with("<?xml") || head.starts_with("<MPD")) {
-        return LinkHealth::Working;
+        return LinkHealth::Working { size_bytes: None };
     }
     if response.head.is_empty() {
         return LinkHealth::Broken("empty answer".to_owned());
@@ -128,7 +131,13 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     if head.starts_with('{') || head.starts_with('[') {
         return LinkHealth::Broken("data, not a video".to_owned());
     }
-    LinkHealth::Working
+    LinkHealth::Working {
+        size_bytes: if link_type == "VIDEO" {
+            response.total_bytes
+        } else {
+            None
+        },
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +154,7 @@ mod tests {
             status,
             content_type: content_type.to_owned(),
             head: body.to_vec(),
+            total_bytes: None,
         }
     }
 
@@ -152,6 +162,24 @@ mod tests {
     fn a_video_file_is_working() {
         let matroska = [0x1A, 0x45, 0xDF, 0xA3, 0x42];
         assert!(classify("VIDEO", &answer(206, "video/x-matroska", &matroska)).is_working());
+    }
+
+    #[test]
+    fn a_video_file_reports_its_size_but_a_playlist_does_not() {
+        let mut video = answer(206, "video/mp4", b"\0\0\0\x18ftypmp42");
+        video.total_bytes = Some(1_400_000_000);
+        assert_eq!(
+            classify("VIDEO", &video),
+            LinkHealth::Working {
+                size_bytes: Some(1_400_000_000)
+            }
+        );
+        let mut playlist = answer(200, "application/x-mpegurl", b"#EXTM3U\n");
+        playlist.total_bytes = Some(300);
+        assert_eq!(
+            classify("M3U8", &playlist),
+            LinkHealth::Working { size_bytes: None }
+        );
     }
 
     #[test]

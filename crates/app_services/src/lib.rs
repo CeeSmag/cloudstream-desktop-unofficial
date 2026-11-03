@@ -26,5 +26,5 @@ pub use repository_service::RepositoryService;
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;
 pub use stream_checker::{LinkHealth, StreamChecker};
-pub use stream_label::{describe_link, source_label};
+pub use stream_label::{describe_link, full_label, source_label, stream_host, stream_kind};
 pub use stream_resolver::{is_audio_only_url, playable_links_best_first, StreamResolver};

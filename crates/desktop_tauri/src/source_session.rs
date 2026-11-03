@@ -26,6 +26,8 @@ pub struct ActiveSources {
     pub links: Vec<PlayableLink>,
     /// What the check found for each stream, in the same order as `links`.
     pub health: Vec<SourceHealth>,
+    /// File size in bytes of each stream, when the check learned it.
+    pub sizes: Vec<Option<u64>>,
     /// External subtitles the provider offered.
     pub subtitles: Vec<SubtitleTrack>,
     /// Index into `links` of the stream that is playing.
@@ -45,6 +47,7 @@ impl ActiveSources {
     ) -> Self {
         Self {
             health: vec![SourceHealth::Checking; links.len()],
+            sizes: vec![None; links.len()],
             item,
             links,
             subtitles,
@@ -101,6 +104,21 @@ impl SourceSession {
             Some(active) if active.generation == generation => {
                 if let Some(slot) = active.health.get_mut(index) {
                     *slot = health;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Records the file size the check learned for one stream; `false` when `generation` is no
+    /// longer the current one.
+    pub fn set_size(&self, generation: u64, index: usize, size_bytes: u64) -> bool {
+        let mut guard = self.active.lock().unwrap_or_else(PoisonError::into_inner);
+        match guard.as_mut() {
+            Some(active) if active.generation == generation => {
+                if let Some(slot) = active.sizes.get_mut(index) {
+                    *slot = Some(size_bytes);
                 }
                 true
             }
@@ -180,6 +198,20 @@ mod tests {
             session.snapshot().map(|active| active.position_ms),
             Some(95_000)
         );
+    }
+
+    #[test]
+    fn sizes_are_kept_for_the_current_generation_only() {
+        let session = SourceSession::default();
+        let first = session.set(sources());
+        assert!(session.set_size(first, 1, 1_400_000_000));
+        assert_eq!(
+            session.snapshot().map(|active| active.sizes),
+            Some(vec![None, Some(1_400_000_000)])
+        );
+        let second = session.set(sources());
+        assert!(!session.set_size(first, 0, 5), "stale result");
+        assert!(session.set_size(second, 0, 5));
     }
 
     #[test]

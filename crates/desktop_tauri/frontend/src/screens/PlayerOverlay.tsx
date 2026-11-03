@@ -22,6 +22,7 @@ import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
 import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
 import { numberDuplicateLabels } from '../utils/trackLabels';
+import { sourceRow } from '../utils/sourceRows';
 
 interface PlayerOverlayProps {
   title: string;
@@ -147,12 +148,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <OptionMenu
             label="Sources"
             icon={Layers}
-            options={sources.map((source) => ({
-              id: source.index,
-              label: source.checking ? `${source.label} · checking…` : source.label,
-              selected: source.selected,
-            }))}
+            options={sources.map(sourceRow)}
             allowOff={false}
+            wide
             open={trackMenu === 'sources'}
             onToggle={() => setTrackMenu(trackMenu === 'sources' ? 'none' : 'sources')}
             onSelect={(index) => {

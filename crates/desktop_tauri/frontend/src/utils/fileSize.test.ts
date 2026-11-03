@@ -6,9 +6,10 @@ describe('formatFileSize', () => {
     expect(formatFileSize(null)).toBe('—');
   });
 
-  it('uses bytes, kilobytes and megabytes', () => {
+  it('uses bytes, kilobytes, megabytes and gigabytes', () => {
     expect(formatFileSize(0)).toBe('0 B');
     expect(formatFileSize(1536)).toBe('1.5 KB');
     expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB');
+    expect(formatFileSize(3 * 1024 * 1024 * 1024)).toBe('3.0 GB');
   });
 });
