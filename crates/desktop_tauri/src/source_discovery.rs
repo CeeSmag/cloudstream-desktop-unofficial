@@ -12,10 +12,12 @@ use crate::source_manager::CheckUpdate;
 use crate::source_session::{SourceHealth, SourceSession};
 
 /// How long one look at the search waits for news before the video is asked about again.
-const POLL_WAIT: Duration = Duration::from_millis(500);
-/// Pause after a look that found something, so streams that arrive together are handled together
-/// and the runtime's single channel is left free for other calls.
+const POLL_WAIT: Duration = Duration::from_millis(250);
+/// Pause after a look that found something, so streams that arrive together are handled together.
 const BATCH_PAUSE: Duration = Duration::from_millis(150);
+/// Pause after a look that found nothing; the runtime has one channel for all calls and this
+/// leaves it free so browsing and the next video are not starved by the long poll.
+const IDLE_PAUSE: Duration = Duration::from_millis(50);
 /// The picker is refreshed after this many new results.
 const NOTIFY_EVERY: usize = 8;
 
@@ -66,9 +68,7 @@ impl Discovery {
                 self.end_search(failure);
                 return;
             }
-            if news {
-                std::thread::sleep(BATCH_PAUSE);
-            }
+            std::thread::sleep(if news { BATCH_PAUSE } else { IDLE_PAUSE });
         }
     }
 
