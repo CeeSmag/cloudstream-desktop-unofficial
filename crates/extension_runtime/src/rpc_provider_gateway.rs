@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use core_model::{
     DiscoveredRepository, HomePage, LoadDetails, MainPageEntry, PlayableLinks, ProviderInfo,
@@ -9,7 +9,7 @@ use extension_api::{GatewayError, ProviderGateway};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
-use crate::call_timeouts::{EXTENSION_LOAD_TIMEOUT, PROVIDER_CALL_TIMEOUT};
+use crate::call_timeouts::{EXTENSION_LOAD_TIMEOUT, LINK_RESOLVE_TIMEOUT, PROVIDER_CALL_TIMEOUT};
 use crate::RpcTransport;
 
 /// `ProviderGateway` that speaks the sidecar JSON protocol over any `RpcTransport`.
@@ -29,12 +29,52 @@ impl<T: RpcTransport> RpcProviderGateway<T> {
         params: Value,
         timeout: Duration,
     ) -> Result<R, GatewayError> {
-        tracing::debug!(method, "calling extension runtime");
-        let value = self.transport.call(method, params, timeout)?;
-        serde_json::from_value(value).map_err(|source| GatewayError::Decode {
+        let target = call_target(&params);
+        let started = Instant::now();
+        let outcome = self.transport.call(method, params, timeout);
+        log_call(method, &target, started.elapsed(), &outcome);
+        serde_json::from_value(outcome?).map_err(|source| GatewayError::Decode {
             method: method.to_owned(),
             reason: source.to_string(),
         })
+    }
+}
+
+/// A call that takes longer than this is reported as slow.
+const SLOW_CALL: Duration = Duration::from_secs(10);
+
+/// What a call is about, for the log: the provider, the extension file, or the address.
+fn call_target(params: &Value) -> String {
+    let field = |name: &str| params.get(name).and_then(Value::as_str);
+    let target = field("provider")
+        .or_else(|| field("path"))
+        .or_else(|| field("url"))
+        .unwrap_or_default();
+    target
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(target)
+        .to_owned()
+}
+
+/// Calls made in bulk or on a timer (home page rows, the poll for added repositories); they
+/// are only logged at debug level unless they fail or are slow.
+fn is_background_poll(method: &str) -> bool {
+    matches!(method, "main_page" | "take_added_repositories")
+}
+
+/// Leaves a trace of every call: how long it took and whether it worked.
+fn log_call(method: &str, target: &str, elapsed: Duration, outcome: &Result<Value, GatewayError>) {
+    let elapsed_ms = elapsed.as_millis();
+    match outcome {
+        Err(error) => tracing::warn!(method, target, elapsed_ms, %error, "extension call failed"),
+        Ok(_) if elapsed >= SLOW_CALL => {
+            tracing::warn!(method, target, elapsed_ms, "extension call was slow");
+        }
+        Ok(_) if is_background_poll(method) => {
+            tracing::debug!(method, target, elapsed_ms, "extension call finished");
+        }
+        Ok(_) => tracing::info!(method, target, elapsed_ms, "extension call finished"),
     }
 }
 
@@ -45,7 +85,12 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
         trusted: bool,
     ) -> Result<Vec<ProviderInfo>, GatewayError> {
         let params = json!({ "path": path.to_string_lossy(), "trusted": trusted });
-        self.call_typed("load_extension", params, EXTENSION_LOAD_TIMEOUT)
+        let providers =
+            self.call_typed("load_extension", params.clone(), EXTENSION_LOAD_TIMEOUT)?;
+        // A restarted runtime starts empty; have the transport load this extension again.
+        self.transport
+            .remember_for_restart("load_extension", params, EXTENSION_LOAD_TIMEOUT);
+        Ok(providers)
     }
 
     fn search(&self, provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError> {
@@ -73,7 +118,7 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
 
     fn load_links(&self, provider: &str, data: &str) -> Result<PlayableLinks, GatewayError> {
         let params = json!({ "provider": provider, "data": data });
-        self.call_typed("load_links", params, PROVIDER_CALL_TIMEOUT)
+        self.call_typed("load_links", params, LINK_RESOLVE_TIMEOUT)
     }
 
     fn extract(&self, url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError> {
@@ -139,6 +184,16 @@ mod tests {
             calls[0].1,
             json!({"provider":"Archive","query":"moon","page":2})
         );
+    }
+
+    #[test]
+    fn a_call_is_named_after_its_provider_or_the_extension_file() {
+        assert_eq!(call_target(&json!({"provider":"CineStream"})), "CineStream");
+        assert_eq!(
+            call_target(&json!({"path": r"C:\data\ext\Mega.cs3"})),
+            "Mega.cs3"
+        );
+        assert_eq!(call_target(&json!({})), "");
     }
 
     #[test]

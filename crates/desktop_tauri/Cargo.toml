@@ -25,3 +25,4 @@ player_api = { path = "../player_api" }
 player_mpv = { path = "../player_mpv" }
 storage = { path = "../storage" }
 extension_api = { path = "../extension_api" }
+extension_repo = { path = "../extension_repo" }

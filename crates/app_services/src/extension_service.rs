@@ -1,22 +1,15 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Instant;
 
 use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
 
+use crate::extension_load_report::{ExtensionLoadReport, LoadProgress};
 use crate::ServiceError;
-
-/// What happened when the installed extensions were loaded into the runtime.
-#[derive(Debug, Default)]
-pub struct ExtensionLoadReport {
-    /// Providers that are now available.
-    pub providers: Vec<ProviderInfo>,
-    /// Extensions that failed to load, with a readable reason; the rest still loaded.
-    pub failures: Vec<(String, String)>,
-}
 
 /// Installs, removes and loads extension files.
 #[derive(Clone)]
@@ -124,8 +117,24 @@ impl ExtensionService {
 
     /// Loads every installed extension; one failing extension never blocks the others.
     pub fn load_installed(&self) -> Result<ExtensionLoadReport, ServiceError> {
+        self.load_installed_reporting(&|_| {})
+    }
+
+    /// Like [`Self::load_installed`], telling `on_progress` before each extension starts and
+    /// once more when all are done.
+    pub fn load_installed_reporting(
+        &self,
+        on_progress: &dyn Fn(&LoadProgress),
+    ) -> Result<ExtensionLoadReport, ServiceError> {
         let mut report = ExtensionLoadReport::default();
-        for extension in self.installed.list()? {
+        let installed = self.installed.list()?;
+        let total = installed.len();
+        for (finished, extension) in installed.into_iter().enumerate() {
+            on_progress(&LoadProgress {
+                finished,
+                total,
+                current: extension.internal_name.clone(),
+            });
             let path = self.installer.extensions_dir().join(&extension.file_name);
             match self.load_one(&path, extension.trusted) {
                 Ok(mut providers) => report.providers.append(&mut providers),
@@ -137,11 +146,32 @@ impl ExtensionService {
                 }
             }
         }
+        on_progress(&LoadProgress {
+            finished: total,
+            total,
+            current: String::new(),
+        });
         Ok(report)
     }
 
     fn load_one(&self, path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, ServiceError> {
+        let extension = file_name_of(path);
+        let started = Instant::now();
+        tracing::info!(%extension, trusted, "loading extension");
         let loaded = self.gateway.load_extension(path, trusted)?;
+        let names: Vec<&str> = loaded
+            .iter()
+            .map(|provider| provider.name.as_str())
+            .collect();
+        if names.is_empty() {
+            tracing::warn!(%extension, "extension loaded but registered no providers");
+        }
+        tracing::info!(
+            %extension,
+            providers = ?names,
+            elapsed_ms = started.elapsed().as_millis(),
+            "extension loaded"
+        );
         self.provided_by
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -169,122 +199,6 @@ fn file_name_of(path: &Path) -> String {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
-
 #[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::path::PathBuf;
-
-    use extension_repo::RepoError;
-    use storage::Database;
-
-    use super::*;
-    use crate::test_support::FakeGateway;
-
-    struct BytesFetcher;
-
-    impl HttpFetcher for BytesFetcher {
-        fn get_bytes(&self, _url: &str) -> Result<Vec<u8>, RepoError> {
-            Ok(b"PK".to_vec())
-        }
-    }
-
-    fn setup(label: &str) -> (ExtensionService, Arc<FakeGateway>, PathBuf) {
-        let dir =
-            std::env::temp_dir().join(format!("cs_ext_service_{label}_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        let gateway = Arc::new(FakeGateway::default());
-        let fetcher: Arc<dyn HttpFetcher> = Arc::new(BytesFetcher);
-        let installed =
-            InstalledExtensionStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
-        let service = ExtensionService::new(
-            Arc::clone(&gateway) as Arc<dyn ProviderGateway>,
-            ExtensionInstaller::new(fetcher, dir.clone()),
-            installed,
-        );
-        (service, gateway, dir)
-    }
-
-    fn listing(name: &str) -> PluginListing {
-        PluginListing {
-            internal_name: name.into(),
-            url: "https://r/x.cs3".into(),
-            version: 3,
-            ..PluginListing::default()
-        }
-    }
-
-    #[test]
-    fn install_downloads_records_and_loads_untrusted() {
-        let (service, gateway, dir) = setup("install");
-        let providers = service
-            .install(&listing("Good"), "https://r/repo.json")
-            .expect("installs");
-        assert_eq!(providers[0].name, "Good");
-        assert_eq!(service.installed().expect("list")[0].version, 3);
-        assert!(
-            !gateway.loaded_paths.lock().expect("lock")[0].1,
-            "new installs start untrusted"
-        );
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn load_installed_reports_failures_without_blocking_other_extensions() {
-        let (service, _, dir) = setup("failures");
-        service.install(&listing("Good"), "r").expect("installs");
-        let _ = service.install(&listing("BrokenOne"), "r");
-        let report = service.load_installed().expect("loads");
-        assert_eq!(report.providers.len(), 1);
-        assert_eq!(report.failures.len(), 1);
-        assert!(report.failures[0].0.starts_with("BrokenOne"));
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn trusting_an_extension_is_used_on_the_next_load() {
-        let (service, gateway, dir) = setup("trust");
-        service.install(&listing("Good"), "r").expect("installs");
-        let record = service.installed().expect("list").remove(0);
-        service.set_trusted(&record, true).expect("trust");
-        service.load_installed().expect("loads");
-        assert!(
-            gateway
-                .loaded_paths
-                .lock()
-                .expect("lock")
-                .last()
-                .expect("a load")
-                .1
-        );
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn uninstall_stops_offering_the_providers_of_that_extension_only() {
-        let (service, _, dir) = setup("hide");
-        service.install(&listing("Good"), "r").expect("installs");
-        service.install(&listing("Other"), "r").expect("installs");
-        let record = service
-            .installed()
-            .expect("list")
-            .into_iter()
-            .find(|e| e.internal_name == "Good")
-            .expect("recorded");
-        service.uninstall(&record).expect("uninstalls");
-        let names: Vec<String> = service.providers().into_iter().map(|p| p.name).collect();
-        assert_eq!(names, ["Other"]);
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn uninstall_removes_file_and_record() {
-        let (service, _, dir) = setup("uninstall");
-        service.install(&listing("Good"), "r").expect("installs");
-        let record = service.installed().expect("list").remove(0);
-        service.uninstall(&record).expect("uninstalls");
-        assert!(service.installed().expect("list").is_empty());
-        assert!(!dir.join("Good.cs3").exists());
-        let _ = fs::remove_dir_all(dir);
-    }
-}
+#[path = "extension_service_tests.rs"]
+mod tests;

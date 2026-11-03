@@ -1,23 +1,7 @@
 import React from 'react';
-import { listen } from '@tauri-apps/api/event';
 import { api } from '../services/api';
 import { InstalledExtension, RepositoryEntry, RepositoryPlugin } from '../types';
-
-/** Subscribes to a backend event; the returned function unsubscribes. */
-function onBackendEvent(name: string, handler: () => void): () => void {
-  let stop: (() => void) | undefined;
-  let cancelled = false;
-  listen(name, handler)
-    .then((unlisten) => {
-      if (cancelled) unlisten();
-      else stop = unlisten;
-    })
-    .catch(() => undefined);
-  return () => {
-    cancelled = true;
-    stop?.();
-  };
-}
+import { onBackendEvent } from '../utils/backendEvents';
 
 /** State and actions of the Extensions page: installed extensions, repositories, and one repository's plugins. */
 export function useExtensions(report: (error: unknown) => void) {
