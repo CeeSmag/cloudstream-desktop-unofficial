@@ -23,6 +23,7 @@ const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 static WATCHING: AtomicBool = AtomicBool::new(false);
 
 /// Starts a background watcher unless one is already running.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn watch(handle: AppHandle, extensions: ExtensionService, repositories: RepositoryService) {
     if WATCHING.swap(true, Ordering::SeqCst) {
         tracing::debug!("repository watcher already running");

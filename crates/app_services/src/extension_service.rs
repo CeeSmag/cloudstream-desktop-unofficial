@@ -47,11 +47,13 @@ impl ExtensionService {
     }
 
     /// Extensions recorded as installed.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn installed(&self) -> Result<Vec<InstalledExtension>, ServiceError> {
         Ok(self.installed.list()?)
     }
 
     /// Downloads a plugin, records it and loads it into the runtime.
+    #[tracing::instrument(level = "debug", skip_all, fields(repository_url = ?repository_url), err)]
     pub fn install(
         &self,
         listing: &PluginListing,
@@ -71,6 +73,7 @@ impl ExtensionService {
 
     /// Deletes the file and the record and stops offering its providers. The runtime keeps the
     /// code in memory until the app restarts, but nothing can reach it any more.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn uninstall(&self, extension: &InstalledExtension) -> Result<(), ServiceError> {
         self.installer.uninstall(&extension.internal_name)?;
         self.installed.remove(&extension.file_name)?;
@@ -88,6 +91,7 @@ impl ExtensionService {
     }
 
     /// Names of the providers an installed extension file registered.
+    #[tracing::instrument(level = "debug", skip_all, fields(file_name = ?file_name))]
     pub fn providers_of(&self, file_name: &str) -> Vec<String> {
         self.provided_by
             .lock()
@@ -99,11 +103,21 @@ impl ExtensionService {
 
     /// Repositories that extensions asked the app to add since the last call (the "Mega" plugin
     /// does this on every start).
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, ServiceError> {
         Ok(self.gateway.take_added_repositories()?)
     }
 
+    /// Tells the extension runtime whether debug logging is on. A runtime that cannot be
+    /// reached is not an error here: it picks the choice up when it starts.
+    pub fn set_debug_logging(&self, enabled: bool) {
+        if let Err(error) = self.gateway.set_debug_logging(enabled) {
+            tracing::warn!(%error, enabled, "the extension runtime did not take the debug logging choice");
+        }
+    }
+
     /// Changes whether an extension is trusted; takes effect the next time it is loaded.
+    #[tracing::instrument(level = "debug", skip_all, fields(trusted = ?trusted), err)]
     pub fn set_trusted(
         &self,
         extension: &InstalledExtension,
@@ -116,12 +130,14 @@ impl ExtensionService {
     }
 
     /// Loads every installed extension; one failing extension never blocks the others.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn load_installed(&self) -> Result<ExtensionLoadReport, ServiceError> {
         self.load_installed_reporting(&|_| {})
     }
 
     /// Like [`Self::load_installed`], telling `on_progress` before each extension starts and
     /// once more when all are done.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn load_installed_reporting(
         &self,
         on_progress: &dyn Fn(&LoadProgress),

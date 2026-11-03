@@ -14,6 +14,7 @@ impl<F: HttpFetcher> RepositoryClient<F> {
     }
 
     /// Downloads and parses a repository's `repo.json`.
+    #[tracing::instrument(level = "debug", skip_all, fields(repo_url = ?repo_url), err)]
     pub fn fetch_manifest(&self, repo_url: &str) -> Result<RepositoryManifest, RepoError> {
         let bytes = self.fetcher.get_bytes(repo_url)?;
         serde_json::from_slice(&bytes).map_err(|error| RepoError::Invalid {
@@ -26,6 +27,7 @@ impl<F: HttpFetcher> RepositoryClient<F> {
     ///
     /// A plugin list that cannot be fetched or parsed is logged and skipped, so one broken
     /// list does not hide the plugins of the others.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn fetch_plugins(&self, manifest: &RepositoryManifest) -> Vec<PluginListing> {
         manifest
             .plugin_lists
@@ -40,6 +42,7 @@ impl<F: HttpFetcher> RepositoryClient<F> {
             .collect()
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(list_url = ?list_url), err)]
     fn fetch_plugin_list(&self, list_url: &str) -> Result<Vec<PluginListing>, RepoError> {
         let bytes = self.fetcher.get_bytes(list_url)?;
         serde_json::from_slice(&bytes).map_err(|error| RepoError::Invalid {

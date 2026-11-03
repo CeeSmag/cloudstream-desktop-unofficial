@@ -17,6 +17,7 @@ impl SettingsStore {
     }
 
     /// Reads a setting.
+    #[tracing::instrument(level = "trace", skip_all, fields(key = ?key), err)]
     pub fn get(&self, key: &str) -> Result<Option<String>, StorageError> {
         self.database.with("read setting", |connection| {
             connection
@@ -30,6 +31,7 @@ impl SettingsStore {
     }
 
     /// Writes a setting, replacing any previous value.
+    #[tracing::instrument(level = "trace", skip_all, fields(key = ?key, value = ?value), err)]
     pub fn set(&self, key: &str, value: &str) -> Result<(), StorageError> {
         self.database.with("write setting", |connection| {
             connection

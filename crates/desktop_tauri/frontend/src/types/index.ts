@@ -160,3 +160,18 @@ export interface CheckProgress {
   /** The viewer asked to start without waiting for the rest. */
   skipping: boolean;
 }
+
+/** A debug log file. */
+export interface LogFileInfo {
+  label: string;
+  file_name: string;
+  /** Null while the file does not exist. */
+  size_bytes: number | null;
+}
+
+/** State of debug logging: whether it is on, where the files are and how big they are. */
+export interface DebugLoggingInfo {
+  enabled: boolean;
+  folder: string;
+  files: LogFileInfo[];
+}

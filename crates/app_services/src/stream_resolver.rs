@@ -59,6 +59,7 @@ impl StreamResolver {
     }
 
     /// Resolves the streams and subtitles for `data` (a movie payload or an episode payload).
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, data = ?data), err)]
     pub fn resolve(&self, provider: &str, data: &str) -> Result<PlayableLinks, ServiceError> {
         let mut last = PlayableLinks::default();
         let started = Instant::now();

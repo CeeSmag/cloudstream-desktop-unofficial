@@ -24,6 +24,7 @@ pub struct SourceDto {
 /// Lists the streams worth offering for the item that is playing: the ones that answered the
 /// check and the ones still being checked (empty when nothing is playing).
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_playback_sources(
     sources: State<'_, SourceManager>,
 ) -> Result<Vec<SourceDto>, String> {
@@ -36,6 +37,7 @@ pub async fn get_playback_sources(
 
 /// Switches to another stream of the same item, continuing from the current position.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(index = ?index), err)]
 pub async fn switch_source(
     index: usize,
     state: State<'_, AppState>,

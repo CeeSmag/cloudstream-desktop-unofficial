@@ -47,6 +47,7 @@ impl EventWorker {
     }
 
     /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
+    #[tracing::instrument(level = "debug", skip_all)]
     fn attach_subtitles(&self) {
         let subtitles = std::mem::take(
             &mut *self

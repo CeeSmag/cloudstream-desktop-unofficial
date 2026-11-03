@@ -55,6 +55,7 @@ impl SourceManager {
     }
 
     /// Starts the opening of a new video and cancels the one before it, if any.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn begin(&self) -> Arc<CheckGate> {
         let gate = Arc::new(CheckGate::default());
         let previous = self
@@ -69,6 +70,7 @@ impl SourceManager {
     }
 
     /// The video was closed: stops waiting, stops checking and forgets the streams.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn close(&self) {
         let gate = self
             .current
@@ -82,6 +84,7 @@ impl SourceManager {
     }
 
     /// The viewer asked to start without waiting for the rest of the checks.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn skip(&self, app: &AppHandle) {
         let gate = self
             .current
@@ -95,6 +98,7 @@ impl SourceManager {
     }
 
     /// Remembers the streams and checks all of them in the background.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn run_checks(&self, app: AppHandle, gate: &Arc<CheckGate>, sources: ActiveSources) {
         let links: Vec<(usize, PlayableLink)> = sources.links.iter().cloned().enumerate().collect();
         let generation = self.session.set(sources);

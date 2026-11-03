@@ -40,4 +40,11 @@ pub trait ProviderGateway: Send + Sync {
     fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
         Ok(Vec::new())
     }
+
+    /// Tells the runtime whether debug logging is on; while it is off the runtime and its
+    /// plugins keep their detailed output to themselves. Runtimes without such a switch ignore it.
+    fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
+        let _ = enabled;
+        Ok(())
+    }
 }

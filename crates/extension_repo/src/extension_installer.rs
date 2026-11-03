@@ -22,6 +22,7 @@ impl<F: HttpFetcher> ExtensionInstaller<F> {
     }
 
     /// Folder the plugins are stored in.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn extensions_dir(&self) -> &Path {
         &self.extensions_dir
     }
@@ -30,6 +31,7 @@ impl<F: HttpFetcher> ExtensionInstaller<F> {
     ///
     /// The file is written to a temporary name first so a failed download never leaves a
     /// half-written plugin behind.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn install(&self, listing: &PluginListing) -> Result<PathBuf, RepoError> {
         let file_name = plugin_file_name(&listing.internal_name)?;
         let bytes = self.fetcher.get_bytes(&listing.url)?;
@@ -53,6 +55,7 @@ impl<F: HttpFetcher> ExtensionInstaller<F> {
     }
 
     /// Deletes an installed plugin file; a file that is already gone counts as success.
+    #[tracing::instrument(level = "debug", skip_all, fields(internal_name = ?internal_name), err)]
     pub fn uninstall(&self, internal_name: &str) -> Result<(), RepoError> {
         let path = self.extensions_dir.join(plugin_file_name(internal_name)?);
         match fs::remove_file(&path) {
