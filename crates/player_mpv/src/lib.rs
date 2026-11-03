@@ -10,6 +10,7 @@ mod mpv_option_format;
 mod mpv_player;
 mod mpv_render_api;
 mod player_configuration;
+mod preferred_audio;
 mod status_tracker;
 mod subtitle_attacher;
 mod track_reader;

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::{MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, TrackKind, VideoFrame};
+use crate::{
+    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, TrackKind, VideoFrame,
+};
 
 /// A video player the app can drive.
 pub trait VideoPlayer: Send + Sync {
@@ -35,6 +37,12 @@ pub trait VideoPlayer: Send + Sync {
     fn select_track(&self, kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError> {
         let _ = (kind, id);
         Ok(())
+    }
+
+    /// Sets the language whose audio track is played when a stream offers it; `None` leaves the
+    /// choice to the stream. Takes effect from the next stream that loads.
+    fn set_preferred_audio(&self, language: Option<Language>) {
+        let _ = language;
     }
 
     /// Whether pictures are delivered through [`VideoPlayer::latest_frame`] (embedded in the

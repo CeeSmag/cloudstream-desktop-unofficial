@@ -1,9 +1,13 @@
+use player_api::{find_language, Language, ENGLISH};
 use storage::SettingsStore;
 
 use crate::ServiceError;
 
 const DISABLED_PROVIDERS_KEY: &str = "disabled_providers";
 const DEBUG_LOGGING_KEY: &str = "debug_logging";
+const PREFERRED_AUDIO_KEY: &str = "preferred_audio";
+/// Stored when the viewer wants the stream's own default audio track.
+const NO_AUDIO_PREFERENCE: &str = "none";
 const LIST_SEPARATOR: char = '\n';
 
 /// Typed access to the app's settings.
@@ -40,6 +44,23 @@ impl SettingsService {
     pub fn set_debug_logging_enabled(&self, enabled: bool) -> Result<(), ServiceError> {
         self.store
             .set(DEBUG_LOGGING_KEY, if enabled { "on" } else { "off" })?;
+        Ok(())
+    }
+
+    /// The language whose audio track plays when a stream offers it. English until the viewer
+    /// chooses otherwise; `None` means the stream's own default track.
+    pub fn preferred_audio(&self) -> Result<Option<Language>, ServiceError> {
+        Ok(match self.store.get(PREFERRED_AUDIO_KEY)?.as_deref() {
+            None => Some(ENGLISH),
+            Some(NO_AUDIO_PREFERENCE) => None,
+            Some(code) => Some(find_language(code).unwrap_or(ENGLISH)),
+        })
+    }
+
+    /// Remembers the preferred audio language (`None` for the stream's default).
+    pub fn set_preferred_audio(&self, language: Option<Language>) -> Result<(), ServiceError> {
+        let value = language.map_or(NO_AUDIO_PREFERENCE, |language| language.code());
+        self.store.set(PREFERRED_AUDIO_KEY, value)?;
         Ok(())
     }
 
@@ -80,6 +101,29 @@ mod tests {
         assert!(service.debug_logging_enabled().expect("read"));
         service.set_debug_logging_enabled(false).expect("off");
         assert!(!service.debug_logging_enabled().expect("read"));
+    }
+
+    #[test]
+    fn the_preferred_audio_is_english_until_changed_and_the_choice_is_kept() {
+        let service = service();
+        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
+        let hindi = find_language("hin");
+        service.set_preferred_audio(hindi).expect("set");
+        assert_eq!(service.preferred_audio().expect("read"), hindi);
+        service.set_preferred_audio(None).expect("clear");
+        assert_eq!(service.preferred_audio().expect("read"), None);
+        service.set_preferred_audio(Some(ENGLISH)).expect("set");
+        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
+    }
+
+    #[test]
+    fn an_unknown_stored_language_falls_back_to_english() {
+        let service = service();
+        service
+            .store
+            .set(PREFERRED_AUDIO_KEY, "zzz")
+            .expect("write");
+        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
     }
 
     #[test]

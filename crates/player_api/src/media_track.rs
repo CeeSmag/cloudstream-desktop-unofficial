@@ -1,3 +1,5 @@
+use crate::language::{language_name, Language};
+
 /// Which kind of stream inside a media file a track is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TrackKind {
@@ -25,6 +27,21 @@ pub struct MediaTrack {
 }
 
 impl MediaTrack {
+    /// Whether the track is in `language`: by its language code (`eng`, `en`, `en-US`), or, when
+    /// the file gave no usable language, by the language's name in its title.
+    pub fn is_language(&self, language: &Language) -> bool {
+        if language.has_code(&self.language) {
+            return true;
+        }
+        let code = self.language.trim().to_ascii_lowercase();
+        let unknown = code.is_empty() || matches!(code.as_str(), "und" | "unk");
+        unknown
+            && self
+                .title
+                .to_ascii_lowercase()
+                .contains(&language.name.to_ascii_lowercase())
+    }
+
     /// A readable name for menus, for example `English`, `eng - Commentary` or `Track 2`.
     pub fn label(&self) -> String {
         match (self.language.is_empty(), self.title.is_empty()) {
@@ -36,64 +53,10 @@ impl MediaTrack {
     }
 }
 
-/// Language names with the ISO 639 codes (two- and three-letter) that stand for them.
-const LANGUAGES: &[(&str, &[&str])] = &[
-    ("English", &["eng", "en"]),
-    ("Spanish", &["spa", "es"]),
-    ("French", &["fre", "fra", "fr"]),
-    ("German", &["ger", "deu", "de"]),
-    ("Italian", &["ita", "it"]),
-    ("Portuguese", &["por", "pt"]),
-    ("Russian", &["rus", "ru"]),
-    ("Japanese", &["jpn", "ja"]),
-    ("Korean", &["kor", "ko"]),
-    ("Chinese", &["chi", "zho", "zh"]),
-    ("Arabic", &["ara", "ar"]),
-    ("Turkish", &["tur", "tr"]),
-    ("Hindi", &["hin", "hi"]),
-    ("Tamil", &["tam", "ta"]),
-    ("Telugu", &["tel", "te"]),
-    ("Malayalam", &["mal", "ml"]),
-    ("Kannada", &["kan", "kn"]),
-    ("Bengali", &["ben", "bn"]),
-    ("Marathi", &["mar", "mr"]),
-    ("Punjabi", &["pan", "pa"]),
-    ("Urdu", &["urd", "ur"]),
-    ("Thai", &["tha", "th"]),
-    ("Vietnamese", &["vie", "vi"]),
-    ("Indonesian", &["ind", "id"]),
-    ("Malay", &["may", "msa", "ms"]),
-    ("Filipino", &["fil", "tl"]),
-    ("Polish", &["pol", "pl"]),
-    ("Dutch", &["dut", "nld", "nl"]),
-    ("Swedish", &["swe", "sv"]),
-    ("Danish", &["dan", "da"]),
-    ("Norwegian", &["nor", "no"]),
-    ("Finnish", &["fin", "fi"]),
-    ("Ukrainian", &["ukr", "uk"]),
-    ("Hebrew", &["heb", "he"]),
-    ("Greek", &["gre", "ell", "el"]),
-    ("Czech", &["cze", "ces", "cs"]),
-    ("Hungarian", &["hun", "hu"]),
-    ("Romanian", &["rum", "ron", "ro"]),
-    ("Bulgarian", &["bul", "bg"]),
-    ("Croatian", &["hrv", "hr"]),
-    ("Serbian", &["srp", "sr"]),
-    ("Persian", &["per", "fas", "fa"]),
-];
-
-/// Expands common ISO 639 codes; unknown codes are shown as given.
-fn language_name(code: &str) -> String {
-    let lowered = code.to_ascii_lowercase();
-    LANGUAGES
-        .iter()
-        .find(|(_, codes)| codes.contains(&lowered.as_str()))
-        .map_or_else(|| code.to_owned(), |(name, _)| (*name).to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::ENGLISH;
 
     fn track(language: &str, title: &str) -> MediaTrack {
         MediaTrack {
@@ -104,6 +67,26 @@ mod tests {
             selected: false,
             external: false,
         }
+    }
+
+    #[test]
+    fn english_is_recognised_by_language_code_in_any_spelling() {
+        for code in ["eng", "en", "EN", "en-US", "en_GB", " eng "] {
+            assert!(track(code, "").is_language(&ENGLISH), "{code}");
+        }
+        assert!(!track("hin", "").is_language(&ENGLISH));
+        assert!(!track("enx", "").is_language(&ENGLISH));
+    }
+
+    #[test]
+    fn english_is_recognised_by_title_only_when_the_language_is_unknown() {
+        assert!(track("", "English 5.1").is_language(&ENGLISH));
+        assert!(track("und", "english").is_language(&ENGLISH));
+        assert!(
+            !track("hin", "English").is_language(&ENGLISH),
+            "the language tag wins"
+        );
+        assert!(!track("", "Commentary").is_language(&ENGLISH));
     }
 
     #[test]
