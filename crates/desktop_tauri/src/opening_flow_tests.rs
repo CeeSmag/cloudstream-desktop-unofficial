@@ -15,7 +15,7 @@ use extension_runtime::RpcProviderGateway;
 use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoPlayer};
 use storage::{Database, WatchProgressStore};
 
-use crate::check_gate::Grace;
+use crate::check_gate::WaitLimits;
 use crate::race_tests::{join_within, TIME_LIMIT};
 use crate::source_manager::{SourceManager, Tell};
 use crate::test_subtitles::TestSubtitles;
@@ -83,16 +83,16 @@ pub(crate) struct Rig {
     pub(crate) subtitles: Arc<TestSubtitles>,
 }
 
-pub(crate) fn rig(script: SearchScript, grace: Grace) -> Rig {
-    build(script, grace, Arc::new(TestSubtitles::new()))
+pub(crate) fn rig(script: SearchScript, limits: WaitLimits) -> Rig {
+    build(script, limits, Arc::new(TestSubtitles::new()))
 }
 
 /// A second setup that shares the subtitle folder (and so what was saved there) with `first`.
-pub(crate) fn rig_sharing(first: &Rig, script: SearchScript, grace: Grace) -> Rig {
-    build(script, grace, Arc::clone(&first.subtitles))
+pub(crate) fn rig_sharing(first: &Rig, script: SearchScript, limits: WaitLimits) -> Rig {
+    build(script, limits, Arc::clone(&first.subtitles))
 }
 
-fn build(script: SearchScript, grace: Grace, subtitles: Arc<TestSubtitles>) -> Rig {
+fn build(script: SearchScript, limits: WaitLimits, subtitles: Arc<TestSubtitles>) -> Rig {
     let searches = Arc::new(FakeLinkSearches::new(move |_| script.clone()));
     let gateway = RpcProviderGateway::new(FakeSearchRuntime::new(Arc::clone(&searches)));
     let player = Arc::new(RecordingPlayer::default());
@@ -106,7 +106,7 @@ fn build(script: SearchScript, grace: Grace, subtitles: Arc<TestSubtitles>) -> R
             StreamChecker::new(Arc::new(EveryStreamWorks)),
             Arc::clone(&subtitles.loader),
         )
-        .with_grace(grace),
+        .with_limits(limits),
         services: OpeningServices {
             streams: Arc::new(StreamResolver::new(Arc::new(gateway))),
             playback: Arc::new(playback),
@@ -130,37 +130,78 @@ pub(crate) fn open(rig: &Rig) -> (Result<(), String>, Vec<JoinHandle<()>>, Durat
     (outcome, background, started.elapsed())
 }
 
-pub(crate) fn grace(high_ms: u64, other_ms: u64, max_ms: u64) -> Grace {
-    Grace {
-        high_quality: Duration::from_millis(high_ms),
-        other: Duration::from_millis(other_ms),
+/// Limits for a test: the provider's first stream is due after `first_ms`, everything after `max_ms`.
+pub(crate) fn limits(first_ms: u64, max_ms: u64) -> WaitLimits {
+    WaitLimits {
+        first_stream: Duration::from_millis(first_ms),
         max_wait: Duration::from_millis(max_ms),
     }
 }
 
+/// Like [`open`], with the viewer pressing skip `pause` after the video was opened.
+pub(crate) fn open_skipping_after(
+    rig: &Rig,
+    pause: Duration,
+) -> (Result<(), String>, Vec<JoinHandle<()>>, Duration) {
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            std::thread::sleep(pause);
+            rig.sources.skip_with(&|_| {});
+        });
+        open(rig)
+    })
+}
+
 #[test]
-fn playback_starts_within_the_limit_while_the_search_goes_on_in_the_background() {
-    // Twelve streams, one every 150 ms from 100 ms on; the search ends 600 ms after the last.
-    let script = SearchScript::steady(
-        12,
-        Duration::from_millis(150),
-        480,
-        Duration::from_millis(600),
-    );
-    let rig = rig(script, grace(100, 300, 1_000));
+fn playback_starts_only_when_the_search_and_all_checks_are_done_on_the_best_stream() {
+    // Three streams of different quality found over 300 ms; the search ends at 700 ms.
+    let mut script = SearchScript::steady(3, Duration::from_millis(100), 480, Duration::ZERO);
+    script.links = vec![
+        (Duration::from_millis(100), 480),
+        (Duration::from_millis(200), 1080),
+        (Duration::from_millis(300), 720),
+    ];
+    script.ends_after = Duration::from_millis(700);
+    let rig = rig(script, limits(5_000, 10_000));
 
     let (outcome, background, waited) = open(&rig);
 
     assert_eq!(outcome, Ok(()));
     assert!(
-        waited >= Duration::from_millis(200) && waited <= Duration::from_millis(1_500),
-        "playback started after {waited:?}, the limit is 1 s"
+        waited >= Duration::from_millis(650),
+        "playback started after {waited:?}, before the search was over"
+    );
+    assert_eq!(
+        rig.searches.stats().active,
+        0,
+        "the search was still running"
+    );
+    let played = rig.player.played.lock().expect("lock").clone();
+    assert_eq!(played.len(), 1);
+    let found = rig.sources.session().snapshot().expect("sources");
+    assert_eq!(found.links.len(), 3);
+    assert_eq!(played[0], found.links[1].url, "the 1080 stream is the best");
+    join_within(background, TIME_LIMIT);
+}
+
+/// Skipping plays at once on what works and leaves the search and the checks running.
+#[test]
+fn skipping_plays_at_once_and_the_search_goes_on_in_the_background() {
+    let script = SearchScript::steady(30, Duration::from_millis(100), 480, Duration::from_secs(1));
+    let rig = rig(script, limits(5_000, 30_000));
+
+    let (outcome, background, waited) = open_skipping_after(&rig, Duration::from_millis(500));
+
+    assert_eq!(outcome, Ok(()));
+    assert!(
+        waited >= Duration::from_millis(450) && waited <= Duration::from_millis(2_000),
+        "skipped after 0.5 s but playback started after {waited:?}"
     );
     assert_eq!(rig.player.played.lock().expect("lock").len(), 1);
     assert_eq!(
         rig.searches.stats().active,
         1,
-        "the search must still be running when playback starts"
+        "skipping must not stop the search"
     );
 
     join_within(background, TIME_LIMIT);
@@ -169,100 +210,49 @@ fn playback_starts_within_the_limit_while_the_search_goes_on_in_the_background()
         .session()
         .snapshot()
         .map_or(0, |active| active.links.len());
-    assert_eq!(
-        found, 12,
-        "the search did not finish finding every stream in the background"
-    );
-    assert_eq!(
-        rig.searches.stats().active,
-        0,
-        "the finished search was not forgotten"
-    );
+    assert_eq!(found, 30, "the search did not finish in the background");
+    assert_eq!(rig.searches.stats().active, 0);
 }
 
-/// The viewer never waits longer than the limit, even when the grace period for a better stream is
-/// much longer.
+/// A search that never ends does not hold the viewer forever: at the cap the best stream plays.
 #[test]
-fn the_limit_ends_the_wait_even_when_the_grace_for_a_better_stream_is_longer() {
-    let script = SearchScript::steady(30, Duration::from_millis(100), 480, Duration::from_secs(3));
-    let rig = rig(script, grace(5_000, 5_000, 800));
+fn a_search_that_never_ends_is_cut_at_the_cap_and_the_best_stream_plays() {
+    let script = SearchScript::steady(3, Duration::from_millis(100), 720, Duration::from_secs(600));
+    let rig = rig(script, limits(5_000, 800));
 
     let (outcome, background, waited) = open(&rig);
 
     assert_eq!(outcome, Ok(()));
     assert!(
-        waited >= Duration::from_millis(700) && waited <= Duration::from_millis(1_500),
-        "started after {waited:?}; the limit is 0.8 s and the grace 5 s"
+        waited >= Duration::from_millis(750) && waited <= Duration::from_millis(2_000),
+        "started after {waited:?}; the cap is 0.8 s"
     );
+    assert_eq!(rig.player.played.lock().expect("lock").len(), 1);
     assert_eq!(
         rig.searches.stats().active,
         1,
-        "the search must go on after the limit"
+        "the search goes on after the cap"
     );
     rig.sources.close();
     join_within(background, TIME_LIMIT);
 }
 
+/// A provider that gives nothing is an error for the viewer, and nothing is left running.
 #[test]
-fn with_nothing_found_in_time_it_keeps_searching_and_plays_the_first_stream() {
-    // The first stream arrives after the 1 s limit.
-    let script = SearchScript::steady(
-        3,
-        Duration::from_millis(1_400),
-        720,
-        Duration::from_millis(100),
-    );
-    let rig = rig(script, grace(50, 50, 1_000));
+fn a_provider_that_gives_no_stream_in_time_is_an_error_and_its_search_is_stopped() {
+    let script = SearchScript::steady(1, Duration::from_secs(600), 720, Duration::from_secs(600));
+    let rig = rig(script, limits(400, 5_000));
 
     let (outcome, background, waited) = open(&rig);
 
-    assert_eq!(
-        outcome,
-        Ok(()),
-        "a search that is still going must not fail the video"
-    );
+    let reason = outcome.expect_err("the provider never answered");
+    assert!(reason.contains("did not answer"), "{reason}");
     assert!(
-        waited >= Duration::from_millis(1_300),
-        "started after {waited:?}, before anything was found"
+        waited >= Duration::from_millis(350) && waited <= Duration::from_millis(2_000),
+        "failed after {waited:?}; the limit is 0.4 s"
     );
-    assert_eq!(rig.player.played.lock().expect("lock").len(), 1);
-    rig.sources.close();
+    assert!(rig.player.played.lock().expect("lock").is_empty());
     join_within(background, TIME_LIMIT);
-}
-
-#[test]
-fn leaving_before_anything_is_found_ends_the_wait_and_stops_the_search() {
-    let script = SearchScript::steady(1, Duration::from_secs(30), 720, Duration::from_secs(30));
-    let rig = Arc::new(rig(script, grace(50, 50, 60_000)));
-    let opening = {
-        let rig = Arc::clone(&rig);
-        std::thread::spawn(move || {
-            let (outcome, background, _) = open(&rig);
-            (outcome, background)
-        })
-    };
-    std::thread::sleep(Duration::from_millis(250));
-
-    rig.sources.close();
-
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !opening.is_finished() {
-        assert!(
-            Instant::now() < deadline,
-            "closing did not end the wait for the first stream"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    let (outcome, background) = opening.join().expect("the opening thread");
-    assert!(
-        outcome.is_err(),
-        "a video closed before it started must not report success"
-    );
-    join_within(background, TIME_LIMIT);
-    assert!(
-        rig.player.played.lock().expect("lock").is_empty(),
-        "nothing should have played"
-    );
     assert_eq!(
         rig.searches.stats().active,
         0,

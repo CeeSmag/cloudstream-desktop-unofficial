@@ -13,7 +13,7 @@ use std::time::Instant;
 use app_services::{CheckQueue, LinkSearch, PlaybackItem, StreamChecker};
 use tauri::{AppHandle, Emitter};
 
-use crate::check_gate::{CheckGate, CheckProgress, Grace};
+use crate::check_gate::{CheckGate, CheckProgress, WaitLimits};
 use crate::failure_tally::FailureTally;
 use crate::source_discovery::{Discovery, SubtitleSink};
 use crate::source_session::{ActiveSources, SourceSession};
@@ -57,8 +57,8 @@ pub struct SourceManager {
     checker: StreamChecker,
     /// Downloads and keeps the subtitle files of the provider.
     subtitles: Arc<SubtitleLoader>,
-    /// How long a video waits for streams.
-    grace: Grace,
+    /// How long a video waits for its provider.
+    limits: WaitLimits,
     /// The wait of the video that is being opened or played.
     current: Mutex<Option<Arc<CheckGate>>>,
 }
@@ -70,15 +70,15 @@ impl SourceManager {
             session: Arc::new(SourceSession::default()),
             checker,
             subtitles,
-            grace: Grace::default(),
+            limits: WaitLimits::default(),
             current: Mutex::new(None),
         }
     }
 
     /// The same manager with other waiting times, so tests do not have to wait for real ones.
     #[cfg(test)]
-    pub fn with_grace(mut self, grace: Grace) -> Self {
-        self.grace = grace;
+    pub fn with_limits(mut self, limits: WaitLimits) -> Self {
+        self.limits = limits;
         self
     }
 
@@ -90,7 +90,7 @@ impl SourceManager {
     /// Starts the opening of a new video and cancels the one before it, if any.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn begin(&self) -> Arc<CheckGate> {
-        let gate = Arc::new(CheckGate::new(self.grace));
+        let gate = Arc::new(CheckGate::new(self.limits));
         let previous = self
             .current
             .lock()
@@ -132,15 +132,20 @@ impl SourceManager {
     }
 
     /// The viewer asked to start without waiting for the rest of the checks.
-    #[tracing::instrument(level = "debug", skip_all)]
     pub fn skip(&self, app: &AppHandle) {
+        self.skip_with(&|update| emit(app, update));
+    }
+
+    /// [`SourceManager::skip`], telling `tell` instead of the app window.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn skip_with(&self, tell: &dyn Fn(CheckUpdate)) {
         let gate = self
             .current
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         match gate {
-            Some(gate) => emit(app, CheckUpdate::Progress(gate.skip())),
+            Some(gate) => tell(CheckUpdate::Progress(gate.skip())),
             None => tracing::debug!("skip asked while no video is opening"),
         }
     }

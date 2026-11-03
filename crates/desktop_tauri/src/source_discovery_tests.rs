@@ -10,7 +10,7 @@ use extension_api::{GatewayError, ProviderGateway};
 use extension_repo::{HttpProbe, ProbeResponse, RepoError};
 
 use super::*;
-use crate::check_gate::{Grace, StartDecision};
+use crate::check_gate::{StartDecision, WaitLimits};
 use crate::failure_tally::FailureTally;
 use crate::source_manager::{CheckUpdate, Tell};
 use crate::source_session::ActiveSources;
@@ -139,9 +139,8 @@ fn fresh_session() -> (Arc<SourceSession>, u64) {
 
 /// A gate that decides quickly and waits a long time at most.
 fn quick_gate() -> Arc<CheckGate> {
-    Arc::new(CheckGate::new(Grace {
-        high_quality: Duration::from_millis(10),
-        other: Duration::from_millis(50),
+    Arc::new(CheckGate::new(WaitLimits {
+        first_stream: Duration::from_secs(30),
         max_wait: Duration::from_secs(30),
     }))
 }

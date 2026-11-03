@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use app_services::{PlaybackItem, StreamChecker};
 use extension_repo::{HttpProbe, ProbeResponse, RepoError};
 
-use crate::check_gate::{CheckGate, Grace, StartDecision};
+use crate::check_gate::{CheckGate, StartDecision, WaitLimits};
 use crate::source_manager::SourceManager;
 
 /// How long a test's threads may take; far more than they need, so only a deadlock exceeds it.
@@ -147,9 +147,8 @@ fn the_start_decision_does_not_depend_on_the_order_the_answers_arrive_in() {
         let works: Vec<bool> = (0..STREAMS)
             .map(|i| (i * 13 + iteration * 5) % 4 != 0)
             .collect();
-        let gate = Arc::new(CheckGate::new(Grace {
-            high_quality: never,
-            other: never,
+        let gate = Arc::new(CheckGate::new(WaitLimits {
+            first_stream: never,
             max_wait: never,
         }));
         gate.announce(&ranks);
@@ -171,9 +170,8 @@ fn the_start_decision_does_not_depend_on_the_order_the_answers_arrive_in() {
 #[test]
 fn a_waiting_video_is_woken_by_answers_from_other_threads_and_cancelled_by_a_closer() {
     for _ in 0..200 {
-        let gate = Arc::new(CheckGate::new(Grace {
-            high_quality: Duration::from_secs(60),
-            other: Duration::from_secs(60),
+        let gate = Arc::new(CheckGate::new(WaitLimits {
+            first_stream: Duration::from_secs(60),
             max_wait: Duration::from_secs(60),
         }));
         let waiter = {
@@ -191,5 +189,41 @@ fn a_waiting_video_is_woken_by_answers_from_other_threads_and_cancelled_by_a_clo
         };
         gate.cancel();
         join_within(vec![waiter, answerer], TIME_LIMIT);
+    }
+}
+
+/// A skip pressed while answers arrive from other threads and the search ends: the video starts on
+/// a stream that worked, never on one that failed, and never hangs.
+#[test]
+fn a_skip_racing_the_answers_and_the_end_of_the_search_starts_on_a_working_stream() {
+    for iteration in 0..200 {
+        let gate = Arc::new(CheckGate::new(WaitLimits {
+            first_stream: Duration::from_secs(60),
+            max_wait: Duration::from_secs(60),
+        }));
+        let ranks: Vec<i32> = (0..STREAMS).map(|i| [480, 720, 1080][i % 3]).collect();
+        let works: Vec<bool> = (0..STREAMS).map(|i| i % 5 == iteration % 5).collect();
+        gate.announce(&ranks);
+        let waiter = {
+            let gate = Arc::clone(&gate);
+            std::thread::spawn(move || gate.wait_for_start())
+        };
+        let skipper = {
+            let gate = Arc::clone(&gate);
+            std::thread::spawn(move || {
+                gate.skip();
+            })
+        };
+        record_from_threads(&gate, &works);
+        gate.discovery_ended(None);
+        join_within(vec![skipper], TIME_LIMIT);
+        let decision = waiter.join().expect("the waiting thread");
+        let StartDecision::Start(index) = decision else {
+            panic!("iteration {iteration}: {decision:?}");
+        };
+        assert!(
+            works[index],
+            "iteration {iteration}: started on stream {index}, which does not work"
+        );
     }
 }

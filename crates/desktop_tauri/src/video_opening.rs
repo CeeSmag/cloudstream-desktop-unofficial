@@ -63,10 +63,11 @@ fn subtitle_rank(settings: &SettingsService) -> LanguageRank {
     })
 }
 
-/// Opens a video: starts the provider's search, waits until the best working stream may play
-/// (never longer than the gate's limit), and plays it. Returns how that ended and the threads that
-/// go on searching and checking in the background; they end when the search and the checks are over
-/// or the video is closed.
+/// Opens a video: starts the provider's search, waits until the search is over and every stream is
+/// checked (or the viewer skips, or the gate's limits are hit), and plays the best working stream.
+/// Returns how that ended and the threads that go on searching and checking in the background; they
+/// end when the search and the checks are over or the video is closed. When the opening fails, the
+/// background work is stopped too, since nobody is waiting for it.
 pub(crate) fn open_video(
     sources: &SourceManager,
     services: &OpeningServices,
@@ -79,24 +80,9 @@ pub(crate) fn open_video(
         Ok(started) => started,
         Err(error) => return (Err(error), Vec::new()),
     };
-    let late_subtitles = Arc::clone(&services.playback);
-    let background = sources.discover_with(
-        tell,
-        SearchRequest {
-            gate: Arc::clone(&gate),
-            generation,
-            search,
-            give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
-            subtitles: SubtitleWork {
-                title_key: format!(
-                    "{}
-{}",
-                    item.provider, item.media_key
-                ),
-                rank_of: Arc::clone(&services.subtitle_rank),
-            },
-        },
-    );
+    let request = search_request(services, &item, (Arc::clone(&gate), generation), search);
+    let background = sources.discover_with(tell, request);
+    let stopper = Arc::clone(&gate);
     let outcome = wait_for_start(&gate).and_then(|start| {
         tracing::info!(
             start,
@@ -109,7 +95,35 @@ pub(crate) fn open_video(
             StreamStart { item, start, gate },
         )
     });
+    if let Err(reason) = &outcome {
+        tracing::warn!(%reason, "the video could not be opened; stopping its search and checks");
+        stopper.cancel();
+    }
     (outcome, background)
+}
+
+/// What the background work of the video needs: the search, where late subtitles go, and the title.
+fn search_request(
+    services: &OpeningServices,
+    item: &PlaybackItem,
+    opened: (Arc<CheckGate>, u64),
+    search: LinkSearch,
+) -> SearchRequest {
+    let late_subtitles = Arc::clone(&services.playback);
+    SearchRequest {
+        gate: opened.0,
+        generation: opened.1,
+        search,
+        give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
+        subtitles: SubtitleWork {
+            title_key: format!(
+                "{}
+{}",
+                item.provider, item.media_key
+            ),
+            rank_of: Arc::clone(&services.subtitle_rank),
+        },
+    }
 }
 
 /// Starts the provider's search and the list of streams for `item`. Fails when the viewer already

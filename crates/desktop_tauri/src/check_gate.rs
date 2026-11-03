@@ -1,22 +1,20 @@
 //! Lets the open video wait for the streams and decides when playback may begin.
 //!
 //! Streams arrive while the provider still searches and are checked as they come. Playback starts
-//! on the best working stream a short grace after the first one is known (shorter when it is high
-//! quality, since little better can follow), at once when the viewer skips, or when the search is
-//! over and everything has been checked. Whatever happens, the wait ends [`Grace::max_wait`] after
-//! the video was opened: the best working stream plays, or else the best one not known to be
-//! broken. Closing the video cancels the wait.
+//! on the best working stream only when the search is over and every stream has been checked, or
+//! at once when the viewer skips (and a stream is known to work). The waiting has limits: if the
+//! provider gives no stream at all within [`WaitLimits::first_stream`] the wait fails with an
+//! error, and whatever happens the wait ends [`WaitLimits::max_wait`] after the video was opened:
+//! the best working stream plays, or else the best one not known to be broken, or else the wait
+//! fails. Closing the video cancels the wait.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-/// Qualities from this one up are worth starting on without waiting for better ones.
-const HIGH_QUALITY: i32 = 1080;
-
 /// Message of the failure when the search ended without finding any stream.
 const NO_STREAMS: &str = "No playable stream links found";
 
-pub use crate::check_progress::{CheckProgress, Grace, StartDecision};
+pub use crate::check_progress::{CheckProgress, StartDecision, WaitLimits};
 
 struct GateState {
     progress: CheckProgress,
@@ -28,8 +26,6 @@ struct GateState {
     opened_at: Instant,
     /// Best working stream so far: highest rank, then lowest index.
     best_working: Option<usize>,
-    /// When the first working stream was known.
-    working_since: Option<Instant>,
     failure: Option<String>,
     cancelled: bool,
 }
@@ -45,7 +41,6 @@ impl Default for GateState {
             broken: Vec::new(),
             opened_at: Instant::now(),
             best_working: None,
-            working_since: None,
             failure: None,
             cancelled: false,
         }
@@ -62,15 +57,15 @@ enum Verdict {
 #[derive(Default)]
 pub struct CheckGate {
     state: Mutex<GateState>,
-    grace: Grace,
+    limits: WaitLimits,
     changed: Condvar,
 }
 
 impl CheckGate {
-    /// A gate that waits `grace` for better streams.
-    pub fn new(grace: Grace) -> Self {
+    /// A gate that gives the provider the time `limits` allow.
+    pub fn new(limits: WaitLimits) -> Self {
         Self {
-            grace,
+            limits,
             ..Self::default()
         }
     }
@@ -108,7 +103,6 @@ impl CheckGate {
         }
         if working {
             state.progress.working += 1;
-            state.working_since.get_or_insert_with(Instant::now);
             if state
                 .best_working
                 .is_none_or(|best| state.beats(index, best))
@@ -133,7 +127,8 @@ impl CheckGate {
         progress
     }
 
-    /// The viewer wants to start now; playback begins as soon as a working stream is known.
+    /// The viewer wants to start now; playback begins as soon as a working stream is known. The
+    /// search and the checks go on.
     pub fn skip(&self) -> CheckProgress {
         let mut state = self.lock();
         state.progress.skipping = true;
@@ -185,46 +180,35 @@ impl CheckGate {
         }
         match state.best_working {
             Some(best) if progress.skipping => Verdict::Ready(StartDecision::Start(best)),
-            Some(best) => self.after_grace(state, best),
-            None => self.without_working(state),
+            _ => self.by_the_clock(state),
         }
     }
 
-    fn after_grace(&self, state: &GateState, best: usize) -> Verdict {
-        let grace = if state.rank(best) >= HIGH_QUALITY {
-            self.grace.high_quality
-        } else {
-            self.grace.other
-        };
-        let waited = state
-            .working_since
-            .map_or(Duration::ZERO, |at| at.elapsed());
-        let left = grace.saturating_sub(waited).min(self.time_left(state));
-        if left.is_zero() {
-            Verdict::Ready(StartDecision::Start(best))
-        } else {
-            Verdict::Wait(Some(left))
+    /// Nothing is decided yet: wait for news until the next limit, and enforce a limit that passed.
+    fn by_the_clock(&self, state: &GateState) -> Verdict {
+        let (first, max) = (self.limits.first_stream, self.limits.max_wait);
+        let waited = state.opened_at.elapsed();
+        if waited >= max {
+            tracing::warn!(?waited, "the wait for the streams hit its limit");
+            return Verdict::Ready(state.limit_decision(max));
         }
+        if state.ranks.is_empty() {
+            if waited >= first {
+                tracing::warn!(?waited, "the provider gave no stream in time");
+                return Verdict::Ready(StartDecision::Failed(silent_provider(first)));
+            }
+            return Verdict::Wait(Some(first.min(max) - waited));
+        }
+        Verdict::Wait(Some(max - waited))
     }
+}
 
-    /// No stream is known to work yet: wait for one until the limit, then take the best stream
-    /// that is not known to be broken (waiting on for the first stream if there is none).
-    fn without_working(&self, state: &GateState) -> Verdict {
-        let left = self.time_left(state);
-        if !left.is_zero() {
-            return Verdict::Wait(Some(left));
-        }
-        match state.best_unbroken() {
-            Some(index) => Verdict::Ready(StartDecision::Start(index)),
-            None => Verdict::Wait(None),
-        }
-    }
-
-    fn time_left(&self, state: &GateState) -> Duration {
-        self.grace
-            .max_wait
-            .saturating_sub(state.opened_at.elapsed())
-    }
+/// The error when the provider gave no stream at all in time.
+fn silent_provider(limit: Duration) -> String {
+    format!(
+        "The provider did not answer within {} seconds. Check your connection or try again.",
+        limit.as_secs()
+    )
 }
 
 impl GateState {
@@ -246,6 +230,23 @@ impl GateState {
                 Some(current) if !self.beats(index, current) => Some(current),
                 _ => Some(index),
             })
+    }
+
+    /// The decision when the whole wait ran out: the best working stream, else the best one not
+    /// known to be broken, else a failure that says what was tried.
+    fn limit_decision(&self, limit: Duration) -> StartDecision {
+        if let Some(best) = self.best_working.or_else(|| self.best_unbroken()) {
+            return StartDecision::Start(best);
+        }
+        if self.ranks.is_empty() {
+            return StartDecision::Failed(silent_provider(limit));
+        }
+        StartDecision::Failed(format!(
+            "No working source was found within {} seconds ({} found, {} checked).",
+            limit.as_secs(),
+            self.progress.total,
+            self.progress.checked
+        ))
     }
 
     /// The decision once the search is over and every stream has been answered.
