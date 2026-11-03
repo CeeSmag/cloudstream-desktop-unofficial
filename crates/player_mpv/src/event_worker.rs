@@ -2,10 +2,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use player_api::SubtitleSource;
+use player_api::{MediaTrack, SubtitleSource, TrackKind};
 
 use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
+use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
 use crate::status_tracker::StatusTracker;
 use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
 use crate::track_reader::{has_video_track, read_tracks};
@@ -23,6 +24,7 @@ pub(crate) struct EventWorker {
     pub(crate) pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stream_generation: StreamGeneration,
+    pub(crate) audio_preference: Arc<AudioPreference>,
 }
 
 impl EventWorker {
@@ -34,6 +36,7 @@ impl EventWorker {
             if event == MpvEvent::FileLoaded {
                 self.attach_subtitles();
                 self.refresh_tracks();
+                self.apply_audio_preference();
             }
             if event == MpvEvent::Shutdown {
                 break;
@@ -60,6 +63,42 @@ impl EventWorker {
         }
         let generation = self.stream_generation.load(Ordering::SeqCst);
         attach_in_background(&self.handle, &self.stream_generation, generation, subtitles);
+    }
+
+    /// Plays the audio track in the viewer's preferred language when the stream has one.
+    /// Whatever goes wrong here, the stream keeps playing on the track it started with.
+    fn apply_audio_preference(&self) {
+        let Some(language) = self.audio_preference.get() else {
+            return;
+        };
+        let tracks = self.tracker.tracks();
+        match preferred_audio_choice(&tracks, &language) {
+            AudioChoice::Keep => {}
+            AudioChoice::Switch { id } => match self.handle.set_property("aid", &id.to_string()) {
+                Ok(()) => {
+                    tracing::info!(
+                        id,
+                        language = language.name,
+                        "playing the preferred audio track"
+                    );
+                    self.refresh_tracks();
+                }
+                Err(error) => {
+                    tracing::warn!(%error, id, language = language.name, "could not switch to the preferred audio track; keeping the stream's default");
+                }
+            },
+            AudioChoice::NotOffered => {
+                let playing = tracks
+                    .iter()
+                    .find(|track| track.selected && track.kind == TrackKind::Audio)
+                    .map(MediaTrack::label);
+                tracing::info!(
+                    ?playing,
+                    language = language.name,
+                    "the stream has no audio track in the preferred language; playing its default"
+                );
+            }
+        }
     }
 
     /// Re-reads the track list (subtitles added after loading show up here too).

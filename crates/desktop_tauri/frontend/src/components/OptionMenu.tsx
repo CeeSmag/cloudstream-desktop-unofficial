@@ -55,6 +55,7 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
 
     {open && (
       <div
+        data-wheel-scroll
         className={`absolute right-0 mt-2 ${
           wide ? 'w-[26rem]' : 'w-72 sm:w-80'
         } max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl glass-dropdown p-2 shadow-2xl z-50`}

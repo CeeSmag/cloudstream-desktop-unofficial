@@ -98,9 +98,10 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       onDoubleClick={(e) => {
         if (e.target === e.currentTarget) controls.clicks.onDoubleClick();
       }}
+      onWheel={controls.onWheel}
     >
       <VideoCanvas visible={status.has_video} />
-      <FeedbackPopup feedback={controls.popup} />
+      <FeedbackPopup feedback={controls.popup} visible={controls.popupVisible} />
 
       {/* Top bar: back, title, track menus */}
       <div

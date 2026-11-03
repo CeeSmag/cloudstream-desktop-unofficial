@@ -90,13 +90,12 @@
 }
 
 /* The pop-up in the middle of the player that confirms what the viewer just did. */
-@keyframes feedback-pop {
-  0% { opacity: 0; transform: scale(0.9); }
-  15% { opacity: 1; transform: scale(1); }
-  75% { opacity: 1; }
-  100% { opacity: 0; }
+@keyframes feedback-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-.feedback-pop {
-  animation: feedback-pop 900ms ease-out forwards;
+/* Plays once when the pop-up first appears; later updates change it in place. */
+.feedback-in {
+  animation: feedback-in 140ms ease-out;
 }

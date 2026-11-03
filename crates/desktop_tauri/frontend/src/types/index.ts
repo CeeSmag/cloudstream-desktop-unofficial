@@ -183,3 +183,16 @@ export interface DebugLoggingInfo {
   folder: string;
   files: LogFileInfo[];
 }
+
+/** A language that can be chosen as the preferred audio language. */
+export interface LanguageOption {
+  code: string;
+  name: string;
+}
+
+/** The viewer's preferences and the choices on offer. */
+export interface Preferences {
+  /** Code of the preferred audio language; null when the stream's own default track is wanted. */
+  preferred_audio: string | null;
+  languages: LanguageOption[];
+}

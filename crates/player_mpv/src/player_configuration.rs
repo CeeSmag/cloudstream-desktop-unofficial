@@ -20,6 +20,8 @@ const COMMON: &[(&str, &str)] = &[
     ("input-default-bindings", "no"),
     ("hwdec", "auto-copy-safe"),
     ("ytdl", "no"),
+    // Prefer English audio when a stream offers several languages; see `preferred_audio`.
+    ("alang", "eng,en"),
 ];
 
 /// Applies the options; `embedded` says the render API will be used (no mpv window).

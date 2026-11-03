@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use player_api::{
-    MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
+    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
     VideoFrame, VideoPlayer,
 };
 
@@ -15,6 +15,7 @@ use crate::mpv_option_format::{header_fields, start_option};
 use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
 use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
+use crate::preferred_audio::{alang_value, AudioPreference};
 use crate::status_tracker::StatusTracker;
 use crate::track_reader::read_tracks;
 
@@ -30,6 +31,7 @@ pub struct MpvPlayer {
     pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
     stop_flag: Arc<AtomicBool>,
     stream_generation: Arc<AtomicU64>,
+    audio_preference: Arc<AudioPreference>,
     event_thread: Option<JoinHandle<()>>,
     frames: Option<Arc<FrameShared>>,
     // Dropped before `handle` (declaration order) so the render context never outlives mpv.
@@ -68,18 +70,21 @@ impl MpvPlayer {
         let pending_subtitles = Arc::new(Mutex::new(Vec::new()));
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stream_generation = Arc::new(AtomicU64::new(0));
+        let audio_preference = Arc::new(AudioPreference::default());
         let event_thread = start_event_thread(EventWorker {
             handle: Arc::clone(&handle),
             tracker: Arc::clone(&tracker),
             pending_subtitles: Arc::clone(&pending_subtitles),
             stop_flag: Arc::clone(&stop_flag),
             stream_generation: Arc::clone(&stream_generation),
+            audio_preference: Arc::clone(&audio_preference),
         })?;
         Ok(Self {
             tracker,
             pending_subtitles,
             stop_flag,
             stream_generation,
+            audio_preference,
             event_thread: Some(event_thread),
             frames,
             _renderer: renderer,
@@ -196,6 +201,19 @@ impl VideoPlayer for MpvPlayer {
         self.tracker
             .set_tracks(read_tracks(|name| self.handle.get_string(name)));
         Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(language = ?language.map(|l| l.name)))]
+    fn set_preferred_audio(&self, language: Option<Language>) {
+        self.audio_preference.set(language);
+        // mpv's own preference covers streams whose tracks carry language tags; the event thread
+        // covers the rest (for example tracks that only have a title).
+        if let Err(error) = self
+            .handle
+            .set_property("alang", &alang_value(language.as_ref()))
+        {
+            tracing::warn!(%error, "could not tell mpv the preferred audio language");
+        }
     }
 
     fn is_embedded(&self) -> bool {

@@ -2,6 +2,7 @@ import React from 'react';
 import { ProviderInfo } from '../types';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { ExtensionsPage } from './settings/ExtensionsPage';
+import { PreferencesPage } from './settings/PreferencesPage';
 
 interface SettingsScreenProps {
   providers: ProviderInfo[];
@@ -9,10 +10,11 @@ interface SettingsScreenProps {
   onError: (error: unknown) => void;
 }
 
-type SettingsPage = 'general' | 'extensions';
+type SettingsPage = 'general' | 'preferences' | 'extensions';
 
 const PAGES: { id: SettingsPage; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'preferences', label: 'Preferences' },
   { id: 'extensions', label: 'Extensions' },
 ];
 
@@ -43,7 +45,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onErr
         </div>
       </div>
 
-      {page === 'general' ? <GeneralSettings providers={providers} onError={onError} /> : <ExtensionsPage onError={onError} />}
+      {page === 'general' && <GeneralSettings providers={providers} onError={onError} />}
+      {page === 'preferences' && <PreferencesPage onError={onError} />}
+      {page === 'extensions' && <ExtensionsPage onError={onError} />}
     </div>
   );
 };
