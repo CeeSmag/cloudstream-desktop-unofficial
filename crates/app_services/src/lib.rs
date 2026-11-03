@@ -16,6 +16,7 @@ mod settings_service;
 mod stream_checker;
 mod stream_label;
 mod stream_resolver;
+mod subtitle_scan;
 #[cfg(test)]
 mod test_support;
 

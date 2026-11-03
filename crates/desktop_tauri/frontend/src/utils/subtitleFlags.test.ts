@@ -1,70 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import {
-  abbreviationOfLanguage,
-  flagOfLanguage,
-  subtitleFlags,
-  trackInLanguage,
-} from './subtitleFlags';
-import { LanguageOption, MediaTrack, Preferences } from '../types';
+import { abbreviationOfLanguage, flagOfLanguage, flagsForSource, languageMatches } from './subtitleFlags';
+import { LanguageOption, Preferences } from '../types';
 
 const english: LanguageOption = { code: 'eng', name: 'English', codes: ['eng', 'en'] };
-const spanish: LanguageOption = { code: 'spa', name: 'Spanish', codes: ['spa', 'es'] };
+const arabic: LanguageOption = { code: 'ara', name: 'Arabic', codes: ['ara', 'ar'] };
 const french: LanguageOption = { code: 'fre', name: 'French', codes: ['fre', 'fra', 'fr'] };
-
-const track = (id: number, language: string | null, title: string, selected = false): MediaTrack => ({
-  id,
-  kind: 'subtitle',
-  language,
-  title,
-  selected,
-});
 
 const preferences = (preferred: string[]): Preferences => ({
   preferred_audio: 'eng',
   preferred_subtitles: preferred,
-  languages: [english, spanish, french],
+  languages: [english, arabic, french],
 });
 
 describe('subtitle flags', () => {
   it('draws a flag from the country of the language and abbreviates the name to two letters', () => {
     expect(flagOfLanguage('English')).toBe('🇬🇧');
-    expect(flagOfLanguage('Spanish')).toBe('🇪🇸');
+    expect(flagOfLanguage('Arabic')).toBe('🇸🇦');
     expect(flagOfLanguage('Klingon')).toBe('🌐');
     expect(abbreviationOfLanguage('English')).toBe('En');
-    expect(abbreviationOfLanguage('Spanish')).toBe('Sp');
+    expect(abbreviationOfLanguage('Arabic')).toBe('Ar');
   });
 
-  it('recognises a track by any code of the language, with or without a region', () => {
-    expect(trackInLanguage(track(1, 'eng', ''), english)).toBe(true);
-    expect(trackInLanguage(track(1, 'en-US', ''), english)).toBe(true);
-    expect(trackInLanguage(track(1, 'spa', ''), english)).toBe(false);
+  it('recognises a language by any of its codes, with a region, or by its name', () => {
+    expect(languageMatches('eng', english)).toBe(true);
+    expect(languageMatches('en-US', english)).toBe(true);
+    expect(languageMatches('ENGLISH', english)).toBe(true);
+    expect(languageMatches('English (SDH)', english)).toBe(true);
+    expect(languageMatches('ara', english)).toBe(false);
+    expect(languageMatches('Arabic', english)).toBe(false);
   });
 
-  it('falls back to the name in the title when the track has no usable language', () => {
-    expect(trackInLanguage(track(1, null, 'English (SDH)'), english)).toBe(true);
-    expect(trackInLanguage(track(1, 'und', 'Spanish'), english)).toBe(false);
+  it('shows only the preferred languages the source offers, in the viewer’s order', () => {
+    const flags = flagsForSource(['fre', 'ar', 'eng'], preferences(['eng', 'ara']));
+    expect(flags.map((flag) => flag.abbreviation)).toEqual(['En', 'Ar']);
   });
 
-  it('shows only the preferred languages the stream offers, in the viewer’s order', () => {
-    const tracks = [track(1, 'spa', ''), track(2, 'fre', ''), track(3, 'eng', '')];
-    const flags = subtitleFlags(tracks, preferences(['eng', 'spa']));
-    expect(flags.map((flag) => flag.abbreviation)).toEqual(['En', 'Sp']);
-    expect(flags.map((flag) => flag.trackId)).toEqual([3, 1]);
+  it('shows no flag for a language the source does not have', () => {
+    const flags = flagsForSource(['eng'], preferences(['eng', 'ara', 'fre']));
+    expect(flags.map((flag) => flag.name)).toEqual(['English']);
   });
 
-  it('shows nothing when the stream has none of the preferred languages', () => {
-    expect(subtitleFlags([track(1, 'fre', '')], preferences(['eng']))).toEqual([]);
-  });
-
-  it('marks the flag whose track is showing and points at that track', () => {
-    const tracks = [track(1, 'eng', '', false), track(2, 'eng', '', true)];
-    const [flag] = subtitleFlags(tracks, preferences(['eng']));
-    expect(flag?.selected).toBe(true);
-    expect(flag?.trackId).toBe(2);
-  });
-
-  it('ignores audio tracks', () => {
-    const audio: MediaTrack = { ...track(1, 'eng', ''), kind: 'audio' };
-    expect(subtitleFlags([audio], preferences(['eng']))).toEqual([]);
+  it('shows nothing when the source offers none of the preferred languages', () => {
+    expect(flagsForSource(['fre'], preferences(['eng']))).toEqual([]);
+    expect(flagsForSource([], preferences(['eng']))).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use core_model::PlayableLink;
 use extension_repo::{HttpProbe, ProbeResponse};
 
+use crate::subtitle_scan::subtitle_languages;
 use crate::CheckQueue;
 
 /// How many streams are asked at the same time.
@@ -22,6 +23,9 @@ pub enum LinkHealth {
     Working {
         /// Size of the video file in bytes; unknown for playlists and when the host did not say.
         size_bytes: Option<u64>,
+        /// Languages of the subtitles the stream itself carries, as it names them (`eng`, `ar`,
+        /// `Arabic`); empty when it has none or says nothing at its start.
+        subtitles: Vec<String>,
     },
     /// The host did not answer properly; the reason is fit for a log line.
     Broken(String),
@@ -113,13 +117,13 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     let head = String::from_utf8_lossy(&response.head);
     let head = head.trim_start();
     if head.starts_with("#EXTM3U") {
-        return LinkHealth::Working { size_bytes: None };
+        return working(None, response);
     }
     if link_type == "M3U8" {
         return LinkHealth::Broken("not an HLS playlist".to_owned());
     }
     if link_type == "DASH" && (head.starts_with("<?xml") || head.starts_with("<MPD")) {
-        return LinkHealth::Working { size_bytes: None };
+        return working(None, response);
     }
     if response.head.is_empty() {
         return LinkHealth::Broken("empty answer".to_owned());
@@ -130,12 +134,20 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     if head.starts_with('{') || head.starts_with('[') {
         return LinkHealth::Broken("data, not a video".to_owned());
     }
-    LinkHealth::Working {
-        size_bytes: if link_type == "VIDEO" {
+    working(
+        if link_type == "VIDEO" {
             response.total_bytes
         } else {
             None
         },
+        response,
+    )
+}
+
+fn working(size_bytes: Option<u64>, response: &ProbeResponse) -> LinkHealth {
+    LinkHealth::Working {
+        size_bytes,
+        subtitles: subtitle_languages(&response.head),
     }
 }
 

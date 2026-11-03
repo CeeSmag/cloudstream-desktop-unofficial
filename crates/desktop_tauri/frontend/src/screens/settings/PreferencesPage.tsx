@@ -10,7 +10,7 @@ interface PreferencesPageProps {
 /** The value of the "no preference" entry of the list. */
 const STREAM_DEFAULT = '';
 
-/** What the viewer prefers: the audio language, and which subtitle languages get a flag in the player. */
+/** What the viewer prefers: the audio language, and which subtitle languages get a flag under each source in the player. */
 export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => {
   const { preferences, busy, saved, chooseAudio, chooseSubtitles } = usePreferences(onError);
 
@@ -63,9 +63,9 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             <span>Preferred subtitles</span>
           </h2>
           <p className="text-xs text-zinc-400">
-            Choose up to three languages. When you open Sources in the player, each of these languages that the video
-            offers shows as a flag with the first two letters of its name; click a flag to turn those subtitles on or
-            off.
+            Choose up to three languages. In the player's Sources menu, each source shows a flag with the first two
+            letters of the language for every one of these languages it has subtitles in. A source without subtitles
+            in a language shows no flag for it. Flags appear once the source has been checked.
           </p>
         </div>
         <SubtitleLanguages

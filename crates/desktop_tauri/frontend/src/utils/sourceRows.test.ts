@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sourceRow } from './sourceRows';
-import { SourceInfo } from '../types';
+import { Preferences, SourceInfo } from '../types';
 
 const source = (over: Partial<SourceInfo>): SourceInfo => ({
   index: 3,
@@ -11,6 +11,7 @@ const source = (over: Partial<SourceInfo>): SourceInfo => ({
   host: 'cdn.example.com',
   url: 'https://cdn.example.com/file.mkv?sig=abc',
   size_bytes: 1_400_000_000,
+  subtitle_languages: [],
   ...over,
 });
 
@@ -34,5 +35,23 @@ describe('sourceRow', () => {
 
   it('marks a stream that is still being checked', () => {
     expect(sourceRow(source({ checking: true })).tags).toContain('checking…');
+  });
+
+  it('shows a flag under the source for each preferred subtitle language it offers, and none for the rest', () => {
+    const preferences: Preferences = {
+      preferred_audio: 'eng',
+      preferred_subtitles: ['eng', 'ara', 'fre'],
+      languages: [
+        { code: 'eng', name: 'English', codes: ['eng', 'en'] },
+        { code: 'ara', name: 'Arabic', codes: ['ara', 'ar'] },
+        { code: 'fre', name: 'French', codes: ['fre', 'fra', 'fr'] },
+      ],
+    };
+    const withBoth = sourceRow(source({ subtitle_languages: ['ara', 'eng'] }), preferences);
+    expect(withBoth.flags?.map((flag) => flag.abbreviation)).toEqual(['En', 'Ar']);
+    const onlyEnglish = sourceRow(source({ subtitle_languages: ['English'] }), preferences);
+    expect(onlyEnglish.flags?.map((flag) => flag.abbreviation)).toEqual(['En']);
+    expect(sourceRow(source({}), preferences).flags).toEqual([]);
+    expect(sourceRow(source({ subtitle_languages: ['eng'] })).flags).toEqual([]);
   });
 });
