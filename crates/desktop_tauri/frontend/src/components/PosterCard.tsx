@@ -1,14 +1,12 @@
 import React from 'react';
-import { Play } from 'lucide-react';
 import { HomeItem } from '../types';
 
 interface PosterCardProps {
   item: HomeItem;
   onClick: (item: HomeItem) => void;
-  onPlayDirect?: (item: HomeItem) => void;
 }
 
-export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDirect }) => {
+export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick }) => {
   // A poster that fails to load falls back to the same placeholder as a missing one.
   const [imageFailed, setImageFailed] = React.useState(false);
 
@@ -36,19 +34,6 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
 
         {/* Gradient Shadow Vignette */}
         <div className="absolute inset-0 bg-gradient-to-t from-midnight/90 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
-
-        {/* Play Button Overlay */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-midnight/30 backdrop-blur-[2px]">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onPlayDirect ? onPlayDirect(item) : onClick(item);
-            }}
-            className="w-12 h-12 rounded-full bg-accent text-white flex items-center justify-center shadow-xl glow-accent transform scale-90 group-hover:scale-100 transition-transform duration-200"
-          >
-            <Play className="w-5 h-5 fill-current ml-0.5" />
-          </button>
-        </div>
 
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] font-semibold">

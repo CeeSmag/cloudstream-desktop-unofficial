@@ -6,6 +6,7 @@ use super::*;
 const SHORT: Grace = Grace {
     high_quality: Duration::from_millis(40),
     other: Duration::from_millis(250),
+    max_wait: Duration::from_secs(30),
 };
 
 fn gate() -> Arc<CheckGate> {
@@ -150,4 +151,57 @@ fn progress_counts_streams_answers_and_working_streams() {
         }
     );
     assert!(!gate.discovery_ended(None).discovering);
+}
+
+fn limited(max_wait_ms: u64) -> Arc<CheckGate> {
+    Arc::new(CheckGate::new(Grace {
+        high_quality: Duration::from_secs(30),
+        other: Duration::from_secs(30),
+        max_wait: Duration::from_millis(max_wait_ms),
+    }))
+}
+
+#[test]
+fn the_limit_cuts_the_grace_short() {
+    let gate = limited(60);
+    gate.announce(&[480, 480]);
+    gate.record(1, true);
+    assert_eq!(gate.wait_for_start(), StartDecision::Start(1));
+}
+
+#[test]
+fn at_the_limit_the_best_stream_not_yet_known_to_be_broken_plays() {
+    let gate = limited(40);
+    gate.announce(&[1080, 720, 480]);
+    gate.record(0, false);
+    assert_eq!(gate.wait_for_start(), StartDecision::Start(1));
+}
+
+#[test]
+fn at_the_limit_a_stream_that_is_still_being_checked_plays() {
+    let gate = limited(40);
+    gate.announce(&[480, 1080]);
+    assert_eq!(gate.wait_for_start(), StartDecision::Start(1));
+}
+
+#[test]
+fn after_the_limit_the_wait_goes_on_for_the_first_stream() {
+    let gate = limited(10);
+    let later = Arc::clone(&gate);
+    after_a_moment(move || {
+        later.announce(&[720]);
+    });
+    assert_eq!(gate.wait_for_start(), StartDecision::Start(0));
+}
+
+#[test]
+fn after_the_limit_streams_known_to_be_broken_are_not_chosen() {
+    let gate = limited(10);
+    gate.announce(&[720]);
+    gate.record(0, false);
+    let later = Arc::clone(&gate);
+    after_a_moment(move || {
+        later.announce(&[360]);
+    });
+    assert_eq!(gate.wait_for_start(), StartDecision::Start(1));
 }

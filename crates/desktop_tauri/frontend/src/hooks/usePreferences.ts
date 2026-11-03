@@ -19,11 +19,11 @@ export function usePreferences(report: (error: unknown) => void) {
     };
   }, [report]);
 
-  /** Saves the preferred audio language; `null` means the stream's own default track. */
-  const chooseAudio = async (code: string | null) => {
+  /** Runs a save, then shows the new preferences and the "Saved" note. */
+  const save = async (change: () => Promise<Preferences>) => {
     setBusy(true);
     try {
-      setPreferences(await api.setPreferredAudio(code));
+      setPreferences(await change());
       setSaved(true);
       if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
       savedTimer.current = window.setTimeout(() => setSaved(false), SAVED_NOTE_MS);
@@ -34,5 +34,11 @@ export function usePreferences(report: (error: unknown) => void) {
     }
   };
 
-  return { preferences, busy, saved, chooseAudio };
+  /** Saves the preferred audio language; `null` means the stream's own default track. */
+  const chooseAudio = (code: string | null) => save(() => api.setPreferredAudio(code));
+
+  /** Saves the languages whose subtitles get a flag in the player (at most three). */
+  const chooseSubtitles = (codes: string[]) => save(() => api.setPreferredSubtitles(codes));
+
+  return { preferences, busy, saved, chooseAudio, chooseSubtitles };
 }

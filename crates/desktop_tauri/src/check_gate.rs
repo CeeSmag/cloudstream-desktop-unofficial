@@ -3,12 +3,12 @@
 //! Streams arrive while the provider still searches and are checked as they come. Playback starts
 //! on the best working stream a short grace after the first one is known (shorter when it is high
 //! quality, since little better can follow), at once when the viewer skips, or when the search is
-//! over and everything has been checked. Closing the video cancels the wait.
+//! over and everything has been checked. Whatever happens, the wait ends [`Grace::max_wait`] after
+//! the video was opened: the best working stream plays, or else the best one not known to be
+//! broken. Closing the video cancels the wait.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
-
-use serde::Serialize;
 
 /// Qualities from this one up are worth starting on without waiting for better ones.
 const HIGH_QUALITY: i32 = 1080;
@@ -16,54 +16,16 @@ const HIGH_QUALITY: i32 = 1080;
 /// Message of the failure when the search ended without finding any stream.
 const NO_STREAMS: &str = "No playable stream links found";
 
-/// How long to wait for a better stream after the first working one is known.
-#[derive(Debug, Clone, Copy)]
-pub struct Grace {
-    /// When the best working stream so far is high quality.
-    pub high_quality: Duration,
-    /// Otherwise.
-    pub other: Duration,
-}
-
-impl Default for Grace {
-    fn default() -> Self {
-        Self {
-            high_quality: Duration::from_millis(900),
-            other: Duration::from_millis(2000),
-        }
-    }
-}
-
-/// How far the search and the checks have come; sent to the UI.
-#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
-pub struct CheckProgress {
-    /// Streams answered so far.
-    pub checked: usize,
-    /// Streams found so far (it grows while the provider is still searching).
-    pub total: usize,
-    /// Of the answered ones, how many can be played.
-    pub working: usize,
-    /// The viewer asked to start without waiting for the rest.
-    pub skipping: bool,
-    /// The provider is still looking for streams.
-    pub discovering: bool,
-}
-
-/// What the wait for playback came to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StartDecision {
-    /// Play the stream with this index.
-    Start(usize),
-    /// The video was closed meanwhile.
-    Cancelled,
-    /// There is nothing to play; the text says why.
-    Failed(String),
-}
+pub use crate::check_progress::{CheckProgress, Grace, StartDecision};
 
 struct GateState {
     progress: CheckProgress,
     /// Rank of every stream found, by index.
     ranks: Vec<i32>,
+    /// Whether the check of each stream (by index) found it broken.
+    broken: Vec<bool>,
+    /// When the video was opened.
+    opened_at: Instant,
     /// Best working stream so far: highest rank, then lowest index.
     best_working: Option<usize>,
     /// When the first working stream was known.
@@ -80,6 +42,8 @@ impl Default for GateState {
                 ..CheckProgress::default()
             },
             ranks: Vec::new(),
+            broken: Vec::new(),
+            opened_at: Instant::now(),
             best_working: None,
             working_since: None,
             failure: None,
@@ -124,6 +88,8 @@ impl CheckGate {
     pub fn announce(&self, ranks: &[i32]) -> CheckProgress {
         let mut state = self.lock();
         state.ranks.extend_from_slice(ranks);
+        let known = state.ranks.len();
+        state.broken.resize(known, false);
         state.progress.total = state.ranks.len();
         let progress = state.progress;
         drop(state);
@@ -135,6 +101,11 @@ impl CheckGate {
     pub fn record(&self, index: usize, working: bool) -> CheckProgress {
         let mut state = self.lock();
         state.progress.checked += 1;
+        if !working {
+            if let Some(slot) = state.broken.get_mut(index) {
+                *slot = true;
+            }
+        }
         if working {
             state.progress.working += 1;
             state.working_since.get_or_insert_with(Instant::now);
@@ -215,7 +186,7 @@ impl CheckGate {
         match state.best_working {
             Some(best) if progress.skipping => Verdict::Ready(StartDecision::Start(best)),
             Some(best) => self.after_grace(state, best),
-            None => Verdict::Wait(None),
+            None => self.without_working(state),
         }
     }
 
@@ -228,10 +199,31 @@ impl CheckGate {
         let waited = state
             .working_since
             .map_or(Duration::ZERO, |at| at.elapsed());
-        match grace.checked_sub(waited) {
-            Some(left) if !left.is_zero() => Verdict::Wait(Some(left)),
-            _ => Verdict::Ready(StartDecision::Start(best)),
+        let left = grace.saturating_sub(waited).min(self.time_left(state));
+        if left.is_zero() {
+            Verdict::Ready(StartDecision::Start(best))
+        } else {
+            Verdict::Wait(Some(left))
         }
+    }
+
+    /// No stream is known to work yet: wait for one until the limit, then take the best stream
+    /// that is not known to be broken (waiting on for the first stream if there is none).
+    fn without_working(&self, state: &GateState) -> Verdict {
+        let left = self.time_left(state);
+        if !left.is_zero() {
+            return Verdict::Wait(Some(left));
+        }
+        match state.best_unbroken() {
+            Some(index) => Verdict::Ready(StartDecision::Start(index)),
+            None => Verdict::Wait(None),
+        }
+    }
+
+    fn time_left(&self, state: &GateState) -> Duration {
+        self.grace
+            .max_wait
+            .saturating_sub(state.opened_at.elapsed())
     }
 }
 
@@ -244,6 +236,16 @@ impl GateState {
     fn beats(&self, index: usize, other: usize) -> bool {
         let (rank, other_rank) = (self.rank(index), self.rank(other));
         rank > other_rank || (rank == other_rank && index < other)
+    }
+
+    /// The best stream not known to be broken.
+    fn best_unbroken(&self) -> Option<usize> {
+        (0..self.ranks.len())
+            .filter(|index| !self.broken.get(*index).copied().unwrap_or(false))
+            .fold(None, |best: Option<usize>, index| match best {
+                Some(current) if !self.beats(index, current) => Some(current),
+                _ => Some(index),
+            })
     }
 
     /// The decision once the search is over and every stream has been answered.

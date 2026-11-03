@@ -6,6 +6,7 @@
 mod app_state;
 mod catalog_commands;
 mod check_gate;
+mod check_progress;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;
@@ -46,6 +47,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             startup::get_startup_status,
             preferences_commands::get_preferences,
             preferences_commands::set_preferred_audio,
+            preferences_commands::set_preferred_subtitles,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
             debug_log_commands::open_logs_folder,

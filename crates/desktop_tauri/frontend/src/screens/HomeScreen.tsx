@@ -1,19 +1,17 @@
 import React from 'react';
-import { Play, Info, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Info, ChevronRight, ChevronLeft } from 'lucide-react';
 import { HomeItem, HomeSection } from '../types';
 import { PosterCard } from '../components/PosterCard';
 
 interface HomeScreenProps {
   sections: HomeSection[];
   onSelectItem: (item: HomeItem) => void;
-  onPlayItem: (item: HomeItem) => void;
   loading: boolean;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   sections,
   onSelectItem,
-  onPlayItem,
   loading,
 }) => {
   const heroItem = sections[0]?.items[0];
@@ -62,16 +60,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-3">
               <button
-                onClick={() => onPlayItem(heroItem)}
-                className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Play Now</span>
-              </button>
-
-              <button
                 onClick={() => onSelectItem(heroItem)}
-                className="flex items-center space-x-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-medium border border-white/10 transition-colors backdrop-blur-md"
+                className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent"
               >
                 <Info className="w-4 h-4" />
                 <span>Details</span>
@@ -94,7 +84,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               key={`${section.title}-${idx}`}
               section={section}
               onSelectItem={onSelectItem}
-              onPlayItem={onPlayItem}
             />
           ))
         )}
@@ -106,8 +95,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 const ShelfRow: React.FC<{
   section: HomeSection;
   onSelectItem: (item: HomeItem) => void;
-  onPlayItem: (item: HomeItem) => void;
-}> = ({ section, onSelectItem, onPlayItem }) => {
+}> = ({ section, onSelectItem }) => {
   const rowRef = React.useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -148,7 +136,7 @@ const ShelfRow: React.FC<{
       >
         {section.items.map((item) => (
           <div key={item.id} className="shelf-item">
-            <PosterCard item={item} onClick={onSelectItem} onPlayDirect={onPlayItem} />
+            <PosterCard item={item} onClick={onSelectItem} />
           </div>
         ))}
       </div>
