@@ -57,6 +57,18 @@ export interface MediaDetails {
   plot: string | null;
   tags: string[];
   episodes: Episode[];
+  /** Wide background picture. */
+  background_url: string | null;
+  /** Rating out of 10. */
+  rating: number | null;
+  duration_minutes: number | null;
+  cast: CastMember[];
+}
+
+export interface CastMember {
+  name: string;
+  image: string | null;
+  role: string | null;
 }
 
 export interface Bookmark {

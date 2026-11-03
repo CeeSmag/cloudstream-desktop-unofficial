@@ -23,6 +23,10 @@ const details = (overrides: Partial<MediaDetails>): MediaDetails => ({
   tags: [],
   episodes: [],
   data_url: null,
+  background_url: null,
+  rating: null,
+  duration_minutes: null,
+  cast: [],
   ...overrides,
 });
 

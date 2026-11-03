@@ -30,7 +30,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-surface-elevated to-midnight text-zinc-500">
             <span className="text-3xl mb-2">🎬</span>
-            <span className="text-xs text-center line-clamp-2">{item.name}</span>
+            <span className="text-xs text-center break-words">{item.name}</span>
           </div>
         )}
 
@@ -68,7 +68,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, onClick, onPlayDir
 
       {/* Title & Metadata */}
       <div className="mt-2.5 px-0.5">
-        <h3 className="text-sm font-medium text-zinc-200 group-hover:text-white line-clamp-1 transition-colors">
+        <h3 className="text-sm font-medium text-zinc-200 group-hover:text-white break-words transition-colors">
           {item.name}
         </h3>
         <p className="text-xs text-zinc-500 font-normal truncate mt-0.5">
