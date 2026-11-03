@@ -4,23 +4,21 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-/// How long the video waits for streams.
+/// The longest a video waits for its provider; both are counted from when it was opened.
 #[derive(Debug, Clone, Copy)]
-pub struct Grace {
-    /// Wait for a better stream after the first working one, when the best so far is high quality.
-    pub high_quality: Duration,
-    /// The same wait otherwise.
-    pub other: Duration,
-    /// The longest the video may wait for anything, counted from when it was opened.
+pub struct WaitLimits {
+    /// The longest the provider may take to give a first stream; later it is an error.
+    pub first_stream: Duration,
+    /// The longest the whole search and all the checks may take before playback starts anyway on
+    /// the best stream known, or fails when there is none.
     pub max_wait: Duration,
 }
 
-impl Default for Grace {
+impl Default for WaitLimits {
     fn default() -> Self {
         Self {
-            high_quality: Duration::from_millis(900),
-            other: Duration::from_millis(2000),
-            max_wait: Duration::from_secs(5),
+            first_stream: Duration::from_secs(30),
+            max_wait: Duration::from_secs(60),
         }
     }
 }

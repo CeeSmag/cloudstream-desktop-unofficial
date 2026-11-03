@@ -10,9 +10,9 @@ use player_api::{PlaybackState, PlaybackStatus, TrackKind};
 use tauri::{AppHandle, Manager, State};
 
 /// Opens a video: the provider's streams are checked as they are found and the best working one
-/// plays a moment after the first is known, but never later than five seconds after the viewer
-/// opened it. The search and the checks go on in the background until they are done or the video
-/// closes.
+/// plays when the search and all the checks are done, or when the viewer skips. A provider that
+/// gives nothing in time, or never finishes, ends in an error. After a skip the search and the
+/// checks go on in the background until they are done or the video closes.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn play_media(
@@ -34,8 +34,8 @@ pub async fn play_media(
     outcome
 }
 
-/// Lets the viewer start now: the best stream known to work plays and the rest of the checks
-/// carry on in the background.
+/// Lets the viewer start now: the best stream known to work plays and the search, the checks and
+/// the subtitle downloads carry on in the background.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn skip_source_check(

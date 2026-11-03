@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use extension_runtime::fake_link_search::SearchScript;
 
-use crate::opening_flow_tests::{grace, open, rig, Rig};
+use crate::opening_flow_tests::{limits, open, open_skipping_after, rig, Rig};
 use crate::race_tests::{join_within, TIME_LIMIT};
 
 fn script_with_subtitles(languages: &[(&str, u64)]) -> SearchScript {
@@ -24,8 +24,8 @@ fn script_with_subtitles(languages: &[(&str, u64)]) -> SearchScript {
     script
 }
 
-fn fast_grace() -> crate::check_gate::Grace {
-    grace(20, 40, 1_000)
+fn fast_limits() -> crate::check_gate::WaitLimits {
+    limits(5_000, 20_000)
 }
 
 fn subtitles_of(rig: &Rig) -> Vec<(String, String)> {
@@ -54,7 +54,7 @@ fn wait_for(what: &str, condition: impl Fn() -> bool) {
 fn subtitle_files_named_during_the_search_become_local_files_of_the_open_video() {
     let rig = rig(
         script_with_subtitles(&[("Arabic", 30), ("English", 90)]),
-        fast_grace(),
+        fast_limits(),
     );
 
     let (outcome, background, _) = open(&rig);
@@ -82,10 +82,10 @@ fn subtitle_files_named_during_the_search_become_local_files_of_the_open_video()
 
 #[test]
 fn subtitles_found_after_playback_started_are_given_to_the_player_that_is_playing() {
-    // The first stream is there at once; the subtitle is found a second later.
-    let rig = rig(script_with_subtitles(&[("Arabic", 700)]), fast_grace());
+    // The viewer skips at 0.3 s; the subtitle is found at 0.7 s.
+    let rig = rig(script_with_subtitles(&[("Arabic", 700)]), fast_limits());
 
-    let (outcome, background, _) = open(&rig);
+    let (outcome, background, _) = open_skipping_after(&rig, Duration::from_millis(300));
     assert_eq!(outcome, Ok(()));
     assert!(
         rig.player.started_with.lock().expect("lock")[0].is_empty(),
@@ -110,7 +110,7 @@ fn subtitles_found_after_playback_started_are_given_to_the_player_that_is_playin
 fn a_dead_subtitle_is_skipped_and_the_others_still_arrive() {
     let rig = rig(
         script_with_subtitles(&[("dead", 20), ("Arabic", 40), ("English", 60)]),
-        fast_grace(),
+        fast_limits(),
     );
 
     let (outcome, background, _) = open(&rig);
@@ -129,7 +129,7 @@ fn a_dead_subtitle_is_skipped_and_the_others_still_arrive() {
 /// did not on the second. The title must keep what it was given.
 #[test]
 fn a_title_opened_again_gets_its_saved_subtitles_at_once_even_when_the_provider_offers_none() {
-    let rig = rig(script_with_subtitles(&[("Arabic", 30)]), fast_grace());
+    let rig = rig(script_with_subtitles(&[("Arabic", 30)]), fast_limits());
     let (outcome, background, _) = open(&rig);
     assert_eq!(outcome, Ok(()));
     join_within(background, TIME_LIMIT);
@@ -138,7 +138,7 @@ fn a_title_opened_again_gets_its_saved_subtitles_at_once_even_when_the_provider_
 
     // Second time: the provider finds streams but no subtitle at all.
     let again =
-        crate::opening_flow_tests::rig_sharing(&rig, script_with_subtitles(&[]), fast_grace());
+        crate::opening_flow_tests::rig_sharing(&rig, script_with_subtitles(&[]), fast_limits());
     let (outcome, background, _) = open(&again);
     assert_eq!(outcome, Ok(()));
 
@@ -161,7 +161,7 @@ fn a_title_opened_again_gets_its_saved_subtitles_at_once_even_when_the_provider_
 
 #[test]
 fn a_subtitle_the_provider_offers_again_is_not_listed_twice_or_downloaded_again() {
-    let rig = rig(script_with_subtitles(&[("Arabic", 30)]), fast_grace());
+    let rig = rig(script_with_subtitles(&[("Arabic", 30)]), fast_limits());
     let (outcome, background, _) = open(&rig);
     assert_eq!(outcome, Ok(()));
     join_within(background, TIME_LIMIT);
@@ -171,7 +171,7 @@ fn a_subtitle_the_provider_offers_again_is_not_listed_twice_or_downloaded_again(
     let again = crate::opening_flow_tests::rig_sharing(
         &rig,
         script_with_subtitles(&[("Arabic", 30)]),
-        fast_grace(),
+        fast_limits(),
     );
     let (outcome, background, _) = open(&again);
     assert_eq!(outcome, Ok(()));
@@ -192,7 +192,7 @@ fn a_subtitle_the_provider_offers_again_is_not_listed_twice_or_downloaded_again(
 #[test]
 fn leaving_stops_the_subtitle_downloads_that_have_not_started() {
     let slow: Vec<(&str, u64)> = (0..40).map(|n| ("slow", 20 + n)).collect();
-    let rig = rig(script_with_subtitles(&slow), fast_grace());
+    let rig = rig(script_with_subtitles(&slow), fast_limits());
     let (outcome, background, _) = open(&rig);
     assert_eq!(outcome, Ok(()));
     wait_for("the first downloads to start", || {
