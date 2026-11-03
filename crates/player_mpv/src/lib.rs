@@ -6,6 +6,7 @@ mod frame_renderer;
 mod libmpv_locator;
 mod mpv_api;
 mod mpv_event;
+mod mpv_log;
 mod mpv_option_format;
 mod mpv_player;
 mod mpv_render_api;

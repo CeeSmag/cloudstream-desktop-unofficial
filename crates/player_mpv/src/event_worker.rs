@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -25,6 +25,8 @@ pub(crate) struct EventWorker {
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stream_generation: StreamGeneration,
     pub(crate) audio_preference: Arc<AudioPreference>,
+    /// How many subtitle tracks the track list showed the last time it was logged.
+    pub(crate) reported_subtitle_tracks: AtomicUsize,
 }
 
 /// Whether the stream that is current has finished loading. A stream that was replaced (a new
@@ -49,6 +51,11 @@ impl EventWorker {
                 _ => loaded_generation,
             };
             if event == MpvEvent::FileLoaded {
+                tracing::info!(
+                    generation,
+                    waiting_subtitle_files = self.waiting_subtitles(),
+                    "stream loaded"
+                );
                 self.attach_subtitles();
                 self.refresh_tracks();
                 self.apply_audio_preference();
@@ -65,6 +72,13 @@ impl EventWorker {
                 self.refresh_tracks();
             }
         }
+    }
+
+    fn waiting_subtitles(&self) -> usize {
+        self.pending_subtitles
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
     }
 
     /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
@@ -122,8 +136,46 @@ impl EventWorker {
     /// Re-reads the track list (subtitles added after loading show up here too).
     pub(crate) fn refresh_tracks(&self) {
         let get = |name: &str| self.handle.get_string(name);
-        self.tracker.set_tracks(read_tracks(get));
+        let tracks = read_tracks(get);
+        self.report_subtitle_tracks(&tracks);
+        self.tracker.set_tracks(tracks);
         self.tracker.set_has_video(has_video_track(get));
+    }
+
+    /// Logs the subtitle tracks the player lists whenever their number changes, so a language
+    /// that never shows up can be told from one that was attached and then lost.
+    fn report_subtitle_tracks(&self, tracks: &[MediaTrack]) {
+        let languages: Vec<&str> = tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Subtitle)
+            .map(|track| track.language.as_str())
+            .collect();
+        if self
+            .reported_subtitle_tracks
+            .swap(languages.len(), Ordering::Relaxed)
+            == languages.len()
+        {
+            return;
+        }
+        let mut counts = std::collections::BTreeMap::new();
+        for language in &languages {
+            *counts
+                .entry(if language.is_empty() {
+                    "unknown"
+                } else {
+                    language
+                })
+                .or_insert(0usize) += 1;
+        }
+        let tally: Vec<String> = counts
+            .iter()
+            .map(|(language, count)| format!("{language}={count}"))
+            .collect();
+        tracing::info!(
+            subtitle_tracks = languages.len(),
+            languages = %tally.join(", "),
+            "the subtitle tracks in the player changed"
+        );
     }
 
     fn poll_progress(&self) {
