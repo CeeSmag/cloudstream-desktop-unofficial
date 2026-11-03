@@ -182,6 +182,12 @@ impl BackgroundChecks {
         {
             return false;
         }
+        if let LinkHealth::Working {
+            size_bytes: Some(size),
+        } = found
+        {
+            self.session.set_size(self.generation, index, *size);
+        }
         if progress.checked.is_multiple_of(NOTIFY_EVERY) {
             (self.tell)(CheckUpdate::SourcesChanged);
         }

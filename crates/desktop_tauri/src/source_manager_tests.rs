@@ -14,6 +14,7 @@ impl HttpProbe for VideoAt {
                 status: 206,
                 content_type: "video/mp4".to_owned(),
                 head: b"\0\0\0\x18ftypmp42".to_vec(),
+                total_bytes: Some(1_000_000),
             });
         }
         Err(RepoError::Download {
@@ -83,6 +84,8 @@ fn every_stream_is_checked_and_the_best_working_one_is_chosen() {
     let (job, links, updates) = job(vec!["https://b/ok", "https://c/ok"], &urls);
     job.run(&links);
     assert_eq!(job.gate.wait_for_start(), Some(1));
+    let sizes = job.session.snapshot().map(|active| active.sizes);
+    assert_eq!(sizes, Some(vec![None, Some(1_000_000), Some(1_000_000)]));
     let health = job.session.snapshot().map(|active| active.health);
     assert_eq!(
         health,

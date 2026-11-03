@@ -6,6 +6,12 @@ export interface MenuOption {
   id: number;
   label: string;
   selected: boolean;
+  /** Small tags under the name, such as the kind of stream and its host. */
+  tags?: string[];
+  /** A flag on the right, such as the size of the file. */
+  badge?: string;
+  /** Longer text under the tags, shown in full and wrapped, such as the stream address. */
+  detail?: string;
 }
 
 interface OptionMenuProps {
@@ -15,6 +21,8 @@ interface OptionMenuProps {
   options: MenuOption[];
   /** Adds an "Off" entry, used for subtitles. */
   allowOff: boolean;
+  /** Makes the dropdown wider, for rows that carry details. */
+  wide?: boolean;
   open: boolean;
   onToggle: () => void;
   onSelect: (id: number | null) => void;
@@ -22,12 +30,13 @@ interface OptionMenuProps {
 
 const ITEM_BASE = 'w-full text-left px-3 py-2 text-xs rounded-lg flex items-start justify-between gap-3 transition-colors';
 
-/** A player button that opens a dropdown of choices; long names wrap onto the next line. */
+/** A player button that opens a dropdown of choices; long names and details wrap onto the next line. */
 export const OptionMenu: React.FC<OptionMenuProps> = ({
   label,
   icon: Icon,
   options,
   allowOff,
+  wide = false,
   open,
   onToggle,
   onSelect,
@@ -45,7 +54,11 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
     </button>
 
     {open && (
-      <div className="absolute right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl glass-dropdown p-2 shadow-2xl z-50">
+      <div
+        className={`absolute right-0 mt-2 ${
+          wide ? 'w-[26rem]' : 'w-72 sm:w-80'
+        } max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl glass-dropdown p-2 shadow-2xl z-50`}
+      >
         <div className="px-3 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{label}</div>
         {allowOff && (
           <button onClick={() => onSelect(null)} className={`${ITEM_BASE} text-zinc-300 hover:bg-white/5`}>
@@ -63,8 +76,29 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
               option.selected ? 'bg-accent/20 text-accent font-semibold' : 'text-zinc-300 hover:bg-white/5'
             }`}
           >
-            <span className="whitespace-normal break-words min-w-0">{option.label}</span>
-            {option.selected && <span className="mt-1 w-1.5 h-1.5 flex-none rounded-full bg-accent" />}
+            <span className="min-w-0 flex-1 space-y-1">
+              <span className="block whitespace-normal break-words">{option.label}</span>
+              {option.tags && option.tags.length > 0 && (
+                <span className="flex flex-wrap gap-1">
+                  {option.tags.map((tag) => (
+                    <span key={tag} className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-medium text-zinc-300 break-all">
+                      {tag}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {option.detail && (
+                <span className="block font-mono text-[10px] font-normal text-zinc-500 break-all">{option.detail}</span>
+              )}
+            </span>
+            <span className="flex flex-none items-center gap-2">
+              {option.badge && (
+                <span className="px-1.5 py-0.5 rounded border border-accent/40 bg-accent/10 text-[10px] font-semibold text-accent whitespace-nowrap">
+                  {option.badge}
+                </span>
+              )}
+              {option.selected && <span className="w-1.5 h-1.5 flex-none rounded-full bg-accent" />}
+            </span>
           </button>
         ))}
       </div>
