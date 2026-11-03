@@ -24,6 +24,8 @@ pub struct SearchScript {
     pub subtitles: Vec<(Duration, String)>,
     /// When the search ends.
     pub ends_after: Duration,
+    /// When set, the search ends by failing with this reason instead of finishing.
+    pub failure: Option<String>,
 }
 
 impl SearchScript {
@@ -36,6 +38,7 @@ impl SearchScript {
             links,
             subtitles: Vec::new(),
             ends_after: gap * u32::try_from(count).unwrap_or(1) + tail,
+            failure: None,
         }
     }
 
@@ -160,7 +163,9 @@ impl FakeLinkSearches {
             .map(|(_, language)| language.clone())
             .collect();
         let done = elapsed >= search.script.ends_after;
-        let update = Update::new(links, subtitles, done, (from.links, from.subtitles));
+        let failure = search.script.failure.clone().filter(|_| done);
+        let update =
+            Update::new(links, subtitles, done, (from.links, from.subtitles)).failing(failure);
         if done
             && update.next_link == update.total_links
             && update.next_subtitle == update.total_subtitles
@@ -180,6 +185,7 @@ struct Update {
     next_link: usize,
     next_subtitle: usize,
     done: bool,
+    failure: Option<String>,
 }
 
 impl Update {
@@ -193,7 +199,13 @@ impl Update {
             next_link: total_links.max(from.0),
             next_subtitle: total_subtitles.max(from.1),
             done,
+            failure: None,
         }
+    }
+
+    fn failing(mut self, failure: Option<String>) -> Self {
+        self.failure = failure;
+        self
     }
 
     fn has_news(&self) -> bool {
@@ -226,7 +238,8 @@ impl Update {
         json!({
             "links": links, "subtitles": subtitles,
             "nextLink": self.next_link, "nextSubtitle": self.next_subtitle,
-            "done": self.done, "success": self.done && self.total_links > 0, "failure": null,
+            "done": self.done, "success": self.done && self.total_links > 0 && self.failure.is_none(),
+            "failure": self.failure,
         })
     }
 }

@@ -48,6 +48,7 @@ fn opening_and_closing_videos_from_many_threads_never_leaves_two_videos_open() {
     let manager = Arc::new(SourceManager::new(
         StreamChecker::new(Arc::new(Unreachable)),
         crate::test_subtitles::unused_loader(),
+        crate::test_titles::unused_titles(),
     ));
     let gates = Arc::new(Mutex::new(Vec::new()));
     let handles: Vec<_> = (0..THREADS)
@@ -83,6 +84,7 @@ fn a_video_replaced_while_it_opens_never_takes_the_session_from_the_newer_one() 
         let manager = Arc::new(SourceManager::new(
             StreamChecker::new(Arc::new(Unreachable)),
             crate::test_subtitles::unused_loader(),
+            crate::test_titles::unused_titles(),
         ));
         let older = manager.begin();
         let opener = {

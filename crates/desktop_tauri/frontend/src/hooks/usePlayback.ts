@@ -27,6 +27,7 @@ const OPENING: CheckProgress = {
   working: 0,
   skipping: false,
   discovering: true,
+  saved: 'none',
 };
 
 /** Everything about the video player screen: what is playing, its state, and the actions on it. */

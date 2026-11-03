@@ -4,6 +4,9 @@ import { CheckProgress } from '../types';
 export function checkTitle(progress: CheckProgress): string {
   if (progress.total === 0) return 'Finding sources…';
   if (progress.skipping) return 'Starting playback…';
+  if (progress.saved === 'trusted') return 'Opening with saved sources…';
+  if (progress.saved === 'testing') return 'Testing saved sources…';
+  if (progress.saved === 'outOfDate') return 'Saved sources are out of date, searching again…';
   return progress.discovering ? 'Finding and checking sources…' : 'Checking sources…';
 }
 

@@ -19,6 +19,7 @@ use crate::check_gate::WaitLimits;
 use crate::race_tests::{join_within, TIME_LIMIT};
 use crate::source_manager::{SourceManager, Tell};
 use crate::test_subtitles::TestSubtitles;
+use crate::test_titles::TestTitles;
 use crate::video_opening::{open_video, OpeningServices};
 
 /// Records what the player was asked to play.
@@ -60,11 +61,23 @@ impl VideoPlayer for RecordingPlayer {
     }
 }
 
-/// Every stream is a working video.
-struct EveryStreamWorks;
+/// Every stream is a working video, except the ones whose address holds a word of `dead`.
+struct ProbeByAddress(Arc<Mutex<Vec<String>>>);
 
-impl HttpProbe for EveryStreamWorks {
-    fn probe(&self, _: &str, _: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
+impl HttpProbe for ProbeByAddress {
+    fn probe(&self, url: &str, _: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
+        if self
+            .0
+            .lock()
+            .expect("lock")
+            .iter()
+            .any(|word| url.contains(word))
+        {
+            return Err(RepoError::Download {
+                url: url.to_owned(),
+                reason: "dead in this test".to_owned(),
+            });
+        }
         Ok(ProbeResponse {
             status: 206,
             content_type: "video/mp4".to_owned(),
@@ -81,21 +94,33 @@ pub(crate) struct Rig {
     pub(crate) searches: Arc<FakeLinkSearches>,
     pub(crate) player: Arc<RecordingPlayer>,
     pub(crate) subtitles: Arc<TestSubtitles>,
+    /// The saved sources of the titles opened with this rig (and the ones sharing it).
+    pub(crate) titles: Arc<TestTitles>,
+    /// Streams whose address holds one of these words fail their check.
+    pub(crate) dead: Arc<Mutex<Vec<String>>>,
 }
 
 pub(crate) fn rig(script: SearchScript, limits: WaitLimits) -> Rig {
-    build(script, limits, Arc::new(TestSubtitles::new()))
+    let (subtitles, titles) = (Arc::new(TestSubtitles::new()), Arc::new(TestTitles::new()));
+    build(script, limits, (subtitles, titles))
 }
 
-/// A second setup that shares the subtitle folder (and so what was saved there) with `first`.
+/// A second setup that shares the subtitle and saved-sources folders (and so what was saved
+/// there) with `first`, as the app does when a title is opened again.
 pub(crate) fn rig_sharing(first: &Rig, script: SearchScript, limits: WaitLimits) -> Rig {
-    build(script, limits, Arc::clone(&first.subtitles))
+    let shared = (Arc::clone(&first.subtitles), Arc::clone(&first.titles));
+    build(script, limits, shared)
 }
 
-fn build(script: SearchScript, limits: WaitLimits, subtitles: Arc<TestSubtitles>) -> Rig {
+fn build(
+    script: SearchScript,
+    limits: WaitLimits,
+    (subtitles, titles): (Arc<TestSubtitles>, Arc<TestTitles>),
+) -> Rig {
     let searches = Arc::new(FakeLinkSearches::new(move |_| script.clone()));
     let gateway = RpcProviderGateway::new(FakeSearchRuntime::new(Arc::clone(&searches)));
     let player = Arc::new(RecordingPlayer::default());
+    let dead = Arc::new(Mutex::new(Vec::new()));
     let playback = PlaybackService::new(
         Arc::clone(&player) as Arc<dyn VideoPlayer>,
         WatchProgressStore::new(Arc::new(Database::open_in_memory().expect("memory db"))),
@@ -103,8 +128,9 @@ fn build(script: SearchScript, limits: WaitLimits, subtitles: Arc<TestSubtitles>
     );
     Rig {
         sources: SourceManager::new(
-            StreamChecker::new(Arc::new(EveryStreamWorks)),
+            StreamChecker::new(Arc::new(ProbeByAddress(Arc::clone(&dead)))),
             Arc::clone(&subtitles.loader),
+            Arc::clone(&titles.cache),
         )
         .with_limits(limits),
         services: OpeningServices {
@@ -115,6 +141,8 @@ fn build(script: SearchScript, limits: WaitLimits, subtitles: Arc<TestSubtitles>
         searches,
         player,
         subtitles,
+        titles,
+        dead,
     }
 }
 
@@ -262,3 +290,6 @@ fn a_provider_that_gives_no_stream_in_time_is_an_error_and_its_search_is_stopped
 
 #[path = "opening_flow_closing_tests.rs"]
 mod closing;
+
+#[path = "opening_flow_saved_tests.rs"]
+mod saved;

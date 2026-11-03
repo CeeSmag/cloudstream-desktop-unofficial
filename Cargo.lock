@@ -1247,6 +1247,7 @@ dependencies = [
  "subtitle_store",
  "tauri",
  "tauri-build",
+ "title_cache",
  "tracing",
  "tracing-subscriber",
  "ui_app",

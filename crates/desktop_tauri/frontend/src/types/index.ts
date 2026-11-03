@@ -187,7 +187,13 @@ export interface CheckProgress {
   skipping: boolean;
   /** The provider is still looking for streams. */
   discovering: boolean;
+  /** What is going on with sources saved when the video was opened before. */
+  saved: SavedSources;
 }
+
+/** `trusted`: playing from sources saved a short while ago; `testing`: trying the best of older ones;
+ * `outOfDate`: none of them works any more, so the provider is searched again. */
+export type SavedSources = 'none' | 'trusted' | 'testing' | 'outOfDate';
 
 /** A debug log file. */
 export interface LogFileInfo {

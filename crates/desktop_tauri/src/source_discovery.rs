@@ -12,6 +12,7 @@ use subtitle_store::SubtitlePrefetch;
 
 use crate::check_gate::CheckGate;
 use crate::failure_tally::FailureTally;
+use crate::link_ledger::LinkLedger;
 use crate::source_manager::CheckUpdate;
 use crate::source_session::{SourceHealth, SourceSession};
 
@@ -43,6 +44,8 @@ pub struct Discovery {
     pub(crate) hosts: Mutex<Vec<String>>,
     /// Why the checks of this video failed.
     pub(crate) failures: FailureTally,
+    /// What gets saved for the title when the work is over.
+    pub(crate) ledger: Arc<LinkLedger>,
 }
 
 impl Discovery {
@@ -94,7 +97,9 @@ impl Discovery {
                 self.record(index, &found)
             });
         let progress = self.gate.progress();
-        if !self.wanted() {
+        let closed = !self.wanted();
+        self.ledger.save(self.last_good(), closed);
+        if closed {
             tracing::info!(
                 answered = progress.checked,
                 of = progress.total,
@@ -116,7 +121,22 @@ impl Discovery {
         );
     }
 
-    /// Remembers what the search found and queues the streams for checking.
+    /// The stream that is playing, if one is: the one that played well.
+    fn last_good(&self) -> Option<String> {
+        let active = self.session.snapshot()?;
+        active
+            .playing
+            .then(|| {
+                active
+                    .links
+                    .get(active.selected)
+                    .map(|link| link.url.clone())
+            })
+            .flatten()
+    }
+
+    /// Remembers what the search found and queues the streams for checking. Streams that were
+    /// already in the list (saved from an earlier opening) are not added a second time.
     /// Returns whether there was anything new.
     fn take(&self, batch: LinkBatch) -> bool {
         if batch.links.is_empty() && batch.subtitles.is_empty() {
@@ -124,18 +144,18 @@ impl Discovery {
         }
         let subtitles = batch.subtitles.len();
         self.prefetch.submit(batch.subtitles);
-        if batch.links.is_empty() {
-            tracing::info!(subtitles, "subtitle files found; downloading them");
-            return true;
+        let links = self.ledger.fresh(batch.links);
+        if links.is_empty() {
+            if subtitles > 0 {
+                tracing::info!(subtitles, "subtitle files found; downloading them");
+            }
+            return subtitles > 0;
         }
-        let ranks: Vec<i32> = batch.links.iter().map(link_rank).collect();
-        let found = batch.links.len();
-        let queued = batch.links.clone();
+        let ranks: Vec<i32> = links.iter().map(link_rank).collect();
+        let found = links.len();
+        let queued = links.clone();
         let hosts: Vec<String> = queued.iter().map(stream_host).collect();
-        let Some(first) = self
-            .session
-            .append(self.generation, batch.links, Vec::new())
-        else {
+        let Some(first) = self.session.append(self.generation, links, Vec::new()) else {
             return false;
         };
         self.hosts
@@ -162,6 +182,7 @@ impl Discovery {
     }
 
     fn end_search(&self, failure: Option<String>) {
+        self.ledger.search_ended(failure.is_none());
         self.queue.close();
         self.prefetch.finish();
         let progress = self.gate.discovery_ended(failure);
@@ -190,6 +211,7 @@ impl Discovery {
             self.failures.record(&host, reason);
         }
         let progress = self.gate.record(index, found.is_working());
+        self.ledger.answered(index, found.is_working());
         (self.tell)(CheckUpdate::Progress(progress));
         let health = if found.is_working() {
             SourceHealth::Working
