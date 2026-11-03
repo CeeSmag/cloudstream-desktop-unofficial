@@ -18,6 +18,7 @@ import { CheckProgress, PlaybackStatus, SourceInfo } from '../types';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
 import { OptionMenu } from '../components/OptionMenu';
+import { videoClickAction } from '../utils/menuHold';
 import { SeekBar } from '../components/SeekBar';
 import { formatTime } from '../utils/playerTime';
 import { sourceText, trackText } from '../utils/feedbackText';
@@ -65,7 +66,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 }) => {
   const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
   const isPlaying = status.state === 'Playing';
-  const { visible: controlsVisible, reveal } = useControlsAutoHide(isPlaying, () => setTrackMenu('none'));
+  const { visible: controlsVisible, reveal } = useControlsAutoHide(isPlaying, trackMenu !== 'none', () => setTrackMenu('none'));
   const controls = usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reveal });
   useStallWatch(() => `state=${status.state}, fullscreen=${controls.fullscreen}, controls=${controlsVisible}`);
 
@@ -97,7 +98,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         controlsVisible ? 'cursor-default' : 'cursor-none'
       }`}
       onClick={(e) => {
-        if (e.target === e.currentTarget) controls.clicks.onClick();
+        if (e.target !== e.currentTarget) return;
+        if (videoClickAction(trackMenu !== 'none') === 'close-menu') setTrackMenu('none');
+        else controls.clicks.onClick();
       }}
       onDoubleClick={(e) => {
         if (e.target === e.currentTarget) controls.clicks.onDoubleClick();
