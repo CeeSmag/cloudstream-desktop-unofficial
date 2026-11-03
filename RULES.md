@@ -130,13 +130,25 @@ Every change ships with tests at the appropriate tiers. Tiers run in order; a lo
 | Tier | Name | Scope | Rules |
 |---|---|---|---|
 | **T1** | Unit | One function/type in isolation | No I/O, no network, no sleeps. Fast (<1s/crate). Cover happy path, edge cases, each error variant. |
-| **T2** | Integration | Several modules/crates together, via trait seams | Mock HTTP server (recorded fixtures), temp dirs, fake mpv. No real internet. |
+| **T2** | Integration | Several modules/crates together, via trait seams | Mock HTTP server (recorded fixtures), temp dirs, fake mpv. No real internet. Includes race tests (see below). |
 | **T3** | Parity / Contract | New Rust behavior vs. the **Kotlin reference** | See §10. Golden files and extension-behavior comparisons. |
 | **T4** | End-to-end | Real app flow: launch → search → open → resolve → play (mpv headless) | Runs against recorded or local test servers; UI driven by test harness; slow, run in CI nightly + before release. |
 
 - Bug fix = first write a failing test at the lowest tier that reproduces it, then fix.
 - Tests are as clean as production code (naming, size, no coupling).
 - No flaky tests: fix or delete, never retry-until-green.
+
+### Race tests (mandatory for concurrent code)
+
+Any file that shares state between threads (`Mutex`, `RwLock`, `Condvar`, atomics, channels, spawned threads, async tasks) or coordinates work that can be cancelled or replaced while it runs (a video opened, closed or switched while its search, checks or subtitles are still going) **must have real race tests**, in the same change that adds or edits it. Tests that only wake a waiter after a short sleep are not race tests.
+
+1. **Stress test**: several threads, thousands of iterations, asserting an invariant that must hold for *every* interleaving: each item delivered exactly once, nothing handed to the wrong owner, lengths of parallel lists always equal, at most one video open, the result independent of the order answers arrive in, all threads finish (join with a timeout so a deadlock fails the test instead of hanging the run).
+2. **Deterministic interleaving test** for every window you can name: write the exact order of steps that used to go wrong ("old file's `FileLoaded` arrives after the switch", "video A opens its list after video B replaced it") and assert the outcome.
+3. **Show the test can fail**: for a race fix, run the new test against the old behaviour (revert or mutate the fix) and confirm it fails, then restore the fix. A race test that was never seen failing proves nothing.
+4. **Make the race testable**: put the check and the change under one lock, tag work with a generation so stale work is recognised, and move the logic into a function that does not need libmpv, the network or a window. Do not test by sleeping for "long enough".
+5. Race tests are T2. Keep each under about two seconds, with no real network and no real player; invariants are checked after joining the threads. A test that fails once in a hundred runs is a real bug in the code or in the test: fix it, do not rerun it.
+6. The same applies to the JVM sidecar: concurrent Kotlin code needs a test that interleaves threads. If the module has no test setup yet, adding one is part of the change.
+7. In review of any concurrent change ask: what is checked and acted on in two separate steps? what is read before and used after another thread can change it? which order do the locks nest in? what happens if the viewer closes at this exact point?
 
 ## 10. Parity Testing (100% same behavior)
 
@@ -161,7 +173,7 @@ Every change ships with tests at the appropriate tiers. Tiers run in order; a lo
 
 1. Read this file and the relevant crate `README.md`.
 2. State the plan briefly (files to add/change, tiers of tests).
-3. Write the failing test(s) first (T1/T2, and T3 for behavior parity).
+3. Write the failing test(s) first (T1/T2, and T3 for behavior parity). Concurrent code also gets race tests (§9).
 4. Implement within the size/coupling limits; add logging and error handling as you go.
 5. Run the gates in §8 and the affected tiers.
 6. Commit (§11). Update the crate `README.md` if public behavior changed.

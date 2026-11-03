@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
-use player_api::{describe_languages, SubtitleSource};
+use player_api::{describe_languages, PlayerError, SubtitleSource};
 
 use crate::mpv_api::MpvHandle;
 use crate::mpv_option_format::subtitle_label;
@@ -100,8 +100,35 @@ impl Job {
         let result = self
             .handle
             .command(&["sub-add", &subtitle.url, "auto", label]);
-        let elapsed_ms = started.elapsed().as_millis();
-        match &result {
+        self.log_outcome(subtitle, &result, started.elapsed().as_millis());
+        let mut outcomes = self
+            .batch
+            .outcomes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let entry = outcomes.entry(label.to_owned()).or_default();
+        if result.is_ok() {
+            entry.0 += 1;
+        } else {
+            entry.1 += 1;
+        }
+    }
+
+    fn log_outcome(
+        &self,
+        subtitle: &SubtitleSource,
+        result: &Result<(), PlayerError>,
+        elapsed_ms: u128,
+    ) {
+        let label = subtitle_label(subtitle);
+        let still_current = self.current.load(Ordering::SeqCst) == self.batch.generation;
+        match result {
+            Ok(()) if !still_current => tracing::warn!(
+                language = label,
+                url = %subtitle.url,
+                elapsed_ms,
+                "subtitle attached after its stream was replaced; it may have landed on the newer stream"
+            ),
             Ok(()) => tracing::debug!(
                 language = label,
                 url = %subtitle.url,
@@ -116,20 +143,9 @@ impl Job {
                 worker = self.worker,
                 elapsed_ms,
                 since_batch_start_ms = self.batch.started.elapsed().as_millis(),
-                still_current = self.current.load(Ordering::SeqCst) == self.batch.generation,
+                still_current,
                 "could not attach subtitle"
             ),
-        }
-        let mut outcomes = self
-            .batch
-            .outcomes
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        let entry = outcomes.entry(label.to_owned()).or_default();
-        if result.is_ok() {
-            entry.0 += 1;
-        } else {
-            entry.1 += 1;
         }
     }
 

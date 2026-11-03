@@ -10,11 +10,16 @@ mod check_progress;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;
+mod failure_tally;
 mod library_commands;
 mod playback_commands;
 mod plugin_catalog_commands;
 mod preferences_commands;
+#[cfg(test)]
+mod race_tests;
 mod repository_discovery;
+#[cfg(test)]
+mod session_race_tests;
 mod settings_commands;
 mod source_commands;
 mod source_discovery;
@@ -22,6 +27,7 @@ mod source_manager;
 mod source_session;
 mod startup;
 mod video_commands;
+mod video_opening;
 mod window_commands;
 
 use app_shell::{build_services, start_logging, AppPaths, DebugLogs, ServiceOptions};

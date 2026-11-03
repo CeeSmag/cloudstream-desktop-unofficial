@@ -13,6 +13,7 @@ use app_services::{CheckQueue, LinkSearch, PlaybackItem, StreamChecker};
 use tauri::{AppHandle, Emitter};
 
 use crate::check_gate::{CheckGate, CheckProgress, Grace};
+use crate::failure_tally::FailureTally;
 use crate::source_discovery::{Discovery, SubtitleSink};
 use crate::source_session::{ActiveSources, SourceSession};
 
@@ -80,10 +81,19 @@ impl SourceManager {
         gate
     }
 
-    /// Opens an empty list of streams for `item`; returns its generation number.
-    pub fn open(&self, item: PlaybackItem) -> u64 {
-        self.session
-            .set(ActiveSources::new(item, Vec::new(), Vec::new()))
+    /// Opens an empty list of streams for `item` and returns its generation number, or `None` when
+    /// `gate` is no longer the video being opened (the viewer left or opened another one meanwhile),
+    /// in which case the list of the newer video is left alone. The check and the change happen
+    /// under one lock, so they cannot interleave with [`SourceManager::begin`] or `close`.
+    pub fn open(&self, gate: &Arc<CheckGate>, item: PlaybackItem) -> Option<u64> {
+        let current = self.current.lock().unwrap_or_else(PoisonError::into_inner);
+        if !current.as_ref().is_some_and(|open| Arc::ptr_eq(open, gate)) {
+            return None;
+        }
+        Some(
+            self.session
+                .set(ActiveSources::new(item, Vec::new(), Vec::new())),
+        )
     }
 
     /// The video was closed: stops waiting, stops checking and forgets the streams.
@@ -133,6 +143,8 @@ impl SourceManager {
             started: Instant::now(),
             tell: Arc::new(move |update| emit(&app, update)),
             give_subtitles,
+            hosts: Mutex::default(),
+            failures: FailureTally::default(),
         });
         let searching = Arc::clone(&job);
         let searched = spawn("source-search", move || searching.run_search(search));
