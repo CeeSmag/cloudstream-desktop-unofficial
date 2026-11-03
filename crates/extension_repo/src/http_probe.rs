@@ -5,8 +5,9 @@ use crate::RepoError;
 
 /// How long one probe may take; a host that is slower than this is not a good source anyway.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
-/// How much of the start of the file is read (enough to tell a video or playlist from a web page).
-const PROBE_BYTES: u64 = 1024;
+/// How much of the start of the file is read: enough to tell a video or playlist from a web page
+/// and to read the track list at the start of a Matroska file.
+const PROBE_BYTES: u64 = 32 * 1024;
 
 /// What a host answered when asked for the first bytes of a stream.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -51,7 +52,8 @@ impl HttpProbe for UreqProbe {
             url: url.to_owned(),
             reason,
         };
-        let mut request = self.agent.get(url).header("Range", "bytes=0-1023");
+        let range = format!("bytes=0-{}", PROBE_BYTES - 1);
+        let mut request = self.agent.get(url).header("Range", range.as_str());
         for (name, value) in headers {
             request = request.header(name.as_str(), value.as_str());
         }

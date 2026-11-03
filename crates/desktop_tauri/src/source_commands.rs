@@ -24,6 +24,9 @@ pub struct SourceDto {
     pub url: String,
     /// File size in bytes, when the check learned it.
     pub size_bytes: Option<u64>,
+    /// Languages of the subtitles this stream offers: the ones inside the stream and the
+    /// separate files the provider found for the title, as named (`eng`, `Arabic`), no repeats.
+    pub subtitle_languages: Vec<String>,
     /// True for the stream that is playing now.
     pub selected: bool,
     /// True while the check of this stream has not finished.
@@ -105,10 +108,28 @@ fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
             host: stream_host(link),
             url: link.url.clone(),
             size_bytes: active.sizes.get(index).copied().flatten(),
+            subtitle_languages: subtitle_languages_of(active, index),
             selected: index == active.selected,
             checking: *health == SourceHealth::Checking,
         })
         .collect()
+}
+
+/// The subtitle languages stream `index` offers: its own, then those of the title's subtitle files.
+fn subtitle_languages_of(active: &ActiveSources, index: usize) -> Vec<String> {
+    let own = active.stream_subtitles.get(index).into_iter().flatten();
+    let shared = active.subtitles.iter().map(|track| &track.lang);
+    let mut languages: Vec<String> = Vec::new();
+    for language in own.chain(shared) {
+        if !language.is_empty()
+            && !languages
+                .iter()
+                .any(|seen| seen.eq_ignore_ascii_case(language))
+        {
+            languages.push(language.clone());
+        }
+    }
+    languages
 }
 
 #[cfg(test)]
@@ -142,6 +163,26 @@ mod tests {
         assert!(list[0].selected && !list[1].selected);
         assert!(list[1].checking && !list[2].checking);
         assert_eq!(list[0].label, "720p - S0");
+    }
+
+    #[test]
+    fn a_stream_offers_its_own_subtitle_languages_and_those_of_the_title_without_repeats() {
+        use core_model::SubtitleTrack;
+        let mut sources = active(&[SourceHealth::Working, SourceHealth::Working], 0);
+        sources.stream_subtitles = vec![vec!["ara".to_owned(), "eng".to_owned()], Vec::new()];
+        sources.subtitles = vec![
+            SubtitleTrack {
+                lang: "English".to_owned(),
+                ..SubtitleTrack::default()
+            },
+            SubtitleTrack {
+                lang: "ENG".to_owned(),
+                ..SubtitleTrack::default()
+            },
+        ];
+        let list = describe_sources(&sources);
+        assert_eq!(list[0].subtitle_languages, ["ara", "eng", "English"]);
+        assert_eq!(list[1].subtitle_languages, ["English", "ENG"]);
     }
 
     #[test]

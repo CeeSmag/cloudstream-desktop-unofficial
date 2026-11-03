@@ -1,15 +1,12 @@
-import { LanguageOption, MediaTrack, Preferences } from '../types';
+import { LanguageOption, Preferences } from '../types';
 
-/** A subtitle language offered by the stream, as a flag with the first letters of its name. */
-export interface SubtitleFlag {
+/** A preferred subtitle language, as a flag with the first two letters of its name. */
+export interface LanguageFlag {
   code: string;
   flag: string;
   /** The first two letters of the language's name, such as `En`. */
   abbreviation: string;
   name: string;
-  /** The track to turn on for this language. */
-  trackId: number;
-  selected: boolean;
 }
 
 /** The country whose flag stands for each language the app offers. */
@@ -76,32 +73,28 @@ export function abbreviationOfLanguage(name: string): string {
   return name.slice(0, ABBREVIATION_LENGTH);
 }
 
-/** Whether a subtitle track is in `language`: by its code (`eng`, `en`, `en-US`), or by name when it has none. */
-export function trackInLanguage(track: MediaTrack, language: LanguageOption): boolean {
-  const code = (track.language ?? '').trim().toLowerCase().split('-')[0] ?? '';
-  if (code && !['und', 'unk'].includes(code)) return language.codes.includes(code);
-  return track.title.toLowerCase().includes(language.name.toLowerCase());
+/** Whether `value`, a subtitle language as a stream names it (`eng`, `en-US`, `Arabic`), is `language`. */
+export function languageMatches(value: string, language: LanguageOption): boolean {
+  const named = value.trim().toLowerCase();
+  const code = named.split(/[-_]/)[0] ?? '';
+  const name = language.name.toLowerCase();
+  return language.codes.includes(named) || language.codes.includes(code) || named === name || named.startsWith(`${name} `);
 }
 
 /**
- * The flags to show for the stream: one for each preferred subtitle language that the stream
- * offers, in the order the viewer chose them (the settings allow at most three).
+ * The flags to show under a source: one for each preferred subtitle language (the settings allow
+ * at most three) that the source offers, in the order the viewer chose them.
  */
-export function subtitleFlags(tracks: MediaTrack[], preferences: Preferences): SubtitleFlag[] {
-  const subtitles = tracks.filter((track) => track.kind === 'subtitle');
-  const flags: SubtitleFlag[] = [];
+export function flagsForSource(languages: string[], preferences: Preferences): LanguageFlag[] {
+  const flags: LanguageFlag[] = [];
   for (const code of preferences.preferred_subtitles) {
     const language = preferences.languages.find((option) => option.code === code);
-    const matching = language ? subtitles.filter((track) => trackInLanguage(track, language)) : [];
-    const first = matching[0];
-    if (!language || !first) continue;
+    if (!language || !languages.some((value) => languageMatches(value, language))) continue;
     flags.push({
       code,
       flag: flagOfLanguage(language.name),
       abbreviation: abbreviationOfLanguage(language.name),
       name: language.name,
-      trackId: (matching.find((track) => track.selected) ?? first).id,
-      selected: matching.some((track) => track.selected),
     });
   }
   return flags;

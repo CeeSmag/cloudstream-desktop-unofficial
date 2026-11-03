@@ -28,14 +28,18 @@ fn a_video_file_reports_its_size_but_a_playlist_does_not() {
     assert_eq!(
         classify("VIDEO", &video),
         LinkHealth::Working {
-            size_bytes: Some(1_400_000_000)
+            size_bytes: Some(1_400_000_000),
+            subtitles: Vec::new()
         }
     );
     let mut playlist = answer(200, "application/x-mpegurl", b"#EXTM3U\n");
     playlist.total_bytes = Some(300);
     assert_eq!(
         classify("M3U8", &playlist),
-        LinkHealth::Working { size_bytes: None }
+        LinkHealth::Working {
+            size_bytes: None,
+            subtitles: Vec::new()
+        }
     );
 }
 

@@ -166,10 +166,17 @@ impl Discovery {
             return false;
         }
         if let LinkHealth::Working {
-            size_bytes: Some(size),
+            size_bytes,
+            subtitles,
         } = found
         {
-            self.session.set_size(self.generation, index, *size);
+            if let Some(size) = size_bytes {
+                self.session.set_size(self.generation, index, *size);
+            }
+            if !subtitles.is_empty() {
+                self.session
+                    .set_stream_subtitles(self.generation, index, subtitles.clone());
+            }
         }
         let first_working = found.is_working() && progress.working == 1;
         if first_working || progress.checked.is_multiple_of(NOTIFY_EVERY) {

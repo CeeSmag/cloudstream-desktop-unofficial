@@ -27,9 +27,7 @@ import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { FeedbackPopup } from '../components/FeedbackPopup';
-import { SubtitleFlags } from '../components/SubtitleFlags';
-import { useSubtitleFlags } from '../hooks/useSubtitleFlags';
-import { SubtitleFlag } from '../utils/subtitleFlags';
+import { usePlayerPreferences } from '../hooks/usePlayerPreferences';
 
 interface PlayerOverlayProps {
   title: string;
@@ -82,8 +80,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     setTrackMenu('none');
   };
 
-  const subtitleFlags = useSubtitleFlags(status.tracks);
-  const toggleSubtitleFlag = (flag: SubtitleFlag) => selectTrack('subtitle')(flag.selected ? null : flag.trackId);
+  const preferences = usePlayerPreferences();
 
   const selectSource = (index: number) => {
     const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
@@ -124,8 +121,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <OptionMenu
             label="Sources"
             icon={Layers}
-            options={sources.map(sourceRow)}
-            header={<SubtitleFlags flags={subtitleFlags} onToggle={toggleSubtitleFlag} />}
+            options={sources.map((source) => sourceRow(source, preferences))}
             allowOff={false}
             wide
             open={trackMenu === 'sources'}

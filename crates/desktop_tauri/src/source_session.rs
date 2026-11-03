@@ -28,6 +28,8 @@ pub struct ActiveSources {
     pub health: Vec<SourceHealth>,
     /// File size in bytes of each stream, when the check learned it.
     pub sizes: Vec<Option<u64>>,
+    /// Languages of the subtitles each stream carries itself, as the check found them.
+    pub stream_subtitles: Vec<Vec<String>>,
     /// External subtitles the provider offered.
     pub subtitles: Vec<SubtitleTrack>,
     /// Index into `links` of the stream that is playing.
@@ -52,6 +54,7 @@ impl ActiveSources {
         Self {
             health: vec![SourceHealth::Checking; links.len()],
             sizes: vec![None; links.len()],
+            stream_subtitles: vec![Vec::new(); links.len()],
             item,
             links,
             subtitles,
@@ -117,6 +120,9 @@ impl SourceSession {
             .health
             .extend(std::iter::repeat_n(SourceHealth::Checking, links.len()));
         active.sizes.extend(std::iter::repeat_n(None, links.len()));
+        active
+            .stream_subtitles
+            .extend(std::iter::repeat_n(Vec::new(), links.len()));
         active.links.extend(links);
         active.subtitles.extend(subtitles);
         Some(first)
@@ -172,6 +178,26 @@ impl SourceSession {
             Some(active) if active.generation == generation => {
                 if let Some(slot) = active.sizes.get_mut(index) {
                     *slot = Some(size_bytes);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Records the subtitle languages the check found inside one stream; `false` when
+    /// `generation` is no longer the current one.
+    pub fn set_stream_subtitles(
+        &self,
+        generation: u64,
+        index: usize,
+        languages: Vec<String>,
+    ) -> bool {
+        let mut guard = self.active.lock().unwrap_or_else(PoisonError::into_inner);
+        match guard.as_mut() {
+            Some(active) if active.generation == generation => {
+                if let Some(slot) = active.stream_subtitles.get_mut(index) {
+                    *slot = languages;
                 }
                 true
             }
