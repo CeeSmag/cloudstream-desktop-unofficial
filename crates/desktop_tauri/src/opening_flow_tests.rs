@@ -12,24 +12,39 @@ use extension_repo::{HttpProbe, ProbeResponse, RepoError};
 use extension_runtime::fake_link_search::{FakeLinkSearches, SearchScript};
 use extension_runtime::fake_search_runtime::FakeSearchRuntime;
 use extension_runtime::RpcProviderGateway;
-use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, VideoPlayer};
+use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, VideoPlayer};
 use storage::{Database, WatchProgressStore};
 
 use crate::check_gate::Grace;
 use crate::race_tests::{join_within, TIME_LIMIT};
 use crate::source_manager::{SourceManager, Tell};
+use crate::test_subtitles::TestSubtitles;
 use crate::video_opening::{open_video, OpeningServices};
 
 /// Records what the player was asked to play.
 #[derive(Default)]
-struct RecordingPlayer {
-    played: Mutex<Vec<String>>,
+pub(crate) struct RecordingPlayer {
+    pub(crate) played: Mutex<Vec<String>>,
+    /// The subtitle files each stream was started with.
+    pub(crate) started_with: Mutex<Vec<Vec<SubtitleSource>>>,
+    /// Subtitle files given to a stream that was already playing.
+    pub(crate) added_later: Mutex<Vec<SubtitleSource>>,
 }
 
 impl VideoPlayer for RecordingPlayer {
     fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError> {
         self.played.lock().expect("lock").push(request.url.clone());
+        self.started_with
+            .lock()
+            .expect("lock")
+            .push(request.subtitles.clone());
         Ok(())
+    }
+    fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
+        self.added_later
+            .lock()
+            .expect("lock")
+            .extend_from_slice(subtitles);
     }
     fn set_paused(&self, _: bool) -> Result<(), PlayerError> {
         Ok(())
@@ -60,14 +75,24 @@ impl HttpProbe for EveryStreamWorks {
 }
 
 /// Everything one test needs: the manager, the services, and the fakes to look at afterwards.
-struct Rig {
-    sources: SourceManager,
-    services: OpeningServices,
-    searches: Arc<FakeLinkSearches>,
-    player: Arc<RecordingPlayer>,
+pub(crate) struct Rig {
+    pub(crate) sources: SourceManager,
+    pub(crate) services: OpeningServices,
+    pub(crate) searches: Arc<FakeLinkSearches>,
+    pub(crate) player: Arc<RecordingPlayer>,
+    pub(crate) subtitles: Arc<TestSubtitles>,
 }
 
-fn rig(script: SearchScript, grace: Grace) -> Rig {
+pub(crate) fn rig(script: SearchScript, grace: Grace) -> Rig {
+    build(script, grace, Arc::new(TestSubtitles::new()))
+}
+
+/// A second setup that shares the subtitle folder (and so what was saved there) with `first`.
+pub(crate) fn rig_sharing(first: &Rig, script: SearchScript, grace: Grace) -> Rig {
+    build(script, grace, Arc::clone(&first.subtitles))
+}
+
+fn build(script: SearchScript, grace: Grace, subtitles: Arc<TestSubtitles>) -> Rig {
     let searches = Arc::new(FakeLinkSearches::new(move |_| script.clone()));
     let gateway = RpcProviderGateway::new(FakeSearchRuntime::new(Arc::clone(&searches)));
     let player = Arc::new(RecordingPlayer::default());
@@ -77,18 +102,23 @@ fn rig(script: SearchScript, grace: Grace) -> Rig {
         Arc::new(SystemClock),
     );
     Rig {
-        sources: SourceManager::new(StreamChecker::new(Arc::new(EveryStreamWorks)))
-            .with_grace(grace),
+        sources: SourceManager::new(
+            StreamChecker::new(Arc::new(EveryStreamWorks)),
+            Arc::clone(&subtitles.loader),
+        )
+        .with_grace(grace),
         services: OpeningServices {
             streams: Arc::new(StreamResolver::new(Arc::new(gateway))),
             playback: Arc::new(playback),
+            subtitle_rank: Arc::new(|_| 0),
         },
         searches,
         player,
+        subtitles,
     }
 }
 
-fn open(rig: &Rig) -> (Result<(), String>, Vec<JoinHandle<()>>, Duration) {
+pub(crate) fn open(rig: &Rig) -> (Result<(), String>, Vec<JoinHandle<()>>, Duration) {
     let tell: Tell = Arc::new(|_| {});
     let item = PlaybackItem {
         provider: "Fake".to_owned(),
@@ -100,7 +130,7 @@ fn open(rig: &Rig) -> (Result<(), String>, Vec<JoinHandle<()>>, Duration) {
     (outcome, background, started.elapsed())
 }
 
-fn grace(high_ms: u64, other_ms: u64, max_ms: u64) -> Grace {
+pub(crate) fn grace(high_ms: u64, other_ms: u64, max_ms: u64) -> Grace {
     Grace {
         high_quality: Duration::from_millis(high_ms),
         other: Duration::from_millis(other_ms),
@@ -240,55 +270,5 @@ fn leaving_before_anything_is_found_ends_the_wait_and_stops_the_search() {
     );
 }
 
-#[test]
-fn closing_a_playing_video_stops_its_search_and_checks() {
-    let script = SearchScript::steady(80, Duration::from_millis(100), 480, Duration::from_secs(1));
-    let rig = rig(script, grace(50, 100, 1_000));
-    let (outcome, background, _) = open(&rig);
-    assert_eq!(outcome, Ok(()));
-    assert_eq!(rig.searches.stats().active, 1);
-
-    rig.sources.close();
-
-    join_within(background, TIME_LIMIT);
-    let stats = rig.searches.stats();
-    assert_eq!(
-        (stats.cancelled, stats.active),
-        (1, 0),
-        "the search was not stopped"
-    );
-    assert!(rig.sources.session().snapshot().is_none());
-}
-
-/// A viewer who opens and leaves fifty videos in a row: every search ends, every thread ends, and
-/// nothing is left in the provider.
-#[test]
-fn fifty_videos_opened_and_closed_in_a_row_leave_nothing_running() {
-    const VIDEOS: u64 = 50;
-    let script = SearchScript::steady(
-        20,
-        Duration::from_millis(10),
-        720,
-        Duration::from_millis(200),
-    );
-    let rig = rig(script, grace(10, 20, 500));
-    let mut every_thread = Vec::new();
-    for _ in 0..VIDEOS {
-        let (outcome, background, _) = open(&rig);
-        assert_eq!(outcome, Ok(()));
-        rig.sources.close();
-        every_thread.extend(background);
-    }
-
-    join_within(every_thread, TIME_LIMIT);
-
-    let stats = rig.searches.stats();
-    assert_eq!(stats.started, VIDEOS);
-    assert_eq!(
-        stats.active, 0,
-        "{} searches were left running",
-        stats.active
-    );
-    assert_eq!(rig.player.played.lock().expect("lock").len(), 50);
-    assert!(rig.sources.session().snapshot().is_none());
-}
+#[path = "opening_flow_closing_tests.rs"]
+mod closing;

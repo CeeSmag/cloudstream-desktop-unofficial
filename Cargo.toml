@@ -11,6 +11,7 @@ members = [
     "crates/player_api",
     "crates/player_mpv",
     "crates/storage",
+    "crates/subtitle_store",
     "crates/app_services",
     "crates/ui_app",
     "crates/app_shell",

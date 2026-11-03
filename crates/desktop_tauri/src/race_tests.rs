@@ -45,9 +45,10 @@ impl HttpProbe for Unreachable {
 fn opening_and_closing_videos_from_many_threads_never_leaves_two_videos_open() {
     const THREADS: usize = 8;
     const ROUNDS: usize = 300;
-    let manager = Arc::new(SourceManager::new(StreamChecker::new(Arc::new(
-        Unreachable,
-    ))));
+    let manager = Arc::new(SourceManager::new(
+        StreamChecker::new(Arc::new(Unreachable)),
+        crate::test_subtitles::unused_loader(),
+    ));
     let gates = Arc::new(Mutex::new(Vec::new()));
     let handles: Vec<_> = (0..THREADS)
         .map(|thread| {
@@ -79,9 +80,10 @@ fn opening_and_closing_videos_from_many_threads_never_leaves_two_videos_open() {
 fn a_video_replaced_while_it_opens_never_takes_the_session_from_the_newer_one() {
     const ROUNDS: usize = 500;
     for round in 0..ROUNDS {
-        let manager = Arc::new(SourceManager::new(StreamChecker::new(Arc::new(
-            Unreachable,
-        ))));
+        let manager = Arc::new(SourceManager::new(
+            StreamChecker::new(Arc::new(Unreachable)),
+            crate::test_subtitles::unused_loader(),
+        ));
         let older = manager.begin();
         let opener = {
             let (manager, older) = (Arc::clone(&manager), Arc::clone(&older));

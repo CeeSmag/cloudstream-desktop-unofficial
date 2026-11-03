@@ -1,0 +1,19 @@
+[package]
+name = "subtitle_store"
+description = "Downloads the subtitle files a provider offers, cleans them up and keeps them on disk."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+# gzip and zip subtitle files are unpacked; nothing else of flate2 is used.
+flate2 = "1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ureq = "3"
+
+[lints]
+workspace = true

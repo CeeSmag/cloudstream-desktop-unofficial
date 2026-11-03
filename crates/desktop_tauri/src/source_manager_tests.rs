@@ -16,7 +16,10 @@ impl HttpProbe for Unreachable {
 }
 
 fn manager() -> SourceManager {
-    SourceManager::new(StreamChecker::new(Arc::new(Unreachable)))
+    SourceManager::new(
+        StreamChecker::new(Arc::new(Unreachable)),
+        crate::test_subtitles::unused_loader(),
+    )
 }
 
 #[test]
