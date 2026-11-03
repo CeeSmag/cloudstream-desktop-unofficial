@@ -83,6 +83,10 @@ pub async fn switch_source(
         .start_at(active.item.clone(), &stream)
         .map_err(|error| format!("Cannot switch source: {error}"))?;
     sources.session().mark_selected(index);
+    let late = sources.session().unsent_subtitles(active.generation);
+    if !late.is_empty() {
+        playback.add_subtitles(&late);
+    }
     Ok(())
 }
 
