@@ -63,7 +63,8 @@ impl ProviderGateway for ScriptedSearch {
             .lock()
             .expect("lock")
             .pop_front()
-            .unwrap_or_default())
+            // A script that runs out ends the search instead of leaving it waiting forever.
+            .unwrap_or_else(|| update(Vec::new(), true)))
     }
     fn cancel_link_search(&self, _: &str) -> Result<(), GatewayError> {
         *self.cancelled.lock().expect("lock") += 1;
