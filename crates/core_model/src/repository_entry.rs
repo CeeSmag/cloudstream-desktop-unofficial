@@ -11,4 +11,7 @@ pub struct RepositoryEntry {
     /// When the repository was added, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub added_at_ms: i64,
+    /// Address of the repository's icon, when it has one.
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }

@@ -22,6 +22,8 @@ pub struct InstalledExtensionDto {
     pub trusted: bool,
     /// Providers it registered in this session.
     pub providers: Vec<String>,
+    /// Address of its icon, when its repository listed one.
+    pub icon_url: Option<String>,
 }
 
 /// A plugin a repository offers.
@@ -76,6 +78,7 @@ pub async fn get_repository_plugins(
         .repositories
         .plugins(&url)
         .map_err(|error| error.to_string())?;
+    services.extensions.remember_icons(&offered);
     let installed = services
         .extensions
         .installed()
@@ -84,6 +87,18 @@ pub async fn get_repository_plugins(
         .into_iter()
         .map(|plugin| describe_plugin(plugin, &installed))
         .collect())
+}
+
+/// Looks up the icons of repositories that have none yet (the ones an extension added); returns
+/// how many were looked at, so the page can reload its list.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
+pub async fn refresh_repository_icons(state: State<'_, AppState>) -> Result<usize, String> {
+    state
+        .read()
+        .repositories
+        .refresh_missing_icons()
+        .map_err(|error| error.to_string())
 }
 
 /// Downloads a plugin from a repository, loads it, and starts collecting any repositories it adds.
@@ -184,6 +199,7 @@ fn describe_installed(
         version: extension.version,
         repository_url: extension.repository_url,
         trusted: extension.trusted,
+        icon_url: extension.icon_url,
     }
 }
 

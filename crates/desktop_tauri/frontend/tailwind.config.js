@@ -17,7 +17,7 @@ export default {
         gold: '#FFD15C',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Twemoji Country Flags', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       backdropBlur: {
         xs: '2px',

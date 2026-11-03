@@ -15,6 +15,9 @@ const MIGRATIONS: &[&str] = &[
          detail_url TEXT NOT NULL, poster_url TEXT, position_ms INTEGER NOT NULL,
          duration_ms INTEGER NOT NULL, updated_at INTEGER NOT NULL,
          PRIMARY KEY (provider, media_key));",
+    // Icons: NULL means not looked at yet, an empty text means there is none.
+    "ALTER TABLE repositories ADD COLUMN icon_url TEXT;
+     ALTER TABLE installed_extensions ADD COLUMN icon_url TEXT;",
 ];
 
 /// Brings the database schema up to date, running only the steps it has not seen.

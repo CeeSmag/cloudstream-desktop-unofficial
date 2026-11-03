@@ -7,9 +7,10 @@ import {
   pluginAction,
   repositoryHost,
   summarizePlugins,
+  tileInitial,
 } from './extensionText';
 
-const repository = (name: string, url: string): RepositoryEntry => ({ name, url, addedAtMs: 0 });
+const repository = (name: string, url: string): RepositoryEntry => ({ name, url, addedAtMs: 0, iconUrl: null });
 
 const plugin = (version: number, installed: number | null): RepositoryPlugin => ({
   internal_name: 'P',
@@ -97,5 +98,19 @@ describe('filterPlugins and summarizePlugins', () => {
   it('summarises how many extensions are installed and have updates', () => {
     expect(summarizePlugins(all)).toBe('3 extensions · 2 installed · 1 update');
     expect(summarizePlugins([all[0]])).toBe('1 extension · 0 installed');
+  });
+});
+
+describe('tileInitial', () => {
+  it('uses the first letter in capitals and skips emoji and symbols', () => {
+    expect(tileInitial('cinestream')).toBe('C');
+    expect(tileInitial('✔️ Wiflix')).toBe('W');
+    expect(tileInitial('🇮🇶 Cee')).toBe('C');
+    expect(tileInitial('123 Movies')).toBe('1');
+  });
+
+  it('falls back to a question mark when there is nothing to show', () => {
+    expect(tileInitial('')).toBe('?');
+    expect(tileInitial('🎬')).toBe('?');
   });
 });

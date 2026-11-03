@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, Check, RefreshCw, Loader2 } from 'lucide-react';
 import { RepositoryPlugin } from '../../types';
 import { formatFileSize, pluginAction } from '../../utils/extensionText';
+import { IconTile } from './IconTile';
 
 interface PluginListProps {
   plugins: RepositoryPlugin[];
@@ -34,19 +35,22 @@ export const PluginList: React.FC<PluginListProps> = ({ plugins, loading, busy, 
         const size = formatFileSize(plugin.file_size);
         return (
           <div key={plugin.internal_name} className="flex flex-col gap-3 p-4 rounded-2xl glass-panel">
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <h4 className="text-sm font-semibold text-white break-words">
-                {plugin.name} <span className="text-xs font-normal text-zinc-500">v{plugin.version}</span>
-                {plugin.language && (
-                  <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 uppercase">
-                    {plugin.language}
-                  </span>
-                )}
-              </h4>
-              {plugin.description && <p className="text-xs text-zinc-300 break-words">{plugin.description}</p>}
-              <p className="text-[11px] text-zinc-500 break-words">
-                {[plugin.authors.join(', '), size].filter(Boolean).join(' · ')}
-              </p>
+            <div className="flex flex-1 min-w-0 items-start gap-3">
+              <IconTile url={plugin.icon_url} name={plugin.name} size="md" />
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <h4 className="text-sm font-semibold text-white break-words">
+                  {plugin.name} <span className="text-xs font-normal text-zinc-500">v{plugin.version}</span>
+                  {plugin.language && (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 uppercase">
+                      {plugin.language}
+                    </span>
+                  )}
+                </h4>
+                {plugin.description && <p className="text-xs text-zinc-300 break-words">{plugin.description}</p>}
+                <p className="text-[11px] text-zinc-500 break-words">
+                  {[plugin.authors.join(', '), size].filter(Boolean).join(' · ')}
+                </p>
+              </div>
             </div>
 
             <button

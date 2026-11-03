@@ -61,3 +61,9 @@ export function summarizePlugins(plugins: RepositoryPlugin[]): string {
   if (updates > 0) parts.push(`${updates} update${updates === 1 ? '' : 's'}`);
   return parts.join(' · ');
 }
+
+/** The first letter or digit of a name, in capitals, for a tile without an image (emoji and symbols are skipped). */
+export function tileInitial(name: string): string {
+  const match = name.match(/[\p{L}\p{N}]/u);
+  return match ? match[0].toUpperCase() : '?';
+}
