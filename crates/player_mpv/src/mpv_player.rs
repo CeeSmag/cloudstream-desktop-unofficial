@@ -133,12 +133,14 @@ impl VideoPlayer for MpvPlayer {
         self.handle
             .set_property("force-media-title", &request.title)?;
         self.handle.set_property("start", &start_option(request))?;
+        // Any subtitle download still running belongs to the previous stream. The generation moves
+        // on before the new subtitles are queued, so the event thread cannot hand them to the old
+        // stream.
+        self.stream_generation.fetch_add(1, Ordering::SeqCst);
         *self
             .pending_subtitles
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = request.subtitles.clone();
-        // Any subtitle download still running belongs to the previous stream.
-        self.stream_generation.fetch_add(1, Ordering::SeqCst);
         self.unpause_before_new_stream();
         self.tracker.begin_loading();
         tracing::info!(url = %request.url, "mpv loadfile");

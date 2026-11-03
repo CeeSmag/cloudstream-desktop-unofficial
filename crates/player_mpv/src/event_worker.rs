@@ -27,23 +27,32 @@ pub(crate) struct EventWorker {
     pub(crate) audio_preference: Arc<AudioPreference>,
 }
 
+/// Whether the stream that is current has finished loading. A stream that was replaced (a new
+/// source, or a stop) has a newer generation than the one that last loaded, so nothing is
+/// attached to a file that is still loading.
+fn is_loaded(loaded_generation: Option<u64>, current: u64) -> bool {
+    loaded_generation == Some(current)
+}
+
 impl EventWorker {
     pub(crate) fn run(self) {
         let mut ticks: u32 = 0;
-        let mut loaded = false;
+        // The stream generation that was playing when the last file finished loading.
+        let mut loaded_generation: Option<u64> = None;
         while !self.stop_flag.load(Ordering::Relaxed) {
             let event = self.handle.wait_event(EVENT_WAIT);
             self.tracker.apply(event);
-            loaded = match event {
-                MpvEvent::FileLoaded => true,
-                MpvEvent::StartFile | MpvEvent::EndFile(_) => false,
-                _ => loaded,
+            let generation = self.stream_generation.load(Ordering::SeqCst);
+            loaded_generation = match event {
+                MpvEvent::FileLoaded => Some(generation),
+                MpvEvent::StartFile | MpvEvent::EndFile(_) => None,
+                _ => loaded_generation,
             };
             if event == MpvEvent::FileLoaded {
                 self.attach_subtitles();
                 self.refresh_tracks();
                 self.apply_audio_preference();
-            } else if loaded {
+            } else if is_loaded(loaded_generation, generation) {
                 // Subtitles the provider found after the stream started.
                 self.attach_subtitles();
             }
@@ -130,5 +139,17 @@ impl EventWorker {
             (duration * 1000.0) as i64,
             paused,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_replaced_stream_is_not_loaded_until_its_own_file_has_loaded() {
+        assert!(is_loaded(Some(3), 3));
+        assert!(!is_loaded(Some(3), 4), "a new source was started");
+        assert!(!is_loaded(None, 3), "still loading");
     }
 }
