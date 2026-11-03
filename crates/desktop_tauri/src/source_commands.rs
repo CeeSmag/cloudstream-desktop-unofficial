@@ -1,6 +1,7 @@
 //! Tauri commands for listing and switching the streams of the item that is playing.
 
-use app_services::{full_label, stream_host, stream_kind, StreamSelection};
+use app_services::{full_label, link_rank, stream_host, stream_kind, StreamSelection};
+use core_model::PlayableLink;
 use serde::Serialize;
 use tauri::State;
 
@@ -53,7 +54,7 @@ pub async fn switch_source(
 ) -> Result<(), String> {
     let active = sources
         .session()
-        .snapshot()
+        .start_snapshot()
         .ok_or_else(|| "Nothing is playing.".to_owned())?;
     let link = active
         .links
@@ -84,7 +85,7 @@ pub async fn switch_source(
 
 /// The streams to show: not known to be broken, plus the one that is playing.
 fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
-    active
+    let mut shown: Vec<(usize, (&PlayableLink, &SourceHealth))> = active
         .links
         .iter()
         .zip(&active.health)
@@ -92,6 +93,11 @@ fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
         .filter(|(index, (_, health))| {
             **health != SourceHealth::Broken || *index == active.selected
         })
+        .collect();
+    // Streams arrive in the order the provider finds them; the picker lists the best first.
+    shown.sort_by_key(|(index, (link, _))| (std::cmp::Reverse(link_rank(link)), *index));
+    shown
+        .into_iter()
         .map(|(index, (link, health))| SourceDto {
             index,
             label: full_label(link),

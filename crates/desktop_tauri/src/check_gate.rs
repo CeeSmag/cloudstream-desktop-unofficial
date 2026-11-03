@@ -1,42 +1,116 @@
-//! Lets the open video wait for the stream checks and decides when playback may begin.
+//! Lets the open video wait for the streams and decides when playback may begin.
 //!
-//! Playback starts when every stream has been checked, or earlier when the viewer skips and a
-//! working stream is already known. Closing the video cancels the wait.
+//! Streams arrive while the provider still searches and are checked as they come. Playback starts
+//! on the best working stream a short grace after the first one is known (shorter when it is high
+//! quality, since little better can follow), at once when the viewer skips, or when the search is
+//! over and everything has been checked. Closing the video cancels the wait.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-/// How far the checks have come; sent to the UI.
+/// Qualities from this one up are worth starting on without waiting for better ones.
+const HIGH_QUALITY: i32 = 1080;
+
+/// Message of the failure when the search ended without finding any stream.
+const NO_STREAMS: &str = "No playable stream links found";
+
+/// How long to wait for a better stream after the first working one is known.
+#[derive(Debug, Clone, Copy)]
+pub struct Grace {
+    /// When the best working stream so far is high quality.
+    pub high_quality: Duration,
+    /// Otherwise.
+    pub other: Duration,
+}
+
+impl Default for Grace {
+    fn default() -> Self {
+        Self {
+            high_quality: Duration::from_millis(900),
+            other: Duration::from_millis(2000),
+        }
+    }
+}
+
+/// How far the search and the checks have come; sent to the UI.
 #[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
 pub struct CheckProgress {
     /// Streams answered so far.
     pub checked: usize,
-    /// Streams to check in all (0 while the streams are still being looked up).
+    /// Streams found so far (it grows while the provider is still searching).
     pub total: usize,
     /// Of the answered ones, how many can be played.
     pub working: usize,
     /// The viewer asked to start without waiting for the rest.
     pub skipping: bool,
+    /// The provider is still looking for streams.
+    pub discovering: bool,
 }
 
-#[derive(Default)]
+/// What the wait for playback came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartDecision {
+    /// Play the stream with this index.
+    Start(usize),
+    /// The video was closed meanwhile.
+    Cancelled,
+    /// There is nothing to play; the text says why.
+    Failed(String),
+}
+
 struct GateState {
     progress: CheckProgress,
-    /// Index of the best (lowest) working stream found so far.
+    /// Rank of every stream found, by index.
+    ranks: Vec<i32>,
+    /// Best working stream so far: highest rank, then lowest index.
     best_working: Option<usize>,
-    finished: bool,
+    /// When the first working stream was known.
+    working_since: Option<Instant>,
+    failure: Option<String>,
     cancelled: bool,
 }
 
-/// Shared between the check threads, the command that waits to play, and the skip button.
+impl Default for GateState {
+    fn default() -> Self {
+        Self {
+            progress: CheckProgress {
+                discovering: true,
+                ..CheckProgress::default()
+            },
+            ranks: Vec::new(),
+            best_working: None,
+            working_since: None,
+            failure: None,
+            cancelled: false,
+        }
+    }
+}
+
+enum Verdict {
+    Ready(StartDecision),
+    /// Wait for news, at most this long.
+    Wait(Option<Duration>),
+}
+
+/// Shared between the search and check threads, the command that waits to play, and the skip button.
 #[derive(Default)]
 pub struct CheckGate {
     state: Mutex<GateState>,
+    grace: Grace,
     changed: Condvar,
 }
 
 impl CheckGate {
+    /// A gate that waits `grace` for better streams.
+    pub fn new(grace: Grace) -> Self {
+        Self {
+            grace,
+            ..Self::default()
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, GateState> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -46,11 +120,15 @@ impl CheckGate {
         self.lock().progress
     }
 
-    /// Records how many streams will be checked.
-    pub fn set_total(&self, total: usize) -> CheckProgress {
+    /// Records newly found streams; `ranks` are theirs, in the order of their indexes.
+    pub fn announce(&self, ranks: &[i32]) -> CheckProgress {
         let mut state = self.lock();
-        state.progress.total = total;
-        state.progress
+        state.ranks.extend_from_slice(ranks);
+        state.progress.total = state.ranks.len();
+        let progress = state.progress;
+        drop(state);
+        self.changed.notify_all();
+        progress
     }
 
     /// Records the answer for the stream at `index`.
@@ -59,7 +137,13 @@ impl CheckGate {
         state.progress.checked += 1;
         if working {
             state.progress.working += 1;
-            state.best_working = Some(state.best_working.map_or(index, |best| best.min(index)));
+            state.working_since.get_or_insert_with(Instant::now);
+            if state
+                .best_working
+                .is_none_or(|best| state.beats(index, best))
+            {
+                state.best_working = Some(index);
+            }
         }
         let progress = state.progress;
         drop(state);
@@ -67,10 +151,15 @@ impl CheckGate {
         progress
     }
 
-    /// Records that every stream has been answered.
-    pub fn finish(&self) {
-        self.lock().finished = true;
+    /// The search is over; `failure` says why when it ended because the provider failed.
+    pub fn discovery_ended(&self, failure: Option<String>) -> CheckProgress {
+        let mut state = self.lock();
+        state.progress.discovering = false;
+        state.failure = failure;
+        let progress = state.progress;
+        drop(state);
         self.changed.notify_all();
+        progress
     }
 
     /// The viewer wants to start now; playback begins as soon as a working stream is known.
@@ -94,117 +183,90 @@ impl CheckGate {
         self.lock().cancelled
     }
 
-    /// Blocks until playback may begin and returns the stream to start with: the best working
-    /// one, or the first stream when none works (the player then reports what happens).
-    /// `None` means the video was closed meanwhile.
-    pub fn wait_for_start(&self) -> Option<usize> {
+    /// Blocks until playback may begin and says which stream to start with: the best working
+    /// one, or the best one found when none works (the player then reports what happens).
+    pub fn wait_for_start(&self) -> StartDecision {
         let mut state = self.lock();
         loop {
-            if state.cancelled {
-                return None;
-            }
-            if state.finished || (state.progress.skipping && state.best_working.is_some()) {
-                return Some(state.best_working.unwrap_or(0));
-            }
-            state = self
-                .changed
-                .wait(state)
-                .unwrap_or_else(PoisonError::into_inner);
+            state = match self.verdict(&state) {
+                Verdict::Ready(decision) => return decision,
+                Verdict::Wait(None) => self
+                    .changed
+                    .wait(state)
+                    .unwrap_or_else(PoisonError::into_inner),
+                Verdict::Wait(Some(left)) => {
+                    self.changed
+                        .wait_timeout(state, left)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0
+                }
+            };
+        }
+    }
+
+    fn verdict(&self, state: &GateState) -> Verdict {
+        if state.cancelled {
+            return Verdict::Ready(StartDecision::Cancelled);
+        }
+        let progress = state.progress;
+        if !progress.discovering && progress.checked >= progress.total {
+            return Verdict::Ready(state.finished_decision());
+        }
+        match state.best_working {
+            Some(best) if progress.skipping => Verdict::Ready(StartDecision::Start(best)),
+            Some(best) => self.after_grace(state, best),
+            None => Verdict::Wait(None),
+        }
+    }
+
+    fn after_grace(&self, state: &GateState, best: usize) -> Verdict {
+        let grace = if state.rank(best) >= HIGH_QUALITY {
+            self.grace.high_quality
+        } else {
+            self.grace.other
+        };
+        let waited = state
+            .working_since
+            .map_or(Duration::ZERO, |at| at.elapsed());
+        match grace.checked_sub(waited) {
+            Some(left) if !left.is_zero() => Verdict::Wait(Some(left)),
+            _ => Verdict::Ready(StartDecision::Start(best)),
+        }
+    }
+}
+
+impl GateState {
+    fn rank(&self, index: usize) -> i32 {
+        self.ranks.get(index).copied().unwrap_or_default()
+    }
+
+    /// Whether stream `index` is a better start than `other`.
+    fn beats(&self, index: usize, other: usize) -> bool {
+        let (rank, other_rank) = (self.rank(index), self.rank(other));
+        rank > other_rank || (rank == other_rank && index < other)
+    }
+
+    /// The decision once the search is over and every stream has been answered.
+    fn finished_decision(&self) -> StartDecision {
+        if let Some(best) = self.best_working {
+            return StartDecision::Start(best);
+        }
+        let best_known =
+            (0..self.ranks.len()).fold(None, |best: Option<usize>, index| match best {
+                Some(current) if !self.beats(index, current) => Some(current),
+                _ => Some(index),
+            });
+        match best_known {
+            Some(index) => StartDecision::Start(index),
+            None => StartDecision::Failed(
+                self.failure
+                    .clone()
+                    .unwrap_or_else(|| NO_STREAMS.to_owned()),
+            ),
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use super::*;
-
-    fn after_a_moment(action: impl FnOnce() + Send + 'static) {
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(30));
-            action();
-        });
-    }
-
-    #[test]
-    fn starts_on_the_best_working_stream_once_everything_is_checked() {
-        let gate = Arc::new(CheckGate::default());
-        gate.set_total(3);
-        gate.record(2, true);
-        gate.record(1, true);
-        gate.record(0, false);
-        gate.finish();
-        assert_eq!(gate.wait_for_start(), Some(1));
-    }
-
-    #[test]
-    fn starts_on_the_first_stream_when_none_works() {
-        let gate = CheckGate::default();
-        gate.record(0, false);
-        gate.finish();
-        assert_eq!(gate.wait_for_start(), Some(0));
-    }
-
-    #[test]
-    fn waits_for_the_checks_when_nobody_skips() {
-        let gate = Arc::new(CheckGate::default());
-        gate.record(4, true);
-        let later = Arc::clone(&gate);
-        after_a_moment(move || {
-            later.record(2, true);
-            later.finish();
-        });
-        assert_eq!(gate.wait_for_start(), Some(2), "waited for the rest");
-    }
-
-    #[test]
-    fn skipping_starts_at_once_on_what_is_known_and_leaves_the_checks_running() {
-        let gate = CheckGate::default();
-        gate.set_total(10);
-        gate.record(3, true);
-        gate.record(1, false);
-        assert!(gate.skip().skipping);
-        assert_eq!(gate.wait_for_start(), Some(3));
-        assert!(!gate.is_cancelled());
-    }
-
-    #[test]
-    fn skipping_waits_for_the_first_working_stream() {
-        let gate = Arc::new(CheckGate::default());
-        gate.record(0, false);
-        gate.skip();
-        let later = Arc::clone(&gate);
-        after_a_moment(move || {
-            later.record(5, true);
-        });
-        assert_eq!(gate.wait_for_start(), Some(5));
-    }
-
-    #[test]
-    fn closing_the_video_ends_the_wait() {
-        let gate = Arc::new(CheckGate::default());
-        let later = Arc::clone(&gate);
-        after_a_moment(move || later.cancel());
-        assert_eq!(gate.wait_for_start(), None);
-        assert!(gate.is_cancelled());
-    }
-
-    #[test]
-    fn progress_counts_answers_and_working_streams() {
-        let gate = CheckGate::default();
-        gate.set_total(4);
-        gate.record(0, true);
-        let progress = gate.record(1, false);
-        assert_eq!(
-            progress,
-            CheckProgress {
-                checked: 2,
-                total: 4,
-                working: 1,
-                skipping: false
-            }
-        );
-    }
-}
+#[path = "check_gate_tests.rs"]
+mod tests;

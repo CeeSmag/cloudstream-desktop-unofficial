@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, TrackKind, VideoFrame,
+    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
+    VideoFrame,
 };
 
 /// A video player the app can drive.
@@ -37,6 +38,12 @@ pub trait VideoPlayer: Send + Sync {
     fn select_track(&self, kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError> {
         let _ = (kind, id);
         Ok(())
+    }
+
+    /// Offers subtitles that were found after the stream started; they are attached to the
+    /// stream that is playing (or loading) and shown in its track list.
+    fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
+        let _ = subtitles;
     }
 
     /// Sets the language whose audio track is played when a stream offers it; `None` leaves the

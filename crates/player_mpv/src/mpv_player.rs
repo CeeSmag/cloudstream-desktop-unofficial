@@ -149,6 +149,15 @@ impl VideoPlayer for MpvPlayer {
         outcome
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(count = subtitles.len()))]
+    fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
+        // The event thread attaches whatever is waiting once the stream has loaded.
+        self.pending_subtitles
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend_from_slice(subtitles);
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     fn set_paused(&self, paused: bool) -> Result<(), PlayerError> {
         self.handle

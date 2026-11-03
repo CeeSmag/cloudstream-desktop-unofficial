@@ -11,12 +11,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.runtime.loader.ExtensionLoader
 import kotlinx.coroutines.runBlocking
 import java.io.File
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicLong
 
 data class SearchPage(val items: List<SearchResponse>, val hasNext: Boolean)
 
@@ -37,23 +32,18 @@ data class PlayableLinks(
     val subtitles: List<SubtitleFile>,
 )
 
-/** How long link collection may take before it returns what it has. */
+/** The blocking `load_links` call stops once this many seconds have passed and a stream is known. */
 private const val LINK_DEADLINE_SECONDS = 30L
 
-/** Marks that no stream has arrived yet. */
-private const val NO_LINK_YET = -1L
-
-/** How often the log says that link collection is still going. */
-private const val PROGRESS_SECONDS = 5L
+/** How long the blocking `load_links` waits for news before it checks the clock again. */
+private const val BLOCKING_POLL_MS = 1000L
 
 /** Longest part of a request payload written to the log. */
 private const val MAX_LOGGED_DATA = 200
 
 /** Thin, protocol-agnostic facade over the loaded CloudStream providers. */
 class ProviderService {
-    private val linkWorkers = Executors.newCachedThreadPool { task ->
-        Thread(task, "load-links").apply { isDaemon = true }
-    }
+    private val linkSearches = LinkSearches(::findProvider)
 
     fun loadExtension(path: String, trusted: Boolean): List<ProviderInfo> {
         SidecarLog.debug { "loadExtension path=$path trusted=$trusted" }
@@ -98,54 +88,51 @@ class ProviderService {
     }
 
     /**
-     * Collects the streams of one title. Providers query many hosts and some never answer, so
-     * once [LINK_DEADLINE_SECONDS] have passed and at least one stream is known, the collection
-     * stops and returns what was gathered. Progress is reported to the log every few seconds.
+     * The blocking way to get the streams of a title: waits for the whole search. Providers query
+     * many hosts and some never answer, so once [LINK_DEADLINE_SECONDS] have passed and at least one
+     * stream is known the search is stopped and what was found is returned. The app prefers
+     * [startLinkSearch] and [pollLinkSearch], which report streams while the search still runs.
      */
     fun loadLinks(providerName: String, data: String): PlayableLinks {
         SidecarLog.debug { "loadLinks provider=$providerName data=${data.take(MAX_LOGGED_DATA)}" }
-        val links = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
-        val subtitles = java.util.Collections.synchronizedList(mutableListOf<SubtitleFile>())
-        val provider = findProvider(providerName)
-        val startedAt = System.nanoTime()
-        val firstLinkAt = AtomicLong(NO_LINK_YET)
-        val collecting = linkWorkers.submit<Boolean> {
-            runBlocking {
-                provider.loadLinks(data, false, { subtitles.add(it) }, {
-                    firstLinkAt.compareAndSet(NO_LINK_YET, System.nanoTime())
-                    links.add(it)
-                })
-            }
-        }
-        val success = awaitLinks(collecting, providerName) { links.size }
-        logLinkSummary(providerName, startedAt, firstLinkAt.get(), links.size)
-        return PlayableLinks(success, links.toList(), subtitles.toList())
-    }
-
-    private fun logLinkSummary(providerName: String, startedAt: Long, firstLinkAt: Long, streams: Int) {
-        val total = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt)
-        val first = if (firstLinkAt == NO_LINK_YET) "never" else "${TimeUnit.NANOSECONDS.toSeconds(firstLinkAt - startedAt)}s"
-        SidecarLog.info("$providerName: $streams streams in ${total}s (first stream after $first)")
-    }
-
-    private fun awaitLinks(collecting: Future<Boolean>, providerName: String, streamsSoFar: () -> Int): Boolean {
+        val id = linkSearches.start(providerName, data)
+        val links = mutableListOf<ExtractorLink>()
+        val subtitles = mutableListOf<SubtitleFile>()
+        var fromLink = 0
+        var fromSubtitle = 0
         val startedAt = System.nanoTime()
         while (true) {
-            try {
-                return collecting.get(PROGRESS_SECONDS, TimeUnit.SECONDS)
-            } catch (_: TimeoutException) {
-                val waited = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt)
-                SidecarLog.debug { "$providerName: still collecting after ${waited}s, ${streamsSoFar()} streams so far" }
-                if (waited >= LINK_DEADLINE_SECONDS && streamsSoFar() > 0) {
-                    collecting.cancel(true)
-                    SidecarLog.warn("$providerName: stopped collecting after ${waited}s; hosts that had not answered were left out")
-                    return true
-                }
-            } catch (failure: ExecutionException) {
-                throw failure.cause ?: failure
+            val update = linkSearches.poll(id, fromLink, fromSubtitle, BLOCKING_POLL_MS)
+            links += update.links
+            subtitles += update.subtitles
+            fromLink = update.nextLink
+            fromSubtitle = update.nextSubtitle
+            if (update.done) {
+                val failure = update.failure
+                if (failure != null && links.isEmpty()) error(failure)
+                return PlayableLinks(update.success || links.isNotEmpty(), links, subtitles)
+            }
+            val waited = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedAt)
+            if (waited >= LINK_DEADLINE_SECONDS && links.isNotEmpty()) {
+                linkSearches.cancel(id)
+                SidecarLog.warn("$providerName: stopped collecting after ${waited}s; hosts that had not answered were left out")
+                return PlayableLinks(true, links, subtitles)
             }
         }
     }
+
+    /** Starts looking for the streams of a title and returns the id of the search at once. */
+    fun startLinkSearch(providerName: String, data: String): String {
+        SidecarLog.debug { "startLinkSearch provider=$providerName data=${data.take(MAX_LOGGED_DATA)}" }
+        return linkSearches.start(providerName, data)
+    }
+
+    /** The streams and subtitles search [id] found after the given positions. */
+    fun pollLinkSearch(id: String, fromLink: Int, fromSubtitle: Int, waitMs: Long): LinkSearchUpdate =
+        linkSearches.poll(id, fromLink, fromSubtitle, waitMs)
+
+    /** Stops search [id]. */
+    fun cancelLinkSearch(id: String) = linkSearches.cancel(id)
 
     /** Resolves a hoster URL through the library's extractor registry. */
     fun extract(url: String, referer: String?): PlayableLinks = runBlocking {

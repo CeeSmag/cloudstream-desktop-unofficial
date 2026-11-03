@@ -7,6 +7,7 @@ const progress = (over: Partial<CheckProgress>): CheckProgress => ({
   total: 0,
   working: 0,
   skipping: false,
+  discovering: false,
   ...over,
 });
 
@@ -18,9 +19,15 @@ describe('check text', () => {
 
   it('counts checked and working sources', () => {
     const now = progress({ checked: 23, total: 130, working: 12 });
-    expect(checkTitle(now)).toBe('Checking sources…');
+    expect(checkTitle({ ...now, working: 0 })).toBe('Checking sources…');
     expect(checkDetail(now)).toBe('23 of 130 checked · 12 working');
     expect(checkPercent(now)).toBe(18);
+  });
+
+  it('says playback is starting once a source works, and that the search goes on', () => {
+    const now = progress({ checked: 2, total: 9, working: 1, discovering: true });
+    expect(checkTitle(now)).toBe('Starting playback…');
+    expect(checkDetail(now)).toBe('2 of 9 checked · 1 working · still searching');
   });
 
   it('tells that a skipped check waits for the first working source', () => {

@@ -16,6 +16,7 @@ mod preferences_commands;
 mod repository_discovery;
 mod settings_commands;
 mod source_commands;
+mod source_discovery;
 mod source_manager;
 mod source_session;
 mod startup;

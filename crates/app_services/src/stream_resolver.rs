@@ -4,7 +4,7 @@ use std::time::Instant;
 use core_model::{PlayableLink, PlayableLinks};
 use extension_api::{GatewayError, ProviderGateway};
 
-use crate::ServiceError;
+use crate::{LinkSearch, ServiceError};
 
 /// How many times link loading is attempted when it comes back empty or the call times out.
 const MAX_ATTEMPTS: u32 = 3;
@@ -25,6 +25,15 @@ pub fn is_audio_only_url(url: &str) -> bool {
     AUDIO_EXTENSIONS
         .iter()
         .any(|extension| path.ends_with(extension))
+}
+
+/// How good a stream is to start with: its quality, or -1 for an audio-only file.
+pub fn link_rank(link: &PlayableLink) -> i32 {
+    if is_audio_only_url(&link.url) {
+        -1
+    } else {
+        link.quality
+    }
 }
 
 /// Keeps only links the player can open and sorts them best quality first.
@@ -56,6 +65,11 @@ impl StreamResolver {
     /// Creates a resolver over the extension runtime.
     pub fn new(gateway: Arc<dyn ProviderGateway>) -> Self {
         Self { gateway }
+    }
+
+    /// Starts a search for the streams of `data` that reports them while it still runs.
+    pub fn open_search(&self, provider: &str, data: &str) -> Result<LinkSearch, ServiceError> {
+        LinkSearch::start(Arc::clone(&self.gateway), provider, data)
     }
 
     /// Resolves the streams and subtitles for `data` (a movie payload or an episode payload).

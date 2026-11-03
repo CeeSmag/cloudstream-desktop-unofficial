@@ -113,6 +113,12 @@ impl PlaybackService {
         Ok(())
     }
 
+    /// Offers subtitles the provider found after the stream started.
+    #[tracing::instrument(level = "debug", skip_all, fields(count = subtitles.len()))]
+    pub fn add_subtitles(&self, subtitles: &[SubtitleTrack]) {
+        self.player.add_subtitles(&subtitle_sources(subtitles));
+    }
+
     /// Pauses or resumes the current stream.
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     pub fn set_paused(&self, paused: bool) -> Result<(), ServiceError> {
@@ -238,15 +244,19 @@ fn build_request(
         title: title.to_owned(),
         headers,
         referer: link.referer.clone(),
-        subtitles: subtitles
-            .iter()
-            .map(|track| SubtitleSource {
-                url: track.url.clone(),
-                language: track.lang.clone(),
-            })
-            .collect(),
+        subtitles: subtitle_sources(subtitles),
         start_position_ms: start_ms,
     }
+}
+
+fn subtitle_sources(subtitles: &[SubtitleTrack]) -> Vec<SubtitleSource> {
+    subtitles
+        .iter()
+        .map(|track| SubtitleSource {
+            url: track.url.clone(),
+            language: track.lang.clone(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
