@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkDetail, checkPercent, checkTitle } from './checkText';
+import { canSkipCheck, checkDetail, checkPercent, checkTitle } from './checkText';
 import { CheckProgress } from '../types';
 
 const progress = (over: Partial<CheckProgress>): CheckProgress => ({
@@ -24,13 +24,21 @@ describe('check text', () => {
     expect(checkPercent(now)).toBe(18);
   });
 
-  it('says playback is starting once a source works, and that the search goes on', () => {
+  it('keeps checking, however many sources already work, until the viewer skips', () => {
     const now = progress({ checked: 2, total: 9, working: 1, discovering: true });
-    expect(checkTitle(now)).toBe('Starting playback…');
+    expect(checkTitle(now)).toBe('Finding and checking sources…');
     expect(checkDetail(now)).toBe('2 of 9 checked · 1 working · still searching');
+    expect(checkTitle({ ...now, discovering: false })).toBe('Checking sources…');
   });
 
-  it('tells that a skipped check waits for the first working source', () => {
-    expect(checkTitle(progress({ total: 5, skipping: true }))).toContain('working source');
+  it('says playback is starting once the viewer has skipped', () => {
+    expect(checkTitle(progress({ total: 5, working: 1, skipping: true }))).toBe('Starting playback…');
+  });
+
+  it('offers the skip only when a source works and the skip is not already on its way', () => {
+    expect(canSkipCheck(progress({}))).toBe(false);
+    expect(canSkipCheck(progress({ total: 5, checked: 5, working: 0 }))).toBe(false);
+    expect(canSkipCheck(progress({ total: 5, checked: 1, working: 1 }))).toBe(true);
+    expect(canSkipCheck(progress({ total: 5, checked: 1, working: 1, skipping: true }))).toBe(false);
   });
 });

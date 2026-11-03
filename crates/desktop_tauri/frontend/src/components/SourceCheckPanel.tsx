@@ -1,16 +1,17 @@
 import React from 'react';
 import { Loader2, SkipForward } from 'lucide-react';
 import { CheckProgress } from '../types';
-import { checkDetail, checkPercent, checkTitle } from '../utils/checkText';
+import { canSkipCheck, checkDetail, checkPercent, checkTitle } from '../utils/checkText';
 
 interface SourceCheckPanelProps {
   progress: CheckProgress;
   onSkip: () => void;
 }
 
-/** Shown over the player while the streams of a video are checked, with a way to start right away. */
+/** Shown over the player while the streams of a video are checked, with a way to start right away
+ * once one of them is known to work. */
 export const SourceCheckPanel: React.FC<SourceCheckPanelProps> = ({ progress, onSkip }) => {
-  const canSkip = progress.total > 0 && !progress.skipping;
+  const canSkip = canSkipCheck(progress);
   const detail = checkDetail(progress);
   return (
     <div
@@ -42,6 +43,11 @@ export const SourceCheckPanel: React.FC<SourceCheckPanelProps> = ({ progress, on
           <SkipForward className="w-4 h-4" />
           Skip and play now
         </button>
+      )}
+      {canSkip && (
+        <span className="text-xs text-zinc-500 text-center">
+          The search and the rest of the checks carry on in the background.
+        </span>
       )}
     </div>
   );

@@ -3,9 +3,8 @@ import { CheckProgress } from '../types';
 /** The headline of the panel shown while the streams of a video are checked. */
 export function checkTitle(progress: CheckProgress): string {
   if (progress.total === 0) return 'Finding sources…';
-  if (progress.working > 0) return 'Starting playback…';
-  if (progress.skipping) return 'Starting as soon as a working source is found…';
-  return 'Checking sources…';
+  if (progress.skipping) return 'Starting playback…';
+  return progress.discovering ? 'Finding and checking sources…' : 'Checking sources…';
 }
 
 /** The counts under the headline, empty while the sources are still being looked up. */
@@ -13,6 +12,11 @@ export function checkDetail(progress: CheckProgress): string {
   if (progress.total === 0) return '';
   const counts = `${progress.checked} of ${progress.total} checked · ${progress.working} working`;
   return progress.discovering ? `${counts} · still searching` : counts;
+}
+
+/** Whether the viewer may start now: a source is known to work and a skip is not on its way. */
+export function canSkipCheck(progress: CheckProgress): boolean {
+  return progress.working > 0 && !progress.skipping;
 }
 
 /** How much of the check is done, 0 to 100. */
