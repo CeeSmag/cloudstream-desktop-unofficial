@@ -342,6 +342,57 @@ fn a_provider_subtitle_becomes_a_track_that_can_be_switched_on_and_off() {
 
 #[test]
 #[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn subtitles_are_attached_when_the_viewer_switches_to_another_source() {
+    let srt = temp_subtitle_file();
+    let player = headless_player();
+    let plain = PlaybackRequest {
+        url: "av://lavfi:testsrc=duration=10:size=160x90:rate=10".to_owned(),
+        ..PlaybackRequest::default()
+    };
+    player.play(&plain).expect("first source accepted");
+    wait_until_playing(&player);
+
+    // The second source is started while the first one is still the loaded stream.
+    player
+        .play(&subtitle_request(&srt))
+        .expect("second source accepted");
+
+    let tracks = wait_for_tracks(&player, TrackKind::Subtitle, |t| {
+        t.iter().any(|x| x.external)
+    });
+    assert!(tracks.iter().any(|t| t.external), "the subtitle was lost");
+    let _ = std::fs::remove_file(srt);
+}
+
+#[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
+fn a_subtitle_found_after_playback_started_is_added_to_the_stream() {
+    let srt = temp_subtitle_file();
+    let player = headless_player();
+    let plain = PlaybackRequest {
+        url: "av://lavfi:testsrc=duration=10:size=160x90:rate=10".to_owned(),
+        ..PlaybackRequest::default()
+    };
+    player.play(&plain).expect("source accepted");
+    wait_until_playing(&player);
+
+    player.add_subtitles(&[SubtitleSource {
+        url: srt.to_string_lossy().into_owned(),
+        language: "Arabic".to_owned(),
+    }]);
+
+    let tracks = wait_for_tracks(&player, TrackKind::Subtitle, |t| {
+        t.iter().any(|x| x.external)
+    });
+    assert!(
+        tracks.iter().any(|t| t.external),
+        "the late subtitle was not added"
+    );
+    let _ = std::fs::remove_file(srt);
+}
+
+#[test]
+#[ignore = "needs libmpv (set CS_LIBMPV_PATH)"]
 fn audio_track_can_be_muted_and_restored() {
     let player = headless_player();
     let request = PlaybackRequest {
