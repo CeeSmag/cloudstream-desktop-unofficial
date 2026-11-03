@@ -75,6 +75,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             settings_commands::set_provider_enabled,
             extension_commands::get_installed_extensions,
             extension_commands::get_repository_plugins,
+            extension_commands::refresh_repository_icons,
             extension_commands::install_plugin,
             extension_commands::uninstall_extension,
             extension_commands::set_extension_trusted,

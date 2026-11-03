@@ -145,6 +145,9 @@ export const api = {
 
   getInstalledExtensions: () => invokeTauri<InstalledExtension[]>('get_installed_extensions'),
 
+  /** Looks up the icons of repositories that have none yet; returns how many were looked at. */
+  refreshRepositoryIcons: () => invokeTauri<number>('refresh_repository_icons'),
+
   getRepositoryPlugins: (url: string) => invokeTauri<RepositoryPlugin[]>('get_repository_plugins', { url }),
 
   installPlugin: (repositoryUrl: string, internalName: string) =>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Search, Store } from 'lucide-react';
+import { ArrowLeft, Search } from 'lucide-react';
+import { IconTile } from '../../components/extensions/IconTile';
 import type { ExtensionsState } from '../../hooks/useExtensions';
 import { PluginList } from '../../components/extensions/PluginList';
 import { filterPlugins, PluginView, summarizePlugins } from '../../utils/extensionText';
@@ -35,7 +36,7 @@ export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions }) =>
 
       <div className="space-y-1">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 break-words">
-          <Store className="w-7 h-7 flex-none text-accent" />
+          <IconTile url={repository?.iconUrl ?? null} name={repository?.name ?? 'Repository'} size="lg" />
           <span>{repository?.name ?? 'Repository'}</span>
         </h1>
         <p className="text-xs text-zinc-500 font-mono break-all">{extensions.browsing}</p>

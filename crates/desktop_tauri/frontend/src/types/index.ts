@@ -104,6 +104,8 @@ export interface RepositoryEntry {
   url: string;
   name: string;
   addedAtMs: number;
+  /** Address of the repository's icon, when it has one. */
+  iconUrl: string | null;
 }
 
 /** One stream the player can switch to. */
@@ -125,6 +127,8 @@ export interface SourceInfo {
 
 /** An extension that is installed on this computer. */
 export interface InstalledExtension {
+  /** Address of its icon, when its repository listed one. */
+  icon_url: string | null;
   internal_name: string;
   version: number;
   repository_url: string | null;

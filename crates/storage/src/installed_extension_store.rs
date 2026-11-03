@@ -25,19 +25,21 @@ impl InstalledExtensionStore {
                 connection
                     .execute(
                         "INSERT INTO installed_extensions
-                         (file_name, internal_name, repository_url, version, trusted)
-                     VALUES (?1, ?2, ?3, ?4, ?5)
+                         (file_name, internal_name, repository_url, version, trusted, icon_url)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(file_name) DO UPDATE SET
                          internal_name = excluded.internal_name,
                          repository_url = excluded.repository_url,
                          version = excluded.version,
-                         trusted = excluded.trusted",
+                         trusted = excluded.trusted,
+                         icon_url = COALESCE(excluded.icon_url, installed_extensions.icon_url)",
                         params![
                             extension.file_name,
                             extension.internal_name,
                             extension.repository_url,
                             extension.version,
-                            extension.trusted
+                            extension.trusted,
+                            extension.icon_url
                         ],
                     )
                     .map(drop)
@@ -50,7 +52,7 @@ impl InstalledExtensionStore {
         self.database
             .with("list installed extensions", |connection| {
                 let mut statement = connection.prepare(
-                    "SELECT file_name, internal_name, repository_url, version, trusted
+                    "SELECT file_name, internal_name, repository_url, version, trusted, icon_url
                  FROM installed_extensions ORDER BY file_name",
                 )?;
                 let rows = statement.query_map([], |row| {
@@ -60,10 +62,27 @@ impl InstalledExtensionStore {
                         repository_url: row.get(2)?,
                         version: row.get(3)?,
                         trusted: row.get(4)?,
+                        icon_url: row
+                            .get::<_, Option<String>>(5)?
+                            .filter(|icon| !icon.is_empty()),
                     })
                 })?;
                 rows.collect()
             })
+    }
+
+    /// Remembers an icon for installed extensions that do not have one yet.
+    #[tracing::instrument(level = "trace", skip_all, fields(internal_name = ?internal_name), err)]
+    pub fn set_icon_if_missing(&self, internal_name: &str, icon: &str) -> Result<(), StorageError> {
+        self.database.with("save extension icon", |connection| {
+            connection
+                .execute(
+                    "UPDATE installed_extensions SET icon_url = ?2
+                     WHERE internal_name = ?1 AND (icon_url IS NULL OR icon_url = '')",
+                    params![internal_name, icon],
+                )
+                .map(drop)
+        })
     }
 
     /// Forgets an installed extension.
@@ -92,11 +111,29 @@ mod tests {
             repository_url: Some("https://r.test/repo.json".to_owned()),
             version,
             trusted,
+            icon_url: None,
         }
     }
 
     fn store() -> InstalledExtensionStore {
         InstalledExtensionStore::new(Arc::new(Database::open_in_memory().expect("memory db")))
+    }
+
+    #[test]
+    fn an_icon_is_added_once_and_an_update_without_one_keeps_it() {
+        let store = store();
+        store.upsert(&extension("a.cs3", 1, false)).expect("insert");
+        store
+            .set_icon_if_missing("Provider", "https://i/a.png")
+            .expect("icon");
+        store
+            .set_icon_if_missing("Provider", "https://i/other.png")
+            .expect("kept");
+        store
+            .upsert(&extension("a.cs3", 2, false))
+            .expect("update without an icon");
+        let listed = store.list().expect("list");
+        assert_eq!(listed[0].icon_url.as_deref(), Some("https://i/a.png"));
     }
 
     #[test]

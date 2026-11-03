@@ -24,7 +24,12 @@ export function useExtensions(report: (error: unknown) => void) {
 
   React.useEffect(() => {
     void refreshInstalled();
-    void refreshRepositories();
+    void refreshRepositories().then(() =>
+      api
+        .refreshRepositoryIcons()
+        .then((looked) => (looked > 0 ? refreshRepositories() : undefined))
+        .catch(() => undefined),
+    );
     const stopProviders = onBackendEvent('providers-changed', () => void refreshInstalled());
     const stopRepositories = onBackendEvent('repositories-changed', () => void refreshRepositories());
     return () => {
@@ -38,6 +43,9 @@ export function useExtensions(report: (error: unknown) => void) {
       setPluginsLoading(true);
       try {
         setPlugins(await api.getRepositoryPlugins(url));
+        // Opening a repository also learns its icon and the icons of its installed extensions.
+        void refreshRepositories();
+        void refreshInstalled();
       } catch (error) {
         setPlugins([]);
         report(error);

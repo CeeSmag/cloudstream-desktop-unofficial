@@ -66,6 +66,10 @@ impl ExtensionService {
             repository_url: Some(repository_url.to_owned()),
             version: listing.version,
             trusted: false,
+            icon_url: listing
+                .icon_url
+                .clone()
+                .filter(|icon| !icon.trim().is_empty()),
         };
         self.installed.upsert(&record)?;
         self.load_one(&path, record.trusted)
@@ -106,6 +110,29 @@ impl ExtensionService {
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, ServiceError> {
         Ok(self.gateway.take_added_repositories()?)
+    }
+
+    /// Gives installed extensions that have no icon yet the icon their repository lists for them.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub fn remember_icons(&self, offered: &[PluginListing]) {
+        let Ok(installed) = self.installed.list() else {
+            return;
+        };
+        for extension in installed.iter().filter(|e| e.icon_url.is_none()) {
+            let icon = offered
+                .iter()
+                .find(|plugin| plugin.internal_name == extension.internal_name)
+                .and_then(|plugin| plugin.icon_url.as_deref())
+                .filter(|icon| !icon.trim().is_empty());
+            if let Some(icon) = icon {
+                if let Err(error) = self
+                    .installed
+                    .set_icon_if_missing(&extension.internal_name, icon)
+                {
+                    tracing::warn!(%error, "could not save the extension icon");
+                }
+            }
+        }
     }
 
     /// Tells the extension runtime whether debug logging is on. A runtime that cannot be

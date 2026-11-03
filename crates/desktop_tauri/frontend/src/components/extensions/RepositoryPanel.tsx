@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2, Search, ChevronRight } from 'lucide-react';
 import { RepositoryEntry } from '../../types';
 import { filterRepositories, repositoryHost } from '../../utils/extensionText';
+import { IconTile } from './IconTile';
 
 interface RepositoryPanelProps {
   repositories: RepositoryEntry[];
@@ -72,6 +73,7 @@ export const RepositoryPanel: React.FC<RepositoryPanelProps> = ({ repositories, 
           {shown.map((repository) => (
             <div key={repository.url} className="flex items-center gap-1 bg-surface-elevated/50 hover:bg-surface-elevated transition-colors">
               <button onClick={() => onOpen(repository.url)} className="flex flex-1 min-w-0 items-center gap-3 px-3.5 py-2.5 text-left" title={repository.url}>
+                <IconTile url={repository.iconUrl} name={repository.name} size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-white break-words">{repository.name}</span>
                   <span className="block text-[11px] text-zinc-500 break-all">{repositoryHost(repository.url)}</span>

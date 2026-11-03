@@ -12,6 +12,9 @@ pub struct RepositoryManifest {
     /// URLs of the JSON files listing the repository's plugins.
     #[serde(default)]
     pub plugin_lists: Vec<String>,
+    /// Address of the repository's icon, when it has one.
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
 
 #[cfg(test)]
