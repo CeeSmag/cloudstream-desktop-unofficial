@@ -12,6 +12,7 @@ mod plugin_listing;
 mod provider_info;
 mod repository_entry;
 mod search_result;
+mod stable_key;
 mod watch_progress;
 
 pub use bookmark::Bookmark;
@@ -25,4 +26,5 @@ pub use plugin_listing::PluginListing;
 pub use provider_info::{MainPageEntry, ProviderInfo};
 pub use repository_entry::RepositoryEntry;
 pub use search_result::{SearchPage, SearchResult};
+pub use stable_key::stable_key;
 pub use watch_progress::WatchProgress;
