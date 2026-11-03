@@ -48,6 +48,12 @@ export function useExtensions(report: (error: unknown) => void) {
     [report],
   );
 
+  /** Leaves the page of the repository that is open. */
+  const closeRepository = () => {
+    setBrowsing(null);
+    setPlugins([]);
+  };
+
   const browse = (url: string) => {
     setBrowsing(url);
     void loadPlugins(url);
@@ -111,6 +117,7 @@ export function useExtensions(report: (error: unknown) => void) {
     pluginsLoading,
     busy,
     browse,
+    closeRepository,
     addRepository,
     removeRepository,
     install,
@@ -118,3 +125,6 @@ export function useExtensions(report: (error: unknown) => void) {
     setTrusted,
   };
 }
+
+/** Everything the extension pages need, as returned by [`useExtensions`]. */
+export type ExtensionsState = ReturnType<typeof useExtensions>;
