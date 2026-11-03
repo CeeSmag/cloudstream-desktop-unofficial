@@ -5,6 +5,7 @@ import {
   InstalledExtension,
   MediaDetails,
   PlaybackStatus,
+  PluginHit,
   Preferences,
   ProviderInfo,
   RepositoryEntry,
@@ -147,6 +148,12 @@ export const api = {
 
   /** Looks up the icons of repositories that have none yet; returns how many were looked at. */
   refreshRepositoryIcons: () => invokeTauri<number>('refresh_repository_icons'),
+
+  /** Downloads the extensions of every repository so they can be listed; returns how many there are. */
+  prepareExtensionCatalog: () => invokeTauri<number>('prepare_plugin_catalog'),
+
+  /** Every extension of every repository, with the repository that offers it. */
+  listAllPlugins: () => invokeTauri<PluginHit[]>('list_all_plugins'),
 
   getRepositoryPlugins: (url: string) => invokeTauri<RepositoryPlugin[]>('get_repository_plugins', { url }),
 

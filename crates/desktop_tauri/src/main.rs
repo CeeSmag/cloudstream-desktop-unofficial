@@ -11,6 +11,7 @@ mod dto;
 mod extension_commands;
 mod library_commands;
 mod playback_commands;
+mod plugin_catalog_commands;
 mod preferences_commands;
 mod repository_discovery;
 mod settings_commands;
@@ -76,6 +77,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             extension_commands::get_installed_extensions,
             extension_commands::get_repository_plugins,
             extension_commands::refresh_repository_icons,
+            plugin_catalog_commands::prepare_plugin_catalog,
+            plugin_catalog_commands::list_all_plugins,
             extension_commands::install_plugin,
             extension_commands::uninstall_extension,
             extension_commands::set_extension_trusted,
