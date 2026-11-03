@@ -1,16 +1,20 @@
 import React from 'react';
 import { Cpu, CheckCircle } from 'lucide-react';
 import { ProviderInfo } from '../../types';
+import { DebugLoggingCard } from '../../components/DebugLoggingCard';
 
 interface GeneralSettingsProps {
   providers: ProviderInfo[];
+  onError: (error: unknown) => void;
 }
 
 const SECTION = 'p-4 sm:p-6 rounded-2xl glass-panel space-y-4';
 
 /** Providers that are active now, and how the app is put together. */
-export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ providers }) => (
+export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ providers, onError }) => (
   <div className="space-y-8 sm:space-y-10">
+    <DebugLoggingCard onError={onError} />
+
     <div className={SECTION}>
       <h2 className="text-lg font-bold text-white">Active Providers ({providers.length})</h2>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3">

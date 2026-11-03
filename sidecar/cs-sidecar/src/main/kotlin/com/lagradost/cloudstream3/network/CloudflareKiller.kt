@@ -16,7 +16,7 @@ class CloudflareKiller : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
         if (response.code in CHALLENGE_CODES && response.header("Server")?.startsWith("cloudflare") == true) {
-            System.err.println("[sidecar] Cloudflare challenge on ${chain.request().url.host}: cannot be solved without a browser")
+            sidecar.SidecarLog.warn("Cloudflare challenge on ${chain.request().url.host}: cannot be solved without a browser")
         }
         return response
     }

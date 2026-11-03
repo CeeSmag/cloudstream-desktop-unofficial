@@ -17,10 +17,10 @@ object RepositoryManager {
         return try {
             val manifestUrl = if (url.startsWith("http")) url else SHORTCODE_REDIRECT + url
             val repository = app.get(manifestUrl).parsedSafe<Repository>()
-            if (repository == null) System.err.println("[sidecar] repository manifest not readable: $url")
+            if (repository == null) sidecar.SidecarLog.warn("repository manifest not readable: $url")
             repository
         } catch (failure: Throwable) {
-            System.err.println("[sidecar] cannot read repository $url: $failure")
+            sidecar.SidecarLog.warn("cannot read repository $url: $failure")
             null
         }
     }

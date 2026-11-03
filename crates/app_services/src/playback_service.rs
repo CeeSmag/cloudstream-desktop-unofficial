@@ -64,6 +64,7 @@ impl PlaybackService {
     }
 
     /// Where playback of `item` should resume, in milliseconds (0 when there is nothing to resume).
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn resume_position_ms(&self, item: &PlaybackItem) -> Result<i64, ServiceError> {
         let saved = self.progress.get(&item.provider, &item.media_key)?;
         Ok(saved
@@ -72,6 +73,7 @@ impl PlaybackService {
     }
 
     /// Plays `link`, resuming from saved progress.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn start(
         &self,
         item: PlaybackItem,
@@ -90,6 +92,7 @@ impl PlaybackService {
     }
 
     /// Plays `link` from an explicit position, for example after switching to another source.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn start_at(
         &self,
         item: PlaybackItem,
@@ -111,21 +114,25 @@ impl PlaybackService {
     }
 
     /// Pauses or resumes the current stream.
+    #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     pub fn set_paused(&self, paused: bool) -> Result<(), ServiceError> {
         Ok(self.player.set_paused(paused)?)
     }
 
     /// Seeks to an absolute position in milliseconds.
+    #[tracing::instrument(level = "debug", skip_all, fields(position_ms = ?position_ms), err)]
     pub fn seek_to(&self, position_ms: i64) -> Result<(), ServiceError> {
         Ok(self.player.seek_to(position_ms)?)
     }
 
     /// Sets the output volume as a percentage.
+    #[tracing::instrument(level = "debug", skip_all, fields(percent = ?percent), err)]
     pub fn set_volume(&self, percent: u8) -> Result<(), ServiceError> {
         Ok(self.player.set_volume(percent)?)
     }
 
     /// Stops the current stream.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn stop(&self) -> Result<(), ServiceError> {
         *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
         Ok(self.player.stop()?)
@@ -137,6 +144,7 @@ impl PlaybackService {
     }
 
     /// Selects a track by id, or turns subtitles/audio off with `None`.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = ?id), err)]
     pub fn select_track(
         &self,
         kind: player_api::TrackKind,

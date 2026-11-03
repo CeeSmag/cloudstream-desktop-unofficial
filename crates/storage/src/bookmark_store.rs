@@ -18,6 +18,7 @@ impl BookmarkStore {
     }
 
     /// Saves a title; saving it again refreshes its metadata but keeps the original date.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn add(&self, bookmark: &Bookmark) -> Result<(), StorageError> {
         self.database.with("add bookmark", |connection| {
             connection
@@ -41,6 +42,7 @@ impl BookmarkStore {
     }
 
     /// Removes a saved title.
+    #[tracing::instrument(level = "trace", skip_all, fields(provider = ?provider, url = ?url), err)]
     pub fn remove(&self, provider: &str, url: &str) -> Result<(), StorageError> {
         self.database.with("remove bookmark", |connection| {
             connection
@@ -53,6 +55,7 @@ impl BookmarkStore {
     }
 
     /// Whether a title is saved.
+    #[tracing::instrument(level = "trace", skip_all, fields(provider = ?provider, url = ?url), err)]
     pub fn contains(&self, provider: &str, url: &str) -> Result<bool, StorageError> {
         self.database.with("check bookmark", |connection| {
             connection.query_row(
@@ -64,6 +67,7 @@ impl BookmarkStore {
     }
 
     /// Lists saved titles, newest first.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn list(&self) -> Result<Vec<Bookmark>, StorageError> {
         self.database.with("list bookmarks", |connection| {
             let mut statement = connection.prepare(

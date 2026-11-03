@@ -34,6 +34,7 @@ impl WatchProgressStore {
     }
 
     /// Saves progress, replacing any earlier position for the same item.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn save(&self, progress: &WatchProgress) -> Result<(), StorageError> {
         self.database.with("save watch progress", |connection| {
             connection
@@ -58,6 +59,7 @@ impl WatchProgressStore {
     }
 
     /// Reads the saved progress of one item.
+    #[tracing::instrument(level = "trace", skip_all, fields(provider = ?provider, media_key = ?media_key), err)]
     pub fn get(
         &self,
         provider: &str,
@@ -77,6 +79,7 @@ impl WatchProgressStore {
     }
 
     /// Lists the most recently watched items, newest first.
+    #[tracing::instrument(level = "trace", skip_all, fields(limit = ?limit), err)]
     pub fn recent(&self, limit: u32) -> Result<Vec<WatchProgress>, StorageError> {
         self.database.with("list recent progress", |connection| {
             let mut statement = connection.prepare(&format!(

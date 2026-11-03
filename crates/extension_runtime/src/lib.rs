@@ -6,6 +6,7 @@ mod rpc_message;
 mod rpc_provider_gateway;
 mod rpc_transport;
 mod sidecar_launch_config;
+mod sidecar_output;
 mod sidecar_process_transport;
 
 pub use rpc_provider_gateway::RpcProviderGateway;

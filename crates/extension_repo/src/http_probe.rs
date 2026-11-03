@@ -43,6 +43,7 @@ impl Default for UreqProbe {
 }
 
 impl HttpProbe for UreqProbe {
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url))]
     fn probe(&self, url: &str, headers: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
         let fail = |reason: String| RepoError::Download {
             url: url.to_owned(),

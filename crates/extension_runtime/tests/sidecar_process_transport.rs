@@ -115,3 +115,12 @@ fn the_same_remembered_call_is_not_repeated_twice() {
     transport.remember_for_restart("ping", Value::Null, SHORT);
     assert_eq!(transport.call("handled", Value::Null, SHORT), Ok(json!(2)));
 }
+
+#[test]
+fn a_remembered_setting_is_repeated_once_with_its_latest_value() {
+    let transport = transport();
+    transport.remember_setting_for_restart("set_debug_logging", json!({"enabled": true}), SHORT);
+    transport.remember_setting_for_restart("set_debug_logging", json!({"enabled": false}), SHORT);
+    // One repeat on the first start plus the `handled` call itself.
+    assert_eq!(transport.call("handled", Value::Null, SHORT), Ok(json!(2)));
+}

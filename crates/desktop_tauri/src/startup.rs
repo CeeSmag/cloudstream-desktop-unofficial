@@ -65,6 +65,7 @@ impl StartupTracker {
 
 /// Returns how far start-up has come.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_startup_status(
     tracker: State<'_, StartupTracker>,
 ) -> Result<StartupStatus, String> {
@@ -72,6 +73,7 @@ pub async fn get_startup_status(
 }
 
 /// Loads the installed extensions, reporting each step, then marks start-up as finished.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn load_extensions(app: &AppHandle, extensions: &ExtensionService) {
     let tracker = app.state::<StartupTracker>();
     let outcome = extensions.load_installed_reporting(&|progress| {

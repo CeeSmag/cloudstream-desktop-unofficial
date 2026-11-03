@@ -43,7 +43,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onErr
         </div>
       </div>
 
-      {page === 'general' ? <GeneralSettings providers={providers} /> : <ExtensionsPage onError={onError} />}
+      {page === 'general' ? <GeneralSettings providers={providers} onError={onError} /> : <ExtensionsPage onError={onError} />}
     </div>
   );
 };

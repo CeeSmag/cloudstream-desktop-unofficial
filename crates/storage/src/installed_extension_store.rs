@@ -18,6 +18,7 @@ impl InstalledExtensionStore {
     }
 
     /// Inserts or updates an installed extension, keyed by file name.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn upsert(&self, extension: &InstalledExtension) -> Result<(), StorageError> {
         self.database
             .with("save installed extension", |connection| {
@@ -44,6 +45,7 @@ impl InstalledExtensionStore {
     }
 
     /// Lists installed extensions by file name.
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn list(&self) -> Result<Vec<InstalledExtension>, StorageError> {
         self.database
             .with("list installed extensions", |connection| {
@@ -65,6 +67,7 @@ impl InstalledExtensionStore {
     }
 
     /// Forgets an installed extension.
+    #[tracing::instrument(level = "trace", skip_all, fields(file_name = ?file_name), err)]
     pub fn remove(&self, file_name: &str) -> Result<(), StorageError> {
         self.database
             .with("remove installed extension", |connection| {

@@ -7,6 +7,7 @@ use tauri::State;
 
 /// Lists all bookmarks stored in the user library.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_bookmarks(state: State<'_, AppState>) -> Result<Vec<BookmarkDto>, String> {
     let services = state.read();
     let bookmarks = services
@@ -18,6 +19,7 @@ pub async fn get_bookmarks(state: State<'_, AppState>) -> Result<Vec<BookmarkDto
 
 /// Adds or updates a title in the user library.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn add_bookmark(payload: BookmarkDto, state: State<'_, AppState>) -> Result<(), String> {
     let services = state.read();
     let now_ms = services.clock.now_ms();
@@ -37,6 +39,7 @@ pub async fn add_bookmark(payload: BookmarkDto, state: State<'_, AppState>) -> R
 
 /// Removes a bookmark from the library.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, url = ?url), err)]
 pub async fn remove_bookmark(
     provider: String,
     url: String,
@@ -51,6 +54,7 @@ pub async fn remove_bookmark(
 
 /// Checks whether a media item is currently bookmarked.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, url = ?url), err)]
 pub async fn is_bookmarked(
     provider: String,
     url: String,
@@ -65,6 +69,7 @@ pub async fn is_bookmarked(
 
 /// Lists recent titles to offer in Continue Watching.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_continue_watching(
     state: State<'_, AppState>,
 ) -> Result<Vec<WatchProgressDto>, String> {

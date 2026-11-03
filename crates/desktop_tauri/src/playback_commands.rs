@@ -16,6 +16,7 @@ const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
 /// Opens a video: finds its streams, checks them (the viewer may skip the wait), then plays the
 /// best one that works. The checks go on in the background until they finish or the video closes.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn play_media(
     request: PlayRequestDto,
     app: AppHandle,
@@ -81,6 +82,7 @@ fn find_streams(
 /// Lets the viewer start now: the best stream known to work plays and the rest of the checks
 /// carry on in the background.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn skip_source_check(
     app: AppHandle,
     sources: State<'_, SourceManager>,
@@ -91,6 +93,7 @@ pub async fn skip_source_check(
 
 /// Pauses current playback.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn pause_playback(state: State<'_, AppState>) -> Result<(), String> {
     let services = state.read();
     let playback = services
@@ -102,6 +105,7 @@ pub async fn pause_playback(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Resumes current playback.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn resume_playback(state: State<'_, AppState>) -> Result<(), String> {
     let services = state.read();
     let playback = services
@@ -115,6 +119,7 @@ pub async fn resume_playback(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Seeks to a specific millisecond position.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(position_ms = ?position_ms), err)]
 pub async fn seek_to(position_ms: i64, state: State<'_, AppState>) -> Result<(), String> {
     let services = state.read();
     let playback = services
@@ -128,6 +133,7 @@ pub async fn seek_to(position_ms: i64, state: State<'_, AppState>) -> Result<(),
 
 /// Stops playback and frees video resources.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn stop_playback(
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
@@ -143,6 +149,7 @@ pub async fn stop_playback(
 
 /// Sets the player volume, 0 to 100 percent (130 amplifies).
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(percent = ?percent), err)]
 pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), String> {
     let services = state.read();
     let playback = services
@@ -157,6 +164,7 @@ pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), S
 
 /// Retrieves the current snapshot of player state, time, buffer, and tracks.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_playback_status(
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
@@ -176,6 +184,7 @@ pub async fn get_playback_status(
 
 /// Selects or disables an audio or subtitle track.
 #[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(kind = ?kind, id = ?id), err)]
 pub async fn select_media_track(
     kind: String,
     id: Option<i64>,

@@ -23,26 +23,31 @@ impl LibraryService {
     }
 
     /// Saves a title to the library.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn add_bookmark(&self, bookmark: &Bookmark) -> Result<(), ServiceError> {
         Ok(self.bookmarks.add(bookmark)?)
     }
 
     /// Removes a title from the library.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, url = ?url), err)]
     pub fn remove_bookmark(&self, provider: &str, url: &str) -> Result<(), ServiceError> {
         Ok(self.bookmarks.remove(provider, url)?)
     }
 
     /// Whether a title is in the library.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, url = ?url), err)]
     pub fn is_bookmarked(&self, provider: &str, url: &str) -> Result<bool, ServiceError> {
         Ok(self.bookmarks.contains(provider, url)?)
     }
 
     /// All saved titles, newest first.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn bookmarks(&self) -> Result<Vec<Bookmark>, ServiceError> {
         Ok(self.bookmarks.list()?)
     }
 
     /// Items to offer under "continue watching": started, not finished, newest first.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn continue_watching(&self) -> Result<Vec<WatchProgress>, ServiceError> {
         let recent = self.progress.recent(CONTINUE_WATCHING_LIMIT * 2)?;
         Ok(recent

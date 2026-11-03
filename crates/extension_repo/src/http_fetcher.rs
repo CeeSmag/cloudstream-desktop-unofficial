@@ -15,6 +15,7 @@ pub trait HttpFetcher: Send + Sync {
 }
 
 impl<T: HttpFetcher + ?Sized> HttpFetcher for std::sync::Arc<T> {
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, RepoError> {
         (**self).get_bytes(url)
     }
@@ -37,6 +38,7 @@ impl Default for UreqFetcher {
 }
 
 impl HttpFetcher for UreqFetcher {
+    #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, RepoError> {
         let fail = |reason: String| RepoError::Download {
             url: url.to_owned(),

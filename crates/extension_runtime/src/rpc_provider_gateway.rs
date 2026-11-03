@@ -129,6 +129,18 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
     fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
         self.call_typed("take_added_repositories", json!({}), PROVIDER_CALL_TIMEOUT)
     }
+
+    fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
+        let params = json!({ "enabled": enabled });
+        // A restarted runtime starts with debug logging off; the choice is sent again.
+        self.transport.remember_setting_for_restart(
+            "set_debug_logging",
+            params.clone(),
+            PROVIDER_CALL_TIMEOUT,
+        );
+        self.call_typed::<Value>("set_debug_logging", params, PROVIDER_CALL_TIMEOUT)
+            .map(drop)
+    }
 }
 
 #[cfg(test)]

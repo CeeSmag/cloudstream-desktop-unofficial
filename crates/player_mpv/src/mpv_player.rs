@@ -38,6 +38,7 @@ pub struct MpvPlayer {
 }
 
 impl MpvPlayer {
+    #[tracing::instrument(level = "debug", skip_all)]
     fn unpause_before_new_stream(&self) {
         if let Err(error) = self.handle.set_property("pause", "no") {
             tracing::warn!(%error, "could not clear the pause flag");
@@ -45,6 +46,7 @@ impl MpvPlayer {
     }
 
     /// Loads libmpv from `library_path` and starts an idle player.
+    #[tracing::instrument(level = "debug", skip_all, fields(library_path = ?library_path), err)]
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {
         let api = Arc::new(MpvApi::load(library_path)?);
         let embedded = options.embedded
@@ -87,6 +89,7 @@ impl MpvPlayer {
 }
 
 /// Runs the worker that turns mpv events into status updates on its own thread.
+#[tracing::instrument(level = "debug", skip_all, err)]
 fn start_event_thread(worker: EventWorker) -> Result<JoinHandle<()>, PlayerError> {
     std::thread::Builder::new()
         .name("mpv-events".to_owned())
@@ -95,6 +98,7 @@ fn start_event_thread(worker: EventWorker) -> Result<JoinHandle<()>, PlayerError
 }
 
 /// Starts frame rendering; on failure falls back to mpv's own window.
+#[tracing::instrument(level = "debug", skip_all)]
 fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Arc<FrameShared>>) {
     let signal = Arc::new(FrameSignal::default());
     let started =
@@ -116,6 +120,7 @@ fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Ar
 }
 
 impl VideoPlayer for MpvPlayer {
+    #[tracing::instrument(level = "debug", skip_all, err)]
     fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError> {
         self.handle
             .set_property("http-header-fields", &header_fields(&request.headers))?;
@@ -139,16 +144,19 @@ impl VideoPlayer for MpvPlayer {
         outcome
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     fn set_paused(&self, paused: bool) -> Result<(), PlayerError> {
         self.handle
             .set_property("pause", if paused { "yes" } else { "no" })
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(position_ms = ?position_ms), err)]
     fn seek_to(&self, position_ms: i64) -> Result<(), PlayerError> {
         let seconds = format!("{:.3}", position_ms.max(0) as f64 / 1000.0);
         self.handle.command(&["seek", &seconds, "absolute"])
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     fn stop(&self) -> Result<(), PlayerError> {
         self.stream_generation.fetch_add(1, Ordering::SeqCst);
         let outcome = self.handle.command(&["stop"]);
@@ -162,6 +170,7 @@ impl VideoPlayer for MpvPlayer {
         outcome
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(percent = ?percent), err)]
     fn set_volume(&self, percent: u8) -> Result<(), PlayerError> {
         self.handle
             .set_property("volume", &percent.min(MAX_VOLUME_PERCENT).to_string())
@@ -175,6 +184,7 @@ impl VideoPlayer for MpvPlayer {
         self.tracker.tracks()
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(kind = ?kind, id = ?id), err)]
     fn select_track(&self, kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError> {
         let property = match kind {
             TrackKind::Audio => "aid",

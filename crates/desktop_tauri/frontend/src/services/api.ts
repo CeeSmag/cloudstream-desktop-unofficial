@@ -1,6 +1,7 @@
 import {
   Bookmark,
   HomeSection,
+  DebugLoggingInfo,
   InstalledExtension,
   MediaDetails,
   PlaybackStatus,
@@ -12,12 +13,16 @@ import {
   StartupStatus,
   WatchProgress,
 } from '../types';
+import { describeValue, isDebugLogging, logEvent } from '../utils/logger';
 
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
   }
 }
+
+/** Commands called many times a second; logging each call would only bury the rest. */
+const SILENT_COMMANDS = ['get_video_frame', 'get_playback_status', 'log_from_webapp', 'get_debug_logging'];
 
 /** A readable message for anything that was thrown or rejected. */
 export function describeError(error: unknown): string {
@@ -35,11 +40,27 @@ async function invokeTauri<T>(cmd: string, args: Record<string, unknown> = {}): 
     throw new Error('The CloudStream backend is not available (open the desktop app, not a browser).');
   }
   const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
+  const started = performance.now();
+  try {
+    const result = await invoke<T>(cmd, args);
+    if (isDebugLogging() && !SILENT_COMMANDS.includes(cmd)) {
+      logEvent('debug', `${cmd} finished in ${Math.round(performance.now() - started)} ms`);
+    }
+    return result;
+  } catch (error) {
+    logEvent('warn', `${cmd} failed after ${Math.round(performance.now() - started)} ms: ${describeValue(error)}`);
+    throw error;
+  }
 }
 
 export const api = {
   getStartupStatus: () => invokeTauri<StartupStatus>('get_startup_status'),
+
+  getDebugLogging: () => invokeTauri<DebugLoggingInfo>('get_debug_logging'),
+
+  setDebugLogging: (enabled: boolean) => invokeTauri<DebugLoggingInfo>('set_debug_logging', { enabled }),
+
+  openLogsFolder: () => invokeTauri<void>('open_logs_folder'),
 
   getProviders: () => invokeTauri<ProviderInfo[]>('get_available_providers'),
 

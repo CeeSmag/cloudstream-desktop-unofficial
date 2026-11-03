@@ -16,6 +16,7 @@ fn reply_for(method: &str, id: &Value, params: &Value, handled: u64) -> Option<V
     match method {
         "handled" => Some(json!({"id": id, "result": handled})),
         "ping" => Some(json!({"id": id, "result": "pong"})),
+        "set_debug_logging" => Some(json!({"id": id, "result": params.get("enabled")})),
         "echo" => Some(json!({"id": id, "result": params})),
         "fail" => Some(json!({"id": id, "error": {"type": "TestFailure", "message": "scripted"}})),
         _ => None,

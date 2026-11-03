@@ -3,6 +3,7 @@ use storage::SettingsStore;
 use crate::ServiceError;
 
 const DISABLED_PROVIDERS_KEY: &str = "disabled_providers";
+const DEBUG_LOGGING_KEY: &str = "debug_logging";
 const LIST_SEPARATOR: char = '\n';
 
 /// Typed access to the app's settings.
@@ -18,6 +19,7 @@ impl SettingsService {
     }
 
     /// Names of providers the user switched off; they are skipped by search.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn disabled_providers(&self) -> Result<Vec<String>, ServiceError> {
         let raw = self.store.get(DISABLED_PROVIDERS_KEY)?.unwrap_or_default();
         Ok(raw
@@ -27,7 +29,22 @@ impl SettingsService {
             .collect())
     }
 
+    /// Whether the viewer switched debug logging on; off unless they did.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn debug_logging_enabled(&self) -> Result<bool, ServiceError> {
+        Ok(self.store.get(DEBUG_LOGGING_KEY)?.as_deref() == Some("on"))
+    }
+
+    /// Remembers whether debug logging is on, so it stays that way after a restart.
+    #[tracing::instrument(level = "debug", skip_all, fields(enabled = ?enabled), err)]
+    pub fn set_debug_logging_enabled(&self, enabled: bool) -> Result<(), ServiceError> {
+        self.store
+            .set(DEBUG_LOGGING_KEY, if enabled { "on" } else { "off" })?;
+        Ok(())
+    }
+
     /// Switches a provider on or off.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, enabled = ?enabled), err)]
     pub fn set_provider_enabled(&self, provider: &str, enabled: bool) -> Result<(), ServiceError> {
         let mut disabled = self.disabled_providers()?;
         disabled.retain(|name| name != provider);
@@ -53,6 +70,16 @@ mod tests {
     fn service() -> SettingsService {
         let database = Arc::new(Database::open_in_memory().expect("memory db"));
         SettingsService::new(SettingsStore::new(database))
+    }
+
+    #[test]
+    fn debug_logging_is_off_until_switched_on_and_the_choice_is_kept() {
+        let service = service();
+        assert!(!service.debug_logging_enabled().expect("read"));
+        service.set_debug_logging_enabled(true).expect("on");
+        assert!(service.debug_logging_enabled().expect("read"));
+        service.set_debug_logging_enabled(false).expect("off");
+        assert!(!service.debug_logging_enabled().expect("read"));
     }
 
     #[test]

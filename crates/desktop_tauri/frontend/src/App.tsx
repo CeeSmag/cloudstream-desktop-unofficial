@@ -21,6 +21,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { findEpisodeForKey, movieAsEpisode } from './playback/episodeLookup';
 import { usePlayback } from './hooks/usePlayback';
 import { useStartup } from './hooks/useStartup';
+import { setDebugLogging } from './utils/logger';
 import { StartupScreen } from './components/StartupScreen';
 
 export const App: React.FC = () => {
@@ -64,6 +65,14 @@ export const App: React.FC = () => {
     const first = provs[0]?.name || '';
     setSelectedProvider((current) => (provs.some((p) => p.name === current) ? current : first));
     setHomeSections(first ? await api.getHomeSections(first) : []);
+  }, []);
+
+  // The saved debug logging choice decides whether this page sends detailed logs.
+  React.useEffect(() => {
+    api
+      .getDebugLogging()
+      .then((info) => setDebugLogging(info.enabled))
+      .catch(() => undefined);
   }, []);
 
   // Initial load
