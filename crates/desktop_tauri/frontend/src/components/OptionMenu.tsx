@@ -8,6 +8,8 @@ export interface MenuOption {
   selected: boolean;
   /** Small tags under the name, such as the kind of stream and its host. */
   tags?: string[];
+  /** Flags after the tags, one for each language the row offers (a flag and the first letters of its name). */
+  flags?: { key: string; flag: string; abbreviation: string; name: string }[];
   /** A flag on the right, such as the size of the file. */
   badge?: string;
   /** Longer text under the tags, shown in full and wrapped, such as the stream address. */
@@ -19,8 +21,6 @@ interface OptionMenuProps {
   label: string;
   icon: LucideIcon;
   options: MenuOption[];
-  /** Extra content under the heading, such as quick switches. */
-  header?: React.ReactNode;
   /** Adds an "Off" entry, used for subtitles. */
   allowOff: boolean;
   /** Makes the dropdown wider, for rows that carry details. */
@@ -37,7 +37,6 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
   label,
   icon: Icon,
   options,
-  header,
   allowOff,
   wide = false,
   open,
@@ -64,7 +63,6 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
         } max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl glass-dropdown p-2 shadow-2xl z-50`}
       >
         <div className="px-3 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{label}</div>
-        {header}
         {allowOff && (
           <button onClick={() => onSelect(null)} className={`${ITEM_BASE} text-zinc-300 hover:bg-white/5`}>
             Off
@@ -83,11 +81,21 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
           >
             <span className="min-w-0 flex-1 space-y-1">
               <span className="block whitespace-normal break-words">{option.label}</span>
-              {option.tags && option.tags.length > 0 && (
-                <span className="flex flex-wrap gap-1">
-                  {option.tags.map((tag) => (
+              {((option.tags?.length ?? 0) > 0 || (option.flags?.length ?? 0) > 0) && (
+                <span className="flex flex-wrap items-center gap-1">
+                  {option.tags?.map((tag) => (
                     <span key={tag} className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-medium text-zinc-300 break-all">
                       {tag}
+                    </span>
+                  ))}
+                  {option.flags?.map((flag) => (
+                    <span
+                      key={flag.key}
+                      title={`${flag.name} subtitles`}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-semibold text-zinc-200"
+                    >
+                      <span className="text-sm leading-none">{flag.flag}</span>
+                      <span>{flag.abbreviation}</span>
                     </span>
                   ))}
                 </span>

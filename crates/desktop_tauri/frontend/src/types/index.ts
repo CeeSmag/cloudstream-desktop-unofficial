@@ -135,6 +135,8 @@ export interface SourceInfo {
   url: string;
   /** File size in bytes, null until the check learns it (and always for playlists). */
   size_bytes: number | null;
+  /** Languages of the subtitles this source offers, as named (`eng`, `Arabic`); known once it is checked. */
+  subtitle_languages: string[];
 }
 
 /** An extension that is installed on this computer. */
