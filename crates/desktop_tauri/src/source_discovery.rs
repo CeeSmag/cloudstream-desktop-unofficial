@@ -1,13 +1,16 @@
 //! The work behind opening a video: one thread follows the provider's search and hands every new
 //! stream to the checkers, the other thread checks the streams as they come.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use app_services::{link_rank, CheckQueue, LinkBatch, LinkHealth, LinkSearch, StreamChecker};
+use app_services::{
+    link_rank, stream_host, CheckQueue, LinkBatch, LinkHealth, LinkSearch, StreamChecker,
+};
 use core_model::SubtitleTrack;
 
 use crate::check_gate::CheckGate;
+use crate::failure_tally::FailureTally;
 use crate::source_manager::CheckUpdate;
 use crate::source_session::{SourceHealth, SourceSession};
 
@@ -34,6 +37,10 @@ pub struct Discovery {
     pub(crate) started: Instant,
     pub(crate) tell: Arc<dyn Fn(CheckUpdate) + Send + Sync>,
     pub(crate) give_subtitles: SubtitleSink,
+    /// The host of every stream found, by index, for the failure log.
+    pub(crate) hosts: Mutex<Vec<String>>,
+    /// Why the checks of this video failed.
+    pub(crate) failures: FailureTally,
 }
 
 impl Discovery {
@@ -57,7 +64,11 @@ impl Discovery {
             let batch = match search.poll(POLL_WAIT) {
                 Ok(batch) => batch,
                 Err(error) => {
-                    tracing::warn!(%error, "the stream search failed");
+                    if self.wanted() {
+                        tracing::warn!(%error, "the stream search failed");
+                    } else {
+                        tracing::debug!(%error, "the stream search ended after the video was closed");
+                    }
                     self.end_search(Some(error.to_string()));
                     return;
                 }
@@ -84,6 +95,7 @@ impl Discovery {
             tracing::info!(
                 answered = progress.checked,
                 of = progress.total,
+                failed = self.failures.total(),
                 elapsed_ms = self.started.elapsed().as_millis(),
                 "stream checks cancelled: the video was closed"
             );
@@ -93,6 +105,9 @@ impl Discovery {
         tracing::info!(
             checked = progress.checked,
             working = progress.working,
+            failed = self.failures.total(),
+            failure_reasons = %self.failures.reasons(),
+            failed_hosts = %self.failures.hosts(),
             elapsed_ms = self.started.elapsed().as_millis(),
             "stream checks finished"
         );
@@ -108,12 +123,17 @@ impl Discovery {
         let found = batch.links.len();
         let subtitles = batch.subtitles.len();
         let queued = batch.links.clone();
+        let hosts: Vec<String> = queued.iter().map(stream_host).collect();
         let Some(first) = self
             .session
             .append(self.generation, batch.links, batch.subtitles)
         else {
             return false;
         };
+        self.hosts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend(hosts);
         let progress = self.gate.announce(&ranks);
         self.queue.push(
             queued
@@ -152,10 +172,21 @@ impl Discovery {
         );
     }
 
+    fn host_of(&self, index: usize) -> String {
+        self.hosts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(index)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// Stores one answer; `false` tells the checker nobody wants more answers.
     fn record(&self, index: usize, found: &LinkHealth) -> bool {
         if let LinkHealth::Broken(reason) = found {
-            tracing::debug!(index, %reason, "stream is not playable");
+            let host = self.host_of(index);
+            tracing::debug!(index, %host, %reason, "stream is not playable");
+            self.failures.record(&host, reason);
         }
         let progress = self.gate.record(index, found.is_working());
         (self.tell)(CheckUpdate::Progress(progress));

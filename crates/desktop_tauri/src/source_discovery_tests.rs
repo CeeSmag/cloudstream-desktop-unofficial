@@ -11,6 +11,7 @@ use extension_repo::{HttpProbe, ProbeResponse, RepoError};
 
 use super::*;
 use crate::check_gate::{Grace, StartDecision};
+use crate::failure_tally::FailureTally;
 use crate::source_manager::CheckUpdate;
 use crate::source_session::ActiveSources;
 
@@ -148,6 +149,8 @@ fn job(
         started: Instant::now(),
         tell: Arc::new(move |update| sink.0.lock().expect("lock").push(update)),
         give_subtitles: Arc::new(|_| {}),
+        hosts: Mutex::default(),
+        failures: FailureTally::default(),
     };
     (job, search, gateway, updates)
 }
@@ -238,4 +241,54 @@ fn subtitles_found_after_playback_started_reach_the_player() {
     job.session.mark_selected(0);
     job.run_search(search);
     assert_eq!(given.lock().expect("lock").len(), 1);
+}
+
+#[test]
+fn every_failed_check_is_counted_by_reason_and_host() {
+    let script = vec![update(
+        vec![
+            link("https://dead.test/a", 720),
+            link("https://dead.test/b", 480),
+            link("https://alive.test/c", 1080),
+        ],
+        true,
+    )];
+    let (job, search, _, _) = job(script, vec!["https://alive.test/c"]);
+    job.run_search(search);
+    job.run_checks();
+    assert_eq!(job.failures.total(), 2);
+    assert!(job.failures.hosts().starts_with("dead.test=2"));
+    assert!(job.failures.reasons().contains("cannot download <url>"));
+}
+
+/// The viewer closes the video at every point of its search and checks: both threads must stop, the
+/// search must be told to stop at most once, and nothing may bring the closed video's list back.
+#[test]
+fn closing_at_any_moment_stops_the_search_and_the_checks_and_never_revives_the_session() {
+    for delay_micros in [0u64, 20, 100, 400, 1_500, 6_000, 25_000, 90_000] {
+        let script = (0..6)
+            .map(|n| update(vec![link(&format!("https://h{n}.test/v"), 720)], n == 5))
+            .collect();
+        let (job, search, gateway, _) = job(script, vec!["https://h1.test/v"]);
+        let job = Arc::new(job);
+        let (searching, checking) = (Arc::clone(&job), Arc::clone(&job));
+        let handles = vec![
+            std::thread::spawn(move || searching.run_search(search)),
+            std::thread::spawn(move || checking.run_checks()),
+        ];
+
+        std::thread::sleep(Duration::from_micros(delay_micros));
+        job.session.clear();
+        job.gate.cancel();
+
+        crate::race_tests::join_within(handles, crate::race_tests::TIME_LIMIT);
+        assert!(
+            job.session.snapshot().is_none(),
+            "closing after {delay_micros} us: the search brought the closed video's list back"
+        );
+        assert!(
+            *gateway.cancelled.lock().expect("lock") <= 1,
+            "closing after {delay_micros} us: the search was stopped more than once"
+        );
+    }
 }

@@ -129,11 +129,13 @@ impl SourceSession {
     }
 
     /// A copy of the current streams for starting playback: the subtitles in it count as given
-    /// to the player.
+    /// to the player. Subtitles found from now on are held back until [`SourceSession::mark_selected`]
+    /// says the new stream plays, so none is handed to the player while it is switching.
     pub fn start_snapshot(&self) -> Option<ActiveSources> {
         let mut guard = self.active.lock().unwrap_or_else(PoisonError::into_inner);
         let active = guard.as_mut()?;
         active.subtitles_sent = active.subtitles.len();
+        active.playing = false;
         Some(active.clone())
     }
 

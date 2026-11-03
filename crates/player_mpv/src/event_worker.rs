@@ -2,10 +2,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use player_api::{MediaTrack, SubtitleSource, TrackKind};
+use player_api::{MediaTrack, TrackKind};
 
+use crate::load_tracker::LoadTracker;
 use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
+use crate::pending_subtitles::{take_when_loaded, PendingSubtitles};
 use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
 use crate::status_tracker::StatusTracker;
 use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
@@ -21,7 +23,7 @@ const TRACK_REFRESH_EVERY: u32 = 5;
 pub(crate) struct EventWorker {
     pub(crate) handle: Arc<MpvHandle>,
     pub(crate) tracker: Arc<StatusTracker>,
-    pub(crate) pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
+    pub(crate) pending_subtitles: Arc<Mutex<PendingSubtitles>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stream_generation: StreamGeneration,
     pub(crate) audio_preference: Arc<AudioPreference>,
@@ -29,39 +31,27 @@ pub(crate) struct EventWorker {
     pub(crate) reported_subtitle_tracks: AtomicUsize,
 }
 
-/// Whether the stream that is current has finished loading. A stream that was replaced (a new
-/// source, or a stop) has a newer generation than the one that last loaded, so nothing is
-/// attached to a file that is still loading.
-fn is_loaded(loaded_generation: Option<u64>, current: u64) -> bool {
-    loaded_generation == Some(current)
-}
-
 impl EventWorker {
     pub(crate) fn run(self) {
         let mut ticks: u32 = 0;
-        // The stream generation that was playing when the last file finished loading.
-        let mut loaded_generation: Option<u64> = None;
+        let mut loads = LoadTracker::default();
         while !self.stop_flag.load(Ordering::Relaxed) {
             let event = self.handle.wait_event(EVENT_WAIT);
             self.tracker.apply(event);
             let generation = self.stream_generation.load(Ordering::SeqCst);
-            loaded_generation = match event {
-                MpvEvent::FileLoaded => Some(generation),
-                MpvEvent::StartFile | MpvEvent::EndFile(_) => None,
-                _ => loaded_generation,
-            };
+            loads.apply(event, generation);
             if event == MpvEvent::FileLoaded {
                 tracing::info!(
                     generation,
                     waiting_subtitle_files = self.waiting_subtitles(),
                     "stream loaded"
                 );
-                self.attach_subtitles();
+                self.attach_subtitles(loads.loaded());
                 self.refresh_tracks();
                 self.apply_audio_preference();
-            } else if is_loaded(loaded_generation, generation) {
+            } else if loads.loaded().is_some() {
                 // Subtitles the provider found after the stream started.
-                self.attach_subtitles();
+                self.attach_subtitles(loads.loaded());
             }
             if event == MpvEvent::Shutdown {
                 break;
@@ -83,17 +73,12 @@ impl EventWorker {
 
     /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
     #[tracing::instrument(level = "debug", skip_all)]
-    fn attach_subtitles(&self) {
-        let subtitles = std::mem::take(
-            &mut *self
-                .pending_subtitles
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner),
-        );
-        if subtitles.is_empty() {
+    fn attach_subtitles(&self, loaded: Option<u64>) {
+        let Some((generation, subtitles)) =
+            take_when_loaded(&self.pending_subtitles, &self.stream_generation, loaded)
+        else {
             return;
-        }
-        let generation = self.stream_generation.load(Ordering::SeqCst);
+        };
         attach_in_background(&self.handle, &self.stream_generation, generation, subtitles);
     }
 
@@ -191,17 +176,5 @@ impl EventWorker {
             (duration * 1000.0) as i64,
             paused,
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_replaced_stream_is_not_loaded_until_its_own_file_has_loaded() {
-        assert!(is_loaded(Some(3), 3));
-        assert!(!is_loaded(Some(3), 4), "a new source was started");
-        assert!(!is_loaded(None, 3), "still loading");
     }
 }

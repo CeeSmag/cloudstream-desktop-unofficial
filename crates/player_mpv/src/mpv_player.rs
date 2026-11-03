@@ -13,6 +13,7 @@ use crate::frame_renderer::{FrameRenderer, FrameShared};
 use crate::mpv_api::{MpvApi, MpvHandle};
 use crate::mpv_option_format::{header_fields, start_option};
 use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
+use crate::pending_subtitles::{queue_for_new_stream, PendingSubtitles};
 use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
 use crate::preferred_audio::{alang_value, AudioPreference};
@@ -28,7 +29,7 @@ const INITIAL_SURFACE: (u32, u32) = (1280, 720);
 /// `VideoPlayer` backed by libmpv: embedded (pictures handed to the app) or in mpv's own window.
 pub struct MpvPlayer {
     tracker: Arc<StatusTracker>,
-    pending_subtitles: Arc<Mutex<Vec<SubtitleSource>>>,
+    pending_subtitles: Arc<Mutex<PendingSubtitles>>,
     stop_flag: Arc<AtomicBool>,
     stream_generation: Arc<AtomicU64>,
     audio_preference: Arc<AudioPreference>,
@@ -62,7 +63,7 @@ impl MpvPlayer {
             (None, None)
         };
         let tracker = Arc::new(StatusTracker::default());
-        let pending_subtitles = Arc::new(Mutex::new(Vec::new()));
+        let pending_subtitles = Arc::new(Mutex::new(PendingSubtitles::default()));
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stream_generation = Arc::new(AtomicU64::new(0));
         let audio_preference = Arc::new(AudioPreference::default());
@@ -141,14 +142,14 @@ impl VideoPlayer for MpvPlayer {
         self.handle
             .set_property("force-media-title", &request.title)?;
         self.handle.set_property("start", &start_option(request))?;
-        // Any subtitle download still running belongs to the previous stream. The generation moves
-        // on before the new subtitles are queued, so the event thread cannot hand them to the old
-        // stream.
-        self.stream_generation.fetch_add(1, Ordering::SeqCst);
-        *self
-            .pending_subtitles
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = request.subtitles.clone();
+        // Any subtitle download still running belongs to the previous stream. The generation and
+        // the queued files change together under one lock, so the event thread never pairs the new
+        // files with the old stream (or the old files with the new one).
+        queue_for_new_stream(
+            &self.pending_subtitles,
+            &self.stream_generation,
+            request.subtitles.clone(),
+        );
         self.unpause_before_new_stream();
         self.tracker.begin_loading();
         tracing::info!(
@@ -174,7 +175,7 @@ impl VideoPlayer for MpvPlayer {
         self.pending_subtitles
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .extend_from_slice(subtitles);
+            .extend(subtitles);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]

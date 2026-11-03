@@ -46,7 +46,12 @@ export function usePlayback() {
     return () => clearInterval(timer);
   }, [isOpen]);
 
-  const refreshSources = React.useCallback(async () => setSources(await api.getSources().catch(() => [])), []);
+  const refreshSources = React.useCallback(async () => {
+    const opening = openingRef.current;
+    const list = await api.getSources().catch(() => []);
+    // The answer belongs to the video that was open when it was asked for.
+    if (openingRef.current === opening) setSources(list);
+  }, []);
 
   // While the player is open the backend keeps testing the streams; broken ones drop out of the list.
   React.useEffect(() => {

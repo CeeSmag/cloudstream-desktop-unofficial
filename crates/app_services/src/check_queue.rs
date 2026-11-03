@@ -129,4 +129,75 @@ mod tests {
         assert_eq!(queue.next().map(|(index, _)| index), Some(7));
         assert!(queue.next().is_none());
     }
+
+    /// Many threads add streams while many others take them: each stream must be taken exactly
+    /// once, whichever thread gets it.
+    #[test]
+    fn under_concurrent_pushing_and_taking_every_stream_is_taken_exactly_once() {
+        const PRODUCERS: usize = 4;
+        const PER_PRODUCER: usize = 250;
+        let queue = Arc::new(CheckQueue::default());
+        let taken = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let consumers: Vec<_> = (0..8)
+            .map(|_| {
+                let (queue, taken) = (Arc::clone(&queue), Arc::clone(&taken));
+                std::thread::spawn(move || {
+                    while let Some((index, _)) = queue.next() {
+                        taken.lock().expect("lock").push(index);
+                    }
+                })
+            })
+            .collect();
+        let producers: Vec<_> = (0..PRODUCERS)
+            .map(|producer| {
+                let queue = Arc::clone(&queue);
+                std::thread::spawn(move || {
+                    for offset in 0..PER_PRODUCER {
+                        let index = producer * PER_PRODUCER + offset;
+                        queue.push([(index, link(i32::try_from(index % 5).unwrap_or(0) * 360))]);
+                    }
+                })
+            })
+            .collect();
+        for producer in producers {
+            producer.join().expect("producer");
+        }
+        queue.close();
+        join_all_within(consumers, Duration::from_secs(20));
+
+        let mut taken = taken.lock().expect("lock").clone();
+        taken.sort_unstable();
+        let expected: Vec<usize> = (0..PRODUCERS * PER_PRODUCER).collect();
+        assert_eq!(taken, expected, "a stream was lost or taken twice");
+    }
+
+    /// Stopping must wake every consumer that is waiting for streams, however many there are.
+    #[test]
+    fn stopping_wakes_every_waiting_consumer() {
+        for _ in 0..100 {
+            let queue = Arc::new(CheckQueue::default());
+            let consumers: Vec<_> = (0..8)
+                .map(|_| {
+                    let queue = Arc::clone(&queue);
+                    std::thread::spawn(move || assert!(queue.next().is_none()))
+                })
+                .collect();
+            queue.stop();
+            join_all_within(consumers, Duration::from_secs(20));
+        }
+    }
+
+    fn join_all_within(handles: Vec<std::thread::JoinHandle<()>>, limit: Duration) {
+        let deadline = std::time::Instant::now() + limit;
+        for handle in handles {
+            while !handle.is_finished() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "a thread did not finish: deadlock"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            handle.join().expect("a test thread panicked");
+        }
+    }
 }
