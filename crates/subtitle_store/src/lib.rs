@@ -3,7 +3,6 @@
 //! once, survive a change of source, and are still there when the provider's service is slow.
 #![forbid(unsafe_code)]
 
-mod cache_key;
 mod hls_subtitles;
 mod normalize_subtitle;
 mod subtitle_cache;
