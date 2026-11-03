@@ -6,12 +6,14 @@
 mod app_state;
 mod catalog_commands;
 mod check_gate;
+mod check_gate_state;
 mod check_progress;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;
 mod failure_tally;
 mod library_commands;
+mod link_ledger;
 #[cfg(test)]
 mod opening_flow_tests;
 mod playback_commands;
@@ -20,6 +22,7 @@ mod preferences_commands;
 #[cfg(test)]
 mod race_tests;
 mod repository_discovery;
+mod saved_start;
 #[cfg(test)]
 mod session_race_tests;
 mod settings_commands;
@@ -33,6 +36,8 @@ mod subtitle_delivery;
 mod subtitle_tests;
 #[cfg(test)]
 mod test_subtitles;
+#[cfg(test)]
+mod test_titles;
 mod video_commands;
 mod video_opening;
 mod window_commands;
@@ -124,6 +129,7 @@ fn init_services(
     app.manage(source_manager::SourceManager::new(
         app_services::StreamChecker::new(std::sync::Arc::new(extension_repo::UreqProbe::default())),
         subtitle_loader(paths),
+        title_cache(paths),
     ));
     app.manage(startup::StartupTracker::default());
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
@@ -154,6 +160,25 @@ fn subtitle_loader(paths: &AppPaths) -> std::sync::Arc<subtitle_store::SubtitleL
         tracing::warn!(%error, "cannot start the subtitle cleanup");
     }
     loader
+}
+
+/// The saved stream links of titles that were opened before, in the data folder. Old and surplus
+/// files are cleaned up in the background.
+fn title_cache(paths: &AppPaths) -> std::sync::Arc<title_cache::TitleCache> {
+    let cache = std::sync::Arc::new(title_cache::TitleCache::new(
+        paths.data_dir().join("sources"),
+        title_cache::CacheLimits::default(),
+    ));
+    let cleaner = std::sync::Arc::clone(&cache);
+    let spawned = std::thread::Builder::new()
+        .name("sources-cleanup".to_owned())
+        .spawn(move || {
+            cleaner.prune();
+        });
+    if let Err(error) = spawned {
+        tracing::warn!(%error, "cannot start the cleanup of saved sources");
+    }
+    cache
 }
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).

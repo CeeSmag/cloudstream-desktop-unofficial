@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::*;
+use crate::check_gate_state::NO_STREAMS;
 
 const LONG: WaitLimits = WaitLimits {
     first_stream: Duration::from_secs(30),
@@ -161,7 +162,8 @@ fn progress_counts_streams_answers_and_working_streams() {
             total: 4,
             working: 1,
             skipping: false,
-            discovering: true
+            discovering: true,
+            saved: SavedSources::None
         }
     );
     assert!(!gate.discovery_ended(None).discovering);

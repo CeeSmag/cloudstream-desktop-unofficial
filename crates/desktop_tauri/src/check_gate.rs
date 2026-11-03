@@ -7,45 +7,16 @@
 //! error, and whatever happens the wait ends [`WaitLimits::max_wait`] after the video was opened:
 //! the best working stream plays, or else the best one not known to be broken, or else the wait
 //! fails. Closing the video cancels the wait.
+//!
+//! Sources saved from an earlier time are the one exception to the wait: [`CheckGate::trust_saved`]
+//! plays the saved stream at once, and [`CheckGate::test_saved_first`] plays the first of the best
+//! saved streams that checks out, giving up on them after a short time.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-/// Message of the failure when the search ended without finding any stream.
-const NO_STREAMS: &str = "No playable stream links found";
-
-pub use crate::check_progress::{CheckProgress, StartDecision, WaitLimits};
-
-struct GateState {
-    progress: CheckProgress,
-    /// Rank of every stream found, by index.
-    ranks: Vec<i32>,
-    /// Whether the check of each stream (by index) found it broken.
-    broken: Vec<bool>,
-    /// When the video was opened.
-    opened_at: Instant,
-    /// Best working stream so far: highest rank, then lowest index.
-    best_working: Option<usize>,
-    failure: Option<String>,
-    cancelled: bool,
-}
-
-impl Default for GateState {
-    fn default() -> Self {
-        Self {
-            progress: CheckProgress {
-                discovering: true,
-                ..CheckProgress::default()
-            },
-            ranks: Vec::new(),
-            broken: Vec::new(),
-            opened_at: Instant::now(),
-            best_working: None,
-            failure: None,
-            cancelled: false,
-        }
-    }
-}
+use crate::check_gate_state::{silent_provider, GateState, SavedTest};
+pub use crate::check_progress::{CheckProgress, SavedSources, StartDecision, WaitLimits};
 
 enum Verdict {
     Ready(StartDecision),
@@ -74,6 +45,16 @@ impl CheckGate {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Changes the state, wakes the waiter and returns the progress.
+    fn update(&self, change: impl FnOnce(&mut GateState)) -> CheckProgress {
+        let mut state = self.lock();
+        change(&mut state);
+        let progress = state.progress;
+        drop(state);
+        self.changed.notify_all();
+        progress
+    }
+
     /// The latest progress.
     pub fn progress(&self) -> CheckProgress {
         self.lock().progress
@@ -81,67 +62,57 @@ impl CheckGate {
 
     /// Records newly found streams; `ranks` are theirs, in the order of their indexes.
     pub fn announce(&self, ranks: &[i32]) -> CheckProgress {
-        let mut state = self.lock();
-        state.ranks.extend_from_slice(ranks);
-        let known = state.ranks.len();
-        state.broken.resize(known, false);
-        state.progress.total = state.ranks.len();
-        let progress = state.progress;
-        drop(state);
-        self.changed.notify_all();
-        progress
+        self.update(|state| state.add(ranks, true))
+    }
+
+    /// Records streams that were saved from an earlier time, which the provider has not found
+    /// (yet). They do not count as an answer of the provider.
+    pub fn announce_saved(&self, ranks: &[i32]) -> CheckProgress {
+        self.update(|state| state.add(ranks, false))
     }
 
     /// Records the answer for the stream at `index`.
     pub fn record(&self, index: usize, working: bool) -> CheckProgress {
-        let mut state = self.lock();
-        state.progress.checked += 1;
-        if !working {
-            if let Some(slot) = state.broken.get_mut(index) {
-                *slot = true;
-            }
-        }
-        if working {
-            state.progress.working += 1;
-            if state
-                .best_working
-                .is_none_or(|best| state.beats(index, best))
-            {
-                state.best_working = Some(index);
-            }
-        }
-        let progress = state.progress;
-        drop(state);
-        self.changed.notify_all();
-        progress
+        self.update(|state| state.answer(index, working))
     }
 
     /// The search is over; `failure` says why when it ended because the provider failed.
     pub fn discovery_ended(&self, failure: Option<String>) -> CheckProgress {
-        let mut state = self.lock();
-        state.progress.discovering = false;
-        state.failure = failure;
-        let progress = state.progress;
-        drop(state);
-        self.changed.notify_all();
-        progress
+        self.update(|state| {
+            state.progress.discovering = false;
+            state.failure = failure;
+        })
     }
 
     /// The viewer wants to start now; playback begins as soon as a working stream is known. The
     /// search and the checks go on.
     pub fn skip(&self) -> CheckProgress {
-        let mut state = self.lock();
-        state.progress.skipping = true;
-        let progress = state.progress;
-        drop(state);
-        self.changed.notify_all();
-        progress
+        self.update(|state| state.progress.skipping = true)
+    }
+
+    /// The saved stream with this index was saved so recently that it is played at once.
+    pub fn trust_saved(&self, index: usize) -> CheckProgress {
+        self.update(|state| {
+            state.start_on = Some(index);
+            state.progress.saved = SavedSources::Trusted;
+        })
+    }
+
+    /// The first `count` streams were saved a while ago: the first of them that checks out starts
+    /// the video. If none does within `cap`, the video waits for the search like any other.
+    pub fn test_saved_first(&self, count: usize, cap: Duration) -> CheckProgress {
+        self.update(|state| {
+            state.saved_test = Some(SavedTest {
+                count,
+                until: Instant::now() + cap,
+            });
+            state.progress.saved = SavedSources::Testing;
+        })
     }
 
     /// The video was closed or replaced: stop waiting and stop checking.
     pub fn cancel(&self) {
-        self.lock().cancelled = true;
-        self.changed.notify_all();
+        self.update(|state| state.cancelled = true);
     }
 
     /// Whether the video was closed or replaced.
@@ -154,7 +125,7 @@ impl CheckGate {
     pub fn wait_for_start(&self) -> StartDecision {
         let mut state = self.lock();
         loop {
-            state = match self.verdict(&state) {
+            state = match self.verdict(&mut state) {
                 Verdict::Ready(decision) => return decision,
                 Verdict::Wait(None) => self
                     .changed
@@ -170,18 +141,25 @@ impl CheckGate {
         }
     }
 
-    fn verdict(&self, state: &GateState) -> Verdict {
+    fn verdict(&self, state: &mut GateState) -> Verdict {
         if state.cancelled {
             return Verdict::Ready(StartDecision::Cancelled);
+        }
+        if let Some(index) = state.start_on {
+            return Verdict::Ready(StartDecision::Start(index));
         }
         let progress = state.progress;
         if !progress.discovering && progress.checked >= progress.total {
             return Verdict::Ready(state.finished_decision());
         }
         match state.best_working {
-            Some(best) if progress.skipping => Verdict::Ready(StartDecision::Start(best)),
-            _ => self.by_the_clock(state),
+            Some(best) if progress.skipping => return Verdict::Ready(StartDecision::Start(best)),
+            _ => {}
         }
+        if let Some(decision) = state.saved_test_decision() {
+            return Verdict::Ready(decision);
+        }
+        sooner(self.by_the_clock(state), state)
     }
 
     /// Nothing is decided yet: wait for news until the next limit, and enforce a limit that passed.
@@ -192,7 +170,7 @@ impl CheckGate {
             tracing::warn!(?waited, "the wait for the streams hit its limit");
             return Verdict::Ready(state.limit_decision(max));
         }
-        if state.ranks.is_empty() {
+        if state.from_provider == 0 && state.saved_test.is_none() {
             if waited >= first {
                 tracing::warn!(?waited, "the provider gave no stream in time");
                 return Verdict::Ready(StartDecision::Failed(silent_provider(first)));
@@ -203,73 +181,19 @@ impl CheckGate {
     }
 }
 
-/// The error when the provider gave no stream at all in time.
-fn silent_provider(limit: Duration) -> String {
-    format!(
-        "The provider did not answer within {} seconds. Check your connection or try again.",
-        limit.as_secs()
-    )
-}
-
-impl GateState {
-    fn rank(&self, index: usize) -> i32 {
-        self.ranks.get(index).copied().unwrap_or_default()
-    }
-
-    /// Whether stream `index` is a better start than `other`.
-    fn beats(&self, index: usize, other: usize) -> bool {
-        let (rank, other_rank) = (self.rank(index), self.rank(other));
-        rank > other_rank || (rank == other_rank && index < other)
-    }
-
-    /// The best stream not known to be broken.
-    fn best_unbroken(&self) -> Option<usize> {
-        (0..self.ranks.len())
-            .filter(|index| !self.broken.get(*index).copied().unwrap_or(false))
-            .fold(None, |best: Option<usize>, index| match best {
-                Some(current) if !self.beats(index, current) => Some(current),
-                _ => Some(index),
-            })
-    }
-
-    /// The decision when the whole wait ran out: the best working stream, else the best one not
-    /// known to be broken, else a failure that says what was tried.
-    fn limit_decision(&self, limit: Duration) -> StartDecision {
-        if let Some(best) = self.best_working.or_else(|| self.best_unbroken()) {
-            return StartDecision::Start(best);
-        }
-        if self.ranks.is_empty() {
-            return StartDecision::Failed(silent_provider(limit));
-        }
-        StartDecision::Failed(format!(
-            "No working source was found within {} seconds ({} found, {} checked).",
-            limit.as_secs(),
-            self.progress.total,
-            self.progress.checked
-        ))
-    }
-
-    /// The decision once the search is over and every stream has been answered.
-    fn finished_decision(&self) -> StartDecision {
-        if let Some(best) = self.best_working {
-            return StartDecision::Start(best);
-        }
-        let best_known =
-            (0..self.ranks.len()).fold(None, |best: Option<usize>, index| match best {
-                Some(current) if !self.beats(index, current) => Some(current),
-                _ => Some(index),
-            });
-        match best_known {
-            Some(index) => StartDecision::Start(index),
-            None => StartDecision::Failed(
-                self.failure
-                    .clone()
-                    .unwrap_or_else(|| NO_STREAMS.to_owned()),
-            ),
-        }
-    }
+/// While saved streams are tested the wait must also end when the test's time is up.
+fn sooner(verdict: Verdict, state: &GateState) -> Verdict {
+    let (Verdict::Wait(wait), Some(test)) = (&verdict, state.saved_test) else {
+        return verdict;
+    };
+    let test_left = test.until.saturating_duration_since(Instant::now());
+    Verdict::Wait(Some(wait.map_or(test_left, |wait| wait.min(test_left))))
 }
 
 #[cfg(test)]
 #[path = "check_gate_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "check_gate_saved_tests.rs"]
+mod saved_tests;

@@ -9,12 +9,18 @@ use app_services::{LinkSearch, PlaybackItem, PlaybackService, SettingsService, S
 use player_api::find_language;
 use subtitle_store::LanguageRank;
 use tauri::State;
+use title_cache::redact_url;
 
 use crate::app_state::AppState;
 use crate::check_gate::{CheckGate, StartDecision};
 use crate::dto::PlayRequestDto;
 use crate::source_manager::{SearchRequest, SourceManager, Tell};
 use crate::subtitle_delivery::SubtitleWork;
+
+/// The key of a title in the saved subtitles and saved sources: one per movie or episode.
+pub(crate) fn title_key(item: &PlaybackItem) -> String {
+    format!("{}\n{}", item.provider, item.media_key)
+}
 
 /// Message of the error `play_media` returns when the video is closed before it could start.
 pub(crate) const CLOSED_BEFORE_START: &str = "The video was closed before it started.";
@@ -116,13 +122,10 @@ fn search_request(
         search,
         give_subtitles: Arc::new(move |subtitles| late_subtitles.add_subtitles(subtitles)),
         subtitles: SubtitleWork {
-            title_key: format!(
-                "{}
-{}",
-                item.provider, item.media_key
-            ),
+            title_key: title_key(item),
             rank_of: Arc::clone(&services.subtitle_rank),
         },
+        title_key: title_key(item),
     }
 }
 
@@ -171,6 +174,7 @@ pub(crate) fn start_stream(
     request: StreamStart,
 ) -> Result<(), String> {
     let StreamStart { item, start, gate } = request;
+    let key = title_key(&item);
     let active = sources
         .session()
         .start_snapshot()
@@ -179,7 +183,11 @@ pub(crate) fn start_stream(
         .links
         .get(start)
         .ok_or_else(|| "No playable stream links found".to_string())?;
-    tracing::info!(found = active.links.len(), url = %link.url, "playing stream");
+    tracing::info!(
+        found = active.links.len(),
+        stream = %redact_url(&link.url),
+        "playing stream"
+    );
     playback
         .start(item, link, &active.subtitles)
         .map_err(|error| error.to_string())?;
@@ -191,6 +199,7 @@ pub(crate) fn start_stream(
         return Err(CLOSED_BEFORE_START.to_owned());
     }
     sources.session().mark_selected(start);
+    sources.note_played(&key, &link.url);
     let late = sources.session().unsent_subtitles(active.generation);
     if !late.is_empty() {
         playback.add_subtitles(&late);

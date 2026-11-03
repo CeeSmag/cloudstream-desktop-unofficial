@@ -23,8 +23,24 @@ impl Default for WaitLimits {
     }
 }
 
+/// What the loading screen says about the sources saved from an earlier time.
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SavedSources {
+    /// Nothing was saved for this video, or the saved sources are not in use.
+    #[default]
+    None,
+    /// Saved a short while ago: playing from them at once.
+    Trusted,
+    /// Saved a while ago: the best of them are being tested before playing.
+    Testing,
+    /// None of the tested ones works any more: searching again.
+    OutOfDate,
+}
+
 /// How far the search and the checks have come; sent to the UI.
 #[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckProgress {
     /// Streams answered so far.
     pub checked: usize,
@@ -36,6 +52,8 @@ pub struct CheckProgress {
     pub skipping: bool,
     /// The provider is still looking for streams.
     pub discovering: bool,
+    /// What is going on with sources saved earlier.
+    pub saved: SavedSources,
 }
 
 /// What the wait for playback came to.
