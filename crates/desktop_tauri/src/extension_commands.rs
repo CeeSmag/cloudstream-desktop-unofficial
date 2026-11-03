@@ -203,7 +203,10 @@ fn describe_installed(
     }
 }
 
-fn describe_plugin(plugin: PluginListing, installed: &[InstalledExtension]) -> PluginDto {
+pub(crate) fn describe_plugin(
+    plugin: PluginListing,
+    installed: &[InstalledExtension],
+) -> PluginDto {
     let installed_version = installed
         .iter()
         .find(|extension| extension.internal_name == plugin.internal_name)

@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { IconTile } from '../../components/extensions/IconTile';
 import type { ExtensionsState } from '../../hooks/useExtensions';
-import { PluginList } from '../../components/extensions/PluginList';
+import { PluginEntry, PluginList } from '../../components/extensions/PluginList';
 import { filterPlugins, PluginView, summarizePlugins } from '../../utils/extensionText';
 
 interface RepositoryPageProps {
@@ -23,6 +23,10 @@ export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions }) =>
   const repository = extensions.repositories.find((entry) => entry.url === extensions.browsing);
   const shown = React.useMemo(() => filterPlugins(extensions.plugins, text, view), [extensions.plugins, text, view]);
   const filtering = text.trim() !== '' || view !== 'all';
+  const entries: PluginEntry[] = React.useMemo(
+    () => shown.map((plugin) => ({ key: plugin.internal_name, plugin })),
+    [shown],
+  );
 
   return (
     <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 w-full max-w-7xl mx-auto select-none space-y-6">
@@ -72,14 +76,14 @@ export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions }) =>
       </div>
 
       <PluginList
-        plugins={shown}
+        entries={entries}
         loading={extensions.pluginsLoading}
         busy={extensions.busy}
         emptyText={
           filtering ? 'No extension matches that search or filter.' : 'This repository does not offer any extensions.'
         }
-        onInstall={(internalName) => {
-          if (extensions.browsing) void extensions.install(extensions.browsing, internalName);
+        onInstall={(entry) => {
+          if (extensions.browsing) void extensions.install(extensions.browsing, entry.plugin.internal_name);
         }}
       />
     </div>

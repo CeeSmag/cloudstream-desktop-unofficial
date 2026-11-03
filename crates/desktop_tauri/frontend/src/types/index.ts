@@ -200,3 +200,11 @@ export interface Preferences {
   preferred_audio: string | null;
   languages: LanguageOption[];
 }
+
+/** An extension found by searching all repositories, with the repository that offers it. */
+export interface PluginHit {
+  repository_url: string;
+  repository_name: string;
+  repository_icon_url: string | null;
+  plugin: RepositoryPlugin;
+}

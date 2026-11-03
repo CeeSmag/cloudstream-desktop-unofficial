@@ -15,13 +15,11 @@ interface RepositoryPanelProps {
 
 /** Repositories shown without a search or "show all" until the list is longer than this. */
 const SHOWN_AT_FIRST = 8;
-/** The search box appears once there are more repositories than this. */
-const SEARCH_FROM = 8;
 
 /** Repositories the user subscribed to: add by address, search, remove, or open one to see its extensions. */
 export const RepositoryPanel: React.FC<RepositoryPanelProps> = ({ repositories, busy, onAdd, onRemove, onOpen }) => {
-  const [address, setAddress] = React.useState('');
   const [filter, setFilter] = React.useState('');
+  const [address, setAddress] = React.useState('');
   const [showAll, setShowAll] = React.useState(false);
   const matching = React.useMemo(() => filterRepositories(repositories, filter), [repositories, filter]);
   const searching = filter.trim() !== '';
@@ -53,18 +51,16 @@ export const RepositoryPanel: React.FC<RepositoryPanelProps> = ({ repositories, 
         </button>
       </form>
 
-      {repositories.length > SEARCH_FROM && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-          <input
-            type="text"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={`Search ${repositories.length} repositories`}
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-xs focus:outline-none"
-          />
-        </div>
-      )}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+        <input
+          type="text"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder={`Search ${repositories.length} repositories`}
+          className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-xs focus:outline-none"
+        />
+      </div>
 
       {repositories.length === 0 ? (
         <p className="text-xs text-zinc-500">No repositories yet. Add one above to see the extensions it offers.</p>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ProviderInfo } from '../types';
 import { GeneralSettings } from './settings/GeneralSettings';
-import { ExtensionsPage } from './settings/ExtensionsPage';
+import { ExtensionsPage, ExtensionsTab } from './settings/ExtensionsPage';
 import { PreferencesPage } from './settings/PreferencesPage';
 import { RepositoryPage } from './settings/RepositoryPage';
 import { useExtensions } from '../hooks/useExtensions';
@@ -24,6 +24,8 @@ const PAGES: { id: SettingsPage; label: string }[] = [
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onError }) => {
   const [page, setPage] = React.useState<SettingsPage>('extensions');
   const extensions = useExtensions(onError);
+  // Kept here so coming back from a repository's page lands on the tab it was opened from.
+  const [extensionsTab, setExtensionsTab] = React.useState<ExtensionsTab>('repositories');
 
   // An open repository takes the whole screen.
   if (extensions.browsing) return <RepositoryPage extensions={extensions} />;
@@ -53,7 +55,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onErr
 
       {page === 'general' && <GeneralSettings providers={providers} onError={onError} />}
       {page === 'preferences' && <PreferencesPage onError={onError} />}
-      {page === 'extensions' && <ExtensionsPage extensions={extensions} />}
+      {page === 'extensions' && <ExtensionsPage extensions={extensions} tab={extensionsTab} onTabChange={setExtensionsTab} onError={onError} />}
     </div>
   );
 };
