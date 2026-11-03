@@ -3,6 +3,8 @@ import { ProviderInfo } from '../types';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { ExtensionsPage } from './settings/ExtensionsPage';
 import { PreferencesPage } from './settings/PreferencesPage';
+import { RepositoryPage } from './settings/RepositoryPage';
+import { useExtensions } from '../hooks/useExtensions';
 
 interface SettingsScreenProps {
   providers: ProviderInfo[];
@@ -21,6 +23,10 @@ const PAGES: { id: SettingsPage; label: string }[] = [
 /** Settings, split into pages; extensions have a page of their own. */
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onError }) => {
   const [page, setPage] = React.useState<SettingsPage>('extensions');
+  const extensions = useExtensions(onError);
+
+  // An open repository takes the whole screen.
+  if (extensions.browsing) return <RepositoryPage extensions={extensions} />;
 
   return (
     <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 max-w-4xl 2xl:max-w-6xl mx-auto w-full select-none space-y-6 sm:space-y-8">
@@ -47,7 +53,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onErr
 
       {page === 'general' && <GeneralSettings providers={providers} onError={onError} />}
       {page === 'preferences' && <PreferencesPage onError={onError} />}
-      {page === 'extensions' && <ExtensionsPage onError={onError} />}
+      {page === 'extensions' && <ExtensionsPage extensions={extensions} />}
     </div>
   );
 };
