@@ -6,9 +6,11 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlinx.coroutines.runBlocking
 import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -42,6 +44,9 @@ private class LinkSearch(val providerName: String) {
     @Volatile var success = false
     @Volatile var failure: String? = null
     @Volatile var finishedAtMs = 0L
+
+    /** The running `loadLinks` call, so a cancelled search can stop it. */
+    @Volatile var task: Future<*>? = null
 
     /** Wakes a caller that waits for news. */
     fun changed() = synchronized(monitor) { monitor.notifyAll() }
@@ -88,6 +93,8 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
     fun poll(id: String, fromLink: Int, fromSubtitle: Int, waitMs: Long): LinkSearchUpdate {
         val search = searches[id] ?: error("unknown link search: $id")
         search.awaitNews(fromLink, fromSubtitle, waitMs)
+        // Read before the snapshots: anything added after this was not yet followed by the end.
+        val finished = search.done
         val links = synchronized(search.links) { search.links.drop(fromLink) }
         val subtitles = synchronized(search.subtitles) { search.subtitles.drop(fromSubtitle) }
         val update = LinkSearchUpdate(
@@ -95,11 +102,11 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
             subtitles = subtitles,
             nextLink = fromLink + links.size,
             nextSubtitle = fromSubtitle + subtitles.size,
-            done = search.done,
+            done = finished,
             success = search.success,
             failure = search.failure,
         )
-        if (search.done && search.links.size == update.nextLink && search.subtitles.size == update.nextSubtitle) {
+        if (finished && search.links.size == update.nextLink && search.subtitles.size == update.nextSubtitle) {
             searches.remove(id)
         }
         return update
@@ -109,9 +116,8 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
     fun cancel(id: String) {
         val search = searches.remove(id) ?: return
         SidecarLog.info("${search.providerName}: link search $id cancelled with ${search.links.size} streams found")
-        // The running task notices the search is gone from the map only when it ends; it is
-        // stopped through its own future in [run], so mark it done to release any waiting caller.
         search.done = true
+        search.task?.cancel(true)
         search.changed()
     }
 
@@ -126,8 +132,13 @@ class LinkSearches(private val findProvider: (String) -> MainAPI) {
                 )
             }
         }
+        search.task = collecting
+        // Cancelled before the task was recorded.
+        if (search.done) collecting.cancel(true)
         try {
             search.success = collecting.get(SEARCH_DEADLINE_SECONDS, TimeUnit.SECONDS)
+        } catch (_: CancellationException) {
+            SidecarLog.info("${search.providerName}: link search stopped before it finished")
         } catch (_: TimeoutException) {
             collecting.cancel(true)
             search.success = search.links.isNotEmpty()
