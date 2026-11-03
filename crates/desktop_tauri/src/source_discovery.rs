@@ -106,6 +106,7 @@ impl Discovery {
         }
         let ranks: Vec<i32> = batch.links.iter().map(link_rank).collect();
         let found = batch.links.len();
+        let subtitles = batch.subtitles.len();
         let queued = batch.links.clone();
         let Some(first) = self
             .session
@@ -122,6 +123,7 @@ impl Discovery {
         );
         tracing::info!(
             found,
+            subtitles,
             total = progress.total,
             elapsed_ms = self.started.elapsed().as_millis(),
             "streams found"

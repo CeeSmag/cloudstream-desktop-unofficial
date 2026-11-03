@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use player_api::{
-    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
-    VideoFrame, VideoPlayer,
+    describe_languages, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
+    SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 use crate::event_worker::EventWorker;
@@ -51,16 +51,11 @@ impl MpvPlayer {
     #[tracing::instrument(level = "debug", skip_all, fields(library_path = ?library_path), err)]
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {
         let api = Arc::new(MpvApi::load(library_path)?);
-        let embedded = options.embedded
-            && !options.headless
-            && options.wid.is_none()
-            && api.render_api().is_some();
-        if options.embedded && !embedded && !options.headless {
-            tracing::warn!("this libmpv has no render API; using mpv's own window");
-        }
+        let embedded = wants_embedding(&api, options);
         let handle = Arc::new(MpvHandle::create(api)?);
         configure(&handle, options, embedded)?;
         handle.initialize()?;
+        handle.forward_mpv_log();
         let (renderer, frames) = if embedded {
             start_embedding(&handle)
         } else {
@@ -78,6 +73,7 @@ impl MpvPlayer {
             stop_flag: Arc::clone(&stop_flag),
             stream_generation: Arc::clone(&stream_generation),
             audio_preference: Arc::clone(&audio_preference),
+            reported_subtitle_tracks: std::sync::atomic::AtomicUsize::new(0),
         })?;
         Ok(Self {
             tracker,
@@ -91,6 +87,18 @@ impl MpvPlayer {
             handle,
         })
     }
+}
+
+/// Whether frames are rendered into memory for the app window rather than in mpv's own window.
+fn wants_embedding(api: &MpvApi, options: &PlayerOptions) -> bool {
+    let embedded = options.embedded
+        && !options.headless
+        && options.wid.is_none()
+        && api.render_api().is_some();
+    if options.embedded && !embedded && !options.headless {
+        tracing::warn!("this libmpv has no render API; using mpv's own window");
+    }
+    embedded
 }
 
 /// Runs the worker that turns mpv events into status updates on its own thread.
@@ -143,7 +151,12 @@ impl VideoPlayer for MpvPlayer {
             .unwrap_or_else(PoisonError::into_inner) = request.subtitles.clone();
         self.unpause_before_new_stream();
         self.tracker.begin_loading();
-        tracing::info!(url = %request.url, "mpv loadfile");
+        tracing::info!(
+            url = %request.url,
+            subtitle_files = request.subtitles.len(),
+            subtitle_languages = %describe_languages(&request.subtitles),
+            "mpv loadfile"
+        );
         let outcome = self.handle.command(&["loadfile", &request.url, "replace"]);
         if let Err(error) = &outcome {
             self.tracker.fail(error.to_string());
@@ -151,8 +164,12 @@ impl VideoPlayer for MpvPlayer {
         outcome
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(count = subtitles.len()))]
     fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
+        tracing::info!(
+            files = subtitles.len(),
+            languages = %describe_languages(subtitles),
+            "subtitle files found after the stream started"
+        );
         // The event thread attaches whatever is waiting once the stream has loaded.
         self.pending_subtitles
             .lock()

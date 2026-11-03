@@ -10,14 +10,15 @@ use libloading::Library;
 use player_api::PlayerError;
 
 use crate::mpv_event::{decode_event, MpvEvent};
+use crate::mpv_log::{forward, LogApi};
 use crate::mpv_render_api::RenderApi;
 
-/// `mpv_format` values used here.
-const FORMAT_FLAG: c_int = 3;
-const FORMAT_STRING: c_int = 1;
-const FORMAT_DOUBLE: c_int = 5;
+mod properties;
+
 /// `mpv_event_id` of the end-of-file event, whose payload is an `mpv_event_end_file`.
 const EVENT_END_FILE: c_int = 7;
+/// `mpv_event_id` of a log message, whose payload is an `mpv_event_log_message`.
+const EVENT_LOG_MESSAGE: c_int = 22;
 
 #[repr(C)]
 struct RawEvent {
@@ -56,6 +57,7 @@ pub(crate) struct MpvApi {
     error_string: ErrorStringFn,
     free_memory: DestroyFn,
     render: Option<RenderApi>,
+    log: Option<LogApi>,
 }
 
 fn unavailable(detail: impl std::fmt::Display) -> PlayerError {
@@ -94,6 +96,7 @@ impl MpvApi {
                 error_string: symbol(&library, b"mpv_error_string\0")?,
                 free_memory: symbol(&library, b"mpv_free\0")?,
                 render: RenderApi::load(&library).ok(),
+                log: LogApi::load(&library).ok(),
                 _library: library,
             })
         }
@@ -194,6 +197,19 @@ impl MpvHandle {
         )
     }
 
+    /// Has mpv deliver its warnings and errors as events; [`MpvHandle::wait_event`] logs them.
+    pub(crate) fn forward_mpv_log(&self) {
+        match &self.api.log {
+            Some(log) => {
+                let code = log.request(self.raw, "warn");
+                if code < 0 {
+                    tracing::warn!(reason = %self.describe(code), "could not ask mpv for its log");
+                }
+            }
+            None => tracing::warn!("this libmpv cannot forward its log"),
+        }
+    }
+
     /// Runs a command such as `["loadfile", url, "replace"]`.
     pub(crate) fn command(&self, arguments: &[&str]) -> Result<(), PlayerError> {
         let name = arguments.first().copied().unwrap_or("command");
@@ -211,63 +227,6 @@ impl MpvHandle {
         )
     }
 
-    /// Reads a numeric property; `None` while it is unavailable (for example before a file loads).
-    pub(crate) fn get_double(&self, name: &str) -> Option<f64> {
-        let name = CString::new(name).ok()?;
-        let mut value: c_double = 0.0;
-        // SAFETY: `raw` is live; `value` is a properly sized out-parameter for FORMAT_DOUBLE.
-        let code = unsafe {
-            (self.api.get_property)(
-                self.raw,
-                name.as_ptr(),
-                FORMAT_DOUBLE,
-                (&raw mut value).cast(),
-            )
-        };
-        (code >= 0).then_some(value)
-    }
-
-    /// Reads a property as text; `None` while it is unavailable.
-    pub(crate) fn get_string(&self, name: &str) -> Option<String> {
-        let name = CString::new(name).ok()?;
-        let mut text: *mut c_char = std::ptr::null_mut();
-        // SAFETY: `raw` is live; for FORMAT_STRING mpv stores a newly allocated C string in `text`.
-        let code = unsafe {
-            (self.api.get_property)(
-                self.raw,
-                name.as_ptr(),
-                FORMAT_STRING,
-                (&raw mut text).cast(),
-            )
-        };
-        if code < 0 || text.is_null() {
-            return None;
-        }
-        // SAFETY: on success `text` is a valid NUL-terminated string that we own until freed.
-        let value = unsafe { CStr::from_ptr(text) }
-            .to_string_lossy()
-            .into_owned();
-        // SAFETY: `text` was allocated by mpv and must be released with `mpv_free`, exactly once.
-        unsafe { (self.api.free_memory)(text.cast()) };
-        Some(value)
-    }
-
-    /// Reads a boolean property; `None` while it is unavailable.
-    pub(crate) fn get_flag(&self, name: &str) -> Option<bool> {
-        let name = CString::new(name).ok()?;
-        let mut value: c_int = 0;
-        // SAFETY: `raw` is live; `value` is a properly sized out-parameter for FORMAT_FLAG.
-        let code = unsafe {
-            (self.api.get_property)(
-                self.raw,
-                name.as_ptr(),
-                FORMAT_FLAG,
-                (&raw mut value).cast(),
-            )
-        };
-        (code >= 0).then_some(value != 0)
-    }
-
     /// Waits up to `timeout` for the next event.
     pub(crate) fn wait_event(&self, timeout: Duration) -> MpvEvent {
         // SAFETY: `raw` is live; the returned event is valid until the next call on this handle,
@@ -278,6 +237,13 @@ impl MpvHandle {
         }
         // SAFETY: non-null event pointer returned by mpv (see above).
         let (event_id, data) = unsafe { ((*event).event_id, (*event).data) };
+        if event_id == EVENT_LOG_MESSAGE {
+            if !data.is_null() {
+                // SAFETY: for LOG_MESSAGE events `data` points to an `mpv_event_log_message`.
+                unsafe { forward(data) };
+            }
+            return MpvEvent::Other;
+        }
         let end_file = (event_id == EVENT_END_FILE && !data.is_null()).then(|| {
             // SAFETY: for END_FILE events `data` points to an `mpv_event_end_file`.
             let details = unsafe { &*data.cast::<RawEndFile>() };

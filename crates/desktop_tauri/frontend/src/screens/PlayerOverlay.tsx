@@ -32,6 +32,7 @@ import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { FeedbackPopup } from '../components/FeedbackPopup';
 import { usePlayerPreferences } from '../hooks/usePlayerPreferences';
+import { useSubtitleDiagnostics } from '../hooks/useSubtitleDiagnostics';
 
 interface PlayerOverlayProps {
   title: string;
@@ -83,6 +84,13 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     setSubtitleFilter((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]));
   const visibleSources = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
   const filterLanguages = preferences ? preferredFlags(preferences) : [];
+  useSubtitleDiagnostics({
+    tracks: status.tracks,
+    preferences,
+    filter: subtitleFilter,
+    shownSources: visibleSources.length,
+    totalSources: sources.length,
+  });
 
   const selectSource = (index: number) => {
     const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
