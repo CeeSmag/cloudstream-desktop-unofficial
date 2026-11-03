@@ -19,7 +19,12 @@ use crate::subtitle_delivery::SubtitleWork;
 
 /// The key of a title in the saved subtitles and saved sources: one per movie or episode.
 pub(crate) fn title_key(item: &PlaybackItem) -> String {
-    format!("{}\n{}", item.provider, item.media_key)
+    title_key_of(&item.provider, &item.media_key)
+}
+
+/// [`title_key`] from the provider and the media key.
+pub(crate) fn title_key_of(provider: &str, media_key: &str) -> String {
+    format!("{provider}\n{media_key}")
 }
 
 /// Message of the error `play_media` returns when the video is closed before it could start.

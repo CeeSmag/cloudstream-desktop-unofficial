@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use crate::app_state::AppState;
 use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
-use crate::source_manager::{emit, SourceManager, Tell};
+use crate::source_fallback::FallbackOutcome;
+use crate::source_manager::{emit, CheckUpdate, SourceManager, Tell};
 use crate::video_opening::{item_from, open_video, services_for_playing};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
 use tauri::{AppHandle, Manager, State};
@@ -121,6 +122,7 @@ pub async fn set_volume(percent: u8, state: State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn get_playback_status(
+    app: AppHandle,
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
 ) -> Result<PlaybackStatusDto, String> {
@@ -133,8 +135,26 @@ pub async fn get_playback_status(
     if matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
         sources.session().remember_position(status.position_ms);
     }
+    let outcome = sources.fallback().on_status(&sources, playback, &status);
+    if matches!(outcome, FallbackOutcome::Switched(_)) {
+        emit(&app, CheckUpdate::SourcesChanged);
+    }
     let tracks = playback.tracks();
-    Ok(map_playback_status(status, tracks))
+    Ok(apply_fallback(map_playback_status(status, tracks), outcome))
+}
+
+/// A failure the fallback is dealing with is shown as loading; one it gave up on carries its
+/// message, which names every source that failed.
+fn apply_fallback(mut dto: PlaybackStatusDto, outcome: FallbackOutcome) -> PlaybackStatusDto {
+    match outcome {
+        FallbackOutcome::Switched(_) | FallbackOutcome::Switching => {
+            dto.state = "Loading".to_owned();
+            dto.error = None;
+        }
+        FallbackOutcome::GaveUp(message) => dto.error = Some(message),
+        FallbackOutcome::Fine => {}
+    }
+    dto
 }
 
 /// Selects or disables an audio or subtitle track.

@@ -1,13 +1,18 @@
 import React from 'react';
-import { Bookmark as BookmarkIcon, Play, Trash2, Clock } from 'lucide-react';
+import { Bookmark as BookmarkIcon, Trash2, Clock } from 'lucide-react';
 import { Bookmark, HomeItem, WatchProgress } from '../types';
 import { PosterCard } from '../components/PosterCard';
+import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
+import { continueKey } from '../utils/continueWatching';
 
 interface LibraryScreenProps {
   bookmarks: Bookmark[];
   continueWatching: WatchProgress[];
   onSelectItem: (item: HomeItem) => void;
-  onResume: (progress: WatchProgress) => void;
+  /** Opens the title page of a Continue Watching entry. */
+  onOpenContinue: (progress: WatchProgress) => void;
+  onRemoveContinue: (progress: WatchProgress) => void;
+  onClearContinue: () => void;
   onRemoveBookmark: (provider: string, url: string) => void;
 }
 
@@ -15,7 +20,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   bookmarks,
   continueWatching,
   onSelectItem,
-  onResume,
+  onOpenContinue,
+  onRemoveContinue,
+  onClearContinue,
   onRemoveBookmark,
 }) => {
   const [activeTab, setActiveTab] = React.useState('All');
@@ -61,44 +68,22 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       {/* Continue Watching Section */}
       {continueWatching.length > 0 && (
         <div>
-          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-accent" />
-            <span>Continue Watching</span>
-          </h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Clock className="w-4 h-4 text-accent" />
+              <span>Continue Watching</span>
+            </h2>
+            <ClearAllButton onConfirm={onClearContinue} />
+          </div>
 
           <div className="flex items-start gap-4 overflow-x-auto no-scrollbar py-2">
             {continueWatching.map((item) => (
-              <div
-                key={item.media_id}
-                onClick={() => onResume(item)}
-                className="group relative flex-shrink-0 w-56 sm:w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
-              >
-                <div className="relative aspect-video rounded-xl overflow-hidden bg-midnight mb-2.5 flex items-center justify-center">
-                  {item.poster_url ? (
-                    <img src={item.poster_url} alt={item.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-2xl">📺</span>
-                  )}
-                  <div className="absolute inset-0 bg-midnight/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg">
-                      <Play className="w-4 h-4 fill-current ml-0.5" />
-                    </div>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                    <div
-                      className="h-full bg-accent shadow-sm"
-                      style={{ width: `${Math.round(item.percentage * 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                <h4 className="text-sm font-semibold text-white truncate">{item.title}</h4>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  {Math.round(item.percentage * 100)}% completed
-                </p>
-              </div>
+              <ContinueWatchingCard
+                key={continueKey(item)}
+                item={item}
+                onOpen={onOpenContinue}
+                onRemove={onRemoveContinue}
+              />
             ))}
           </div>
         </div>
@@ -146,6 +131,42 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+/** Empties Continue Watching, after asking once, since it also forgets what was kept on disk. */
+const ClearAllButton: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => {
+  const [asking, setAsking] = React.useState(false);
+  if (!asking) {
+    return (
+      <button
+        onClick={() => setAsking(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+        Clear all
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-zinc-400">Remove all from Continue Watching?</span>
+      <button
+        onClick={() => {
+          setAsking(false);
+          onConfirm();
+        }}
+        className="px-3 py-1.5 rounded-lg font-semibold bg-rose-500 hover:bg-rose-600 text-white"
+      >
+        Yes, clear
+      </button>
+      <button
+        onClick={() => setAsking(false)}
+        className="px-3 py-1.5 rounded-lg text-zinc-300 hover:bg-white/10 border border-white/10"
+      >
+        Cancel
+      </button>
     </div>
   );
 };

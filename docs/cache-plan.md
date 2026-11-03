@@ -1,6 +1,6 @@
 # Cache plan
 
-Status: **decisions made, building.** Steps 1 (the `title_cache` crate) and 2 (hit / stale / miss in the opening flow, save, logs, loading-screen text) are done; see "Order of work" for the rest.
+Status: **decisions made, building.** Steps 1 (the `title_cache` crate), 2 (hit / stale / miss in the opening flow, save, logs, loading-screen text) and 3 (the fallback controller, `source_fallback.rs`) are done; removing a title from Continue Watching also forgets its saved sources and subtitle files; see "Order of work" for the rest.
 
 Where the project stands (branch `feat/fast-sources`):
 - `36235c9` the provider's subtitle files are downloaded, cleaned and kept on disk (`crates/subtitle_store`); the preferred language turns on once per stream.
