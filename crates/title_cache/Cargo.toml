@@ -1,0 +1,18 @@
+[package]
+name = "title_cache"
+description = "Remembers the stream links found for a title on disk, so reopening it is fast."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+core_model = { path = "../core_model" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

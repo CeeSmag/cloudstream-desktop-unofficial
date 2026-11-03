@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache_key::cache_key;
+use core_model::stable_key as cache_key; // names of files kept on disk
 
 const FILES_DIR: &str = "files";
 const TITLES_DIR: &str = "titles";
