@@ -22,6 +22,13 @@ const COMMON: &[(&str, &str)] = &[
     ("ytdl", "no"),
     // Prefer English audio when a stream offers several languages; see `preferred_audio`.
     ("alang", "eng,en"),
+    // Read only a little ahead of the playing position. By default mpv downloads as fast as it can
+    // (up to 150 MiB), which on a stream split into many small pieces is hundreds of requests; a
+    // server that limits requests then refuses them ("HTTP 429") and the player skips the pieces.
+    ("cache-secs", "60"),
+    ("demuxer-readahead-secs", "30"),
+    ("demuxer-max-bytes", "64MiB"),
+    ("demuxer-max-back-bytes", "16MiB"),
 ];
 
 /// Applies the options; `embedded` says the render API will be used (no mpv window).
@@ -83,5 +90,19 @@ mod tests {
             ..PlayerOptions::default()
         };
         assert_eq!(options.wid, Some(12345678));
+    }
+
+    #[test]
+    fn mpv_reads_only_a_little_ahead_so_a_rate_limited_server_is_not_flooded() {
+        let value = |name: &str| {
+            COMMON
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("cache-secs"), Some("60"));
+        assert_eq!(value("demuxer-readahead-secs"), Some("30"));
+        assert_eq!(value("demuxer-max-bytes"), Some("64MiB"));
+        assert_eq!(value("demuxer-max-back-bytes"), Some("16MiB"));
     }
 }
