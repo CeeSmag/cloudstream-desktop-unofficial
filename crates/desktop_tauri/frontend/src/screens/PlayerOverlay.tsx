@@ -233,7 +233,12 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         className={`page-gutter pb-4 sm:pb-6 pt-10 [@media(max-height:480px)]:pt-4 bg-gradient-to-t from-midnight/95 via-midnight/60 to-transparent transition-opacity duration-300 ${check ? 'invisible' : fade}`}
       >
         <div className="max-w-5xl 2xl:max-w-7xl mx-auto space-y-1 sm:space-y-2">
-          <SeekBar positionMs={status.position_ms} durationMs={status.duration_ms} onSeek={controls.jumpTo} />
+          <SeekBar
+            positionMs={status.position_ms}
+            durationMs={status.duration_ms}
+            onSeek={controls.jumpTo}
+            segments={skipSegments}
+          />
 
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex items-center gap-2 sm:gap-3">
