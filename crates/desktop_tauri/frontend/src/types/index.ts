@@ -63,6 +63,17 @@ export interface MediaDetails {
   rating: number | null;
   duration_minutes: number | null;
   cast: CastMember[];
+  /** Ids of the title in the skip-time databases, when the provider reports them. */
+  imdb_id: string | null;
+  tmdb_id: string | null;
+  mal_id: string | null;
+}
+
+/** A stretch of the video that can be jumped over. */
+export interface SkipSegment {
+  kind: 'intro' | 'recap' | 'credits' | 'preview';
+  start_ms: number;
+  end_ms: number;
 }
 
 export interface CastMember {

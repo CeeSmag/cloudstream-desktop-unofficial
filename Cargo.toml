@@ -12,6 +12,7 @@ members = [
     "crates/player_mpv",
     "crates/storage",
     "crates/subtitle_store",
+    "crates/skip_times",
     "crates/title_cache",
     "crates/app_services",
     "crates/ui_app",

@@ -138,6 +138,7 @@ fn map_search_item(item: SearchResult, provider: &str) -> SearchItemDto {
 }
 
 fn map_media_details(details: LoadDetails, provider: &str) -> MediaDetailsDto {
+    let ids = skip_times::ExternalIds::from_sync(&details.sync_data, details.unique_url.as_deref());
     let episodes = details
         .episodes
         .into_iter()
@@ -170,5 +171,25 @@ fn map_media_details(details: LoadDetails, provider: &str) -> MediaDetailsDto {
             .map(|rating| rating as f32 / 1000.0),
         duration_minutes: details.duration.filter(|minutes| *minutes > 0),
         cast: details.actors,
+        imdb_id: ids.imdb,
+        tmdb_id: ids.tmdb,
+        mal_id: ids.mal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_ids_a_provider_reports_reach_the_title_page_checked() {
+        let details: LoadDetails = serde_json::from_str(
+            r#"{"name":"Dead City","syncData":{"":"{\"Imdb\":\"tt18546730\",\"Tmdb\":\"x/../y\"}"}}"#,
+        )
+        .expect("valid JSON");
+        let page = map_media_details(details, "CineStream");
+        assert_eq!(page.imdb_id.as_deref(), Some("tt18546730"));
+        assert_eq!(page.tmdb_id, None, "a malformed id is dropped");
+        assert_eq!(page.mal_id, None);
     }
 }

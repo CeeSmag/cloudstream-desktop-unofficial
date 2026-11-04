@@ -149,6 +149,12 @@ pub struct MediaDetailsDto {
     pub duration_minutes: Option<i32>,
     /// The cast.
     pub cast: Vec<core_model::CastMember>,
+    /// IMDb id of the title, when the provider reports one.
+    pub imdb_id: Option<String>,
+    /// TheMovieDB id of the title.
+    pub tmdb_id: Option<String>,
+    /// MyAnimeList id of the title.
+    pub mal_id: Option<String>,
 }
 
 /// An episode belonging to a series.
