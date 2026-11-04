@@ -194,3 +194,13 @@ fn finished_items_restart_from_the_beginning() {
     service.tick();
     assert_eq!(service.resume_position_ms(&item()).expect("resume"), 0);
 }
+
+#[test]
+fn the_players_detailed_log_follows_the_debug_switch_both_ways() {
+    let (service, player, ..) = setup();
+    assert!(!player.verbose_log.load(std::sync::atomic::Ordering::SeqCst));
+    service.set_verbose_player_log(true);
+    assert!(player.verbose_log.load(std::sync::atomic::Ordering::SeqCst));
+    service.set_verbose_player_log(false);
+    assert!(!player.verbose_log.load(std::sync::atomic::Ordering::SeqCst));
+}

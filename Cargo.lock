@@ -4322,6 +4322,7 @@ dependencies = [
  "libloading 0.8.9",
  "player_api",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
