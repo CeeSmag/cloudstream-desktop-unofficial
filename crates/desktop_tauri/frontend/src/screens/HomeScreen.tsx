@@ -3,7 +3,9 @@ import { Info, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
 import { HomeItem, HomeSection, WatchProgress } from '../types';
 import { PosterCard } from '../components/PosterCard';
 import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
+import { ResumeHero } from '../components/ResumeHero';
 import { continueKey } from '../utils/continueWatching';
+import { pickResumeHero } from '../utils/resumeHero';
 
 interface HomeScreenProps {
   sections: HomeSection[];
@@ -12,6 +14,8 @@ interface HomeScreenProps {
   continueWatching: WatchProgress[];
   /** Opens the title page of a Continue Watching entry. */
   onOpenContinue: (progress: WatchProgress) => void;
+  /** Plays a Continue Watching entry from where it was left. */
+  onResumeContinue: (progress: WatchProgress) => void;
   onRemoveContinue: (progress: WatchProgress) => void;
 }
 
@@ -21,14 +25,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   loading,
   continueWatching,
   onOpenContinue,
+  onResumeContinue,
   onRemoveContinue,
 }) => {
   const heroItem = sections[0]?.items[0];
+  const resumeItem = pickResumeHero(continueWatching);
 
   return (
     <div className="flex-1 overflow-y-auto pb-20 select-none">
-      {/* Hero Banner */}
-      {heroItem && (
+      {/* Hero Banner: what the viewer was last watching, else the first title of the feed */}
+      {resumeItem && <ResumeHero item={resumeItem} onResume={onResumeContinue} onDetails={onOpenContinue} />}
+      {!resumeItem && heroItem && (
         <div className="relative w-full h-[clamp(17rem,48vh,36rem)] overflow-hidden">
           {/* Backdrop Image */}
           <div className="absolute inset-0">
