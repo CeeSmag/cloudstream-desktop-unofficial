@@ -17,6 +17,7 @@ const IDLE_STATUS: PlaybackStatus = {
   has_video: false,
   volume: 100,
   tracks: [],
+  chapters: [],
   error: null,
 };
 

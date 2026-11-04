@@ -21,8 +21,7 @@ pub fn is_over_watch_threshold(position_ms: i64, duration_ms: i64) -> bool {
     if duration_ms <= 0 {
         return false;
     }
-    let fraction = (position_ms as f64) / (duration_ms as f64);
-    fraction >= NEXT_WATCH_EPISODE_PERCENTAGE
+    (position_ms as f64) / (duration_ms as f64) >= NEXT_WATCH_EPISODE_PERCENTAGE
 }
 
 struct ActivePlayback {
@@ -137,7 +136,7 @@ impl PlaybackService {
         self.player.set_preferred_audio(language);
     }
 
-    /// Makes the player write its own detailed messages into the log (while debug logging is on).
+    /// Makes the player log its own detailed messages (while debug logging is on).
     pub fn set_verbose_player_log(&self, enabled: bool) {
         self.player.set_verbose_log(enabled);
     }
@@ -165,6 +164,11 @@ impl PlaybackService {
     /// The audio and subtitle tracks of the current stream.
     pub fn tracks(&self) -> Vec<player_api::MediaTrack> {
         self.player.tracks()
+    }
+
+    /// The chapters of the current stream; empty when it has none.
+    pub fn chapters(&self) -> Vec<player_api::Chapter> {
+        self.player.chapters()
     }
 
     /// Selects a track by id, or turns subtitles/audio off with `None`.

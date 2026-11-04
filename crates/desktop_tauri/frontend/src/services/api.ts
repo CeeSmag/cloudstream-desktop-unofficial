@@ -136,7 +136,7 @@ export const api = {
     try {
       return await invokeTauri<PlaybackStatus>('get_playback_status');
     } catch {
-      return { state: 'Idle', position_ms: 0, duration_ms: 0, has_video: false, volume: 100, tracks: [], error: null };
+      return { state: 'Idle', position_ms: 0, duration_ms: 0, has_video: false, volume: 100, tracks: [], chapters: [], error: null };
     }
   },
 

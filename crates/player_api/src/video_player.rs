@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource, TrackKind,
-    VideoFrame,
+    Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource,
+    TrackKind, VideoFrame,
 };
 
 /// A video player the app can drive.
@@ -63,6 +63,11 @@ pub trait VideoPlayer: Send + Sync {
     /// by hand is never overridden.
     fn set_preferred_subtitles(&self, languages: &[Language]) {
         let _ = languages;
+    }
+
+    /// The chapters of the current stream, in time order; empty when it has none.
+    fn chapters(&self) -> Vec<Chapter> {
+        Vec::new()
     }
 
     /// Whether pictures are delivered through [`VideoPlayer::latest_frame`] (embedded in the
