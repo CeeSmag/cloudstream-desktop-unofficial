@@ -7,6 +7,7 @@ import { EpisodeSection } from '../components/details/EpisodeSection';
 import { groupBySeason, seasonNumbers, sortEpisodes } from '../utils/episodeGroups';
 import { findEpisodeForKey, movieAsEpisode } from '../playback/episodeLookup';
 import { episodeBadgeText, formatRemainingTime } from '../utils/continueWatching';
+import { EpisodeMark, marksByKey } from '../utils/episodeMarks';
 
 interface DetailsScreenProps {
   details: MediaDetails;
@@ -46,6 +47,23 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
       })
       .catch(() => {
         if (active) setResumePointer(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [details.provider, details.url]);
+
+  const [marks, setMarks] = React.useState<Map<string, EpisodeMark>>(new Map());
+
+  React.useEffect(() => {
+    let active = true;
+    api
+      .getShowProgress(details.provider, details.url)
+      .then((list) => {
+        if (active) setMarks(marksByKey(list));
+      })
+      .catch(() => {
+        if (active) setMarks(new Map());
       });
     return () => {
       active = false;
@@ -205,6 +223,7 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
             fallbackPoster={details.poster_url}
             onPlay={onPlayEpisode}
             highlightedKey={resumePointer?.media_key}
+            marks={marks}
           />
         )}
 

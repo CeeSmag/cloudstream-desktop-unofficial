@@ -107,6 +107,16 @@ impl LibraryService {
         }))
     }
 
+    /// The saved position of every episode of a show, for the marks on its title page.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
+    pub fn show_progress(
+        &self,
+        provider: &str,
+        detail_url: &str,
+    ) -> Result<Vec<WatchProgress>, ServiceError> {
+        Ok(self.progress.for_show(provider, detail_url)?)
+    }
+
     /// Takes one item out of "continue watching" by forgetting its progress.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
     pub fn remove_progress(&self, provider: &str, media_key: &str) -> Result<bool, ServiceError> {
