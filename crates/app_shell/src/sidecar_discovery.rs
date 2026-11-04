@@ -18,6 +18,12 @@ pub(crate) fn discover() -> Result<SidecarLaunchConfig, GatewayError> {
     if std::env::var_os("CS_SIDECAR_HOME").is_some() {
         return SidecarLaunchConfig::from_environment();
     }
+    if let Some(config) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().and_then(bundled_install))
+    {
+        return Ok(config);
+    }
     let home = PathBuf::from(DEFAULT_INSTALL);
     if !home.join("bin").is_dir() {
         return Err(GatewayError::Unavailable(format!(
@@ -28,6 +34,21 @@ pub(crate) fn discover() -> Result<SidecarLaunchConfig, GatewayError> {
         .map(PathBuf::from)
         .or_else(find_jdk21);
     Ok(SidecarLaunchConfig::for_install(
+        &home,
+        java_home.as_deref(),
+    ))
+}
+
+/// The sidecar and Java that ship with the app: `sidecar` and `jre` folders next to the program,
+/// as the installer and the portable zip lay them out. None when the app has no `sidecar` folder.
+fn bundled_install(program_folder: &Path) -> Option<SidecarLaunchConfig> {
+    let home = program_folder.join("sidecar");
+    if !home.join("bin").is_dir() {
+        return None;
+    }
+    let jre = program_folder.join("jre");
+    let java_home = jre.join("bin").is_dir().then_some(jre).or_else(find_jdk21);
+    Some(SidecarLaunchConfig::for_install(
         &home,
         java_home.as_deref(),
     ))
@@ -71,6 +92,31 @@ mod tests {
         for good in ["jdk-21.0.2", "jbr-21.0.10", "jdk21", "jdk-21"] {
             assert!(is_jdk21_folder_name(good), "{good}");
         }
+    }
+
+    #[test]
+    fn the_sidecar_and_java_next_to_the_program_are_used() {
+        let folder = std::env::temp_dir().join(format!("cs_bundled_{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("sidecar").join("bin")).expect("sidecar");
+        std::fs::create_dir_all(folder.join("jre").join("bin")).expect("jre");
+        let config = bundled_install(&folder).expect("found");
+        assert!(config
+            .program
+            .starts_with(folder.join("sidecar").join("bin")));
+        let java_home = config
+            .environment
+            .iter()
+            .find(|(name, _)| name == "JAVA_HOME");
+        assert_eq!(
+            java_home.map(|(_, value)| value.as_str()),
+            folder.join("jre").to_str()
+        );
+        std::fs::remove_dir_all(folder.join("sidecar")).expect("remove");
+        assert!(
+            bundled_install(&folder).is_none(),
+            "no sidecar folder, nothing bundled"
+        );
+        std::fs::remove_dir_all(&folder).expect("cleanup");
     }
 
     #[test]
