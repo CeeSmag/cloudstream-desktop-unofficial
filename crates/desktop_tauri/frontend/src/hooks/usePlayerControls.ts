@@ -4,6 +4,7 @@ import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
 import { seekText, volumeText } from '../utils/feedbackText';
 import { wheelVolumeDelta } from '../utils/wheelVolume';
 import { formatTime } from '../utils/playerTime';
+import { PendingSeek, seekTarget } from '../utils/seekTarget';
 import { useClickOrDoubleClick } from './useClickOrDoubleClick';
 import { useFeedbackPopup } from './useFeedbackPopup';
 import { usePlayerShortcuts } from './usePlayerShortcuts';
@@ -59,13 +60,26 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
     onTogglePlay();
   };
 
+  /** Where the last jump aimed, so quick presses add up before the player reports the new position. */
+  const pendingSeek = React.useRef<PendingSeek | null>(null);
+
   const seekBy = (deltaMs: number) => {
     show({ icon: deltaMs < 0 ? 'back' : 'forward', text: seekText(deltaMs) });
-    onSeek(Math.max(0, status.position_ms + deltaMs));
+    const now = Date.now();
+    const targetMs = seekTarget({
+      positionMs: status.position_ms,
+      durationMs: status.duration_ms,
+      deltaMs,
+      pending: pendingSeek.current,
+      now,
+    });
+    pendingSeek.current = { targetMs, at: now };
+    onSeek(targetMs);
   };
 
   const jumpTo = (positionMs: number) => {
     show({ icon: 'jump', text: `Jump to ${formatTime(positionMs)}` });
+    pendingSeek.current = { targetMs: positionMs, at: Date.now() };
     onSeek(positionMs);
   };
 
