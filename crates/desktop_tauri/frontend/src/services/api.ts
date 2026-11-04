@@ -155,6 +155,9 @@ export const api = {
 
   getContinueWatching: () => invokeTauri<WatchProgress[]>('get_continue_watching'),
 
+  /** Tells the backend the viewer picked another provider, so saved stream links are not used any more. */
+  providerSwitched: (from: string, to: string) => invokeTauri<boolean>('provider_switched', { from, to }),
+
   /** The intro, recap and credits of the playing video; empty when none are known. */
   getSkipSegments: (request: SkipRequest) => invokeTauri<SkipSegment[]>('get_skip_segments', { request }),
 

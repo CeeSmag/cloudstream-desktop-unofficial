@@ -37,6 +37,8 @@ pub enum Miss {
     NotSaved,
     /// Saved, but too long ago; the file was deleted.
     Expired,
+    /// Saved before the viewer switched provider; the file was deleted.
+    Invalidated,
     /// The file exists but cannot be read (permissions, a lock); it is left alone.
     Unreadable,
     /// The file is empty, truncated or not what it should be; it was deleted.
