@@ -22,6 +22,15 @@ export function findEpisodeForKey(details: MediaDetails, mediaKey: string): Epis
   return movie && movie.data === mediaKey ? movie : null;
 }
 
+/** Finds the episode immediately following the current one in the ordered list. */
+export function findNextEpisode(episodes: Episode[], current: Episode): Episode | null {
+  const index = episodes.findIndex((candidate) => candidate.data === current.data);
+  if (index >= 0 && index + 1 < episodes.length) {
+    return episodes[index + 1];
+  }
+  return null;
+}
+
 /** Title shown in the player; a movie is not repeated as "Name - Name". */
 export function playbackTitle(titleName: string, episodeName: string): string {
   return episodeName === titleName ? titleName : `${titleName} - ${episodeName}`;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { api } from '../services/api';
-import { playbackTitle } from '../playback/episodeLookup';
+import { findNextEpisode, playbackTitle } from '../playback/episodeLookup';
 import { CheckProgress, Episode, MediaDetails, PlaybackStatus, SourceInfo } from '../types';
 import { onBackendEvent } from '../utils/backendEvents';
 
@@ -85,6 +85,7 @@ export function usePlayback() {
     setSources([]);
     setCheck(OPENING);
     setIsOpen(true);
+    const next = findNextEpisode(details.episodes, episode);
     try {
       await api.playMedia({
         provider: details.provider,
@@ -92,6 +93,15 @@ export function usePlayback() {
         title: name,
         detail_url: details.url,
         poster_url: episode.poster_url || details.poster_url || undefined,
+        season: episode.season,
+        episode: episode.episode,
+        next_episode: next
+          ? {
+              media_key: next.data,
+              season: next.season,
+              episode: next.episode,
+            }
+          : null,
       });
     } catch (error) {
       if (openingRef.current !== opening) return; // the viewer already left

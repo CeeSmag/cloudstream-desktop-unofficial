@@ -1,10 +1,12 @@
 import React from 'react';
 import { ArrowLeft, Play, BookmarkPlus, Check, Calendar, Clock, Star, Tag } from 'lucide-react';
-import { Episode, MediaDetails } from '../types';
+import { Episode, MediaDetails, ResumePointer } from '../types';
+import { api } from '../services/api';
 import { CastRow } from '../components/details/CastRow';
 import { EpisodeSection } from '../components/details/EpisodeSection';
 import { groupBySeason, seasonNumbers, sortEpisodes } from '../utils/episodeGroups';
-import { movieAsEpisode } from '../playback/episodeLookup';
+import { findEpisodeForKey, movieAsEpisode } from '../playback/episodeLookup';
+import { episodeBadgeText, formatRemainingTime } from '../utils/continueWatching';
 
 interface DetailsScreenProps {
   details: MediaDetails;
@@ -16,6 +18,9 @@ interface DetailsScreenProps {
 
 const primaryButton =
   'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent';
+
+const secondaryButton =
+  'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-all duration-200 border border-white/10';
 
 const Chip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="flex items-center space-x-1 text-zinc-400 text-xs">{children}</span>
@@ -30,6 +35,34 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
   onToggleBookmark,
 }) => {
   const [chosenSeason, setChosenSeason] = React.useState<number | null>(null);
+  const [resumePointer, setResumePointer] = React.useState<ResumePointer | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    api
+      .getResumePointer(details.provider, details.url)
+      .then((pointer) => {
+        if (active) setResumePointer(pointer);
+      })
+      .catch(() => {
+        if (active) setResumePointer(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [details.provider, details.url]);
+
+  const resumeEpisode = React.useMemo(() => {
+    if (!resumePointer) return null;
+    return findEpisodeForKey(details, resumePointer.media_key);
+  }, [details, resumePointer]);
+
+  React.useEffect(() => {
+    if (resumeEpisode?.season != null) {
+      setChosenSeason(resumeEpisode.season);
+    }
+  }, [resumeEpisode]);
+
   const groups = React.useMemo(() => groupBySeason(details.episodes), [details.episodes]);
   const seasons = seasonNumbers(groups);
   const season = chosenSeason !== null && groups.has(chosenSeason) ? chosenSeason : (seasons[0] ?? 1);
@@ -37,9 +70,17 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
   const firstEpisode = sortEpisodes(seasonEpisodes, true)[0];
   const movie = details.episodes.length === 0 ? movieAsEpisode(details) : null;
   const playTarget = firstEpisode ?? movie;
-  const playLabel = firstEpisode
-    ? `Play S${season} E${firstEpisode.episode ?? 1}`
-    : 'Play';
+  const playLabel = firstEpisode ? `Play S${season} E${firstEpisode.episode ?? 1}` : 'Play';
+
+  const resumeTimeLeft = resumePointer
+    ? formatRemainingTime(resumePointer.position_ms, resumePointer.duration_ms)
+    : null;
+  const resumeBadge = resumeEpisode ? episodeBadgeText(resumeEpisode) : null;
+  const resumeLabel = resumeBadge
+    ? `Resume ${resumeBadge} (${resumeTimeLeft})`
+    : resumeTimeLeft && resumeTimeLeft !== '0m left'
+      ? `Resume (${resumeTimeLeft})`
+      : 'Resume';
 
   return (
     <div className="relative flex-1 overflow-y-auto pb-24 select-none">
@@ -125,8 +166,17 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-              {playTarget && (
-                <button onClick={() => onPlayEpisode(playTarget)} className={primaryButton}>
+              {resumeEpisode && (
+                <button onClick={() => onPlayEpisode(resumeEpisode)} className={primaryButton}>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{resumeLabel}</span>
+                </button>
+              )}
+              {playTarget && (!resumeEpisode || resumeEpisode.data !== playTarget.data) && (
+                <button
+                  onClick={() => onPlayEpisode(playTarget)}
+                  className={resumeEpisode ? secondaryButton : primaryButton}
+                >
                   <Play className="w-4 h-4 fill-current" />
                   <span>{playLabel}</span>
                 </button>
@@ -154,6 +204,7 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
             episodes={seasonEpisodes}
             fallbackPoster={details.poster_url}
             onPlay={onPlayEpisode}
+            highlightedKey={resumePointer?.media_key}
           />
         )}
 

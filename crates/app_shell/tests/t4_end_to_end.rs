@@ -136,6 +136,9 @@ fn install_search_resolve_and_play_an_official_extension() {
             title: item.name.clone(),
             detail_url: item.url.clone(),
             poster_url: item.poster_url.clone(),
+            season: None,
+            episode: None,
+            next_episode: None,
         };
         playback
             .start(playback_item, &link, &[])

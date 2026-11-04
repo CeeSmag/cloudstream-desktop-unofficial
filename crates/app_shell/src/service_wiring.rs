@@ -12,7 +12,7 @@ use extension_runtime::{RpcProviderGateway, SidecarProcessTransport};
 use player_api::VideoPlayer;
 use player_mpv::{locate_libmpv, MpvPlayer, PlayerOptions};
 use storage::{
-    BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, SettingsStore,
+    BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
 };
 use ui_app::UiServices;
@@ -58,6 +58,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         library: LibraryService::new(
             BookmarkStore::new(Arc::clone(&database)),
             WatchProgressStore::new(Arc::clone(&database)),
+            ResumeStore::new(Arc::clone(&database)),
         ),
         settings: SettingsService::new(SettingsStore::new(database)),
         clock,
@@ -103,10 +104,12 @@ fn build_playback(
         Ok(player) => {
             let player: Arc<dyn VideoPlayer> = Arc::new(player);
             let progress = WatchProgressStore::new(Arc::clone(database));
+            let resume = ResumeStore::new(Arc::clone(database));
             (
                 Some(Arc::new(PlaybackService::new(
                     player,
                     progress,
+                    resume,
                     Arc::clone(clock),
                 ))),
                 None,

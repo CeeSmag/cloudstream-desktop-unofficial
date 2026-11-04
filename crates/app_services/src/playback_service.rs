@@ -1,38 +1,28 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
-use core_model::{PlayableLink, SubtitleTrack, WatchProgress};
-use player_api::{PlaybackRequest, PlaybackState, PlaybackStatus, SubtitleSource, VideoPlayer};
-use storage::WatchProgressStore;
+use core_model::{PlayableLink, ResumePointer, SubtitleTrack, WatchProgress};
+use player_api::{PlaybackState, PlaybackStatus, VideoPlayer};
+use storage::{ResumeStore, WatchProgressStore};
 
+use crate::playback_types::{build_request, subtitle_sources};
 use crate::{Clock, ServiceError};
+
+#[allow(unused_imports)]
+pub use crate::playback_types::{NextEpisode, PlaybackItem, StreamSelection};
 
 /// Progress is saved when the position moved at least this far since the last save.
 const SAVE_EVERY_MS: i64 = 5_000;
 
-/// A stream to play, with the subtitles to offer and where to begin.
-#[derive(Debug, Clone, Copy)]
-pub struct StreamSelection<'a> {
-    /// The stream.
-    pub link: &'a PlayableLink,
-    /// External subtitles the provider offered.
-    pub subtitles: &'a [SubtitleTrack],
-    /// Where to begin, in milliseconds.
-    pub start_position_ms: i64,
-}
+/// Percentage of video watched to advance to the next episode (or mark finished).
+pub const NEXT_WATCH_EPISODE_PERCENTAGE: f64 = 0.90;
 
-/// What is being watched; carried into saved progress.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct PlaybackItem {
-    /// Provider the item belongs to.
-    pub provider: String,
-    /// Payload identifying the item (movie data or episode data).
-    pub media_key: String,
-    /// Title shown in "continue watching".
-    pub title: String,
-    /// Provider URL of the parent title.
-    pub detail_url: String,
-    /// Poster image URL.
-    pub poster_url: Option<String>,
+/// Returns whether playback reached the completion threshold to advance to the next episode.
+pub fn is_over_watch_threshold(position_ms: i64, duration_ms: i64) -> bool {
+    if duration_ms <= 0 {
+        return false;
+    }
+    let fraction = (position_ms as f64) / (duration_ms as f64);
+    fraction >= NEXT_WATCH_EPISODE_PERCENTAGE
 }
 
 struct ActivePlayback {
@@ -44,6 +34,7 @@ struct ActivePlayback {
 pub struct PlaybackService {
     player: Arc<dyn VideoPlayer>,
     progress: WatchProgressStore,
+    resume: ResumeStore,
     clock: Arc<dyn Clock>,
     active: Mutex<Option<ActivePlayback>>,
 }
@@ -53,11 +44,13 @@ impl PlaybackService {
     pub fn new(
         player: Arc<dyn VideoPlayer>,
         progress: WatchProgressStore,
+        resume: ResumeStore,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             player,
             progress,
+            resume,
             clock,
             active: Mutex::new(None),
         }
@@ -68,7 +61,7 @@ impl PlaybackService {
     pub fn resume_position_ms(&self, item: &PlaybackItem) -> Result<i64, ServiceError> {
         let saved = self.progress.get(&item.provider, &item.media_key)?;
         Ok(saved
-            .filter(|entry| entry.fraction_watched() < 0.95)
+            .filter(|e| !is_over_watch_threshold(e.position_ms, e.duration_ms))
             .map_or(0, |entry| entry.position_ms))
     }
 
@@ -153,7 +146,14 @@ impl PlaybackService {
     /// Stops the current stream.
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn stop(&self) -> Result<(), ServiceError> {
-        *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let status = self.player.status();
+        let mut active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(current) = active.as_mut() {
+            if let Err(error) = self.save_progress(current, &status) {
+                tracing::warn!(%error, "could not save watch progress on stop");
+            }
+        }
+        *active = None;
         Ok(self.player.stop()?)
     }
 
@@ -213,11 +213,20 @@ impl PlaybackService {
         if !(finished || (watching && moved)) {
             return Ok(());
         }
-        let position_ms = if finished {
+        self.save_progress(current, status)
+    }
+
+    fn save_progress(
+        &self,
+        current: &mut ActivePlayback,
+        status: &PlaybackStatus,
+    ) -> Result<(), ServiceError> {
+        let position_ms = if status.state == PlaybackState::Ended {
             status.duration_ms
         } else {
             status.position_ms
         };
+        let now_ms = self.clock.now_ms();
         self.progress.save(&WatchProgress {
             provider: current.item.provider.clone(),
             media_key: current.item.media_key.clone(),
@@ -226,43 +235,55 @@ impl PlaybackService {
             poster_url: current.item.poster_url.clone(),
             position_ms,
             duration_ms: status.duration_ms,
-            updated_at_ms: self.clock.now_ms(),
+            updated_at_ms: now_ms,
+            season: current.item.season,
+            episode: current.item.episode,
         })?;
         current.last_saved_ms = position_ms;
+        self.update_resume_pointer(&current.item, status)?;
         Ok(())
     }
-}
 
-fn build_request(
-    title: &str,
-    link: &PlayableLink,
-    subtitles: &[SubtitleTrack],
-    start_ms: i64,
-) -> PlaybackRequest {
-    let mut headers: Vec<(String, String)> = link
-        .headers
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-    headers.sort();
-    PlaybackRequest {
-        url: link.url.clone(),
-        title: title.to_owned(),
-        headers,
-        referer: link.referer.clone(),
-        subtitles: subtitle_sources(subtitles),
-        start_position_ms: start_ms,
+    fn update_resume_pointer(
+        &self,
+        item: &PlaybackItem,
+        status: &PlaybackStatus,
+    ) -> Result<(), ServiceError> {
+        if item.detail_url.is_empty() {
+            return Ok(());
+        }
+        let finished = status.state == PlaybackState::Ended;
+        let over_threshold = is_over_watch_threshold(status.position_ms, status.duration_ms);
+        let now_ms = self.clock.now_ms();
+        if finished || over_threshold {
+            if let Some(next) = &item.next_episode {
+                self.resume.save(&ResumePointer {
+                    provider: item.provider.clone(),
+                    detail_url: item.detail_url.clone(),
+                    media_key: next.media_key.clone(),
+                    title: item.title.clone(),
+                    poster_url: item.poster_url.clone(),
+                    season: next.season,
+                    episode: next.episode,
+                    updated_at_ms: now_ms,
+                })?;
+            } else {
+                self.resume.remove(&item.provider, &item.detail_url)?;
+            }
+        } else {
+            self.resume.save(&ResumePointer {
+                provider: item.provider.clone(),
+                detail_url: item.detail_url.clone(),
+                media_key: item.media_key.clone(),
+                title: item.title.clone(),
+                poster_url: item.poster_url.clone(),
+                season: item.season,
+                episode: item.episode,
+                updated_at_ms: now_ms,
+            })?;
+        }
+        Ok(())
     }
-}
-
-fn subtitle_sources(subtitles: &[SubtitleTrack]) -> Vec<SubtitleSource> {
-    subtitles
-        .iter()
-        .map(|track| SubtitleSource {
-            url: track.url.clone(),
-            language: track.lang.clone(),
-        })
-        .collect()
 }
 
 #[cfg(test)]

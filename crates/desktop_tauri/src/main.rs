@@ -96,6 +96,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             library_commands::remove_bookmark,
             library_commands::is_bookmarked,
             library_commands::get_continue_watching,
+            library_commands::get_resume_pointer,
             library_commands::remove_continue_watching,
             library_commands::clear_continue_watching,
             settings_commands::get_repositories,
