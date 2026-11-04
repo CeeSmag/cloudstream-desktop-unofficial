@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use player_api::{MediaTrack, TrackKind};
 
+use crate::chapter_reader::read_chapters;
 use crate::load_tracker::LoadTracker;
 use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
@@ -50,6 +51,7 @@ impl EventWorker {
                 );
                 self.attach_subtitles(loads.loaded());
                 self.refresh_tracks();
+                self.refresh_chapters();
                 self.apply_audio_preference();
             } else if loads.loaded().is_some() {
                 // Subtitles the provider found after the stream started.
@@ -62,6 +64,7 @@ impl EventWorker {
             ticks += 1;
             if ticks.is_multiple_of(TRACK_REFRESH_EVERY) {
                 self.refresh_tracks();
+                self.refresh_chapters();
             }
         }
     }
@@ -117,6 +120,15 @@ impl EventWorker {
                     "the stream has no audio track in the preferred language; playing its default"
                 );
             }
+        }
+    }
+
+    /// Reads the chapters the stream carries (most web streams have none).
+    pub(crate) fn refresh_chapters(&self) {
+        let chapters = read_chapters(|name| self.handle.get_string(name));
+        if chapters != self.tracker.chapters() {
+            tracing::info!(chapters = chapters.len(), "the stream's chapters changed");
+            self.tracker.set_chapters(chapters);
         }
     }
 

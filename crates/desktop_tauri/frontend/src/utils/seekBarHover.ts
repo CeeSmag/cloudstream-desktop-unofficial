@@ -1,4 +1,4 @@
-import { SkipSegment } from '../types';
+import { Chapter, SkipSegment } from '../types';
 import { seekPositionFromClick } from './playerTime';
 
 /** What the viewer is pointing at on the seek bar. */
@@ -9,6 +9,8 @@ export interface HoverInfo {
   percent: number;
   /** The kind of stretch under the pointer ("Intro", "Credits", ...), or null. */
   label: string | null;
+  /** The name of the chapter under the pointer, or null when the stream has none. */
+  chapter: string | null;
 }
 
 const LABELS: Record<SkipSegment['kind'], string> = {
@@ -26,6 +28,24 @@ export function segmentAt(segments: SkipSegment[], positionMs: number): SkipSegm
   return segments.find((s) => positionMs >= s.start_ms && positionMs < s.end_ms) ?? null;
 }
 
+/** The chapter that contains `positionMs`: the last one that has started by then. */
+export function chapterAt(chapters: Chapter[], positionMs: number): Chapter | null {
+  let found: Chapter | null = null;
+  for (const chapter of chapters) {
+    if (chapter.time_ms <= positionMs) found = chapter;
+  }
+  return found;
+}
+
+/** Where chapters start along the bar, 0 to 100, to draw dividers; none unless there are two or more chapters. */
+export function chapterNotches(chapters: Chapter[], durationMs: number): number[] {
+  if (durationMs <= 0 || chapters.length < 2) return [];
+  const notches = chapters
+    .filter((chapter) => chapter.time_ms > 0 && chapter.time_ms < durationMs)
+    .map((chapter) => (chapter.time_ms / durationMs) * 100);
+  return [...new Set(notches)];
+}
+
 /** The time, tooltip place and segment under a pointer at `clientX` over a bar at `left` with `width`. */
 export function hoverInfo(input: {
   clientX: number;
@@ -33,14 +53,20 @@ export function hoverInfo(input: {
   width: number;
   durationMs: number;
   segments: SkipSegment[];
+  chapters?: Chapter[];
 }): HoverInfo | null {
-  const { clientX, left, width, durationMs, segments } = input;
+  const { clientX, left, width, durationMs, segments, chapters = [] } = input;
   if (durationMs <= 0 || width <= 0) return null;
   const positionMs = seekPositionFromClick(clientX, left, width, durationMs);
   const raw = ((clientX - left) / width) * 100;
   const percent = Math.min(100 - TOOLTIP_EDGE_PERCENT, Math.max(TOOLTIP_EDGE_PERCENT, raw));
   const segment = segmentAt(segments, positionMs);
-  return { positionMs, percent, label: segment ? LABELS[segment.kind] : null };
+  return {
+    positionMs,
+    percent,
+    label: segment ? LABELS[segment.kind] : null,
+    chapter: chapterAt(chapters, positionMs)?.title ?? null,
+  };
 }
 
 /** A coloured stretch drawn on the bar. */

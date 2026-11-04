@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { hoverInfo, segmentAt, segmentMarks, TOOLTIP_EDGE_PERCENT } from './seekBarHover';
-import { SkipSegment } from '../types';
+import { chapterAt, chapterNotches, hoverInfo, segmentAt, segmentMarks, TOOLTIP_EDGE_PERCENT } from './seekBarHover';
+import { Chapter, SkipSegment } from '../types';
 
 const intro: SkipSegment = { kind: 'intro', start_ms: 10_000, end_ms: 60_000 };
 const credits: SkipSegment = { kind: 'credits', start_ms: 900_000, end_ms: 1_000_000 };
@@ -9,7 +9,7 @@ const bar = { left: 100, width: 1000, durationMs: 1_000_000, segments: [intro, c
 describe('hoverInfo', () => {
   it('gives the time under the pointer and where to put the tooltip', () => {
     const info = hoverInfo({ ...bar, clientX: 600 });
-    expect(info).toEqual({ positionMs: 500_000, percent: 50, label: null });
+    expect(info).toEqual({ positionMs: 500_000, percent: 50, label: null, chapter: null });
   });
 
   it('names the segment under the pointer, counting its start but not its end', () => {
@@ -65,5 +65,61 @@ describe('segmentMarks', () => {
 
   it('draws nothing before the length is known', () => {
     expect(segmentMarks([intro], 0)).toEqual([]);
+  });
+});
+
+const chapters: Chapter[] = [
+  { title: 'Opening', time_ms: 0 },
+  { title: 'Part A', time_ms: 100_000 },
+  { title: 'Part B', time_ms: 600_000 },
+];
+
+describe('chapterAt', () => {
+  it('is the last chapter that has started, counting its start exactly', () => {
+    expect(chapterAt(chapters, 0)?.title).toBe('Opening');
+    expect(chapterAt(chapters, 99_999)?.title).toBe('Opening');
+    expect(chapterAt(chapters, 100_000)?.title).toBe('Part A');
+    expect(chapterAt(chapters, 900_000)?.title).toBe('Part B');
+  });
+
+  it('is nothing before the first chapter starts or without chapters', () => {
+    expect(chapterAt([{ title: 'Late', time_ms: 5000 }], 1000)).toBeNull();
+    expect(chapterAt([], 1000)).toBeNull();
+  });
+});
+
+describe('chapterNotches', () => {
+  it('puts a divider where each chapter after the first starts', () => {
+    expect(chapterNotches(chapters, 1_000_000)).toEqual([10, 60]);
+  });
+
+  it('draws none for a single chapter, no chapters or an unknown length', () => {
+    expect(chapterNotches([chapters[0]], 1_000_000)).toEqual([]);
+    expect(chapterNotches([], 1_000_000)).toEqual([]);
+    expect(chapterNotches(chapters, 0)).toEqual([]);
+  });
+
+  it('leaves out chapters at the very start or at or past the end, and repeats', () => {
+    const odd: Chapter[] = [
+      { title: 'a', time_ms: 0 },
+      { title: 'b', time_ms: 250_000 },
+      { title: 'b again', time_ms: 250_000 },
+      { title: 'end', time_ms: 1_000_000 },
+      { title: 'beyond', time_ms: 2_000_000 },
+    ];
+    expect(chapterNotches(odd, 1_000_000)).toEqual([25]);
+  });
+});
+
+describe('hoverInfo with chapters', () => {
+  it('names the chapter under the pointer next to the segment', () => {
+    const info = hoverInfo({ ...bar, chapters, clientX: 100 + 30 });
+    expect(info?.chapter).toBe('Opening');
+    expect(info?.label).toBe('Intro');
+    expect(hoverInfo({ ...bar, chapters, clientX: 100 + 700 })?.chapter).toBe('Part B');
+  });
+
+  it('has no chapter when the stream has none', () => {
+    expect(hoverInfo({ ...bar, clientX: 600 })?.chapter).toBeNull();
   });
 });

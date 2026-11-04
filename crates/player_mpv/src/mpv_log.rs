@@ -20,6 +20,16 @@ struct RawLogMessage {
     log_level: c_int,
 }
 
+/// The mpv log level to ask for: warnings and errors, or while debug logging is on everything mpv
+/// says at `verbose` and worse.
+pub(crate) fn log_level(verbose: bool) -> &'static str {
+    if verbose {
+        "v"
+    } else {
+        "warn"
+    }
+}
+
 /// The entry point that asks mpv to deliver its log messages as events.
 pub(crate) struct LogApi {
     request: RequestLogFn,

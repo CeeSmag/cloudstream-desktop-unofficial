@@ -1,7 +1,7 @@
 import React from 'react';
-import { SkipSegment } from '../types';
+import { Chapter, SkipSegment } from '../types';
 import { formatTime, progressPercent, seekPositionFromClick } from '../utils/playerTime';
-import { HoverInfo, hoverInfo, segmentMarks } from '../utils/seekBarHover';
+import { chapterNotches, HoverInfo, hoverInfo, segmentMarks } from '../utils/seekBarHover';
 
 interface SeekBarProps {
   positionMs: number;
@@ -9,6 +9,8 @@ interface SeekBarProps {
   onSeek: (positionMs: number) => void;
   /** Intro, recap and credits of the video, drawn as coloured stretches on the bar when known. */
   segments?: SkipSegment[];
+  /** Chapters of the stream; their starts divide the bar into sections. */
+  chapters?: Chapter[];
 }
 
 /** The colour of each kind of stretch drawn on the bar. */
@@ -24,10 +26,11 @@ const MARK_COLORS: Record<SkipSegment['kind'], string> = {
  * of that point (and which stretch it is, when the intro, recap or credits are known); those
  * stretches are drawn on the bar.
  */
-export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek, segments = [] }) => {
+export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek, segments = [], chapters = [] }) => {
   const percent = progressPercent(positionMs, durationMs);
   const [hover, setHover] = React.useState<HoverInfo | null>(null);
   const marks = React.useMemo(() => segmentMarks(segments, durationMs), [segments, durationMs]);
+  const notches = React.useMemo(() => chapterNotches(chapters, durationMs), [chapters, durationMs]);
 
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -36,7 +39,7 @@ export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek
 
   const handleMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    setHover(hoverInfo({ clientX: event.clientX, left: rect.left, width: rect.width, durationMs, segments }));
+    setHover(hoverInfo({ clientX: event.clientX, left: rect.left, width: rect.width, durationMs, segments, chapters }));
   };
 
   return (
@@ -54,6 +57,7 @@ export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek
           style={{ left: `${hover.percent}%` }}
         >
           {formatTime(hover.positionMs)}
+          {hover.chapter && <span className="ml-1.5 font-medium text-accent">{hover.chapter}</span>}
           {hover.label && <span className="ml-1.5 font-medium text-zinc-300">· {hover.label}</span>}
         </div>
       )}
@@ -70,6 +74,21 @@ export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek
           className="absolute left-0 top-0 bottom-0 rounded-full bg-gradient-to-r from-accent to-purple-400 shadow-sm"
           style={{ width: `${percent}%` }}
         />
+        {hover && (
+          <div
+            className="absolute left-0 top-0 bottom-0 rounded-full bg-white/20"
+            style={{ width: `${(hover.positionMs / durationMs) * 100}%` }}
+            aria-hidden="true"
+          />
+        )}
+        {notches.map((notch) => (
+          <div
+            key={notch}
+            className="absolute top-0 bottom-0 w-0.5 -ml-px bg-midnight/90"
+            style={{ left: `${notch}%` }}
+            aria-hidden="true"
+          />
+        ))}
         {hover && (
           <div
             className="absolute top-0 bottom-0 w-0.5 -ml-px bg-white/80"

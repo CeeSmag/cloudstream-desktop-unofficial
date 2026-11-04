@@ -11,6 +11,7 @@ use player_api::{
 use crate::event_worker::EventWorker;
 use crate::frame_renderer::{FrameRenderer, FrameShared};
 use crate::mpv_api::{MpvApi, MpvHandle};
+use crate::mpv_log::log_level;
 use crate::mpv_option_format::{header_fields, start_option};
 use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
 use crate::pending_subtitles::{queue_for_new_stream, PendingSubtitles};
@@ -58,7 +59,7 @@ impl MpvPlayer {
         let handle = Arc::new(MpvHandle::create(api)?);
         configure(&handle, options, embedded)?;
         handle.initialize()?;
-        handle.set_log_level(QUIET_LOG_LEVEL);
+        handle.set_log_level(log_level(false));
         let (renderer, frames) = if embedded {
             start_embedding(&handle)
         } else {
@@ -138,20 +139,9 @@ fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Ar
     }
 }
 
-/// The mpv log level normally forwarded: warnings and errors.
-const QUIET_LOG_LEVEL: &str = "warn";
-/// The level while debug logging is on: everything mpv says at `verbose` and worse.
-const VERBOSE_LOG_LEVEL: &str = "v";
-
 impl VideoPlayer for MpvPlayer {
     fn set_verbose_log(&self, enabled: bool) {
-        let level = if enabled {
-            VERBOSE_LOG_LEVEL
-        } else {
-            QUIET_LOG_LEVEL
-        };
-        tracing::info!(level, "mpv log level changed");
-        self.handle.set_log_level(level);
+        self.handle.set_log_level(log_level(enabled));
     }
 
     #[tracing::instrument(level = "debug", skip_all, err)]
@@ -236,6 +226,10 @@ impl VideoPlayer for MpvPlayer {
 
     fn tracks(&self) -> Vec<MediaTrack> {
         self.tracker.tracks()
+    }
+
+    fn chapters(&self) -> Vec<player_api::Chapter> {
+        self.tracker.chapters()
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(kind = ?kind, id = ?id), err)]

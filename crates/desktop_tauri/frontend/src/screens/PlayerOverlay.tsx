@@ -238,6 +238,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             durationMs={status.duration_ms}
             onSeek={controls.jumpTo}
             segments={skipSegments}
+            chapters={status.chapters}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
