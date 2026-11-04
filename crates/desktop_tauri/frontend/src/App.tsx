@@ -2,15 +2,7 @@ import React from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
-import {
-  Bookmark,
-  Episode,
-  HomeItem,
-  HomeSection,
-  MediaDetails,
-  ProviderInfo,
-  WatchProgress,
-} from './types';
+import { Bookmark, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
 import { SearchScreen } from './screens/SearchScreen';
@@ -24,6 +16,7 @@ import { setDebugLogging } from './utils/logger';
 import { StartupScreen } from './components/StartupScreen';
 import { ContextMenu } from './components/ContextMenu';
 import { useContextMenu } from './hooks/useContextMenu';
+import { resumeTarget } from './playback/resumeTarget';
 import { canOpenTitlePage, missingPageMessage, titlePageItem } from './utils/continueWatching';
 
 export const App: React.FC = () => {
@@ -144,6 +137,12 @@ export const App: React.FC = () => {
     await handleSelectItem(titlePageItem(progress));
   });
 
+  // The Home banner plays the title from where it was left, without leaving the Home page.
+  const handleResumeContinue = guard(async (progress: WatchProgress) => {
+    const { details, episode } = await resumeTarget(progress);
+    await playback.start(details, episode);
+  });
+
   // Takes a title out of Continue Watching; the backend also forgets its saved sources and subtitles.
   const handleRemoveContinue = guard(async (progress: WatchProgress) => {
     await api.removeContinueWatching(progress.provider, progress.detail_url);
@@ -260,6 +259,7 @@ export const App: React.FC = () => {
                 loading={homeLoading}
                 continueWatching={continueWatching}
                 onOpenContinue={handleOpenContinue}
+                onResumeContinue={handleResumeContinue}
                 onRemoveContinue={handleRemoveContinue}
               />
             )}
