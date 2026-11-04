@@ -21,6 +21,8 @@ import { canOpenTitlePage, missingPageMessage, titlePageItem } from './utils/con
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
+  // The tab bar answers a click at once; the page below follows in a render that does not block it.
+  const shownTab = React.useDeferredValue(currentTab);
   const [errorText, setErrorText] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
 
@@ -251,8 +253,8 @@ export const App: React.FC = () => {
             onToggleBookmark={handleToggleBookmark}
           />
         ) : (
-          <>
-            {currentTab === 'home' && (
+          <div key={shownTab} className="screen-in flex flex-1 min-w-0 overflow-hidden">
+            {shownTab === 'home' && (
               <HomeScreen
                 sections={homeSections}
                 onSelectItem={handleSelectItem}
@@ -263,7 +265,7 @@ export const App: React.FC = () => {
                 onRemoveContinue={handleRemoveContinue}
               />
             )}
-            {currentTab === 'search' && (
+            {shownTab === 'search' && (
               <SearchScreen
                 onSelectItem={handleSelectItem}
                 selectedProvider={selectedProvider}
@@ -272,7 +274,7 @@ export const App: React.FC = () => {
                 onSearch={(q) => api.search(q, selectedProvider || undefined)}
               />
             )}
-            {currentTab === 'library' && (
+            {shownTab === 'library' && (
               <LibraryScreen
                 bookmarks={bookmarks}
                 continueWatching={continueWatching}
@@ -283,10 +285,10 @@ export const App: React.FC = () => {
                 onRemoveBookmark={handleRemoveBookmark}
               />
             )}
-            {currentTab === 'settings' && (
+            {shownTab === 'settings' && (
               <SettingsScreen providers={providers} onError={(error) => setErrorText(describeError(error))} />
             )}
-          </>
+          </div>
         )}
       </main>
     </div>
