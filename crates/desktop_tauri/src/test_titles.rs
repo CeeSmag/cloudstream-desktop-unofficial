@@ -41,6 +41,11 @@ impl TestTitles {
         }
     }
 
+    /// The folder the cache keeps its files in.
+    pub(crate) fn folder(&self) -> &std::path::Path {
+        &self.folder
+    }
+
     /// Moves the clock on, making everything saved so far older.
     pub(crate) fn pass(&self, time: Duration) {
         self.seconds.fetch_add(time.as_secs(), Ordering::SeqCst);

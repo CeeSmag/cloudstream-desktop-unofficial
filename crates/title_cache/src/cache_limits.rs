@@ -38,6 +38,8 @@ pub(crate) enum Verdict {
     Usable(Freshness, Option<Duration>),
     /// Too old (or dated absurdly far ahead): delete it.
     Expired,
+    /// Saved before the viewer switched provider: never used again, so delete it.
+    Invalidated,
 }
 
 impl CacheLimits {
