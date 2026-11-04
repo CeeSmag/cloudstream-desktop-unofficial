@@ -28,6 +28,7 @@ mod saved_start;
 #[cfg(test)]
 mod session_race_tests;
 mod settings_commands;
+mod skip_commands;
 mod source_commands;
 mod source_discovery;
 mod source_fallback;
@@ -73,6 +74,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             preferences_commands::set_preferred_subtitles,
             preferences_commands::set_auto_subtitles,
             preferences_commands::set_playback_option,
+            skip_commands::get_skip_segments,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
             debug_log_commands::open_logs_folder,
@@ -141,6 +143,9 @@ fn init_services(
         subtitle_loader(paths),
         title_cache(paths),
     ));
+    app.manage(std::sync::Arc::new(skip_times::SkipLookup::new(
+        std::sync::Arc::new(skip_times::UreqSkipFetcher::default()),
+    )));
     app.manage(startup::StartupTracker::default());
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())

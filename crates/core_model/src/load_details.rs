@@ -42,6 +42,28 @@ fn cast_list<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<CastMembe
         .collect())
 }
 
+/// The ids a provider reports for a title in other services, keyed by service. Values that are
+/// not text are left out rather than failing the whole title.
+fn text_map<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Text(String),
+        Other(serde::de::IgnoredAny),
+    }
+    let raw = Option::<BTreeMap<String, Value>>::deserialize(deserializer)?;
+    Ok(raw
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, value)| match value {
+            Value::Text(text) => Some((key, text)),
+            Value::Other(_) => None,
+        })
+        .collect())
+}
+
 /// Providers send episodes either as one list or, for anime, grouped by language
 /// (`{"Subbed": [...], "Dubbed": [...]}`). The same episodes repeat in every group, so the first
 /// group that has any is used.
@@ -133,6 +155,12 @@ pub struct LoadDetails {
     /// The cast.
     #[serde(default, deserialize_with = "cast_list")]
     pub actors: Vec<CastMember>,
+    /// Ids of the title in other services (IMDb, TMDb, MyAnimeList), as the provider sends them.
+    #[serde(default, deserialize_with = "text_map")]
+    pub sync_data: BTreeMap<String, String>,
+    /// A JSON text identifying the title across providers, such as `{"id":"tt1","type":"movie"}`.
+    #[serde(default)]
+    pub unique_url: Option<String>,
 }
 
 #[cfg(test)]
@@ -162,6 +190,22 @@ mod tests {
         assert_eq!(details.background_poster_url.as_deref(), Some("https://bg"));
         assert_eq!(details.actors[0].name, "Lauren Cohan");
         assert_eq!(details.actors[0].image.as_deref(), Some("https://p"));
+    }
+
+    #[test]
+    fn the_ids_a_provider_reports_are_kept_and_odd_values_do_not_break_the_title() {
+        let json = r#"{"name":"X","syncData":{"":"{\"Imdb\":\"tt18546730\"}","n":5,"z":null},
+            "uniqueUrl":"{\"id\":\"tt18546730\",\"type\":\"series\"}"}"#;
+        let details: LoadDetails = serde_json::from_str(json).expect("valid JSON");
+        assert_eq!(details.sync_data.len(), 1);
+        assert_eq!(details.sync_data[""], r#"{"Imdb":"tt18546730"}"#);
+        assert!(details
+            .unique_url
+            .as_deref()
+            .is_some_and(|u| u.contains("tt18546730")));
+        let none: LoadDetails =
+            serde_json::from_str(r#"{"name":"X","syncData":null}"#).expect("ok");
+        assert!(none.sync_data.is_empty() && none.unique_url.is_none());
     }
 
     #[test]

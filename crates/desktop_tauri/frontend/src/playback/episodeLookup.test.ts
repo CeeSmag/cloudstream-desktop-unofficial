@@ -34,6 +34,9 @@ const details = (overrides: Partial<MediaDetails>): MediaDetails => ({
   rating: null,
   duration_minutes: null,
   cast: [],
+  imdb_id: null,
+  tmdb_id: null,
+  mal_id: null,
   ...overrides,
 });
 

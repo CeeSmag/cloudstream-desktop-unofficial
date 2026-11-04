@@ -214,6 +214,7 @@ export const App: React.FC = () => {
           onVolume={guard(playback.setVolume)}
           onPrevious={playback.hasPrevious ? guard(playback.playPrevious) : undefined}
           onNext={playback.hasNext ? guard(playback.playNext) : undefined}
+          skipSegments={playback.skipSegments}
         />
       </>
     );

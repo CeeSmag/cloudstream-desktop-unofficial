@@ -15,9 +15,11 @@ import {
   SearchItem,
   SourceInfo,
   StartupStatus,
+  SkipSegment,
   WatchProgress,
 } from '../types';
 import { describeValue, isDebugLogging, logEvent } from '../utils/logger';
+import type { SkipRequest } from '../playback/skipRequest';
 
 declare global {
   interface Window {
@@ -152,6 +154,9 @@ export const api = {
     invokeTauri<boolean>('is_bookmarked', { provider, url }),
 
   getContinueWatching: () => invokeTauri<WatchProgress[]>('get_continue_watching'),
+
+  /** The intro, recap and credits of the playing video; empty when none are known. */
+  getSkipSegments: (request: SkipRequest) => invokeTauri<SkipSegment[]>('get_skip_segments', { request }),
 
   /** The saved position of every episode of a show, for the marks on its title page. */
   getShowProgress: (provider: string, detailUrl: string) =>
