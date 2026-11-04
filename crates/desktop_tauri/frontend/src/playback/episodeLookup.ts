@@ -22,13 +22,26 @@ export function findEpisodeForKey(details: MediaDetails, mediaKey: string): Epis
   return movie && movie.data === mediaKey ? movie : null;
 }
 
-/** Finds the episode immediately following the current one in the ordered list. */
+/** The episodes in watching order: by season, then by number; episodes without a number go last. */
+export function orderedEpisodes(episodes: Episode[]): Episode[] {
+  const last = Number.MAX_SAFE_INTEGER;
+  return [...episodes].sort(
+    (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? last) - (b.episode ?? last),
+  );
+}
+
+/** The episode watched right after `current`, or null after the last one. */
 export function findNextEpisode(episodes: Episode[], current: Episode): Episode | null {
-  const index = episodes.findIndex((candidate) => candidate.data === current.data);
-  if (index >= 0 && index + 1 < episodes.length) {
-    return episodes[index + 1];
-  }
-  return null;
+  const ordered = orderedEpisodes(episodes);
+  const index = ordered.findIndex((candidate) => candidate.data === current.data);
+  return index >= 0 ? (ordered[index + 1] ?? null) : null;
+}
+
+/** The episode watched right before `current`, or null before the first one. */
+export function findPreviousEpisode(episodes: Episode[], current: Episode): Episode | null {
+  const ordered = orderedEpisodes(episodes);
+  const index = ordered.findIndex((candidate) => candidate.data === current.data);
+  return index > 0 ? (ordered[index - 1] ?? null) : null;
 }
 
 /** Title shown in the player; a movie is not repeated as "Name - Name". */

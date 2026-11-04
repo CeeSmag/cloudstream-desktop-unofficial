@@ -1,6 +1,8 @@
 import React from 'react';
 import { api } from '../services/api';
-import { findNextEpisode, playbackTitle } from '../playback/episodeLookup';
+import { findNextEpisode, findPreviousEpisode, playbackTitle } from '../playback/episodeLookup';
+import { shouldAutoAdvance } from '../playback/autoAdvance';
+import { logEvent } from '../utils/logger';
 import { CheckProgress, Episode, MediaDetails, PlaybackStatus, SourceInfo } from '../types';
 import { onBackendEvent } from '../utils/backendEvents';
 
@@ -30,8 +32,14 @@ const OPENING: CheckProgress = {
   saved: 'none',
 };
 
+/** What is playing: the title page it belongs to and the episode (or the movie). */
+interface Playing {
+  details: MediaDetails;
+  episode: Episode;
+}
+
 /** Everything about the video player screen: what is playing, its state, and the actions on it. */
-export function usePlayback() {
+export function usePlayback(onError: (error: unknown) => void = () => undefined) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [title, setTitle] = React.useState('');
   const [status, setStatus] = React.useState<PlaybackStatus>(IDLE_STATUS);
@@ -40,6 +48,11 @@ export function usePlayback() {
   const [check, setCheck] = React.useState<CheckProgress | null>(null);
   /** Counts openings and closings, so an answer for a video the viewer already left is ignored. */
   const openingRef = React.useRef(0);
+  const [playing, setPlaying] = React.useState<Playing | null>(null);
+  /** The viewer's choice to roll on to the next episode, read when a video opens. */
+  const autoplayRef = React.useRef(true);
+  /** The episode whose end already started the next one, so it happens once. */
+  const advancedRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return undefined;
@@ -73,6 +86,7 @@ export function usePlayback() {
     setCheck(null);
     setStatus(IDLE_STATUS);
     setSources([]);
+    setPlaying(null);
   };
 
   /** Plays one episode (or the single stream of a movie) of `details`: the player opens at once and shows the check. */
@@ -84,6 +98,9 @@ export function usePlayback() {
     setStatus(IDLE_STATUS);
     setSources([]);
     setCheck(OPENING);
+    setPlaying({ details, episode });
+    advancedRef.current = null;
+    void readAutoplay(autoplayRef);
     setIsOpen(true);
     const next = findNextEpisode(details.episodes, episode);
     try {
@@ -127,6 +144,24 @@ export function usePlayback() {
     await api.skipSourceCheck();
   };
 
+  const previous = playing ? findPreviousEpisode(playing.details.episodes, playing.episode) : null;
+  const next = playing ? findNextEpisode(playing.details.episodes, playing.episode) : null;
+
+  const playNeighbour = async (target: Episode | null) => {
+    if (playing && target) await start(playing.details, target);
+  };
+
+  // When an episode ends, the next one starts by itself (once per episode).
+  React.useEffect(() => {
+    if (!playing || !next || advancedRef.current === playing.episode.data) return;
+    if (!shouldAutoAdvance({ status, hasNext: true, enabled: autoplayRef.current })) return;
+    advancedRef.current = playing.episode.data;
+    logEvent('info', `episode ended; starting the next one (${next.name})`);
+    start(playing.details, next).catch(onError);
+    // `start` only reads refs and setters, so it is not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, playing, next]);
+
   const togglePlay = async () => {
     if (status.state === 'Playing') await api.pause();
     else await api.resume();
@@ -147,10 +182,24 @@ export function usePlayback() {
     start,
     stop,
     skipCheck,
+    hasPrevious: previous !== null,
+    hasNext: next !== null,
+    playPrevious: () => playNeighbour(previous),
+    playNext: () => playNeighbour(next),
     togglePlay,
     switchSource,
     seek: (positionMs: number) => api.seekTo(positionMs),
     selectTrack: (kind: 'audio' | 'subtitle', id: number | null) => api.selectTrack(kind, id),
     setVolume: (percent: number) => api.setVolume(percent),
   };
+}
+
+/** Reads whether the next episode starts by itself; stays on when the setting cannot be read. */
+async function readAutoplay(target: { current: boolean }): Promise<void> {
+  try {
+    target.current = (await api.getPreferences()).autoplay_next;
+  } catch (error) {
+    logEvent('warn', `cannot read the autoplay setting: ${String(error)}`);
+    target.current = true;
+  }
 }

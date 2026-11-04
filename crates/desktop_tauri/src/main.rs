@@ -72,6 +72,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             preferences_commands::set_preferred_audio,
             preferences_commands::set_preferred_subtitles,
             preferences_commands::set_auto_subtitles,
+            preferences_commands::set_playback_option,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
             debug_log_commands::open_logs_folder,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AudioLines, Check, Subtitles } from 'lucide-react';
+import { AudioLines, Check, SkipForward, Subtitles } from 'lucide-react';
 import { usePreferences } from '../../hooks/usePreferences';
 import { SubtitleLanguages } from './SubtitleLanguages';
 
@@ -12,7 +12,8 @@ const STREAM_DEFAULT = '';
 
 /** What the viewer prefers: the audio language, and which subtitle languages get a flag under each source in the player. */
 export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => {
-  const { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles } = usePreferences(onError);
+  const { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles, choosePlaybackOption } =
+    usePreferences(onError);
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -54,6 +55,44 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             )}
           </span>
         </div>
+      </div>
+
+      <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <SkipForward className="w-5 h-5 text-accent flex-none" />
+          <span>Episodes</span>
+        </h2>
+        <label className="flex items-start gap-3 text-sm text-zinc-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={preferences?.autoplay_next ?? true}
+            disabled={busy || preferences === null}
+            onChange={(event) => void choosePlaybackOption('autoplay_next', event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Play the next episode automatically
+            <span className="block text-xs text-zinc-400">
+              When an episode reaches its end, the next one starts by itself.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-zinc-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={preferences?.skip_lookup ?? true}
+            disabled={busy || preferences === null}
+            onChange={(event) => void choosePlaybackOption('skip_lookup', event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Look up intro and credits times online
+            <span className="block text-xs text-zinc-400">
+              Shows a Skip Intro button when a community database knows where the intro is. This tells that site which
+              title is playing (its IMDb, TMDb or MyAnimeList id), nothing else.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">
