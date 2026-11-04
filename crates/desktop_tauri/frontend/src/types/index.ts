@@ -133,6 +133,12 @@ export interface MediaTrack {
   selected: boolean;
 }
 
+/** A named stretch of the video that starts at `time_ms`. */
+export interface Chapter {
+  title: string;
+  time_ms: number;
+}
+
 export interface PlaybackStatus {
   state: 'Idle' | 'Loading' | 'Playing' | 'Paused' | 'Ended' | 'Failed';
   position_ms: number;
@@ -140,6 +146,8 @@ export interface PlaybackStatus {
   has_video: boolean;
   volume: number;
   tracks: MediaTrack[];
+  /** Chapters of the stream in time order; empty when it has none. */
+  chapters: Chapter[];
   error?: string | null;
 }
 

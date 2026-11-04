@@ -1,6 +1,6 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use player_api::{MediaTrack, PlaybackState, PlaybackStatus};
+use player_api::{Chapter, MediaTrack, PlaybackState, PlaybackStatus};
 
 use crate::mpv_event::{EndReason, MpvEvent};
 
@@ -9,6 +9,7 @@ use crate::mpv_event::{EndReason, MpvEvent};
 pub(crate) struct StatusTracker {
     status: Mutex<PlaybackStatus>,
     tracks: Mutex<Vec<MediaTrack>>,
+    chapters: Mutex<Vec<Chapter>>,
 }
 
 impl StatusTracker {
@@ -29,6 +30,19 @@ impl StatusTracker {
             .clone()
     }
 
+    /// The chapters of the loaded stream.
+    pub(crate) fn chapters(&self) -> Vec<Chapter> {
+        self.chapters
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Replaces the chapter list.
+    pub(crate) fn set_chapters(&self, chapters: Vec<Chapter>) {
+        *self.chapters.lock().unwrap_or_else(PoisonError::into_inner) = chapters;
+    }
+
     /// Records whether the loaded stream has a picture.
     pub(crate) fn set_has_video(&self, has_video: bool) {
         self.lock().has_video = has_video;
@@ -42,6 +56,7 @@ impl StatusTracker {
     /// Marks a new stream as opening and clears the old position.
     pub(crate) fn begin_loading(&self) {
         self.set_tracks(Vec::new());
+        self.set_chapters(Vec::new());
         *self.lock() = PlaybackStatus {
             state: PlaybackState::Loading,
             // Assume a picture until the track list says otherwise, so nothing flickers.
@@ -53,6 +68,7 @@ impl StatusTracker {
     /// Returns to the idle state at once, forgetting position, tracks and picture.
     pub(crate) fn reset_to_idle(&self) {
         self.set_tracks(Vec::new());
+        self.set_chapters(Vec::new());
         *self.lock() = PlaybackStatus::default();
     }
 
@@ -121,6 +137,7 @@ mod tests {
         tracker.reset_to_idle();
         assert_eq!(tracker.snapshot(), PlaybackStatus::default());
         assert!(tracker.tracks().is_empty());
+        assert!(tracker.chapters().is_empty());
     }
 
     #[test]

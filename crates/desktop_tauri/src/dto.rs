@@ -52,8 +52,19 @@ pub struct PlaybackStatusDto {
     pub volume: f64,
     /// Audio and subtitle tracks.
     pub tracks: Vec<MediaTrackDto>,
+    /// Chapters of the stream, in time order; empty when it has none.
+    pub chapters: Vec<ChapterDto>,
     /// Why playback failed, when `state` is "Failed".
     pub error: Option<String>,
+}
+
+/// One chapter of the stream.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChapterDto {
+    /// Name of the chapter.
+    pub title: String,
+    /// Where it starts, in milliseconds.
+    pub time_ms: i64,
 }
 
 /// Audio or subtitle track info.

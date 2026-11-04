@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::app_state::AppState;
-use crate::dto::{MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
+use crate::dto::{ChapterDto, MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
 use crate::source_fallback::FallbackOutcome;
 use crate::source_manager::{emit, CheckUpdate, SourceManager, Tell};
 use crate::video_opening::{item_from, open_video, services_for_playing};
@@ -139,8 +139,14 @@ pub async fn get_playback_status(
     if matches!(outcome, FallbackOutcome::Switched(_)) {
         emit(&app, CheckUpdate::SourcesChanged);
     }
-    let tracks = playback.tracks();
-    Ok(apply_fallback(map_playback_status(status, tracks), outcome))
+    let streams = StreamParts {
+        tracks: playback.tracks(),
+        chapters: playback.chapters(),
+    };
+    Ok(apply_fallback(
+        map_playback_status(status, streams),
+        outcome,
+    ))
 }
 
 /// A failure the fallback is dealing with is shown as loading; one it gave up on carries its
@@ -180,47 +186,58 @@ pub async fn select_media_track(
         .map_err(|error| error.to_string())
 }
 
-fn map_playback_status(
-    status: PlaybackStatus,
+/// What the player knows about the loaded stream besides its state.
+#[derive(Default)]
+struct StreamParts {
     tracks: Vec<player_api::MediaTrack>,
-) -> PlaybackStatusDto {
-    let error = match &status.state {
-        PlaybackState::Failed(reason) => Some(failure_message(reason)),
-        _ => None,
-    };
-    let state_str = match status.state {
+    chapters: Vec<player_api::Chapter>,
+}
+
+fn state_name(state: &PlaybackState) -> &'static str {
+    match state {
         PlaybackState::Idle => "Idle",
         PlaybackState::Loading => "Loading",
         PlaybackState::Playing => "Playing",
         PlaybackState::Paused => "Paused",
         PlaybackState::Ended => "Ended",
         PlaybackState::Failed(_) => "Failed",
+    }
+}
+
+fn track_dto(track: player_api::MediaTrack) -> MediaTrackDto {
+    let title = track.label();
+    MediaTrackDto {
+        id: track.id,
+        kind: match track.kind {
+            TrackKind::Audio => "audio".to_owned(),
+            TrackKind::Subtitle => "subtitle".to_owned(),
+        },
+        title,
+        language: Some(track.language),
+        selected: track.selected,
+    }
+}
+
+fn map_playback_status(status: PlaybackStatus, streams: StreamParts) -> PlaybackStatusDto {
+    let error = match &status.state {
+        PlaybackState::Failed(reason) => Some(failure_message(reason)),
+        _ => None,
     };
-
-    let track_dtos = tracks
-        .into_iter()
-        .map(|track| {
-            let label = track.label();
-            MediaTrackDto {
-                id: track.id,
-                kind: match track.kind {
-                    TrackKind::Audio => "audio".to_owned(),
-                    TrackKind::Subtitle => "subtitle".to_owned(),
-                },
-                title: label,
-                language: Some(track.language),
-                selected: track.selected,
-            }
-        })
-        .collect();
-
     PlaybackStatusDto {
-        state: state_str.to_owned(),
+        state: state_name(&status.state).to_owned(),
         position_ms: status.position_ms,
         duration_ms: status.duration_ms,
         has_video: status.has_video,
         volume: 100.0,
-        tracks: track_dtos,
+        tracks: streams.tracks.into_iter().map(track_dto).collect(),
+        chapters: streams
+            .chapters
+            .into_iter()
+            .map(|chapter| ChapterDto {
+                title: chapter.title,
+                time_ms: chapter.time_ms,
+            })
+            .collect(),
         error,
     }
 }
@@ -240,7 +257,7 @@ mod tests {
             state: PlaybackState::Failed("mpv error -13".into()),
             ..PlaybackStatus::default()
         };
-        let dto = map_playback_status(status, Vec::new());
+        let dto = map_playback_status(status, StreamParts::default());
         assert_eq!(dto.state, "Failed");
         assert!(dto.error.is_some_and(|text| text.contains("mpv error -13")));
     }
@@ -251,6 +268,32 @@ mod tests {
             state: PlaybackState::Playing,
             ..PlaybackStatus::default()
         };
-        assert!(map_playback_status(status, Vec::new()).error.is_none());
+        assert!(map_playback_status(status, StreamParts::default())
+            .error
+            .is_none());
+    }
+
+    #[test]
+    fn chapters_and_tracks_reach_the_page_in_order() {
+        let streams = StreamParts {
+            tracks: Vec::new(),
+            chapters: vec![
+                player_api::Chapter {
+                    title: "Opening".to_owned(),
+                    time_ms: 0,
+                },
+                player_api::Chapter {
+                    title: "Part A".to_owned(),
+                    time_ms: 93_000,
+                },
+            ],
+        };
+        let dto = map_playback_status(PlaybackStatus::default(), streams);
+        let chapters: Vec<_> = dto
+            .chapters
+            .iter()
+            .map(|c| (c.title.as_str(), c.time_ms))
+            .collect();
+        assert_eq!(chapters, [("Opening", 0), ("Part A", 93_000)]);
     }
 }

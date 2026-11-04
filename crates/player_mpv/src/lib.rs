@@ -1,6 +1,7 @@
 //! libmpv implementation of the `VideoPlayer` contract (loaded at runtime).
 #![deny(unsafe_code)]
 
+mod chapter_reader;
 mod event_worker;
 mod frame_renderer;
 mod libmpv_locator;
