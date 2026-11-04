@@ -109,6 +109,22 @@ pub async fn get_resume_pointer(
     }))
 }
 
+/// The saved position of every episode of a show, so its title page can mark them.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
+pub async fn get_show_progress(
+    provider: String,
+    detail_url: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<WatchProgressDto>, String> {
+    let services = state.read();
+    let list = services
+        .library
+        .show_progress(&provider, &detail_url)
+        .map_err(|error| error.to_string())?;
+    Ok(list.into_iter().map(map_progress).collect())
+}
+
 /// Takes one title out of Continue Watching and forgets all its saved sources and subtitle
 /// files on disk.
 #[tauri::command]

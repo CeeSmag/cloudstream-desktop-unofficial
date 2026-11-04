@@ -1,6 +1,7 @@
 import React from 'react';
-import { ArrowDownAZ, ArrowUpAZ, Play } from 'lucide-react';
+import { ArrowDownAZ, ArrowUpAZ, Check, Play } from 'lucide-react';
 import { Episode } from '../../types';
+import { EpisodeMark } from '../../utils/episodeMarks';
 import {
   chunkEpisodes,
   chunkLabel,
@@ -21,6 +22,8 @@ interface EpisodeSectionProps {
   fallbackPoster: string | null;
   onPlay: (episode: Episode) => void;
   highlightedKey?: string;
+  /** What was watched of each episode, by its playback key. */
+  marks?: Map<string, EpisodeMark>;
 }
 
 const pillClass = (active: boolean) =>
@@ -68,7 +71,8 @@ const EpisodeCard: React.FC<{
   fallbackPoster: string | null;
   onPlay: (e: Episode) => void;
   isHighlighted?: boolean;
-}> = ({ episode, fallbackPoster, onPlay, isHighlighted }) => {
+  mark?: EpisodeMark;
+}> = ({ episode, fallbackPoster, onPlay, isHighlighted, mark }) => {
   const cardRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -103,10 +107,36 @@ const EpisodeCard: React.FC<{
             <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
           </div>
         </div>
+        {mark && (
+          <div
+            role="progressbar"
+            aria-label={mark.kind === 'watched' ? 'Watched' : `${mark.percent}% watched`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={mark.kind === 'watched' ? 100 : mark.percent}
+            className="absolute inset-x-0 bottom-0 h-1 bg-white/20"
+          >
+            <div
+              className={`h-full ${mark.kind === 'watched' ? 'bg-emerald-400' : 'bg-accent'}`}
+              style={{ width: `${mark.kind === 'watched' ? 100 : Math.max(mark.percent, 3)}%` }}
+            />
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-semibold text-accent mb-0.5">
-          {episode.episode != null ? `Episode ${episode.episode}` : 'Episode'}
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[11px] font-semibold text-accent">
+            {episode.episode != null ? `Episode ${episode.episode}` : 'Episode'}
+          </span>
+          {mark?.kind === 'watched' && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+              <Check className="w-3 h-3" />
+              Watched
+            </span>
+          )}
+          {mark?.kind === 'partial' && (
+            <span className="text-[10px] font-medium text-zinc-400">{mark.percent}% watched</span>
+          )}
         </div>
         <h4 className="text-sm font-medium text-zinc-200 group-hover:text-white break-words">{episode.name}</h4>
         {episode.description && (
@@ -119,7 +149,7 @@ const EpisodeCard: React.FC<{
 
 /** The season picker, sort button, episode ranges and the episodes of the selected season. */
 export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
-  const { seasons, selectedSeason, onSelectSeason, episodes, fallbackPoster, onPlay, highlightedKey } = props;
+  const { seasons, selectedSeason, onSelectSeason, episodes, fallbackPoster, onPlay, highlightedKey, marks } = props;
   const [ascending, setAscending] = React.useState(true);
   const [rangeIndex, setRangeIndex] = React.useState(0);
   const chunks = React.useMemo(() => chunkEpisodes(sortEpisodes(episodes, ascending)), [episodes, ascending]);
@@ -172,6 +202,7 @@ export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
             fallbackPoster={fallbackPoster}
             onPlay={onPlay}
             isHighlighted={episode.data === highlightedKey}
+            mark={marks?.get(episode.data)}
           />
         ))}
       </div>
