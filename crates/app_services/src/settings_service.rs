@@ -11,6 +11,7 @@ const NO_AUDIO_PREFERENCE: &str = "none";
 const PREFERRED_SUBTITLES_KEY: &str = "preferred_subtitles";
 const AUTO_SUBTITLES_KEY: &str = "auto_subtitles";
 const AUTOPLAY_NEXT_KEY: &str = "autoplay_next";
+const SOURCES_VALID_FROM_KEY: &str = "sources_valid_from";
 const SKIP_LOOKUP_KEY: &str = "skip_lookup";
 const ENABLED: &str = "yes";
 const DISABLED: &str = "no";
@@ -130,6 +131,23 @@ impl SettingsService {
         self.set_flag(SKIP_LOOKUP_KEY, enabled)
     }
 
+    /// The time (seconds since 1970) of the last provider switch: saved stream links from before it
+    /// are not used. 0 when the viewer never switched.
+    pub fn sources_valid_from(&self) -> Result<u64, ServiceError> {
+        Ok(self
+            .store
+            .get(SOURCES_VALID_FROM_KEY)?
+            .and_then(|text| text.parse().ok())
+            .unwrap_or(0))
+    }
+
+    /// Remembers the time of the last provider switch.
+    pub fn set_sources_valid_from(&self, seconds: u64) -> Result<(), ServiceError> {
+        self.store
+            .set(SOURCES_VALID_FROM_KEY, &seconds.to_string())?;
+        Ok(())
+    }
+
     fn flag(&self, key: &str) -> Result<bool, ServiceError> {
         Ok(self.store.get(key)?.as_deref() != Some(DISABLED))
     }
@@ -240,6 +258,19 @@ mod tests {
             .set(PREFERRED_AUDIO_KEY, "zzz")
             .expect("write");
         assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
+    }
+
+    #[test]
+    fn the_time_of_the_last_switch_round_trips_and_garbage_means_never() {
+        let service = service();
+        assert_eq!(service.sources_valid_from().expect("read"), 0);
+        service.set_sources_valid_from(1_700_000_123).expect("set");
+        assert_eq!(service.sources_valid_from().expect("read"), 1_700_000_123);
+        service
+            .store
+            .set(SOURCES_VALID_FROM_KEY, "yesterday")
+            .expect("write");
+        assert_eq!(service.sources_valid_from().expect("read"), 0);
     }
 
     #[test]

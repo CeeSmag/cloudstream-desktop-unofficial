@@ -187,3 +187,63 @@ fn fifty_rounds_of_save_load_forget_leave_the_folder_empty() {
     }
     assert!(scratch.files().is_empty(), "{:?}", scratch.files());
 }
+
+/// Readers that load the older titles over and over; once `switched` says the switch was made,
+/// none of their loads may find anything.
+fn readers_of_old_titles(
+    cache: &Arc<TitleCache>,
+    switched: &Arc<AtomicBool>,
+) -> Vec<thread::JoinHandle<()>> {
+    (0..6)
+        .map(|_| {
+            let (cache, switched) = (Arc::clone(cache), Arc::clone(switched));
+            thread::spawn(move || {
+                for round in 0..400 {
+                    // Read the flag first: once the switch was reported, nothing older may show.
+                    let after_switch = switched.load(Ordering::SeqCst);
+                    let found = cache.load(&format!("old{}", round % 20));
+                    assert!(
+                        !(after_switch && matches!(found, Lookup::Hit(_))),
+                        "an older save was used after the switch"
+                    );
+                }
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn a_switch_during_loads_and_saves_never_lets_an_older_save_through_afterwards() {
+    let scratch = Scratch::new();
+    let time = Time::new();
+    let cache = Arc::new(scratch.cache(CacheLimits::default(), &time));
+    for n in 0..20 {
+        cache
+            .save(&format!("old{n}"), &many("old", 2))
+            .expect("saved");
+    }
+    time.advance(std::time::Duration::from_secs(30));
+    let switched = Arc::new(AtomicBool::new(false));
+    let readers = readers_of_old_titles(&cache, &switched);
+    let writer = {
+        let cache = Arc::clone(&cache);
+        thread::spawn(move || {
+            for n in 0..50 {
+                cache
+                    .save(&format!("busy{n}"), &many("busy", 1))
+                    .expect("saved");
+            }
+        })
+    };
+    cache.invalidate_now();
+    switched.store(true, Ordering::SeqCst);
+    for reader in readers {
+        reader.join().expect("reader finished");
+    }
+    writer.join().expect("writer finished");
+    cache.prune();
+    assert!(
+        (0..20).all(|n| matches!(cache.load(&format!("old{n}")), Lookup::Miss(_))),
+        "every older save is gone"
+    );
+}

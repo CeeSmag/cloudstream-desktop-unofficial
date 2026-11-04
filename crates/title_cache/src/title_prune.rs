@@ -17,6 +17,8 @@ const LEFTOVER_AFTER: Duration = Duration::from_secs(60);
 pub struct PruneReport {
     /// Files removed because they were saved too long ago.
     pub expired: usize,
+    /// Files removed because they were saved before the viewer switched provider.
+    pub invalidated: usize,
     /// Files removed because they could not be understood (empty, truncated, other version, too big).
     pub corrupt: usize,
     /// Temporary files of crashed saves that were removed.
@@ -76,8 +78,9 @@ impl TitleCache {
             return;
         }
         match read_stored(&path, self.limits.max_file_bytes) {
-            Ok(stored) => match self.limits.judge(stored.saved_at, self.now_secs()) {
+            Ok(stored) => match self.verdict(stored.saved_at) {
                 Verdict::Expired => report.expired += usize::from(remove(&path)),
+                Verdict::Invalidated => report.invalidated += usize::from(remove(&path)),
                 Verdict::Usable(..) => keepers.push(Keeper {
                     saved_at: stored.saved_at,
                     bytes: fs::metadata(&path).map_or(0, |meta| meta.len()),
@@ -150,10 +153,12 @@ fn remove(path: &std::path::Path) -> bool {
 }
 
 fn log_report(report: &PruneReport) {
-    let removed = report.expired + report.corrupt + report.leftovers + report.evicted;
+    let removed =
+        report.expired + report.invalidated + report.corrupt + report.leftovers + report.evicted;
     if removed > 0 {
         tracing::info!(
             expired = report.expired,
+            invalidated = report.invalidated,
             corrupt = report.corrupt,
             leftovers = report.leftovers,
             evicted = report.evicted,

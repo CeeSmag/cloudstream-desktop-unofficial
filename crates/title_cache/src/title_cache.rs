@@ -6,7 +6,7 @@
 //! whole by a rename; writing takes one lock so two saves never interleave.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -58,6 +58,8 @@ pub struct TitleCache {
     clock: Clock,
     writing: Mutex<()>,
     pub(crate) counter: AtomicU64,
+    /// Saves made before this time (seconds since 1970) are not used; 0 lets every save count.
+    valid_from: AtomicU64,
 }
 
 impl TitleCache {
@@ -74,6 +76,7 @@ impl TitleCache {
             clock,
             writing: Mutex::new(()),
             counter: AtomicU64::new(0),
+            valid_from: AtomicU64::new(0),
         }
     }
 
@@ -87,6 +90,35 @@ impl TitleCache {
         (self.clock)()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs())
+    }
+
+    /// From now on, only what is saved from now on is used: everything saved before is treated as
+    /// not saved and is removed by the next cleanup. Called when the viewer switches provider.
+    /// Returns the time to remember (see [`TitleCache::set_valid_from`]).
+    pub fn invalidate_now(&self) -> u64 {
+        let now = self.now_secs();
+        self.set_valid_from(now);
+        now
+    }
+
+    /// Makes saves made before `seconds` (since 1970) unusable; the app calls it at start with the
+    /// time of the last provider switch. A time earlier than the current one changes nothing.
+    pub fn set_valid_from(&self, seconds: u64) {
+        let before = self.valid_from.fetch_max(seconds, Ordering::SeqCst);
+        if seconds > before {
+            tracing::info!(
+                valid_from = seconds,
+                "saved sources from before this time are dropped"
+            );
+        }
+    }
+
+    /// What the age of a save means: the cache rules, after the provider switch.
+    pub(crate) fn verdict(&self, saved_at: u64) -> Verdict {
+        if saved_at < self.valid_from.load(Ordering::SeqCst) {
+            return Verdict::Invalidated;
+        }
+        self.limits.judge(saved_at, self.now_secs())
     }
 
     /// Where the file of `title_key` is.
@@ -103,8 +135,9 @@ impl TitleCache {
             Ok(stored) => stored,
             Err(miss) => return self.missed(&path, miss),
         };
-        match self.limits.judge(stored.saved_at, self.now_secs()) {
+        match self.verdict(stored.saved_at) {
             Verdict::Expired => self.missed(&path, Miss::Expired),
+            Verdict::Invalidated => self.missed(&path, Miss::Invalidated),
             Verdict::Usable(freshness, age) => {
                 let title = stored.title.normalized(self.limits.max_links);
                 tracing::debug!(
@@ -136,10 +169,7 @@ impl TitleCache {
     fn discard(&self, path: &Path) {
         let _lock = self.write_lock();
         let still_unusable = match read_stored(path, self.limits.max_file_bytes) {
-            Ok(stored) => matches!(
-                self.limits.judge(stored.saved_at, self.now_secs()),
-                Verdict::Expired
-            ),
+            Ok(stored) => !matches!(self.verdict(stored.saved_at), Verdict::Usable(..)),
             Err(miss) => miss.is_discardable(),
         };
         if still_unusable {
@@ -197,6 +227,9 @@ impl TitleCache {
         let Ok(mut stored) = read_stored(&path, self.limits.max_file_bytes) else {
             return Ok(false);
         };
+        if !matches!(self.verdict(stored.saved_at), Verdict::Usable(..)) {
+            return Ok(false);
+        }
         change(&mut stored.title);
         self.write(title_key, &stored)?;
         Ok(true)
@@ -226,6 +259,9 @@ impl TitleCache {
     }
 }
 
+#[cfg(test)]
+#[path = "title_cache_switch_tests.rs"]
+mod switch_tests;
 #[cfg(test)]
 #[path = "title_cache_tests.rs"]
 mod tests;

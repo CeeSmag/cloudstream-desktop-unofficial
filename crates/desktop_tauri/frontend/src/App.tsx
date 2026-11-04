@@ -104,6 +104,8 @@ export const App: React.FC = () => {
 
   // Switch provider
   const handleSelectProvider = guard(async (p: string) => {
+    // Before anything else: from now on every video is searched afresh, never from saved links.
+    if (p !== selectedProvider) await api.providerSwitched(selectedProvider, p);
     setSelectedProvider(p);
     setHomeLoading(true);
     try {

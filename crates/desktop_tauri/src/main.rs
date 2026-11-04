@@ -19,6 +19,7 @@ mod opening_flow_tests;
 mod playback_commands;
 mod plugin_catalog_commands;
 mod preferences_commands;
+mod provider_switch;
 #[cfg(test)]
 mod race_tests;
 #[cfg(test)]
@@ -36,6 +37,7 @@ mod source_fallback_steps;
 mod source_manager;
 mod source_notes;
 mod source_session;
+mod sources_cleanup;
 mod startup;
 mod subtitle_delivery;
 #[cfg(test)]
@@ -74,6 +76,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             preferences_commands::set_preferred_subtitles,
             preferences_commands::set_auto_subtitles,
             preferences_commands::set_playback_option,
+            provider_switch::provider_switched,
             skip_commands::get_skip_segments,
             debug_log_commands::get_debug_logging,
             debug_log_commands::set_debug_logging,
@@ -137,11 +140,18 @@ fn init_services(
     preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
+    let services_valid_from = services
+        .settings
+        .sources_valid_from()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "cannot read the time of the last provider switch");
+            0
+        });
     app.manage(AppState::new(services));
     app.manage(source_manager::SourceManager::new(
         app_services::StreamChecker::new(std::sync::Arc::new(extension_repo::UreqProbe::default())),
         subtitle_loader(paths),
-        title_cache(paths),
+        sources_cleanup::open_title_cache(paths.data_dir(), services_valid_from),
     ));
     app.manage(std::sync::Arc::new(skip_times::SkipLookup::new(
         std::sync::Arc::new(skip_times::UreqSkipFetcher::default()),
@@ -175,25 +185,6 @@ fn subtitle_loader(paths: &AppPaths) -> std::sync::Arc<subtitle_store::SubtitleL
         tracing::warn!(%error, "cannot start the subtitle cleanup");
     }
     loader
-}
-
-/// The saved stream links of titles that were opened before, in the data folder. Old and surplus
-/// files are cleaned up in the background.
-fn title_cache(paths: &AppPaths) -> std::sync::Arc<title_cache::TitleCache> {
-    let cache = std::sync::Arc::new(title_cache::TitleCache::new(
-        paths.data_dir().join("sources"),
-        title_cache::CacheLimits::default(),
-    ));
-    let cleaner = std::sync::Arc::clone(&cache);
-    let spawned = std::thread::Builder::new()
-        .name("sources-cleanup".to_owned())
-        .spawn(move || {
-            cleaner.prune();
-        });
-    if let Err(error) = spawned {
-        tracing::warn!(%error, "cannot start the cleanup of saved sources");
-    }
-    cache
 }
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).

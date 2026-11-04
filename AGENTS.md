@@ -20,7 +20,7 @@ This document is the verified architectural index, navigation map, and modificat
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (50 Commands Reference)](#4-tauri-ipc-interface-47-commands-reference)
+4. [Tauri IPC Interface (51 Commands Reference)](#4-tauri-ipc-interface-47-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -186,6 +186,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `max_titles`: 50 entries (LRU eviction).
   - `max_links_per_title`: 200 links.
   - `max_file_size`: 1 MB.
+- **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`); notes (`mark_broken`, ...) never revive such a file. `desktop_tauri::provider_switch::apply_switch` (command `provider_switched`) calls it when the viewer picks a different provider, and stores the time in the `sources_valid_from` setting, which `sources_cleanup::open_title_cache` restores at start. `sources_cleanup::spawn_cleanup` prunes at start and then hourly while the app runs.
 - **Atomic File Operations**: Writes to temporary `.tmp` files and renames into place, preventing corruption on app crash.
 - **Verified Types & Methods**:
   - `TitleCache`: `load(key) -> Lookup`, `save(key, title) -> Result<SaveReport, TitleCacheError>`, `update(key, fn)`, `mark_broken(key, url)`, `forget(key)`, `clear()`, `prune() -> PruneReport`.
@@ -444,9 +445,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (50 Commands Reference)
+## 4. Tauri IPC Interface (51 Commands Reference)
 
-All 50 commands registered in `crates/desktop_tauri/src/main.rs`:
+All 51 commands registered in `crates/desktop_tauri/src/main.rs`:
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -497,6 +498,7 @@ All 50 commands registered in `crates/desktop_tauri/src/main.rs`:
 | **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |
 | | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
 | | `set_playback_option` | Switches `autoplay_next` or `skip_lookup`. |
+| | `provider_switched` | The viewer picked another provider: saved stream links from before are not used. |
 | **Video/Window** | `set_video_surface` | Informs player of viewport dimensions. |
 | | `get_video_frame` | Returns binary header + RGBA pixels for canvas rendering. |
 | | `set_window_fullscreen` | Toggles fullscreen window state. |
