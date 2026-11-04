@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.cloudstream.desktop",
   "build": {
-    "beforeDevCommand": "npm.cmd run dev --prefix frontend",
+    "beforeDevCommand": "npm.cmd run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm.cmd run build --prefix frontend",
+    "beforeBuildCommand": "npm.cmd run build",
     "frontendDist": "./frontend/dist"
   },
   "app": {
@@ -27,6 +27,20 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "CloudStream desktop",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }

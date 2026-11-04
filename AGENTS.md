@@ -653,6 +653,10 @@ just sidecar
 
 # Run Kotlin sidecar JUnit tests
 powershell -File scripts/test_sidecar.ps1
+
+# Build release packages into dist/: installer (NSIS) + portable zip, x64 and arm64
+# (arm64 needs the MSVC ARM64 build tools; use -Arch x64 / -Kind portable to narrow it)
+powershell -File scripts/build_release.ps1
 ```
 
 ### Environment Variables
@@ -662,4 +666,5 @@ powershell -File scripts/test_sidecar.ps1
 - `CS_LIBMPV_PATH`: Explicit file path to `libmpv-2.dll` / `libmpv.so`.
 - `CS_MPV_LOG`: When set, enables verbose internal libmpv console logging (`terminal=yes, msg-level=all=v`).
 - `CS_TEST_CINESTREAM_CS3`: Path to CineStream `.cs3` extension file used by `scripts/record_sidecar_replies.py`.
+- Packages (`scripts/build_release.ps1`) carry `libmpv-2.dll`, `sidecar\` and `jre\` next to the program; the app finds them there (`sidecar_discovery::bundled_install`). A `portable.txt` next to the program makes it keep its data in `data\` beside it (`app_paths::portable_data_dir`).
 - `RUST_LOG`: Tracing filter directive (e.g. `RUST_LOG=cloudstream=debug,desktop_tauri=debug`).
