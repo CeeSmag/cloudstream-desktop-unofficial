@@ -43,5 +43,9 @@ export function usePreferences(report: (error: unknown) => void) {
   /** Switches the automatic turning on of a preferred-language subtitle on or off. */
   const chooseAutoSubtitles = (enabled: boolean) => save(() => api.setAutoSubtitles(enabled));
 
-  return { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles };
+  /** Switches the automatic next episode or the online skip-time lookup on or off. */
+  const choosePlaybackOption = (option: 'autoplay_next' | 'skip_lookup', enabled: boolean) =>
+    save(() => api.setPlaybackOption(option, enabled));
+
+  return { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles, choosePlaybackOption };
 }

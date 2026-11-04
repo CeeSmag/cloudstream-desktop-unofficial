@@ -42,6 +42,8 @@ describe('sourceRow', () => {
       preferred_audio: 'eng',
       preferred_subtitles: ['eng', 'ara', 'fre'],
       auto_subtitles: true,
+      autoplay_next: true,
+      skip_lookup: true,
       languages: [
         { code: 'eng', name: 'English', codes: ['eng', 'en'] },
         { code: 'ara', name: 'Arabic', codes: ['ara', 'ar'] },

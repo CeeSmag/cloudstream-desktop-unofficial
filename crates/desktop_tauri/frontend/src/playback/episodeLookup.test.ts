@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Episode, MediaDetails } from '../types';
-import { findEpisodeForKey, findNextEpisode, movieAsEpisode, playbackTitle } from './episodeLookup';
+import {
+  findEpisodeForKey,
+  findNextEpisode,
+  findPreviousEpisode,
+  movieAsEpisode,
+  orderedEpisodes,
+  playbackTitle,
+} from './episodeLookup';
 
 const episode = (data: string): Episode => ({
   id: data,
@@ -84,3 +91,45 @@ describe('playbackTitle', () => {
   });
 });
 
+
+const numbered = (data: string, season: number | null, number: number | null): Episode => ({
+  ...episode(data),
+  season,
+  episode: number,
+});
+
+describe('watching order', () => {
+  const list = [
+    numbered('s2e1', 2, 1),
+    numbered('s1e2', 1, 2),
+    numbered('special', 1, null),
+    numbered('s1e1', 1, 1),
+  ];
+
+  it('orders by season then number and puts unnumbered episodes last in their season', () => {
+    expect(orderedEpisodes(list).map((e) => e.data)).toEqual(['s1e1', 's1e2', 'special', 's2e1']);
+  });
+
+  it('goes to the next episode across the seasons whatever order the provider listed them in', () => {
+    expect(findNextEpisode(list, list[3])?.data).toBe('s1e2');
+    expect(findNextEpisode(list, list[2])?.data).toBe('s2e1');
+    expect(findNextEpisode(list, list[0])).toBeNull();
+  });
+
+  it('goes to the previous episode, and to none before the first', () => {
+    expect(findPreviousEpisode(list, list[0])?.data).toBe('special');
+    expect(findPreviousEpisode(list, list[3])).toBeNull();
+  });
+
+  it('finds neither neighbour for an episode that is not in the list', () => {
+    const stranger = numbered('x', 1, 1);
+    expect(findNextEpisode(list, stranger)).toBeNull();
+    expect(findPreviousEpisode(list, stranger)).toBeNull();
+  });
+
+  it('does not change the list it was given', () => {
+    const copy = [...list];
+    orderedEpisodes(list);
+    expect(list).toEqual(copy);
+  });
+});

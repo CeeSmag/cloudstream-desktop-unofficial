@@ -52,7 +52,7 @@ export const App: React.FC = () => {
   const [activeDetails, setActiveDetails] = React.useState<MediaDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = React.useState(false);
 
-  const playback = usePlayback();
+  const playback = usePlayback((error) => setErrorText(describeError(error)));
   const startup = useStartup();
   const contextMenu = useContextMenu();
 
@@ -212,6 +212,8 @@ export const App: React.FC = () => {
           onSelectTrack={guard(playback.selectTrack)}
           onSelectSource={guard(playback.switchSource)}
           onVolume={guard(playback.setVolume)}
+          onPrevious={playback.hasPrevious ? guard(playback.playPrevious) : undefined}
+          onNext={playback.hasNext ? guard(playback.playNext) : undefined}
         />
       </>
     );

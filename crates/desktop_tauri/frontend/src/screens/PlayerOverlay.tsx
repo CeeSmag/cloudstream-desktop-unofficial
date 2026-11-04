@@ -13,6 +13,8 @@ import {
   AudioLines,
   Layers,
   Loader2,
+  SkipBack,
+  SkipForward,
 } from 'lucide-react';
 import { CheckProgress, PlaybackStatus, SourceInfo } from '../types';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
@@ -47,6 +49,10 @@ interface PlayerOverlayProps {
   onSelectTrack: (kind: 'audio' | 'subtitle', id: number | null) => void;
   onSelectSource: (index: number) => void;
   onVolume: (percent: number) => void;
+  /** Plays the episode before this one; absent for a movie or the first episode. */
+  onPrevious?: () => void;
+  /** Plays the episode after this one; absent for a movie or the last episode. */
+  onNext?: () => void;
 }
 
 const SKIP_MS = 10000;
@@ -64,6 +70,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onSelectTrack,
   onSelectSource,
   onVolume,
+  onPrevious,
+  onNext,
 }) => {
   const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
   const isPlaying = status.state === 'Playing';
@@ -223,6 +231,18 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
               <button onClick={() => controls.seekBy(SKIP_MS)} className={ROUND_BUTTON} title="Forward 10s">
                 <RotateCw className="w-4 h-4" />
               </button>
+              {onPrevious && (
+                <button onClick={onPrevious} className={`${ROUND_BUTTON} flex items-center gap-1.5`} title="Previous episode">
+                  <SkipBack className="w-4 h-4" />
+                  <span className="hidden lg:inline text-xs font-medium">Previous episode</span>
+                </button>
+              )}
+              {onNext && (
+                <button onClick={onNext} className={`${ROUND_BUTTON} flex items-center gap-1.5`} title="Next episode">
+                  <SkipForward className="w-4 h-4" />
+                  <span className="hidden lg:inline text-xs font-medium">Next episode</span>
+                </button>
+              )}
               <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 ml-1 sm:ml-2 tracking-wide font-mono whitespace-nowrap">
                 {formatTime(status.position_ms)} / {formatTime(status.duration_ms)}
               </span>
