@@ -138,6 +138,9 @@ fn init_services(
     let debug_on = debug_log_commands::restore_saved_choice(&services.settings, &debug_logs);
     app.manage(debug_logs);
     preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
+    if let (true, Some(playback)) = (debug_on, services.playback.as_ref()) {
+        playback.set_verbose_player_log(true);
+    }
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
     let services_valid_from = services

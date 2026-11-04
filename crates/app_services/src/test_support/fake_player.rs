@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, VideoPlayer};
@@ -7,6 +8,7 @@ use player_api::{PlaybackRequest, PlaybackStatus, PlayerError, VideoPlayer};
 pub(crate) struct FakePlayer {
     pub(crate) requests: Mutex<Vec<PlaybackRequest>>,
     status: Mutex<PlaybackStatus>,
+    pub(crate) verbose_log: AtomicBool,
 }
 
 impl FakePlayer {
@@ -34,6 +36,10 @@ impl VideoPlayer for FakePlayer {
 
     fn stop(&self) -> Result<(), PlayerError> {
         Ok(())
+    }
+
+    fn set_verbose_log(&self, enabled: bool) {
+        self.verbose_log.store(enabled, Ordering::SeqCst);
     }
 
     fn status(&self) -> PlaybackStatus {

@@ -52,6 +52,12 @@ pub trait VideoPlayer: Send + Sync {
         let _ = language;
     }
 
+    /// Makes the player log everything it does (its own detailed messages) while `enabled`, and only
+    /// its warnings and errors otherwise. For tracing odd behavior; takes effect at once.
+    fn set_verbose_log(&self, enabled: bool) {
+        let _ = enabled;
+    }
+
     /// Sets the subtitle languages, in order of preference, whose subtitles are turned on by
     /// themselves once a stream has one; an empty list turns that off. A subtitle the viewer picks
     /// by hand is never overridden.
