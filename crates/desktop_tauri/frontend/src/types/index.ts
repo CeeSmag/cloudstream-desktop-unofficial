@@ -246,6 +246,10 @@ export interface Preferences {
   preferred_subtitles: string[];
   /** Whether the subtitle in the first of those languages the video has turns on by itself. */
   auto_subtitles: boolean;
+  /** Whether the next episode starts by itself when one ends. */
+  autoplay_next: boolean;
+  /** Whether skip times are looked up online by the title's id. */
+  skip_lookup: boolean;
   languages: LanguageOption[];
 }
 

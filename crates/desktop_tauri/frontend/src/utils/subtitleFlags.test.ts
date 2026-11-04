@@ -10,6 +10,8 @@ const preferences = (preferred: string[]): Preferences => ({
   preferred_audio: 'eng',
   preferred_subtitles: preferred,
   auto_subtitles: true,
+  autoplay_next: true,
+  skip_lookup: true,
   languages: [english, arabic, french],
 });
 

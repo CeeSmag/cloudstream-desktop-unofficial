@@ -29,6 +29,10 @@ pub struct PreferencesDto {
     pub preferred_subtitles: Vec<String>,
     /// Whether the subtitle in the first of those languages the video has turns on by itself.
     pub auto_subtitles: bool,
+    /// Whether the next episode starts by itself when one ends.
+    pub autoplay_next: bool,
+    /// Whether skip times are looked up online by the title's id.
+    pub skip_lookup: bool,
     /// Every language that can be chosen, English first.
     pub languages: Vec<LanguageDto>,
 }
@@ -134,6 +138,28 @@ pub async fn set_auto_subtitles(
     describe(&services.settings)
 }
 
+/// Switches one playback option on or off: `autoplay_next` or `skip_lookup`.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(option = ?option, enabled = ?enabled), err)]
+pub async fn set_playback_option(
+    option: String,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<PreferencesDto, String> {
+    let services = state.read();
+    apply_option(&services.settings, &option, enabled)?;
+    describe(&services.settings)
+}
+
+fn apply_option(settings: &SettingsService, option: &str, enabled: bool) -> Result<(), String> {
+    match option {
+        "autoplay_next" => settings.set_autoplay_next(enabled),
+        "skip_lookup" => settings.set_skip_lookup(enabled),
+        other => return Err(format!("Unknown playback option: {other}")),
+    }
+    .map_err(|error| error.to_string())
+}
+
 fn apply_subtitle_choice(services: &ui_app::UiServices) {
     if let Some(playback) = &services.playback {
         playback.set_preferred_subtitles(&subtitle_languages_to_turn_on(&services.settings));
@@ -149,6 +175,8 @@ fn describe(settings: &SettingsService) -> Result<PreferencesDto, String> {
         .map_err(|error| error.to_string())?;
     Ok(PreferencesDto {
         auto_subtitles: settings.auto_select_subtitles().unwrap_or(true),
+        autoplay_next: settings.autoplay_next().unwrap_or(true),
+        skip_lookup: settings.skip_lookup().unwrap_or(true),
         preferred_audio: preferred.map(|language| language.code().to_owned()),
         preferred_subtitles: subtitles
             .iter()
@@ -211,5 +239,16 @@ mod tests {
             describe(&settings).expect("describes").preferred_audio,
             None
         );
+    }
+
+    #[test]
+    fn playback_options_are_saved_by_name_and_an_unknown_name_is_refused() {
+        let settings = settings();
+        apply_option(&settings, "autoplay_next", false).expect("saves");
+        apply_option(&settings, "skip_lookup", false).expect("saves");
+        let described = describe(&settings).expect("describes");
+        assert!(!described.autoplay_next && !described.skip_lookup);
+        let refused = apply_option(&settings, "volume", false).expect_err("unknown");
+        assert!(refused.contains("volume"), "{refused}");
     }
 }

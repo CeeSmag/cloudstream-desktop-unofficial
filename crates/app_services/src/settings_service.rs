@@ -10,6 +10,8 @@ const PREFERRED_AUDIO_KEY: &str = "preferred_audio";
 const NO_AUDIO_PREFERENCE: &str = "none";
 const PREFERRED_SUBTITLES_KEY: &str = "preferred_subtitles";
 const AUTO_SUBTITLES_KEY: &str = "auto_subtitles";
+const AUTOPLAY_NEXT_KEY: &str = "autoplay_next";
+const SKIP_LOOKUP_KEY: &str = "skip_lookup";
 const ENABLED: &str = "yes";
 const DISABLED: &str = "no";
 /// Most subtitle languages the viewer can prefer; the player shows one flag for each.
@@ -107,6 +109,37 @@ impl SettingsService {
         Ok(())
     }
 
+    /// Whether the next episode starts by itself when one ends. On until the viewer switches it off.
+    pub fn autoplay_next(&self) -> Result<bool, ServiceError> {
+        self.flag(AUTOPLAY_NEXT_KEY)
+    }
+
+    /// Remembers whether the next episode starts by itself.
+    pub fn set_autoplay_next(&self, enabled: bool) -> Result<(), ServiceError> {
+        self.set_flag(AUTOPLAY_NEXT_KEY, enabled)
+    }
+
+    /// Whether skip times (intro, recap, credits) are looked up online by the title's id. On until
+    /// the viewer switches it off, because the lookup tells a third-party site which title is played.
+    pub fn skip_lookup(&self) -> Result<bool, ServiceError> {
+        self.flag(SKIP_LOOKUP_KEY)
+    }
+
+    /// Remembers whether skip times are looked up online.
+    pub fn set_skip_lookup(&self, enabled: bool) -> Result<(), ServiceError> {
+        self.set_flag(SKIP_LOOKUP_KEY, enabled)
+    }
+
+    fn flag(&self, key: &str) -> Result<bool, ServiceError> {
+        Ok(self.store.get(key)?.as_deref() != Some(DISABLED))
+    }
+
+    fn set_flag(&self, key: &str, enabled: bool) -> Result<(), ServiceError> {
+        self.store
+            .set(key, if enabled { ENABLED } else { DISABLED })?;
+        Ok(())
+    }
+
     /// Switches a provider on or off.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, enabled = ?enabled), err)]
     pub fn set_provider_enabled(&self, provider: &str, enabled: bool) -> Result<(), ServiceError> {
@@ -183,6 +216,20 @@ mod tests {
         assert!(!service.auto_select_subtitles().expect("read"));
         service.set_auto_select_subtitles(true).expect("set");
         assert!(service.auto_select_subtitles().expect("read"));
+    }
+
+    #[test]
+    fn autoplay_and_skip_lookup_are_on_until_switched_off_and_independent() {
+        let service = service();
+        assert!(service.autoplay_next().expect("read"));
+        assert!(service.skip_lookup().expect("read"));
+        service.set_autoplay_next(false).expect("set");
+        assert!(!service.autoplay_next().expect("read"));
+        assert!(service.skip_lookup().expect("read"), "the other stays on");
+        service.set_skip_lookup(false).expect("set");
+        service.set_autoplay_next(true).expect("set");
+        assert!(service.autoplay_next().expect("read"));
+        assert!(!service.skip_lookup().expect("read"));
     }
 
     #[test]
