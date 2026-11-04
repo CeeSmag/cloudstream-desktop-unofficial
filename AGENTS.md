@@ -1,4 +1,4 @@
-# AUGENT.md — Developer & AI Agent Codebase Guide
+# AGENTS.md — Developer & AI Agent Codebase Guide
 
 This document is the verified architectural index, navigation map, and modification handbook for the **CloudStream Rust rewrite (`cloudstream-rs`)**. Every symbol, file path, trait method, DTO, IPC command, and table schema documented here has been verified against the active source code.
 
