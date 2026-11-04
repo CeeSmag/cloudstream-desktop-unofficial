@@ -248,60 +248,12 @@ fn play_target(view: &DetailsView, details: &LoadDetails, data: &str, title: &st
             title: title.to_owned(),
             detail_url: view.title_ref.url.clone(),
             poster_url: details.poster_url.clone(),
-            season: None,
-            episode: None,
-            next_episode: None,
+            ..Default::default()
         },
         data: data.to_owned(),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use core_model::EpisodeInfo;
-
-    #[test]
-    fn strip_markup_removes_tags_and_decodes_basic_entities() {
-        assert_eq!(strip_markup("A<br>\n<br>B &amp; C"), "A B & C");
-    }
-
-    #[test]
-    fn meta_line_skips_missing_values() {
-        assert_eq!(
-            meta_line(&LoadDetails {
-                api_name: "Archive".into(),
-                year: Some(2019),
-                ..LoadDetails::default()
-            }),
-            "Archive \u{00B7} 2019"
-        );
-    }
-
-    #[test]
-    fn playable_data_prefers_movie_data_then_first_episode() {
-        let movie = LoadDetails {
-            name: "M".into(),
-            data_url: Some("id".into()),
-            ..LoadDetails::default()
-        };
-        assert_eq!(
-            playable_data(&movie),
-            Some(("id".to_owned(), "M".to_owned()))
-        );
-        let series = LoadDetails {
-            name: "S".into(),
-            episodes: vec![EpisodeInfo {
-                data: "ep".into(),
-                episode: Some(1),
-                ..EpisodeInfo::default()
-            }],
-            ..LoadDetails::default()
-        };
-        assert_eq!(
-            playable_data(&series).map(|found| found.0),
-            Some("ep".to_owned())
-        );
-        assert_eq!(playable_data(&LoadDetails::default()), None);
-    }
-}
+#[path = "details_screen_tests.rs"]
+mod tests;
