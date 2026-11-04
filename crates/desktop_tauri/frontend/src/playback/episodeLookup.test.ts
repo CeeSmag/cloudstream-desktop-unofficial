@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Episode, MediaDetails } from '../types';
-import { findEpisodeForKey, movieAsEpisode, playbackTitle } from './episodeLookup';
+import { findEpisodeForKey, findNextEpisode, movieAsEpisode, playbackTitle } from './episodeLookup';
 
 const episode = (data: string): Episode => ({
   id: data,
@@ -52,6 +52,28 @@ describe('movieAsEpisode', () => {
   });
 });
 
+describe('findNextEpisode', () => {
+  it('returns the next episode in order', () => {
+    const ep1 = episode('ep1');
+    const ep2 = episode('ep2');
+    const ep3 = episode('ep3');
+    expect(findNextEpisode([ep1, ep2, ep3], ep1)?.data).toBe('ep2');
+    expect(findNextEpisode([ep1, ep2, ep3], ep2)?.data).toBe('ep3');
+  });
+
+  it('returns null when current is the last episode', () => {
+    const ep1 = episode('ep1');
+    const ep2 = episode('ep2');
+    expect(findNextEpisode([ep1, ep2], ep2)).toBeNull();
+  });
+
+  it('returns null when current is not in the list', () => {
+    const ep1 = episode('ep1');
+    const other = episode('other');
+    expect(findNextEpisode([ep1], other)).toBeNull();
+  });
+});
+
 describe('playbackTitle', () => {
   it('does not repeat a movie name', () => {
     expect(playbackTitle('Movie', 'Movie')).toBe('Movie');
@@ -61,3 +83,4 @@ describe('playbackTitle', () => {
     expect(playbackTitle('Show', 'Pilot')).toBe('Show - Pilot');
   });
 });
+

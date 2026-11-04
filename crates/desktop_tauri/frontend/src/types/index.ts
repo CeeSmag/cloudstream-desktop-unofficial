@@ -92,6 +92,26 @@ export interface WatchProgress {
   duration_ms: number;
   percentage: number;
   updated_at: number;
+  season?: number | null;
+  episode?: number | null;
+}
+
+export interface NextEpisode {
+  media_key: string;
+  season: number | null;
+  episode: number | null;
+}
+
+export interface ResumePointer {
+  provider: string;
+  detail_url: string;
+  media_key: string;
+  title: string;
+  poster_url: string | null;
+  season: number | null;
+  episode: number | null;
+  position_ms: number;
+  duration_ms: number;
 }
 
 export interface MediaTrack {

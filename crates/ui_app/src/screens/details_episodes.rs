@@ -26,6 +26,9 @@ pub(crate) fn show(ui: &mut egui::Ui, context: &DetailsContext<'_>, actions: &mu
                     title: full_title,
                     detail_url: context.view.title_ref.url.clone(),
                     poster_url: None,
+                    season: episode.season,
+                    episode: episode.episode,
+                    next_episode: None,
                 },
                 data: episode.data.clone(),
             };

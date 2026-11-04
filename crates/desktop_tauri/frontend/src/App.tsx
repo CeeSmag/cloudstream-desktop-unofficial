@@ -146,7 +146,7 @@ export const App: React.FC = () => {
 
   // Takes a title out of Continue Watching; the backend also forgets its saved sources and subtitles.
   const handleRemoveContinue = guard(async (progress: WatchProgress) => {
-    await api.removeContinueWatching(progress.provider, progress.media_id);
+    await api.removeContinueWatching(progress.provider, progress.detail_url);
     setContinueWatching(await api.getContinueWatching());
   });
 

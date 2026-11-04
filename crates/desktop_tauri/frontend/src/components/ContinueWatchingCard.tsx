@@ -1,7 +1,7 @@
 import React from 'react';
 import { Info, Trash2 } from 'lucide-react';
 import { WatchProgress } from '../types';
-import { watchedPercent } from '../utils/continueWatching';
+import { episodeBadgeText, watchedPercent } from '../utils/continueWatching';
 
 interface ContinueWatchingCardProps {
   item: WatchProgress;
@@ -18,6 +18,8 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = ({
   onRemove,
 }) => {
   const percent = watchedPercent(item);
+  const badge = episodeBadgeText(item);
+
   return (
     <div
       onClick={() => onOpen(item)}
@@ -28,6 +30,11 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = ({
           <img src={item.poster_url} alt={item.title} className="w-full h-full object-cover" />
         ) : (
           <span className="text-2xl">📺</span>
+        )}
+        {badge && (
+          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-midnight/90 text-accent font-semibold text-xs border border-accent/30 shadow-md">
+            {badge}
+          </div>
         )}
         <div className="absolute inset-0 bg-midnight/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg">
@@ -40,7 +47,9 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = ({
       </div>
 
       <h4 className="text-sm font-semibold text-white truncate">{item.title}</h4>
-      <p className="text-xs text-zinc-400 mt-0.5">{percent}% completed</p>
+      <p className="text-xs text-zinc-400 mt-0.5">
+        {badge ? `${badge} • ${percent}% watched` : `${percent}% completed`}
+      </p>
 
       <button
         onClick={(event) => {

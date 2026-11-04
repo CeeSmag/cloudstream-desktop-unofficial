@@ -248,6 +248,9 @@ fn play_target(view: &DetailsView, details: &LoadDetails, data: &str, title: &st
             title: title.to_owned(),
             detail_url: view.title_ref.url.clone(),
             poster_url: details.poster_url.clone(),
+            season: None,
+            episode: None,
+            next_episode: None,
         },
         data: data.to_owned(),
     }
