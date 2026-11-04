@@ -51,10 +51,10 @@ export const Navigation: React.FC<NavigationProps> = ({
               onClick={() => onSelectTab(item.id)}
               title={item.label}
               aria-label={item.label}
-              className={`flex items-center gap-2 px-2.5 sm:px-3 lg:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+              className={`flex items-center gap-2 px-2.5 sm:px-3 lg:px-4 py-2 rounded-xl text-sm font-medium border transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
                 isActive
-                  ? 'bg-accent/15 text-accent shadow-sm border border-accent/20 font-semibold'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-accent/15 text-accent border-accent/20 font-semibold'
+                  : 'text-zinc-400 border-transparent hover:text-white hover:bg-white/5'
               }`}
             >
               <Icon className="w-4 h-4" />

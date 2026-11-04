@@ -109,3 +109,19 @@
 .feedback-in {
   animation: feedback-in 140ms ease-out;
 }
+
+/* A page fades in softly when the viewer switches tabs, instead of appearing with a jolt. */
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.screen-in {
+  animation: screen-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-in {
+    animation: none;
+  }
+}
