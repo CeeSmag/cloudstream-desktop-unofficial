@@ -32,22 +32,70 @@ $targets = @{
     arm64 = @{ Triple = 'aarch64-pc-windows-msvc'; Jre = 'aarch64'; Mpv = 'aarch64' }
 }
 
-function Write-Step([string]$text) { Write-Host "`n==> $text" -ForegroundColor Cyan }
+$started = Get-Date
+$logDir = Join-Path $repoRoot 'target\bundle-logs'
 
-# Runs a program and stops if it fails. Programs such as rustup and cargo report progress on
-# stderr, which Windows PowerShell would turn into errors, so only the exit code is judged.
-function Invoke-Native([string]$what, [scriptblock]$command) {
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try { & $command } finally { $ErrorActionPreference = $previous }
-    if ($LASTEXITCODE -ne 0) { throw "$what failed (exit code $LASTEXITCODE)." }
+function Get-Elapsed([datetime]$since) { '{0:mm\:ss}' -f ((Get-Date) - $since) }
+
+function Write-Step([string]$text) {
+    Write-Host "`n[$(Get-Elapsed $started)] ==> $text" -ForegroundColor Cyan
+}
+
+function Format-Argument([string]$argument) {
+    if ($argument -eq '' -or $argument -match '[\s"]') { return '"' + $argument.Replace('"', '\"') + '"' }
+    return $argument
+}
+
+function Get-LastLine([string[]]$files) {
+    foreach ($file in ($files | Sort-Object { (Get-Item $_ -ErrorAction SilentlyContinue).LastWriteTime } -Descending)) {
+        $line = Get-Content $file -Tail 3 -ErrorAction SilentlyContinue | Where-Object { $_.Trim() } | Select-Object -Last 1
+        if ($line) { return ($line -replace '\x1b\[[0-9;]*m', '').Trim() }
+    }
+    return ''
+}
+
+# Runs a program, shows that it is alive every few seconds (time spent and the last thing it
+# printed) and stops with its output if it fails. The full output is kept in target\bundle-logs.
+function Invoke-Native([string]$what, [string]$program, [string[]]$arguments) {
+    New-Item -ItemType Directory -Force $logDir | Out-Null
+    $slug = ($what -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLower()
+    $out = Join-Path $logDir "$slug.out.log"
+    $err = Join-Path $logDir "$slug.err.log"
+    $began = Get-Date
+    Write-Host "    $what ..."
+    $process = Start-Process -FilePath $program -ArgumentList (($arguments | ForEach-Object { Format-Argument $_ }) -join ' ') `
+        -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    # Reading the handle keeps the exit code available in Windows PowerShell 5.1.
+    $null = $process.Handle
+    $frames = '|', '/', '-', [string][char]92
+    $tick = 0
+    $last = ''
+    $width = 100
+    try { $width = [Math]::Max(40, $Host.UI.RawUI.WindowSize.Width - 1) } catch { $width = 100 }
+    while (-not $process.WaitForExit(200)) {
+        $tick++
+        if ($tick % 5 -eq 1) { $last = Get-LastLine @($out, $err) }
+        $line = '    {0} {1}  {2}  {3}' -f $frames[$tick % 4], (Get-Elapsed $began), $what, $last
+        if ($line.Length -gt $width) { $line = $line.Substring(0, $width - 3) + '...' }
+        Write-Host ("`r" + $line.PadRight($width)) -NoNewline -ForegroundColor DarkGray
+    }
+    Write-Host ("`r" + (' ' * $width) + "`r") -NoNewline
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        Write-Host "`n--- last lines of the output ($out / $err) ---" -ForegroundColor Yellow
+        Get-Content $out, $err -Tail 25 -ErrorAction SilentlyContinue | Write-Host
+        throw "$what failed (exit code $($process.ExitCode)). Full output: $logDir"
+    }
+    Write-Host ("    done: {0} ({1})" -f $what, (Get-Elapsed $began)) -ForegroundColor Green
 }
 
 function Get-Download([string]$url, [string]$file) {
     if (Test-Path $file) { return }
     Write-Host "    downloading $url"
     New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
-    Invoke-WebRequest -Uri $url -OutFile "$file.part" -UseBasicParsing
+    # curl.exe (part of Windows) shows a live progress meter, unlike Invoke-WebRequest.
+    curl.exe -L -f --progress-bar -o "$file.part" $url
+    if ($LASTEXITCODE -ne 0) { throw "Downloading $url failed (curl exit code $LASTEXITCODE)." }
     Move-Item "$file.part" $file
 }
 
@@ -101,7 +149,7 @@ function Get-LibMpv([string]$arch, [string]$given) {
     Get-Download $asset.browser_download_url $archive
     $unpacked = Join-Path $cache "libmpv-$name-unpacked"
     New-Item -ItemType Directory -Force $unpacked | Out-Null
-    Invoke-Native 'Unpacking libmpv' { tar -xf $archive -C $unpacked }
+    Invoke-Native "Unpacking libmpv ($arch)" 'tar' @('-xf', $archive, '-C', $unpacked)
     $dll = Get-ChildItem $unpacked -Recurse -Filter 'libmpv-2.dll' | Select-Object -First 1
     if (-not $dll) { throw "libmpv-2.dll is not in $($asset.name)." }
     New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
@@ -128,6 +176,7 @@ function Repair-SidecarScript([string]$script) {
 
 # Lays out what ships beside the program: libmpv-2.dll, sidecar\, jre\.
 function New-Stage([string]$arch, [string]$libMpv, [string]$jre) {
+    Write-Step "Collecting libmpv, the sidecar and Java for $arch"
     $stage = Join-Path $stageRoot $arch
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force $stage | Out-Null
@@ -158,13 +207,12 @@ function New-BundleConfig([string]$arch, [string]$stage) {
 function Build-App([string]$arch, [string]$configFile) {
     $triple = $targets[$arch].Triple
     Write-Step "Building $arch ($triple)"
-    Invoke-Native 'rustup target add' { rustup target add $triple }
+    Invoke-Native "Adding the $arch Rust target" 'rustup' @('target', 'add', $triple)
     Push-Location $appDir
     try {
         $bundling = if ($Kind -eq 'portable') { @('--no-bundle') } else { @('--bundles', 'nsis') }
-        Invoke-Native "tauri build ($arch)" {
-            & (Join-Path $frontendDir 'node_modules\.bin\tauri.cmd') build --target $triple --config $configFile @bundling
-        }
+        $tauri = Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'
+        Invoke-Native "Compiling and packaging $arch (the first build takes several minutes)" $tauri (@('build', '--target', $triple, '--config', $configFile) + $bundling)
     }
     finally { Pop-Location }
 }
@@ -180,6 +228,7 @@ function Copy-Installer([string]$arch) {
 }
 
 function New-Portable([string]$arch, [string]$stage) {
+    Write-Step "Making the portable app for $arch"
     $triple = $targets[$arch].Triple
     $exe = Join-Path $repoRoot "target\$triple\release\desktop_tauri.exe"
     $folder = Join-Path $stageRoot "portable-$arch\CloudStream"
@@ -193,7 +242,7 @@ function New-Portable([string]$arch, [string]$stage) {
     Set-Content (Join-Path $folder 'portable.txt') 'Everything CloudStream stores is kept in the "data" folder next to this file. Delete this file to use the normal user folder instead.'
     $zip = Join-Path $OutDir "CloudStream_${version}_${arch}_portable.zip"
     if (Test-Path $zip) { Remove-Item $zip }
-    Invoke-Native 'Zipping the portable app' { tar -a -cf $zip -C (Split-Path $folder) 'CloudStream' }
+    Invoke-Native "Zipping the portable app ($arch)" 'tar' @('-a', '-cf', $zip, '-C', (Split-Path $folder), 'CloudStream')
     return $zip
 }
 
@@ -208,7 +257,7 @@ New-Item -ItemType Directory -Force $OutDir, $cache | Out-Null
 if (-not (Test-Path (Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'))) {
     Write-Step 'Installing the frontend tools (npm install)'
     Push-Location $frontendDir
-    try { Invoke-Native 'npm install' { npm.cmd install --no-audit --no-fund } } finally { Pop-Location }
+    try { Invoke-Native 'npm install' 'npm.cmd' @('install', '--no-audit', '--no-fund') } finally { Pop-Location }
 }
 
 $results = @()
@@ -221,7 +270,7 @@ foreach ($a in $Arch) {
     if ($Kind -ne 'installer') { $results += New-Portable $a $stage }
 }
 
-Write-Step 'Done'
+Write-Step "Done in $(Get-Elapsed $started)"
 foreach ($file in $results) {
     $item = Get-Item $file
     '{0,-52} {1,8:N1} MB  sha256 {2}' -f $item.Name, ($item.Length / 1MB), (Get-FileHash $file).Hash.Substring(0, 16) | Write-Host
