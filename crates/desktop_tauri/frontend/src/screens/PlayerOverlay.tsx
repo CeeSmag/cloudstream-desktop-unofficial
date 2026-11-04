@@ -17,6 +17,7 @@ import {
 import { CheckProgress, PlaybackStatus, SkipSegment, SourceInfo } from '../types';
 import { skipPrompt } from '../playback/skipPrompt';
 import { EpisodeButtons, SkipPromptButton } from '../components/EpisodeButtons';
+import { useSkipPromptWindow } from '../hooks/useSkipPromptWindow';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
 import { OptionMenu } from '../components/OptionMenu';
@@ -117,6 +118,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         durationMs: status.duration_ms,
         hasNext: onNext !== undefined,
       });
+  const skipButton = useSkipPromptWindow(prompt, controlsVisible);
   const takePrompt = () => {
     if (!prompt) return;
     if (prompt.action === 'next') onNext?.();
@@ -198,7 +200,15 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         </div>
       </div>
 
-      {prompt && status.state !== 'Failed' && <SkipPromptButton prompt={prompt} onClick={takePrompt} />}
+      {prompt && status.state !== 'Failed' && (
+        <SkipPromptButton
+          prompt={prompt}
+          visible={skipButton.visible}
+          counting={skipButton.counting}
+          drainKey={skipButton.key}
+          onClick={takePrompt}
+        />
+      )}
 
       {check && <SourceCheckPanel progress={check} onSkip={onSkipCheck} />}
 

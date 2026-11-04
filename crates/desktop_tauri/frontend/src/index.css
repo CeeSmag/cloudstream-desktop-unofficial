@@ -125,3 +125,16 @@
     animation: none;
   }
 }
+
+/* The shade on a skip button that drains from full to empty while its first seconds run. */
+@keyframes skip-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+.skip-drain {
+  transform-origin: left;
+  animation-name: skip-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
