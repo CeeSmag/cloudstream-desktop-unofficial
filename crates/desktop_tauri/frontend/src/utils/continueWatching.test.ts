@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canOpenTitlePage,
   continueKey,
+  episodeBadgeText,
+  formatRemainingTime,
   missingPageMessage,
   titlePageItem,
   watchedPercent,
@@ -23,10 +25,25 @@ const entry = (over: Partial<WatchProgress> = {}): WatchProgress => ({
 
 describe('continue watching', () => {
   it('rounds the watched share and keeps it between 0 and 100', () => {
-    expect(watchedPercent(entry({ percentage: 0.204 }))).toBe(20);
-    expect(watchedPercent(entry({ percentage: 1.7 }))).toBe(100);
-    expect(watchedPercent(entry({ percentage: -1 }))).toBe(0);
-    expect(watchedPercent(entry({ percentage: Number.NaN }))).toBe(0);
+    expect(watchedPercent(entry({ position_ms: 204, duration_ms: 1000 }))).toBe(20);
+    expect(watchedPercent(entry({ position_ms: 1200, duration_ms: 1000 }))).toBe(100);
+    expect(watchedPercent(entry({ position_ms: 0, duration_ms: 0, percentage: 0.5 }))).toBe(50);
+    expect(watchedPercent(entry({ position_ms: 0, duration_ms: 0, percentage: Number.NaN }))).toBe(0);
+  });
+
+  it('formats episode badge text correctly', () => {
+    expect(episodeBadgeText({ season: 1, episode: 3 })).toBe('S1 E3');
+    expect(episodeBadgeText({ season: null, episode: 4 })).toBe('E4');
+    expect(episodeBadgeText({ season: undefined, episode: undefined })).toBeNull();
+    expect(episodeBadgeText({ season: null, episode: null })).toBeNull();
+  });
+
+  it('formats remaining time into readable text', () => {
+    expect(formatRemainingTime(0, 0)).toBe('0m left');
+    expect(formatRemainingTime(60_000, 60_000)).toBe('0m left');
+    expect(formatRemainingTime(0, 42 * 60_000)).toBe('42m left');
+    expect(formatRemainingTime(0, 75 * 60_000)).toBe('1h 15m left');
+    expect(formatRemainingTime(0, 120 * 60_000)).toBe('2h left');
   });
 
   it('opens the title page, not the video, from the saved page address', () => {

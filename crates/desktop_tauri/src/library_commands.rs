@@ -1,7 +1,7 @@
 //! Tauri commands for managing library bookmarks and watch progress.
 
 use crate::app_state::AppState;
-use crate::dto::{BookmarkDto, WatchProgressDto};
+use crate::dto::{BookmarkDto, ResumePointerDto, WatchProgressDto};
 use crate::source_manager::SourceManager;
 use crate::video_opening::title_key_of;
 use core_model::{Bookmark, WatchProgress};
@@ -83,22 +83,50 @@ pub async fn get_continue_watching(
     Ok(list.into_iter().map(map_progress).collect())
 }
 
-/// Takes one title out of Continue Watching and forgets what was kept for it on disk (saved
-/// sources and subtitle files), so it opens from scratch next time.
+/// Gets the resume pointer for a given show or movie.
 #[tauri::command]
-#[tracing::instrument(level = "debug", skip_all, err)]
+#[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
+pub async fn get_resume_pointer(
+    provider: String,
+    detail_url: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ResumePointerDto>, String> {
+    let services = state.read();
+    let pointer = services
+        .library
+        .resume_pointer(&provider, &detail_url)
+        .map_err(|error| error.to_string())?;
+    Ok(pointer.map(|p| ResumePointerDto {
+        provider: p.provider,
+        detail_url: p.detail_url,
+        media_key: p.media_key,
+        title: p.title,
+        poster_url: p.poster_url,
+        season: p.season,
+        episode: p.episode,
+        position_ms: p.position_ms,
+        duration_ms: p.duration_ms,
+    }))
+}
+
+/// Takes one title out of Continue Watching and forgets all its saved sources and subtitle
+/// files on disk.
+#[tauri::command]
+#[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
 pub async fn remove_continue_watching(
     provider: String,
-    media_id: String,
+    detail_url: String,
     state: State<'_, AppState>,
     sources: State<'_, SourceManager>,
 ) -> Result<(), String> {
     let services = state.read();
-    services
+    let removed_keys = services
         .library
-        .remove_progress(&provider, &media_id)
+        .remove_continue_watching(&provider, &detail_url)
         .map_err(|error| error.to_string())?;
-    sources.forget_title(&title_key_of(&provider, &media_id));
+    for key in &removed_keys {
+        sources.forget_title(&title_key_of(&provider, key));
+    }
     Ok(())
 }
 
@@ -114,8 +142,8 @@ pub async fn clear_continue_watching(
         .library
         .clear_continue_watching()
         .map_err(|error| error.to_string())?;
-    for entry in &removed {
-        sources.forget_title(&title_key_of(&entry.provider, &entry.media_key));
+    for (provider, media_key) in &removed {
+        sources.forget_title(&title_key_of(provider, media_key));
     }
     tracing::info!(count = removed.len(), "continue watching cleared");
     Ok(())
@@ -144,6 +172,8 @@ fn map_progress(progress: WatchProgress) -> WatchProgressDto {
         duration_ms: progress.duration_ms,
         percentage,
         updated_at: progress.updated_at_ms / 1000,
+        season: progress.season,
+        episode: progress.episode,
     }
 }
 
@@ -159,12 +189,16 @@ mod tests {
             detail_url: "https://site.test/show".into(),
             position_ms: 30,
             duration_ms: 60,
+            season: Some(1),
+            episode: Some(2),
             ..WatchProgress::default()
         };
         let dto = map_progress(progress);
         assert_eq!(dto.provider, "Archive");
         assert_eq!(dto.detail_url, "https://site.test/show");
         assert_eq!(dto.media_id, "ep-1");
+        assert_eq!(dto.season, Some(1));
+        assert_eq!(dto.episode, Some(2));
         assert!((dto.percentage - 0.5).abs() < f32::EPSILON);
     }
 }

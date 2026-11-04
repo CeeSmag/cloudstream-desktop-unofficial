@@ -1,5 +1,5 @@
 use core_model::{Bookmark, WatchProgress};
-use storage::{BookmarkStore, WatchProgressStore};
+use storage::{BookmarkStore, ResumeStore, WatchProgressStore};
 
 use crate::ServiceError;
 
@@ -11,14 +11,20 @@ const CONTINUE_WATCHING_LIMIT: u32 = 20;
 pub struct LibraryService {
     bookmarks: BookmarkStore,
     progress: WatchProgressStore,
+    resume: ResumeStore,
 }
 
 impl LibraryService {
     /// Creates the service over its stores.
-    pub fn new(bookmarks: BookmarkStore, progress: WatchProgressStore) -> Self {
+    pub fn new(
+        bookmarks: BookmarkStore,
+        progress: WatchProgressStore,
+        resume: ResumeStore,
+    ) -> Self {
         Self {
             bookmarks,
             progress,
+            resume,
         }
     }
 
@@ -46,133 +52,136 @@ impl LibraryService {
         Ok(self.bookmarks.list()?)
     }
 
-    /// Items to offer under "continue watching": started, not finished, newest first.
+    /// Items to offer under "continue watching": one card per show, newest first.
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn continue_watching(&self) -> Result<Vec<WatchProgress>, ServiceError> {
-        let recent = self.progress.recent(CONTINUE_WATCHING_LIMIT * 2)?;
-        Ok(recent
-            .into_iter()
-            .filter(|entry| entry.position_ms > 0 && entry.fraction_watched() < 0.95)
-            .take(CONTINUE_WATCHING_LIMIT as usize)
-            .collect())
+        let pointers = self.resume.recent(CONTINUE_WATCHING_LIMIT)?;
+        let mut results = Vec::with_capacity(pointers.len());
+        for pointer in pointers {
+            let (pos, dur) = match self.progress.get(&pointer.provider, &pointer.media_key)? {
+                Some(saved) => (saved.position_ms, saved.duration_ms),
+                None => (0, 0),
+            };
+            results.push(WatchProgress {
+                provider: pointer.provider,
+                media_key: pointer.media_key,
+                title: pointer.title,
+                detail_url: pointer.detail_url,
+                poster_url: pointer.poster_url,
+                position_ms: pos,
+                duration_ms: dur,
+                updated_at_ms: pointer.updated_at_ms,
+                season: pointer.season,
+                episode: pointer.episode,
+            });
+        }
+        Ok(results)
     }
 
-    /// Takes one item out of "continue watching" by forgetting its progress. Returns whether it
-    /// was there.
+    /// Reads the resume pointer for a specific show or movie.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
+    pub fn resume_pointer(
+        &self,
+        provider: &str,
+        detail_url: &str,
+    ) -> Result<Option<WatchProgress>, ServiceError> {
+        let pointer = match self.resume.get(provider, detail_url)? {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+        let (pos, dur) = match self.progress.get(&pointer.provider, &pointer.media_key)? {
+            Some(saved) => (saved.position_ms, saved.duration_ms),
+            None => (0, 0),
+        };
+        Ok(Some(WatchProgress {
+            provider: pointer.provider,
+            media_key: pointer.media_key,
+            title: pointer.title,
+            detail_url: pointer.detail_url,
+            poster_url: pointer.poster_url,
+            position_ms: pos,
+            duration_ms: dur,
+            updated_at_ms: pointer.updated_at_ms,
+            season: pointer.season,
+            episode: pointer.episode,
+        }))
+    }
+
+    /// Takes one item out of "continue watching" by forgetting its progress.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
     pub fn remove_progress(&self, provider: &str, media_key: &str) -> Result<bool, ServiceError> {
         Ok(self.progress.remove(provider, media_key)?)
     }
 
-    /// Empties "continue watching": forgets the progress of every item it can show, however many
-    /// there are, and returns them. Items it never shows (not started, finished) are left alone.
-    #[tracing::instrument(level = "debug", skip_all, err)]
-    pub fn clear_continue_watching(&self) -> Result<Vec<WatchProgress>, ServiceError> {
-        let mut removed = Vec::new();
-        loop {
-            let shown = self.continue_watching()?;
-            if shown.is_empty() {
-                return Ok(removed);
-            }
-            for entry in shown {
-                self.progress.remove(&entry.provider, &entry.media_key)?;
-                removed.push(entry);
+    /// Removes a show from Continue Watching: deletes its resume pointer and all episode watch
+    /// progress records, returning all episode media keys that were removed.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
+    pub fn remove_continue_watching(
+        &self,
+        provider: &str,
+        detail_url: &str,
+    ) -> Result<Vec<String>, ServiceError> {
+        let mut keys = self.progress.episodes_for_show(provider, detail_url)?;
+        if let Some(pointer) = self.resume.get(provider, detail_url)? {
+            if !keys.contains(&pointer.media_key) {
+                keys.push(pointer.media_key);
             }
         }
+        self.resume.remove(provider, detail_url)?;
+        self.progress.remove_for_show(provider, detail_url)?;
+        Ok(keys)
+    }
+
+    /// Flexible remover supporting either detail_url or fallback media_key.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
+    pub fn remove_continue_watching_entry(
+        &self,
+        provider: &str,
+        detail_url: Option<&str>,
+        media_key: Option<&str>,
+    ) -> Result<Vec<String>, ServiceError> {
+        let resolved_url = match detail_url.filter(|u| !u.is_empty()) {
+            Some(u) => Some(u.to_owned()),
+            None => match media_key {
+                Some(key) => self
+                    .progress
+                    .get(provider, key)?
+                    .map(|p| p.detail_url)
+                    .filter(|u| !u.is_empty()),
+                None => None,
+            },
+        };
+        match resolved_url {
+            Some(url) => self.remove_continue_watching(provider, &url),
+            None => {
+                if let Some(key) = media_key {
+                    self.progress.remove(provider, key)?;
+                    Ok(vec![key.to_owned()])
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        }
+    }
+
+    /// Empties Continue Watching: forgets all resume pointers and progress records, returning
+    /// all (provider, media_key) pairs cleared.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn clear_continue_watching(&self) -> Result<Vec<(String, String)>, ServiceError> {
+        let mut keys = self.progress.all_media_keys()?;
+        let pointers = self.resume.all()?;
+        for pointer in pointers {
+            let pair = (pointer.provider, pointer.media_key);
+            if !keys.contains(&pair) {
+                keys.push(pair);
+            }
+        }
+        self.resume.clear()?;
+        self.progress.clear()?;
+        Ok(keys)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use storage::Database;
-
-    use super::*;
-
-    fn service() -> (LibraryService, WatchProgressStore) {
-        let database = Arc::new(Database::open_in_memory().expect("memory db"));
-        let progress = WatchProgressStore::new(Arc::clone(&database));
-        (
-            LibraryService::new(BookmarkStore::new(database), progress.clone()),
-            progress,
-        )
-    }
-
-    fn entry(key: &str, position_ms: i64, duration_ms: i64, at: i64) -> WatchProgress {
-        WatchProgress {
-            provider: "P".into(),
-            media_key: key.into(),
-            title: key.into(),
-            position_ms,
-            duration_ms,
-            updated_at_ms: at,
-            ..WatchProgress::default()
-        }
-    }
-
-    #[test]
-    fn continue_watching_skips_unstarted_and_finished_items() {
-        let (service, progress) = service();
-        progress.save(&entry("unstarted", 0, 100, 1)).expect("save");
-        progress.save(&entry("finished", 99, 100, 2)).expect("save");
-        progress.save(&entry("midway", 40, 100, 3)).expect("save");
-        let keys: Vec<_> = service
-            .continue_watching()
-            .expect("list")
-            .into_iter()
-            .map(|e| e.media_key)
-            .collect();
-        assert_eq!(keys, ["midway"]);
-    }
-
-    #[test]
-    fn removing_one_item_leaves_the_others_in_continue_watching() {
-        let (library, store) = service();
-        for key in ["a", "b"] {
-            store.save(&entry(key, 10, 100, 1)).expect("save");
-        }
-        assert!(library.remove_progress("P", "a").expect("removed"));
-        assert!(!library.remove_progress("P", "a").expect("already gone"));
-        let keys: Vec<_> = library
-            .continue_watching()
-            .expect("list")
-            .into_iter()
-            .map(|e| e.media_key)
-            .collect();
-        assert_eq!(keys, ["b"]);
-    }
-
-    #[test]
-    fn clearing_continue_watching_removes_every_shown_item_even_past_the_list_limit() {
-        let (library, store) = service();
-        for n in 0..45 {
-            store
-                .save(&entry(&format!("k{n}"), 10, 100, i64::from(n)))
-                .expect("save");
-        }
-        store.save(&entry("unstarted", 0, 100, 99)).expect("save");
-        let removed = library.clear_continue_watching().expect("cleared");
-        assert_eq!(removed.len(), 45);
-        assert!(library.continue_watching().expect("list").is_empty());
-        assert!(
-            store.get("P", "unstarted").expect("get").is_some(),
-            "never shown, never touched"
-        );
-    }
-
-    #[test]
-    fn bookmark_round_trip() {
-        let (service, _) = service();
-        let bookmark = Bookmark {
-            provider: "P".into(),
-            url: "u".into(),
-            name: "n".into(),
-            ..Bookmark::default()
-        };
-        service.add_bookmark(&bookmark).expect("add");
-        assert!(service.is_bookmarked("P", "u").expect("check"));
-        service.remove_bookmark("P", "u").expect("remove");
-        assert!(service.bookmarks().expect("list").is_empty());
-    }
-}
+#[path = "library_service_tests.rs"]
+mod tests;

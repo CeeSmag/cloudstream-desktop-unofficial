@@ -2,6 +2,17 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Next episode payload when watching a series.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct NextEpisodeDto {
+    /// Episode payload.
+    pub media_key: String,
+    /// Season number.
+    pub season: Option<i32>,
+    /// Episode number.
+    pub episode: Option<i32>,
+}
+
 /// Playback request sent from the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayRequestDto {
@@ -15,6 +26,15 @@ pub struct PlayRequestDto {
     pub detail_url: Option<String>,
     /// Poster image URL.
     pub poster_url: Option<String>,
+    /// Season number, if known.
+    #[serde(default)]
+    pub season: Option<i32>,
+    /// Episode number, if known.
+    #[serde(default)]
+    pub episode: Option<i32>,
+    /// Next episode, if this show has one.
+    #[serde(default)]
+    pub next_episode: Option<NextEpisodeDto>,
 }
 
 /// Snapshot of the video player state.
@@ -188,6 +208,35 @@ pub struct WatchProgressDto {
     pub percentage: f32,
     /// Last played timestamp in seconds.
     pub updated_at: i64,
+    /// Season number, if known.
+    #[serde(default)]
+    pub season: Option<i32>,
+    /// Episode number, if known.
+    #[serde(default)]
+    pub episode: Option<i32>,
+}
+
+/// Resume pointer for a show or movie.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResumePointerDto {
+    /// Provider the title belongs to.
+    pub provider: String,
+    /// Provider URL of the parent title.
+    pub detail_url: String,
+    /// Episode data key or movie payload.
+    pub media_key: String,
+    /// Title name.
+    pub title: String,
+    /// Poster image URL.
+    pub poster_url: Option<String>,
+    /// Season number, if known.
+    pub season: Option<i32>,
+    /// Episode number, if known.
+    pub episode: Option<i32>,
+    /// Current playback position in milliseconds.
+    pub position_ms: i64,
+    /// Total duration in milliseconds.
+    pub duration_ms: i64,
 }
 
 #[cfg(test)]
@@ -202,6 +251,13 @@ mod tests {
             title: "Episode 1".to_owned(),
             detail_url: Some("https://example.com/show".to_owned()),
             poster_url: Some("https://example.com/img.jpg".to_owned()),
+            season: Some(1),
+            episode: Some(2),
+            next_episode: Some(NextEpisodeDto {
+                media_key: "ep-102".to_owned(),
+                season: Some(1),
+                episode: Some(3),
+            }),
         };
         let json = serde_json::to_string(&req).expect("serialize");
         let parsed: PlayRequestDto = serde_json::from_str(&json).expect("deserialize");

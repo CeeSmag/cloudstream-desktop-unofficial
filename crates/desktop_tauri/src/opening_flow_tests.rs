@@ -13,7 +13,7 @@ use extension_runtime::fake_link_search::{FakeLinkSearches, SearchScript};
 use extension_runtime::fake_search_runtime::FakeSearchRuntime;
 use extension_runtime::RpcProviderGateway;
 use player_api::VideoPlayer;
-use storage::{Database, WatchProgressStore};
+use storage::{Database, ResumeStore, WatchProgressStore};
 
 use crate::check_gate::WaitLimits;
 use crate::race_tests::{join_within, TIME_LIMIT};
@@ -83,9 +83,11 @@ fn build(
     let gateway = RpcProviderGateway::new(FakeSearchRuntime::new(Arc::clone(&searches)));
     let player = Arc::new(RecordingPlayer::default());
     let dead = Arc::new(Mutex::new(Vec::new()));
+    let db = Arc::new(Database::open_in_memory().expect("memory db"));
     let playback = PlaybackService::new(
         Arc::clone(&player) as Arc<dyn VideoPlayer>,
-        WatchProgressStore::new(Arc::new(Database::open_in_memory().expect("memory db"))),
+        WatchProgressStore::new(Arc::clone(&db)),
+        ResumeStore::new(db),
         Arc::new(SystemClock),
     );
     Rig {

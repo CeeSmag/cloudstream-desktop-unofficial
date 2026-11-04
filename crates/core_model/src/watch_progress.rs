@@ -16,6 +16,12 @@ pub struct WatchProgress {
     /// Poster image URL.
     #[serde(default)]
     pub poster_url: Option<String>,
+    /// Season number when known.
+    #[serde(default)]
+    pub season: Option<i32>,
+    /// Episode number when known.
+    #[serde(default)]
+    pub episode: Option<i32>,
     /// Playback position in milliseconds.
     pub position_ms: i64,
     /// Total length in milliseconds, 0 when unknown.

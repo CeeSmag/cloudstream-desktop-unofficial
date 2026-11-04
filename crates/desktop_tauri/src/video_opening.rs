@@ -37,6 +37,13 @@ pub(crate) fn item_from(request: PlayRequestDto) -> PlaybackItem {
         title: request.title,
         detail_url: request.detail_url.unwrap_or_default(),
         poster_url: request.poster_url,
+        season: request.season,
+        episode: request.episode,
+        next_episode: request.next_episode.map(|next| app_services::NextEpisode {
+            media_key: next.media_key,
+            season: next.season,
+            episode: next.episode,
+        }),
     }
 }
 

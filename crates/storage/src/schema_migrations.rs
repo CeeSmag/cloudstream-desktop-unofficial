@@ -18,6 +18,30 @@ const MIGRATIONS: &[&str] = &[
     // Icons: NULL means not looked at yet, an empty text means there is none.
     "ALTER TABLE repositories ADD COLUMN icon_url TEXT;
      ALTER TABLE installed_extensions ADD COLUMN icon_url TEXT;",
+    // Resume pointers: one pointer per show/movie, pointing to the next episode.
+    "CREATE TABLE resume_pointers (
+         provider TEXT NOT NULL,
+         detail_url TEXT NOT NULL,
+         media_key TEXT NOT NULL,
+         title TEXT NOT NULL,
+         poster_url TEXT,
+         season INTEGER,
+         episode INTEGER,
+         updated_at INTEGER NOT NULL,
+         PRIMARY KEY (provider, detail_url)
+     );
+     INSERT OR REPLACE INTO resume_pointers
+         (provider, detail_url, media_key, title, poster_url, season, episode, updated_at)
+     SELECT w.provider, w.detail_url, w.media_key, w.title, w.poster_url, NULL, NULL, w.updated_at
+     FROM watch_progress w
+     INNER JOIN (
+         SELECT provider, detail_url, MAX(updated_at) AS max_updated
+         FROM watch_progress
+         WHERE detail_url != ''
+         GROUP BY provider, detail_url
+     ) latest ON w.provider = latest.provider
+             AND w.detail_url = latest.detail_url
+             AND w.updated_at = latest.max_updated;",
 ];
 
 /// Brings the database schema up to date, running only the steps it has not seen.
@@ -44,5 +68,79 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("version");
         assert_eq!(version, MIGRATIONS.len());
+    }
+
+    type MigratedPointer = (String, String, String, String, Option<String>, i64);
+
+    fn seed_v2_database(connection: &Connection) {
+        connection.execute_batch(MIGRATIONS[0]).expect("step 0");
+        connection.execute_batch(MIGRATIONS[1]).expect("step 1");
+        connection
+            .pragma_update(None, "user_version", 2)
+            .expect("version 2");
+        connection
+            .execute(
+                "INSERT INTO watch_progress VALUES
+                 ('P', 'ep1', 'Show 1', 'https://show/1', 'p1.jpg', 10, 100, 1000),
+                 ('P', 'ep2', 'Show 1', 'https://show/1', 'p1.jpg', 20, 100, 2000),
+                 ('P', 'movie1', 'Movie 1', 'https://movie/1', 'm1.jpg', 50, 100, 1500),
+                 ('P', 'orphan', 'No Show', '', NULL, 50, 100, 3000)",
+                [],
+            )
+            .expect("insert progress");
+    }
+
+    fn read_migrated_pointers(connection: &Connection) -> Vec<MigratedPointer> {
+        let mut stmt = connection
+            .prepare(
+                "SELECT provider, detail_url, media_key, title, poster_url, updated_at
+                 FROM resume_pointers ORDER BY detail_url",
+            )
+            .expect("prepare");
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })
+            .expect("query");
+        rows.map(|r| r.expect("row")).collect()
+    }
+
+    #[test]
+    fn migration_3_creates_resume_pointers_from_existing_progress() {
+        let connection = Connection::open_in_memory().expect("memory db");
+        seed_v2_database(&connection);
+        migrate(&connection).expect("migrate to 3");
+        let results = read_migrated_pointers(&connection);
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(
+            results[0],
+            (
+                "P".to_owned(),
+                "https://movie/1".to_owned(),
+                "movie1".to_owned(),
+                "Movie 1".to_owned(),
+                Some("m1.jpg".to_owned()),
+                1500
+            )
+        );
+        assert_eq!(
+            results[1],
+            (
+                "P".to_owned(),
+                "https://show/1".to_owned(),
+                "ep2".to_owned(),
+                "Show 1".to_owned(),
+                Some("p1.jpg".to_owned()),
+                2000
+            )
+        );
     }
 }

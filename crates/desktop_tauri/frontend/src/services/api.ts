@@ -4,12 +4,14 @@ import {
   DebugLoggingInfo,
   InstalledExtension,
   MediaDetails,
+  NextEpisode,
   PlaybackStatus,
   PluginHit,
   Preferences,
   ProviderInfo,
   RepositoryEntry,
   RepositoryPlugin,
+  ResumePointer,
   SearchItem,
   SourceInfo,
   StartupStatus,
@@ -92,6 +94,9 @@ export const api = {
     title: string;
     detail_url?: string;
     poster_url?: string;
+    season?: number | null;
+    episode?: number | null;
+    next_episode?: NextEpisode | null;
   }) => invokeTauri<void>('play_media', { request: params }),
 
   /** Starts the video now on the best stream already known to work; the checks go on in the background. */
@@ -144,9 +149,13 @@ export const api = {
 
   getContinueWatching: () => invokeTauri<WatchProgress[]>('get_continue_watching'),
 
+  /** Reads the resume pointer for a show or movie (what episode to resume and remaining time). */
+  getResumePointer: (provider: string, detailUrl: string) =>
+    invokeTauri<ResumePointer | null>('get_resume_pointer', { provider, detailUrl }),
+
   /** Takes one title out of Continue Watching and forgets what was kept on disk for it. */
-  removeContinueWatching: (provider: string, mediaId: string) =>
-    invokeTauri<void>('remove_continue_watching', { provider, mediaId }),
+  removeContinueWatching: (provider: string, detailUrl: string) =>
+    invokeTauri<void>('remove_continue_watching', { provider, detailUrl }),
 
   /** Empties Continue Watching and forgets what was kept on disk for its titles. */
   clearContinueWatching: () => invokeTauri<void>('clear_continue_watching'),

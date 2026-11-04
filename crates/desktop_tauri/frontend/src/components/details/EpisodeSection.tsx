@@ -20,6 +20,7 @@ interface EpisodeSectionProps {
   /** Shown for episodes that have no picture of their own. */
   fallbackPoster: string | null;
   onPlay: (episode: Episode) => void;
+  highlightedKey?: string;
 }
 
 const pillClass = (active: boolean) =>
@@ -62,16 +63,30 @@ const SeasonPicker: React.FC<Pick<EpisodeSectionProps, 'seasons' | 'selectedSeas
   );
 };
 
-const EpisodeCard: React.FC<{ episode: Episode; fallbackPoster: string | null; onPlay: (e: Episode) => void }> = ({
-  episode,
-  fallbackPoster,
-  onPlay,
-}) => {
+const EpisodeCard: React.FC<{
+  episode: Episode;
+  fallbackPoster: string | null;
+  onPlay: (e: Episode) => void;
+  isHighlighted?: boolean;
+}> = ({ episode, fallbackPoster, onPlay, isHighlighted }) => {
+  const cardRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (isHighlighted && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [isHighlighted]);
+
   const picture = episode.poster_url || fallbackPoster;
   return (
     <div
+      ref={cardRef}
       onClick={() => onPlay(episode)}
-      className="group flex gap-3 sm:gap-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
+      className={`group flex gap-3 sm:gap-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border cursor-pointer transition-all duration-200 ${
+        isHighlighted
+          ? 'border-accent ring-2 ring-accent/50 shadow-lg glow-accent'
+          : 'border-white/5 hover:border-accent/40'
+      }`}
     >
       <div className="relative w-28 sm:w-32 aspect-video rounded-xl overflow-hidden bg-midnight flex-shrink-0">
         {picture ? (
@@ -104,13 +119,21 @@ const EpisodeCard: React.FC<{ episode: Episode; fallbackPoster: string | null; o
 
 /** The season picker, sort button, episode ranges and the episodes of the selected season. */
 export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
-  const { seasons, selectedSeason, onSelectSeason, episodes, fallbackPoster, onPlay } = props;
+  const { seasons, selectedSeason, onSelectSeason, episodes, fallbackPoster, onPlay, highlightedKey } = props;
   const [ascending, setAscending] = React.useState(true);
   const [rangeIndex, setRangeIndex] = React.useState(0);
   const chunks = React.useMemo(() => chunkEpisodes(sortEpisodes(episodes, ascending)), [episodes, ascending]);
   const range = Math.min(rangeIndex, Math.max(chunks.length - 1, 0));
 
   React.useEffect(() => setRangeIndex(0), [selectedSeason, ascending]);
+
+  React.useEffect(() => {
+    if (!highlightedKey) return;
+    const chunkIdx = chunks.findIndex((chunk) => chunk.some((ep) => ep.data === highlightedKey));
+    if (chunkIdx >= 0) {
+      setRangeIndex(chunkIdx);
+    }
+  }, [highlightedKey, chunks]);
 
   return (
     <div className="mt-10 sm:mt-14">
@@ -143,7 +166,13 @@ export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
 
       <div className="episode-grid">
         {(chunks[range] ?? []).map((episode) => (
-          <EpisodeCard key={episode.id} episode={episode} fallbackPoster={fallbackPoster} onPlay={onPlay} />
+          <EpisodeCard
+            key={episode.id}
+            episode={episode}
+            fallbackPoster={fallbackPoster}
+            onPlay={onPlay}
+            isHighlighted={episode.data === highlightedKey}
+          />
         ))}
       </div>
     </div>
