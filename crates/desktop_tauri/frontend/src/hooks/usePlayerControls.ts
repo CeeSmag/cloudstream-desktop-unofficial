@@ -5,6 +5,7 @@ import { seekText, volumeText } from '../utils/feedbackText';
 import { wheelVolumeDelta } from '../utils/wheelVolume';
 import { formatTime } from '../utils/playerTime';
 import { PendingSeek, seekTarget } from '../utils/seekTarget';
+import { createSeekScheduler } from '../utils/seekScheduler';
 import { useClickOrDoubleClick } from './useClickOrDoubleClick';
 import { useFeedbackPopup } from './useFeedbackPopup';
 import { usePlayerShortcuts } from './usePlayerShortcuts';
@@ -63,6 +64,13 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
   /** Where the last jump aimed, so quick presses add up before the player reports the new position. */
   const pendingSeek = React.useRef<PendingSeek | null>(null);
 
+  // Key presses become one jump per burst: every jump makes the player fetch the video again, and a
+  // flood of them gets the player refused (HTTP 429) by servers that limit requests.
+  const latestSeek = React.useRef(onSeek);
+  latestSeek.current = onSeek;
+  const [scheduler] = React.useState(() => createSeekScheduler((ms) => latestSeek.current(ms)));
+  React.useEffect(() => scheduler.cancel, [scheduler]);
+
   const seekBy = (deltaMs: number) => {
     show({ icon: deltaMs < 0 ? 'back' : 'forward', text: seekText(deltaMs) });
     const now = Date.now();
@@ -74,13 +82,13 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
       now,
     });
     pendingSeek.current = { targetMs, at: now };
-    onSeek(targetMs);
+    scheduler.press(targetMs);
   };
 
   const jumpTo = (positionMs: number) => {
     show({ icon: 'jump', text: `Jump to ${formatTime(positionMs)}` });
     pendingSeek.current = { targetMs: positionMs, at: Date.now() };
-    onSeek(positionMs);
+    scheduler.sendNow(positionMs);
   };
 
   const toggleFullscreen = () => {
