@@ -13,10 +13,10 @@ import {
   AudioLines,
   Layers,
   Loader2,
-  SkipBack,
-  SkipForward,
 } from 'lucide-react';
-import { CheckProgress, PlaybackStatus, SourceInfo } from '../types';
+import { CheckProgress, PlaybackStatus, SkipSegment, SourceInfo } from '../types';
+import { skipPrompt } from '../playback/skipPrompt';
+import { EpisodeButtons, SkipPromptButton } from '../components/EpisodeButtons';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
 import { OptionMenu } from '../components/OptionMenu';
@@ -53,6 +53,8 @@ interface PlayerOverlayProps {
   onPrevious?: () => void;
   /** Plays the episode after this one; absent for a movie or the last episode. */
   onNext?: () => void;
+  /** Intro, recap and credits of the video, when they are known. */
+  skipSegments?: SkipSegment[];
 }
 
 const SKIP_MS = 10000;
@@ -72,6 +74,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onVolume,
   onPrevious,
   onNext,
+  skipSegments = [],
 }) => {
   const [trackMenu, setTrackMenu] = React.useState<'none' | 'sources' | 'subtitles' | 'audio'>('none');
   const isPlaying = status.state === 'Playing';
@@ -104,6 +107,20 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
     controls.show({ icon: 'source', text: sourceText(label) });
     onSelectSource(index);
+  };
+
+  const prompt = check
+    ? null
+    : skipPrompt({
+        segments: skipSegments,
+        positionMs: status.position_ms,
+        durationMs: status.duration_ms,
+        hasNext: onNext !== undefined,
+      });
+  const takePrompt = () => {
+    if (!prompt) return;
+    if (prompt.action === 'next') onNext?.();
+    else onSeek(prompt.toMs);
   };
 
   const fade = controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
@@ -181,6 +198,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         </div>
       </div>
 
+      {prompt && status.state !== 'Failed' && <SkipPromptButton prompt={prompt} onClick={takePrompt} />}
+
       {check && <SourceCheckPanel progress={check} onSkip={onSkipCheck} />}
 
       {!check && status.state === 'Loading' && (
@@ -231,18 +250,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
               <button onClick={() => controls.seekBy(SKIP_MS)} className={ROUND_BUTTON} title="Forward 10s">
                 <RotateCw className="w-4 h-4" />
               </button>
-              {onPrevious && (
-                <button onClick={onPrevious} className={`${ROUND_BUTTON} flex items-center gap-1.5`} title="Previous episode">
-                  <SkipBack className="w-4 h-4" />
-                  <span className="hidden lg:inline text-xs font-medium">Previous episode</span>
-                </button>
-              )}
-              {onNext && (
-                <button onClick={onNext} className={`${ROUND_BUTTON} flex items-center gap-1.5`} title="Next episode">
-                  <SkipForward className="w-4 h-4" />
-                  <span className="hidden lg:inline text-xs font-medium">Next episode</span>
-                </button>
-              )}
+              <EpisodeButtons onPrevious={onPrevious} onNext={onNext} />
               <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 ml-1 sm:ml-2 tracking-wide font-mono whitespace-nowrap">
                 {formatTime(status.position_ms)} / {formatTime(status.duration_ms)}
               </span>

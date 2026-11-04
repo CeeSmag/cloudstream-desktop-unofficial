@@ -1,0 +1,16 @@
+[package]
+name = "skip_times"
+description = "Finds where the intro, recap and credits of an episode or movie are, from community databases keyed by the IMDb, TMDb or MyAnimeList id of the title."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ureq = "3"
+
+[lints]
+workspace = true

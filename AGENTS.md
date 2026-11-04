@@ -20,7 +20,7 @@ This document is the verified architectural index, navigation map, and modificat
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (47 Commands Reference)](#4-tauri-ipc-interface-47-commands-reference)
+4. [Tauri IPC Interface (50 Commands Reference)](#4-tauri-ipc-interface-47-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -194,6 +194,13 @@ This document is the verified architectural index, navigation map, and modificat
   - `CachedLink`: `link: PlayableLink`, `health: LinkHealth` (`Working`, `Broken`, `Unchecked`).
   - `redact_url(url) -> String`: Sanitizes tokens into `host#fingerprint` for safe logging.
 
+#### `crates/skip_times`
+- **Location**: `crates/skip_times/`
+- **Dependencies**: `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
+- **Responsibility**: Finds the intro, recap and credits of an episode or film. Providers do not carry these times; like the reference app it asks community databases by the title's ids: AniSkip (anime, MyAnimeList id), TheIntroDB (TMDb or IMDb id), IntroDB (IMDb id). First database that knows wins.
+- **Types**: `SkipLookup::find(&SkipQuery) -> Result<Vec<SkipSegment>, SkipError>` (answers remembered per run, at most 64; errors are not remembered), `ExternalIds::from_sync(sync_data, unique_url)` (validates ids so they are safe in a URL), `SkipFetcher` trait with `UreqSkipFetcher`.
+- **Plumbing**: `core_model::LoadDetails.sync_data` / `unique_url` come from the sidecar's `load` reply; `desktop_tauri::catalog_commands::map_media_details` turns them into `imdb_id` / `tmdb_id` / `mal_id` on the title page; `skip_commands::get_skip_segments` runs the lookup (switch: setting `skip_lookup`).
+
 ---
 
 ### Chunk 3: Extension Subsystem & Sidecar Protocol
@@ -333,7 +340,8 @@ This document is the verified architectural index, navigation map, and modificat
   - `screens/settings/`: `GeneralSettings.tsx`, `PreferencesPage.tsx`, `SubtitleLanguages.tsx`, `RepositoryPage.tsx`, `PluginsTab.tsx`, `ExtensionsPage.tsx`.
   - `components/`: `VideoCanvas.tsx` (canvas pixel renderer), `SeekBar.tsx`, `SourceCheckPanel.tsx`, `OptionMenu.tsx`, `SubtitleFilter.tsx`, `PosterCard.tsx`, `ContinueWatchingCard.tsx` (badge "S1 E3", progress bar), `ContextMenu.tsx`, `FeedbackPopup.tsx`, `DebugLoggingCard.tsx`, `StartupScreen.tsx`.
   - `components/details/`: `CastRow.tsx`, `EpisodeSection.tsx` (supports `highlightedKey` and auto-scrolling).
-  - `playback/`: `episodeLookup.ts` (`findEpisodeForKey`, `findNextEpisode`, `movieAsEpisode`, `playbackTitle`).
+  - `playback/`: `episodeLookup.ts` (`orderedEpisodes`, `findNextEpisode`, `findPreviousEpisode`, `findEpisodeForKey`, `movieAsEpisode`, `playbackTitle`), `autoAdvance.ts` (`shouldAutoAdvance`: next episode starts when a video ended at >= 90 %), `skipPrompt.ts` (Skip Intro / Next episode button), `skipRequest.ts`.
+  - `utils/episodeMarks.ts`: episode marks on the title page (bar while started, Watched from 80 %).
   - `utils/`: `continueWatching.ts` (`watchedPercent`, `episodeBadgeText`, `formatRemainingTime`, `continueKey`).
   - `components/extensions/`: `IconTile.tsx`, `InstalledExtensionList.tsx`, `PluginList.tsx`, `RepositoryPanel.tsx`.
   - `hooks/`: `usePlayback.ts`, `usePlayerControls.ts`, `usePlayerPreferences.ts`, `usePlayerShortcuts.ts`, `useExtensions.ts`, `useAllPlugins.ts`, `useDebugLogging.ts`, `useStallWatch.ts`, `useStartup.ts`, `useWindowFullscreen.ts`.
@@ -436,9 +444,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (47 Commands Reference)
+## 4. Tauri IPC Interface (50 Commands Reference)
 
-All 47 commands registered in `crates/desktop_tauri/src/main.rs`:
+All 50 commands registered in `crates/desktop_tauri/src/main.rs`:
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -486,6 +494,9 @@ All 47 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `set_extension_trusted` | Flags plugin as trusted (skipping sandboxing). |
 | **Plugin Catalog**| `prepare_plugin_catalog` | Pre-indexes all repository plugins. |
 | | `list_all_plugins` | Returns indexed plugins with repository metadata. |
+| **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |
+| | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
+| | `set_playback_option` | Switches `autoplay_next` or `skip_lookup`. |
 | **Video/Window** | `set_video_surface` | Informs player of viewport dimensions. |
 | | `get_video_frame` | Returns binary header + RGBA pixels for canvas rendering. |
 | | `set_window_fullscreen` | Toggles fullscreen window state. |
