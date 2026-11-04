@@ -15,9 +15,12 @@ interface ResumeHeroProps {
 
 /** The Home banner for the title the viewer was last watching. */
 export const ResumeHero: React.FC<ResumeHeroProps> = ({ item, onResume, onDetails }) => {
-  const details = useTitleDetails(item.provider, item.detail_url);
-  const backdrop = details?.background_url || details?.poster_url || item.poster_url;
-  const poster = details?.poster_url || item.poster_url;
+  const { details, failed } = useTitleDetails(item.provider, item.detail_url);
+  // Until the title is known nothing that would change afterwards is shown (the episode's own
+  // picture and name, for instance), so the banner does not flash one look and then another.
+  const loading = !details && !failed;
+  const backdrop = loading ? null : details?.background_url || details?.poster_url || item.poster_url;
+  const poster = loading ? null : details?.poster_url || item.poster_url;
   const episodeName = details && item.episode != null ? findEpisodeForKey(details, item.media_id)?.name : null;
   const percent = resumePercent(item);
   const facts = [details?.media_type, details?.year, episodeName].filter(Boolean).join(' · ');
@@ -37,6 +40,15 @@ export const ResumeHero: React.FC<ResumeHeroProps> = ({ item, onResume, onDetail
       </div>
 
       <div className="relative h-full max-w-[100rem] mx-auto page-gutter flex items-center gap-4 sm:gap-6 py-4 sm:py-8 z-10">
+        {loading && (
+          <>
+            <div className="hidden sm:block h-full aspect-[2/3] flex-none rounded-xl bg-white/5 animate-pulse" />
+            <div
+              className="hidden sm:block self-stretch w-0.5 my-2 rounded-full bg-white/70 flex-none"
+              aria-hidden="true"
+            />
+          </>
+        )}
         {poster && (
           <>
             <img
@@ -58,9 +70,16 @@ export const ResumeHero: React.FC<ResumeHeroProps> = ({ item, onResume, onDetail
             <span className="text-zinc-300 text-xs font-medium">{resumeFacts(item)}</span>
           </div>
 
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight drop-shadow-md mb-2 max-w-2xl break-words">
-            {details?.name ?? item.title}
-          </h1>
+          {loading ? (
+            <div
+              className="h-9 sm:h-12 w-72 max-w-full rounded-lg bg-white/10 animate-pulse mb-3"
+              aria-label="Loading"
+            />
+          ) : (
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight drop-shadow-md mb-2 max-w-2xl break-words">
+              {details?.name ?? item.title}
+            </h1>
+          )}
           {facts && <p className="text-zinc-400 text-xs font-medium mb-2">{facts}</p>}
           {details?.plot && (
             <p className="text-zinc-300 text-sm leading-relaxed max-w-2xl line-clamp-2 mb-4">{details.plot}</p>
