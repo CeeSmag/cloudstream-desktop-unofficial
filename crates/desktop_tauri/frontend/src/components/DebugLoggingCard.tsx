@@ -30,7 +30,7 @@ export const DebugLoggingCard: React.FC<DebugLoggingCardProps> = ({ onError }) =
           </h2>
           <p className="text-xs text-zinc-400">
             Writes detailed logs to separate text files, one for each part of the app, so odd behavior can be traced. Off by
-            default: while it is off nothing is written and the app does no extra logging work.
+            default: while it is off nothing is written and the app does no extra logging work. The player's own detailed messages (what it downloads, where it seeks, which pieces of a stream fail) go into the player file while it is on.
           </p>
         </div>
         <button

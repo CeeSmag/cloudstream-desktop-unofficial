@@ -137,6 +137,11 @@ impl PlaybackService {
         self.player.set_preferred_audio(language);
     }
 
+    /// Makes the player write its own detailed messages into the log (while debug logging is on).
+    pub fn set_verbose_player_log(&self, enabled: bool) {
+        self.player.set_verbose_log(enabled);
+    }
+
     /// Sets the subtitle languages whose subtitles turn on by themselves; empty turns that off.
     #[tracing::instrument(level = "debug", skip_all, fields(count = languages.len()))]
     pub fn set_preferred_subtitles(&self, languages: &[player_api::Language]) {

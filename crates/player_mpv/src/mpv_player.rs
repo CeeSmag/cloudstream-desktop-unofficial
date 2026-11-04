@@ -58,7 +58,7 @@ impl MpvPlayer {
         let handle = Arc::new(MpvHandle::create(api)?);
         configure(&handle, options, embedded)?;
         handle.initialize()?;
-        handle.forward_mpv_log();
+        handle.set_log_level(QUIET_LOG_LEVEL);
         let (renderer, frames) = if embedded {
             start_embedding(&handle)
         } else {
@@ -138,7 +138,22 @@ fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Ar
     }
 }
 
+/// The mpv log level normally forwarded: warnings and errors.
+const QUIET_LOG_LEVEL: &str = "warn";
+/// The level while debug logging is on: everything mpv says at `verbose` and worse.
+const VERBOSE_LOG_LEVEL: &str = "v";
+
 impl VideoPlayer for MpvPlayer {
+    fn set_verbose_log(&self, enabled: bool) {
+        let level = if enabled {
+            VERBOSE_LOG_LEVEL
+        } else {
+            QUIET_LOG_LEVEL
+        };
+        tracing::info!(level, "mpv log level changed");
+        self.handle.set_log_level(level);
+    }
+
     #[tracing::instrument(level = "debug", skip_all, err)]
     fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError> {
         self.handle

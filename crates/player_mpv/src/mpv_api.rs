@@ -18,7 +18,7 @@ mod properties;
 /// `mpv_event_id` of the end-of-file event, whose payload is an `mpv_event_end_file`.
 const EVENT_END_FILE: c_int = 7;
 /// `mpv_event_id` of a log message, whose payload is an `mpv_event_log_message`.
-const EVENT_LOG_MESSAGE: c_int = 22;
+const EVENT_LOG_MESSAGE: c_int = 2;
 
 #[repr(C)]
 struct RawEvent {
@@ -197,11 +197,12 @@ impl MpvHandle {
         )
     }
 
-    /// Has mpv deliver its warnings and errors as events; [`MpvHandle::wait_event`] logs them.
-    pub(crate) fn forward_mpv_log(&self) {
+    /// Has mpv deliver its messages of `level` and worse (`warn`, `v`, ...) as events;
+    /// [`MpvHandle::wait_event`] logs them. A new call replaces the level asked for before.
+    pub(crate) fn set_log_level(&self, level: &str) {
         match &self.api.log {
             Some(log) => {
-                let code = log.request(self.raw, "warn");
+                let code = log.request(self.raw, level);
                 if code < 0 {
                     tracing::warn!(reason = %self.describe(code), "could not ask mpv for its log");
                 }
