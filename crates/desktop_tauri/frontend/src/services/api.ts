@@ -149,6 +149,10 @@ export const api = {
 
   getContinueWatching: () => invokeTauri<WatchProgress[]>('get_continue_watching'),
 
+  /** The saved position of every episode of a show, for the marks on its title page. */
+  getShowProgress: (provider: string, detailUrl: string) =>
+    invokeTauri<WatchProgress[]>('get_show_progress', { provider, detailUrl }),
+
   /** Reads the resume pointer for a show or movie (what episode to resume and remaining time). */
   getResumePointer: (provider: string, detailUrl: string) =>
     invokeTauri<ResumePointer | null>('get_resume_pointer', { provider, detailUrl }),
