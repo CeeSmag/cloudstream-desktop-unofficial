@@ -32,7 +32,8 @@ export const ResumeHero: React.FC<ResumeHeroProps> = ({ item, onResume, onDetail
           <img
             src={backdrop}
             alt=""
-            className="w-full h-full object-cover object-top blur-[2px] opacity-40 scale-105"
+            decoding="async"
+            className="w-full h-full object-cover object-top opacity-40"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-midnight via-midnight/60 to-transparent" />
@@ -100,14 +101,14 @@ export const ResumeHero: React.FC<ResumeHeroProps> = ({ item, onResume, onDetail
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => onResume(item)}
-              className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent"
+              className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-colors duration-150 shadow-lg glow-accent"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>{percent > 0 ? 'Resume' : 'Play'}</span>
             </button>
             <button
               onClick={() => onDetails(item)}
-              className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-all duration-200 border border-white/10"
+              className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors duration-150 border border-white/10"
             >
               <Info className="w-4 h-4" />
               <span>Details</span>

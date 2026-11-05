@@ -16,7 +16,7 @@ export const SourceCheckPanel: React.FC<SourceCheckPanelProps> = ({ progress, on
   return (
     <div
       role="status"
-      className="self-center mx-4 w-full max-w-sm flex flex-col items-center gap-3 p-6 rounded-2xl bg-midnight/80 backdrop-blur-md border border-white/10 shadow-2xl"
+      className="self-center mx-4 w-full max-w-sm flex flex-col items-center gap-3 p-6 rounded-2xl bg-midnight/95 border border-white/10 shadow-2xl"
     >
       <Loader2 className="w-9 h-9 text-accent animate-spin" />
       <span className="text-sm font-medium text-zinc-100 text-center">{checkTitle(progress)}</span>
@@ -29,7 +29,7 @@ export const SourceCheckPanel: React.FC<SourceCheckPanelProps> = ({ progress, on
           className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden"
         >
           <div
-            className="h-full rounded-full bg-accent transition-all duration-200"
+            className="h-full rounded-full bg-accent transition-[width] duration-200"
             style={{ width: `${checkPercent(progress)}%` }}
           />
         </div>
