@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use ui_app::UiServices;
 
 /// Shared application state.
+#[derive(Clone)]
 pub struct AppState {
     services: Arc<RwLock<UiServices>>,
 }
@@ -21,6 +22,21 @@ impl AppState {
         self.services
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Runs blocking service work on a background thread pool without starving Tauri's async runtime.
+    pub async fn run_blocking<T, F>(&self, work: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&UiServices) -> Result<T, String> + Send + 'static,
+    {
+        let state = self.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let services = state.read();
+            work(&services)
+        })
+        .await
+        .map_err(|error| format!("Background task error: {error}"))?
     }
 
     /// Obtains a write lock on services.

@@ -11,7 +11,7 @@ interface IconTileProps {
 const SIZES = { sm: 'w-8 h-8 text-xs', md: 'w-11 h-11 text-sm', lg: 'w-14 h-14 text-lg' };
 
 /** The icon of a repository or extension, with a lettered tile when it has none or it cannot be loaded. */
-export const IconTile: React.FC<IconTileProps> = ({ url, name, size = 'md' }) => {
+export const IconTile: React.FC<IconTileProps> = React.memo(({ url, name, size = 'md' }) => {
   const [failed, setFailed] = React.useState(false);
 
   // A different address is a different image: try it again.
@@ -30,9 +30,10 @@ export const IconTile: React.FC<IconTileProps> = ({ url, name, size = 'md' }) =>
       src={url}
       alt=""
       loading="lazy"
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       className={`${box} object-cover bg-white/5`}
     />
   );
-};
+});
