@@ -1,0 +1,59 @@
+import React from 'react';
+import { Star } from 'lucide-react';
+import { BrowseItem } from '../types';
+import { formatRating } from '../utils/browseFilters';
+
+interface BrowseCardProps {
+  item: BrowseItem;
+  onClick: () => void;
+}
+
+export const BrowseCard: React.FC<BrowseCardProps> = ({ item, onClick }) => {
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const formattedScore = formatRating(item.rating);
+
+  return (
+    <div onClick={onClick} className="group relative w-full cursor-pointer select-none">
+      <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-surface-elevated border border-white/5 shadow-lg group-hover:border-accent/40 group-hover:shadow-accent/20 transition-all duration-300 transform group-hover:-translate-y-1">
+        {item.poster_url && !imageFailed ? (
+          <img
+            onError={() => setImageFailed(true)}
+            src={item.poster_url}
+            alt={item.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-gradient-to-b from-surface-elevated to-midnight text-zinc-500">
+            <span className="text-2xl mb-1">🎬</span>
+            <span className="text-xs text-center break-words line-clamp-2">{item.name}</span>
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-midnight/90 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
+
+        {/* Top Badges */}
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between text-[10px] font-semibold">
+          <span className="px-1.5 py-0.5 rounded-md bg-midnight/80 backdrop-blur-md text-zinc-300 border border-white/10 uppercase tracking-wider">
+            {item.media_type === 'tv' ? 'TV' : 'Movie'}
+          </span>
+          {formattedScore && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/20 backdrop-blur-md text-amber-300 border border-amber-500/30 font-bold">
+              <Star className="w-2.5 h-2.5 fill-current" />
+              <span>{formattedScore}</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 px-0.5">
+        <h3 className="text-xs sm:text-sm font-medium text-zinc-200 group-hover:text-white break-words line-clamp-1 transition-colors">
+          {item.name}
+        </h3>
+        <p className="text-[11px] text-zinc-500 font-normal truncate mt-0.5">
+          {item.year ?? 'Unknown Year'}
+        </p>
+      </div>
+    </div>
+  );
+};
