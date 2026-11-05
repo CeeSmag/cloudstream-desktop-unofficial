@@ -55,15 +55,18 @@ pub struct PluginDto {
 pub async fn get_installed_extensions(
     state: State<'_, AppState>,
 ) -> Result<Vec<InstalledExtensionDto>, String> {
-    let services = state.read();
-    let installed = services
-        .extensions
-        .installed()
-        .map_err(|error| error.to_string())?;
-    Ok(installed
-        .into_iter()
-        .map(|extension| describe_installed(&services.extensions, extension))
-        .collect())
+    state
+        .run_blocking(|services| {
+            let installed = services
+                .extensions
+                .installed()
+                .map_err(|error| error.to_string())?;
+            Ok(installed
+                .into_iter()
+                .map(|extension| describe_installed(&services.extensions, extension))
+                .collect())
+        })
+        .await
 }
 
 /// Lists what a repository offers, marking what is already installed.
@@ -73,20 +76,23 @@ pub async fn get_repository_plugins(
     url: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<PluginDto>, String> {
-    let services = state.read();
-    let offered = services
-        .repositories
-        .plugins(&url)
-        .map_err(|error| error.to_string())?;
-    services.extensions.remember_icons(&offered);
-    let installed = services
-        .extensions
-        .installed()
-        .map_err(|error| error.to_string())?;
-    Ok(offered
-        .into_iter()
-        .map(|plugin| describe_plugin(plugin, &installed))
-        .collect())
+    state
+        .run_blocking(move |services| {
+            let offered = services
+                .repositories
+                .plugins(&url)
+                .map_err(|error| error.to_string())?;
+            services.extensions.remember_icons(&offered);
+            let installed = services
+                .extensions
+                .installed()
+                .map_err(|error| error.to_string())?;
+            Ok(offered
+                .into_iter()
+                .map(|plugin| describe_plugin(plugin, &installed))
+                .collect())
+        })
+        .await
 }
 
 /// Looks up the icons of repositories that have none yet (the ones an extension added); returns
@@ -95,10 +101,13 @@ pub async fn get_repository_plugins(
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub async fn refresh_repository_icons(state: State<'_, AppState>) -> Result<usize, String> {
     state
-        .read()
-        .repositories
-        .refresh_missing_icons()
-        .map_err(|error| error.to_string())
+        .run_blocking(|services| {
+            services
+                .repositories
+                .refresh_missing_icons()
+                .map_err(|error| error.to_string())
+        })
+        .await
 }
 
 /// Downloads a plugin from a repository, loads it, and starts collecting any repositories it adds.
@@ -110,30 +119,35 @@ pub async fn install_plugin(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
-    let services = state.read();
-    let offered = services
-        .repositories
-        .plugins(&repository_url)
-        .map_err(|error| error.to_string())?;
-    let plugin = offered
-        .into_iter()
-        .find(|plugin| plugin.internal_name == internal_name)
-        .ok_or_else(|| format!("{internal_name} is not offered by that repository any more."))?;
-    tracing::info!(plugin = %internal_name, repository = %repository_url, "installing plugin");
-    let providers = services
-        .extensions
-        .install(&plugin, &repository_url)
-        .map_err(|error| error.to_string())?;
-    notify_providers_changed(&app);
-    repository_discovery::watch(
-        app,
-        services.extensions.clone(),
-        services.repositories.clone(),
-    );
-    Ok(providers
-        .into_iter()
-        .map(|provider| provider.name)
-        .collect())
+    state
+        .run_blocking(move |services| {
+            let offered = services
+                .repositories
+                .plugins(&repository_url)
+                .map_err(|error| error.to_string())?;
+            let plugin = offered
+                .into_iter()
+                .find(|plugin| plugin.internal_name == internal_name)
+                .ok_or_else(|| {
+                    format!("{internal_name} is not offered by that repository any more.")
+                })?;
+            tracing::info!(plugin = %internal_name, repository = %repository_url, "installing plugin");
+            let providers = services
+                .extensions
+                .install(&plugin, &repository_url)
+                .map_err(|error| error.to_string())?;
+            notify_providers_changed(&app);
+            repository_discovery::watch(
+                app,
+                services.extensions.clone(),
+                services.repositories.clone(),
+            );
+            Ok(providers
+                .into_iter()
+                .map(|provider| provider.name)
+                .collect())
+        })
+        .await
 }
 
 /// Removes an installed extension and the providers it offered.

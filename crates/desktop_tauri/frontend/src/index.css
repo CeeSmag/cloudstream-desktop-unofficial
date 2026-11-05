@@ -97,6 +97,17 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
     gap: 1rem;
   }
+
+  /* Skips layout, painting, and compositing of offscreen cards while scrolling. */
+  .card-contain {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 280px;
+  }
+
+  .plugin-card-contain {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 136px;
+  }
 }
 
 /* The pop-up in the middle of the player that confirms what the viewer just did. */

@@ -22,20 +22,27 @@ pub async fn get_home_sections(
     provider_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<HomeSectionDto>, String> {
-    let provider = resolve_provider(&state, provider_id)?;
-    let Some(provider_info) = provider else {
-        return Ok(Vec::new());
-    };
-    let services = state.read();
-    let mut sections = Vec::new();
-    for entry in &provider_info.main_page {
-        if let Ok(Some(page)) = services.catalog.home(&provider_info.name, entry) {
-            for section in page.items {
-                sections.push(map_home_section(section, &provider_info.name));
+    state
+        .run_blocking(move |services| {
+            let providers = services.extensions.providers();
+            let provider = match provider_id {
+                Some(target) => providers.into_iter().find(|p| p.name == target),
+                None => providers.first().cloned(),
+            };
+            let Some(provider_info) = provider else {
+                return Ok(Vec::new());
+            };
+            let mut sections = Vec::new();
+            for entry in &provider_info.main_page {
+                if let Ok(Some(page)) = services.catalog.home(&provider_info.name, entry) {
+                    for section in page.items {
+                        sections.push(map_home_section(section, &provider_info.name));
+                    }
+                }
             }
-        }
-    }
-    Ok(sections)
+            Ok(sections)
+        })
+        .await
 }
 
 /// Searches media across active providers.
@@ -49,25 +56,28 @@ pub async fn search_media(
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
-    let services = state.read();
-    let all_providers = services.extensions.providers();
-    let target_providers: Vec<ProviderInfo> = match provider_id {
-        Some(name) => all_providers
-            .into_iter()
-            .filter(|p| p.name == name)
-            .collect(),
-        None => all_providers,
-    };
-    let outcomes = services.catalog.search(&target_providers, &query);
-    let mut results = Vec::new();
-    for outcome in outcomes {
-        if let Ok(page) = outcome.result {
-            for item in page.items {
-                results.push(map_search_item(item, &outcome.provider));
+    state
+        .run_blocking(move |services| {
+            let all_providers = services.extensions.providers();
+            let target_providers: Vec<ProviderInfo> = match provider_id {
+                Some(name) => all_providers
+                    .into_iter()
+                    .filter(|p| p.name == name)
+                    .collect(),
+                None => all_providers,
+            };
+            let outcomes = services.catalog.search(&target_providers, &query);
+            let mut results = Vec::new();
+            for outcome in outcomes {
+                if let Ok(page) = outcome.result {
+                    for item in page.items {
+                        results.push(map_search_item(item, &outcome.provider));
+                    }
+                }
             }
-        }
-    }
-    Ok(results)
+            Ok(results)
+        })
+        .await
 }
 
 /// Fetches detailed metadata and episode list for a media URL.
@@ -78,24 +88,15 @@ pub async fn get_media_details(
     url: String,
     state: State<'_, AppState>,
 ) -> Result<MediaDetailsDto, String> {
-    let services = state.read();
-    let details = services
-        .catalog
-        .details(&provider_id, &url)
-        .map_err(|error| error.to_string())?;
-    Ok(map_media_details(details, &provider_id))
-}
-
-fn resolve_provider(
-    state: &State<'_, AppState>,
-    name: Option<String>,
-) -> Result<Option<ProviderInfo>, String> {
-    let services = state.read();
-    let providers = services.extensions.providers();
-    if let Some(target) = name {
-        return Ok(providers.into_iter().find(|p| p.name == target));
-    }
-    Ok(providers.first().cloned())
+    state
+        .run_blocking(move |services| {
+            let details = services
+                .catalog
+                .details(&provider_id, &url)
+                .map_err(|error| error.to_string())?;
+            Ok(map_media_details(details, &provider_id))
+        })
+        .await
 }
 
 fn map_home_section(section: HomePageSection, provider: &str) -> HomeSectionDto {

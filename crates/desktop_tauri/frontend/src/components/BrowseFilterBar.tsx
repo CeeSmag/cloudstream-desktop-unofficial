@@ -97,7 +97,7 @@ export const BrowseFilterBar: React.FC<BrowseFilterBarProps> = ({ filters, onUpd
   };
 
   return (
-    <div className="flex flex-col gap-4 mb-6 glass-panel p-4 sm:p-5 rounded-2xl border border-white/10 shadow-xl">
+    <div className="flex flex-col gap-4 mb-6 bg-surface-elevated/90 p-4 sm:p-5 rounded-2xl border border-white/10 shadow-lg">
       <PrimaryTabsRow
         filters={filters}
         onMediaType={(media_type) => onUpdateFilters((prev) => ({ ...prev, media_type, page: 1 }))}
