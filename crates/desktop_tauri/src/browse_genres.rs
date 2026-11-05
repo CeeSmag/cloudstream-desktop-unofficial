@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const TMDB_API_KEY: &str = "e6333b32409e02a4a6eba6fb7ff866bb";
 /// Base URL of the TMDB v3 REST API.
 pub const TMDB_BASE_URL: &str = "https://api.themoviedb.org/3";
-const TMDB_POSTER_BASE: &str = "https://image.tmdb.org/t/p/w500";
+const TMDB_POSTER_BASE: &str = "https://image.tmdb.org/t/p/w342";
 
 const MOVIE_GENRES: &[(&str, u32)] = &[
     ("action", 28),
