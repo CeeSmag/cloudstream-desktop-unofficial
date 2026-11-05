@@ -23,11 +23,17 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = ({
   return (
     <div
       onClick={() => onOpen(item)}
-      className="group relative flex-shrink-0 w-56 sm:w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-all duration-200"
+      className="group relative flex-shrink-0 w-56 sm:w-64 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border border-white/5 hover:border-accent/40 cursor-pointer transition-colors duration-150"
     >
       <div className="relative aspect-video rounded-xl overflow-hidden bg-midnight mb-2.5 flex items-center justify-center">
         {item.poster_url ? (
-          <img src={item.poster_url} alt={item.title} className="w-full h-full object-cover" />
+          <img
+            src={item.poster_url}
+            alt={item.title}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
         ) : (
           <span className="text-2xl">📺</span>
         )}
@@ -56,7 +62,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = ({
           event.stopPropagation();
           onRemove(item);
         }}
-        className="absolute top-5 right-5 p-1.5 rounded-lg bg-midnight/80 hover:bg-rose-500 text-zinc-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all border border-white/10"
+        className="absolute top-5 right-5 p-1.5 rounded-lg bg-midnight/80 hover:bg-rose-500 text-zinc-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity border border-white/10"
         title="Remove from Continue Watching"
         aria-label={`Remove ${item.title} from Continue Watching`}
       >

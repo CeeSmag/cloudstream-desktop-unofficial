@@ -52,7 +52,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={`Search titles across ${selectedProvider || 'all providers'}...`}
             autoFocus
-            className="w-full pl-12 pr-12 py-3.5 rounded-2xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all shadow-xl backdrop-blur-md"
+            className="w-full pl-12 pr-12 py-3.5 rounded-2xl bg-surface-elevated/95 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 transition-colors shadow-xl"
           />
           {query && (
             <button

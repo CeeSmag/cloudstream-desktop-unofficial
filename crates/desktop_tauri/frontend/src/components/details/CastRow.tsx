@@ -15,6 +15,7 @@ export const CastRow: React.FC<{ cast: CastMember[] }> = ({ cast }) => {
                 src={member.image}
                 alt={member.name}
                 loading="lazy"
+                decoding="async"
                 className="w-20 h-20 mx-auto rounded-full object-cover bg-surface-elevated border border-white/10"
               />
             ) : (
