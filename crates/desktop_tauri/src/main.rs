@@ -4,6 +4,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app_state;
+mod browse_commands;
+mod browse_genres;
 mod catalog_commands;
 mod check_gate;
 mod check_gate_state;
@@ -86,6 +88,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             catalog_commands::get_home_sections,
             catalog_commands::search_media,
             catalog_commands::get_media_details,
+            browse_commands::browse_catalog,
             playback_commands::play_media,
             playback_commands::skip_source_check,
             playback_commands::pause_playback,
@@ -159,6 +162,7 @@ fn init_services(
     app.manage(std::sync::Arc::new(skip_times::SkipLookup::new(
         std::sync::Arc::new(skip_times::UreqSkipFetcher::default()),
     )));
+    app.manage(std::sync::Arc::new(browse_commands::BrowseClient::default()));
     app.manage(startup::StartupTracker::default());
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())

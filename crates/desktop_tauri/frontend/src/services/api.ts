@@ -1,5 +1,7 @@
 import {
   Bookmark,
+  BrowseFilters,
+  BrowsePageResult,
   HomeSection,
   DebugLoggingInfo,
   InstalledExtension,
@@ -90,6 +92,9 @@ export const api = {
 
   search: (query: string, providerId?: string) =>
     invokeTauri<SearchItem[]>('search_media', { query, providerId }),
+
+  browseCatalog: (filters: BrowseFilters) =>
+    invokeTauri<BrowsePageResult>('browse_catalog', { request: filters }),
 
   getDetails: (providerId: string, url: string) =>
     invokeTauri<MediaDetails>('get_media_details', { providerId, url }),
