@@ -150,7 +150,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         className={`page-gutter py-3 sm:py-5 flex items-center justify-between gap-3 bg-gradient-to-b from-midnight/90 via-midnight/40 to-transparent transition-opacity duration-300 ${fade}`}
       >
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <button onClick={onBack} className={`${ROUND_BUTTON} flex-none backdrop-blur-md shadow-lg`} title="Exit Player">
+          <button onClick={onBack} className={`${ROUND_BUTTON} flex-none shadow-lg`} title="Exit Player">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="text-sm sm:text-base font-bold text-white tracking-tight drop-shadow-md truncate">{title}</h2>
@@ -213,7 +213,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       {check && <SourceCheckPanel progress={check} onSkip={onSkipCheck} />}
 
       {!check && status.state === 'Loading' && (
-        <div className="self-center mx-4 flex flex-col items-center justify-center p-6 rounded-2xl bg-midnight/70 backdrop-blur-md border border-white/10 shadow-2xl">
+        <div className="self-center mx-4 flex flex-col items-center justify-center p-6 rounded-2xl bg-midnight/90 border border-white/10 shadow-2xl">
           <Loader2 className="w-10 h-10 text-accent animate-spin mb-3" />
           <span className="text-sm font-medium text-zinc-200">Loading stream...</span>
         </div>
@@ -229,7 +229,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       {status.state === 'Failed' && (
         <div
           role="alert"
-          className="self-center mx-4 max-w-md flex flex-col items-center p-6 text-center rounded-2xl bg-red-950/80 backdrop-blur-md border border-red-500/30 shadow-2xl"
+          className="self-center mx-4 max-w-md flex flex-col items-center p-6 text-center rounded-2xl bg-red-950/95 border border-red-500/30 shadow-2xl"
         >
           <span className="text-sm font-medium text-red-100">{status.error ?? 'This stream could not be played.'}</span>
           <button onClick={onBack} className="mt-4 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm">

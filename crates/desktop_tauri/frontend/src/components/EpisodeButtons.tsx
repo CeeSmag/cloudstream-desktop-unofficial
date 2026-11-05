@@ -48,7 +48,7 @@ export const SkipPromptButton: React.FC<{
     onClick={onClick}
     tabIndex={visible ? 0 : -1}
     aria-hidden={!visible}
-    className={`absolute right-4 sm:right-8 bottom-28 sm:bottom-32 z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl overflow-hidden bg-white/90 hover:bg-white text-midnight text-sm font-semibold shadow-2xl backdrop-blur-md transition-all duration-300 ${
+    className={`absolute right-4 sm:right-8 bottom-28 sm:bottom-32 z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl overflow-hidden bg-white/95 hover:bg-white text-midnight text-sm font-semibold shadow-2xl transition-opacity duration-200 ${
       visible ? 'opacity-100' : 'opacity-0 pointer-events-none translate-y-1'
     }`}
   >

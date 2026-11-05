@@ -43,7 +43,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <img
                 src={heroItem.poster_url}
                 alt={heroItem.name}
-                className="w-full h-full object-cover object-top blur-[2px] opacity-40 scale-105"
+                decoding="async"
+                className="w-full h-full object-cover object-top opacity-40"
               />
             )}
             {/* Gradient Overlays */}
@@ -77,7 +78,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={() => onSelectItem(heroItem)}
-                className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent"
+                className="flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-colors duration-150 shadow-lg glow-accent"
               >
                 <Info className="w-4 h-4" />
                 <span>Details</span>

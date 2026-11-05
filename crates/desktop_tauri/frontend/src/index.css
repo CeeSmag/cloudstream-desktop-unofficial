@@ -43,18 +43,14 @@
   background: rgba(124, 107, 255, 0.4);
 }
 
-/* Glassmorphism helpers */
+/* Surface helpers (solid semi-opaque without GPU-heavy backdrop-filter blur) */
 .glass-panel {
-  background: rgba(22, 22, 36, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(22, 22, 36, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-dropdown {
-  background: rgba(22, 22, 36, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(22, 22, 36, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
@@ -96,12 +92,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
     gap: 1rem;
-  }
-
-  /* Skips layout, painting, and compositing of offscreen cards while scrolling. */
-  .card-contain {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 280px;
   }
 
   .plugin-card-contain {

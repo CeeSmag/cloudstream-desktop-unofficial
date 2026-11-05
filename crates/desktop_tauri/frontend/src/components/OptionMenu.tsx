@@ -49,7 +49,7 @@ export const OptionMenu: React.FC<OptionMenuProps> = ({
   <div className="relative">
     <button
       onClick={onToggle}
-      className={`p-2 sm:p-2.5 rounded-xl border transition-colors backdrop-blur-md ${
+      className={`p-2 sm:p-2.5 rounded-xl border transition-colors ${
         open ? 'bg-accent border-accent text-white' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
       }`}
       title={label}

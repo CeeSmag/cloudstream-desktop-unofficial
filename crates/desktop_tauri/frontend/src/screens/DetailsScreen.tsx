@@ -18,10 +18,10 @@ interface DetailsScreenProps {
 }
 
 const primaryButton =
-  'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-all duration-200 shadow-lg glow-accent';
+  'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-semibold transition-colors duration-150 shadow-lg glow-accent';
 
 const secondaryButton =
-  'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-all duration-200 border border-white/10';
+  'flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors duration-150 border border-white/10';
 
 const Chip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="flex items-center space-x-1 text-zinc-400 text-xs">{children}</span>
@@ -104,12 +104,12 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
     <div className="relative flex-1 overflow-y-auto pb-24 select-none">
       {details.background_url && (
         <div className="absolute inset-x-0 top-0 h-[28rem] overflow-hidden pointer-events-none">
-          <img src={details.background_url} alt="" className="w-full h-full object-cover opacity-30" />
+          <img src={details.background_url} alt="" decoding="async" className="w-full h-full object-cover opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-b from-midnight/40 via-midnight/70 to-midnight" />
         </div>
       )}
 
-      <div className="sticky top-0 h-14 page-gutter flex items-center z-30 bg-gradient-to-b from-midnight/90 to-transparent backdrop-blur-sm">
+      <div className="sticky top-0 h-14 page-gutter flex items-center z-30 bg-gradient-to-b from-midnight/95 to-transparent">
         <button
           onClick={onBack}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/10 transition-colors"
@@ -123,7 +123,7 @@ export const DetailsScreen: React.FC<DetailsScreenProps> = ({
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8">
           <div className="w-40 sm:w-48 lg:w-56 flex-shrink-0 rounded-2xl overflow-hidden bg-surface-elevated border border-white/10 shadow-2xl">
             {details.poster_url ? (
-              <img src={details.poster_url} alt={details.name} className="w-full h-auto aspect-[2/3] object-cover" />
+              <img src={details.poster_url} alt={details.name} decoding="async" className="w-full h-auto aspect-[2/3] object-cover" />
             ) : (
               <div className="w-full aspect-[2/3] flex items-center justify-center bg-surface-elevated text-zinc-500">
                 No Poster

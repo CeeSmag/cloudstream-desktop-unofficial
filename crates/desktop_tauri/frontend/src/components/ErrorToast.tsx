@@ -12,7 +12,7 @@ export const ErrorToast: React.FC<ErrorToastProps> = ({ message, onDismiss }) =>
   return (
     <div
       role="alert"
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex max-w-xl items-start space-x-3 rounded-xl border border-red-500/30 bg-red-950/80 px-4 py-3 text-sm text-red-100 shadow-xl backdrop-blur-xl"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex max-w-xl items-start space-x-3 rounded-xl border border-red-500/30 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-xl"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-red-400" />
       <span className="flex-1">{message}</span>

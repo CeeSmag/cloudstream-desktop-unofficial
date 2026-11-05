@@ -115,7 +115,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     e.stopPropagation();
                     onRemoveBookmark(b.provider, b.url);
                   }}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-midnight/80 hover:bg-rose-500 text-zinc-400 hover:text-white opacity-0 group-hover/card:opacity-100 transition-all border border-white/10"
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-midnight/80 hover:bg-rose-500 text-zinc-400 hover:text-white opacity-0 group-hover/card:opacity-100 transition-opacity border border-white/10"
                   title="Remove Bookmark"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

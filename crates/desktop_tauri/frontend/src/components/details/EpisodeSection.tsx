@@ -86,7 +86,7 @@ const EpisodeCard: React.FC<{
     <div
       ref={cardRef}
       onClick={() => onPlay(episode)}
-      className={`group flex gap-3 sm:gap-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border cursor-pointer transition-all duration-200 ${
+      className={`group flex gap-3 sm:gap-4 p-3 rounded-2xl bg-surface-elevated/70 hover:bg-surface-elevated border cursor-pointer transition-colors duration-150 ${
         isHighlighted
           ? 'border-accent ring-2 ring-accent/50 shadow-lg glow-accent'
           : 'border-white/5 hover:border-accent/40'
@@ -98,6 +98,8 @@ const EpisodeCard: React.FC<{
             src={picture}
             alt={episode.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-600">EP</div>

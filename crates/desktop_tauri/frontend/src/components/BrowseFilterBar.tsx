@@ -115,7 +115,7 @@ export const BrowseFilterBar: React.FC<BrowseFilterBarProps> = ({ filters, onUpd
             <button
               key={r}
               onClick={() => handleRatingChange(r)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 ${
                 (filters.rating ?? 0) === r
                   ? 'bg-accent/20 border-accent text-accent font-bold'
                   : 'bg-white/5 border-white/5 text-zinc-400 hover:bg-white/10'
@@ -183,7 +183,7 @@ const PrimaryTabsRow: React.FC<PrimaryTabsRowProps> = ({
       <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/10">
         <button
           onClick={() => onMediaType('movie')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             filters.media_type === 'movie'
               ? 'bg-accent text-white shadow-md'
               : 'text-zinc-400 hover:text-white'
@@ -194,7 +194,7 @@ const PrimaryTabsRow: React.FC<PrimaryTabsRowProps> = ({
         </button>
         <button
           onClick={() => onMediaType('tv')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             filters.media_type === 'tv'
               ? 'bg-accent text-white shadow-md'
               : 'text-zinc-400 hover:text-white'
@@ -226,7 +226,7 @@ const PrimaryTabsRow: React.FC<PrimaryTabsRowProps> = ({
     <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/10">
       <button
         onClick={() => onSort('popular')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
           filters.sort_by === 'popular'
             ? 'bg-accent text-white shadow-md'
             : 'text-zinc-400 hover:text-white'
@@ -237,7 +237,7 @@ const PrimaryTabsRow: React.FC<PrimaryTabsRowProps> = ({
       </button>
       <button
         onClick={() => onSort('rating')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
           filters.sort_by === 'rating'
             ? 'bg-accent text-white shadow-md'
             : 'text-zinc-400 hover:text-white'

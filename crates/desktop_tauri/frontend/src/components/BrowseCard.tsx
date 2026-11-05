@@ -15,15 +15,15 @@ export const BrowseCard: React.FC<BrowseCardProps> = React.memo(({ item, onSelec
   return (
     <div
       onClick={() => onSelect(item)}
-      className="group relative w-full cursor-pointer select-none card-contain"
+      className="group relative w-full cursor-pointer select-none"
     >
-      <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-surface-elevated border border-white/5 shadow-md group-hover:border-accent/40 transition-transform duration-200 transform group-hover:-translate-y-0.5">
+      <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden bg-surface-elevated border border-white/5 shadow-lg group-hover:border-accent/40 group-hover:shadow-accent/20 transition-all duration-300 transform group-hover:-translate-y-1">
         {item.poster_url && !imageFailed ? (
           <img
             onError={() => setImageFailed(true)}
             src={item.poster_url}
             alt={item.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
             decoding="async"
           />
@@ -34,7 +34,7 @@ export const BrowseCard: React.FC<BrowseCardProps> = React.memo(({ item, onSelec
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-midnight/85 via-transparent to-transparent opacity-60 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-midnight/90 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity pointer-events-none" />
 
         {/* Top Badges (solid semi-opaque background avoids 120 GPU backdrop-blur passes per frame) */}
         <div className="absolute top-2 left-2 right-2 flex items-center justify-between text-[10px] font-semibold pointer-events-none">
