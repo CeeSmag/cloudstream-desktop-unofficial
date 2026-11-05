@@ -2,9 +2,10 @@ import React from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
-import { Bookmark, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
+import { Bookmark, BrowseFilters, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
+import { BrowseScreen } from './screens/BrowseScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DetailsScreen } from './screens/DetailsScreen';
 import { PlayerOverlay } from './screens/PlayerOverlay';
@@ -18,6 +19,7 @@ import { ContextMenu } from './components/ContextMenu';
 import { useContextMenu } from './hooks/useContextMenu';
 import { resumeTarget } from './playback/resumeTarget';
 import { canOpenTitlePage, missingPageMessage, titlePageItem } from './utils/continueWatching';
+import { defaultBrowseFilters, pickBestSearchMatch } from './utils/browseFilters';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -25,6 +27,13 @@ export const App: React.FC = () => {
   const shownTab = React.useDeferredValue(currentTab);
   const [errorText, setErrorText] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [browseFilters, setBrowseFilters] = React.useState<BrowseFilters>(defaultBrowseFilters);
+  const [browseData, setBrowseData] = React.useState<BrowsePageResult | null>(null);
+  const [browseFilterKey, setBrowseFilterKey] = React.useState('');
+  const handleCacheBrowseData = React.useCallback((key: string, data: BrowsePageResult) => {
+    setBrowseFilterKey(key);
+    setBrowseData(data);
+  }, []);
 
   // Runs an async action and shows its failure instead of dropping it.
   const guard = React.useCallback(
@@ -107,6 +116,9 @@ export const App: React.FC = () => {
     // Before anything else: from now on every video is searched afresh, never from saved links.
     if (p !== selectedProvider) await api.providerSwitched(selectedProvider, p);
     setSelectedProvider(p);
+    setActiveDetails(null);
+    setBrowseData(null);
+    setBrowseFilterKey('');
     setHomeLoading(true);
     try {
       const sections = await api.getHomeSections(p);
@@ -124,6 +136,26 @@ export const App: React.FC = () => {
       setActiveDetails(details);
       const bookmarked = await api.isBookmarked(details.provider, details.url);
       setIsCurrentBookmarked(bookmarked);
+    } finally {
+      setDetailsLoading(false);
+    }
+  });
+
+  // Open details for an item selected on the Browse screen
+  const handleSelectBrowseItem = guard(async (item: BrowseItem) => {
+    setDetailsLoading(true);
+    try {
+      const results = await api.search(item.name, selectedProvider || undefined);
+      const match = pickBestSearchMatch(item, results);
+      if (match) {
+        const details = await api.getDetails(match.provider, match.url);
+        setActiveDetails(details);
+        const bookmarked = await api.isBookmarked(details.provider, details.url);
+        setIsCurrentBookmarked(bookmarked);
+      } else {
+        setSearchQuery(item.name);
+        setCurrentTab('search');
+      }
     } finally {
       setDetailsLoading(false);
     }
@@ -265,6 +297,18 @@ export const App: React.FC = () => {
                 onOpenContinue={handleOpenContinue}
                 onResumeContinue={handleResumeContinue}
                 onRemoveContinue={handleRemoveContinue}
+              />
+            )}
+            {shownTab === 'browse' && (
+              <BrowseScreen
+                filters={browseFilters}
+                selectedProvider={selectedProvider}
+                onUpdateFilters={setBrowseFilters}
+                onSelectItem={handleSelectBrowseItem}
+                onError={(err) => setErrorText(err)}
+                cachedData={browseData}
+                cachedFilterKey={browseFilterKey}
+                onCacheData={handleCacheBrowseData}
               />
             )}
             {shownTab === 'search' && (

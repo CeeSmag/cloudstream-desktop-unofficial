@@ -33,6 +33,7 @@ export interface SearchItem {
   url: string;
   poster_url: string | null;
   provider: string;
+  media_type?: string | null;
   year: number | null;
 }
 
@@ -278,4 +279,31 @@ export interface PluginHit {
   repository_name: string;
   repository_icon_url: string | null;
   plugin: RepositoryPlugin;
+}
+
+/** One media card item shown on the Browse page. */
+export interface BrowseItem {
+  id: string;
+  name: string;
+  poster_url: string | null;
+  year: number | null;
+  rating: number | null;
+  media_type: string;
+}
+
+/** Filter parameters for the Browse page. */
+export interface BrowseFilters {
+  media_type: 'movie' | 'tv';
+  year: number | null;
+  sort_by: 'popular' | 'rating';
+  rating: number | null;
+  genres: string[];
+  page: number;
+}
+
+/** Paginated result returned from Browse catalog query. */
+export interface BrowsePageResult {
+  items: BrowseItem[];
+  page: number;
+  total_pages: number;
 }

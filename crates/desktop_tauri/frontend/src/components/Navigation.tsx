@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Bookmark, Settings, ChevronDown, Film } from 'lucide-react';
+import { Home, Compass, Search, Bookmark, Settings, ChevronDown, Film } from 'lucide-react';
 import { ProviderInfo } from '../types';
 
 interface NavigationProps {
@@ -21,6 +21,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
+    { id: 'browse', label: 'Browse', icon: Compass },
     { id: 'search', label: 'Search', icon: Search },
     { id: 'library', label: 'Library', icon: Bookmark },
     { id: 'settings', label: 'Settings', icon: Settings },

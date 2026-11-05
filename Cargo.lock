@@ -1252,6 +1252,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ui_app",
+ "ureq",
 ]
 
 [[package]]
