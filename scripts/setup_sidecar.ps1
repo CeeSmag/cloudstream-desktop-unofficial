@@ -24,6 +24,7 @@ function Write-Step($message) { Write-Host "[setup_sidecar] $message" }
 
 function Find-Jdk21 {
     if ($Jdk21 -and (Test-Path (Join-Path $Jdk21 "bin\java.exe"))) { return $Jdk21 }
+    if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) { return $env:JAVA_HOME }
     $candidates = @(
         "C:\Program Files\Java\jbr-21*",
         "C:\Program Files\Java\jdk-21*",

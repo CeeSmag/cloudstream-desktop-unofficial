@@ -1,5 +1,9 @@
 # CloudStream RS (Desktop)
 
+[![CI](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?label=release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest)
+
 A high-performance desktop rewrite of **CloudStream** built with **Rust**, **Tauri v2**, **React 18**, and **libmpv**.
 
 ---

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-check:
+    name: Rust (Format, Clippy & Tests)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Enable long paths in Git
+        run: git config --system core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Format Check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy Warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Workspace Tests
+        run: cargo test --workspace
+
+  frontend-check:
+    name: Frontend (Vitest & Build)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: crates/desktop_tauri/frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop_tauri/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit Tests (Vitest)
+        run: npm test
+
+      - name: TypeCheck and Build (Vite)
+        run: npm run build
+
+  sidecar-check:
+    name: Sidecar (Kotlin & Gradle)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Enable long paths in Git
+        run: git config --system core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build Sidecar Bridge
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1 -Root C:\cs3d
+
+      - name: Test Sidecar Tests
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\test_sidecar.ps1 -Root C:\cs3d
