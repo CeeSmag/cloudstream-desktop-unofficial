@@ -1,6 +1,8 @@
 use core_model::{PlayableLink, SubtitleTrack};
 use player_api::{PlaybackRequest, SubtitleSource};
 
+use crate::clear_key::{normalize_clear_key, normalize_pipe_link};
+
 /// The next episode to advance to when current episode finishes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NextEpisode {
@@ -51,19 +53,26 @@ pub fn build_request(
     subtitles: &[SubtitleTrack],
     start_ms: i64,
 ) -> PlaybackRequest {
+    let link = if link.url.contains('|') {
+        normalize_pipe_link(link.clone())
+    } else {
+        link.clone()
+    };
     let mut headers: Vec<(String, String)> = link
         .headers
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     headers.sort();
+    let clear_key = normalize_clear_key(link.kid.as_deref(), link.key.as_deref());
     PlaybackRequest {
-        url: link.url.clone(),
+        url: link.url,
         title: title.to_owned(),
         headers,
-        referer: link.referer.clone(),
+        referer: link.referer,
         subtitles: subtitle_sources(subtitles),
         start_position_ms: start_ms,
+        clear_key,
     }
 }
 

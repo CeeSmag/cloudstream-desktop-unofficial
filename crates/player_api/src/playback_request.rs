@@ -40,4 +40,6 @@ pub struct PlaybackRequest {
     pub subtitles: Vec<SubtitleSource>,
     /// Position to resume from, in milliseconds.
     pub start_position_ms: i64,
+    /// Normalized 32-character lowercase hex ClearKey CENC decryption key, if the stream is encrypted.
+    pub clear_key: Option<String>,
 }

@@ -33,7 +33,6 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 val vendorStubSources = listOf(
     "com/lagradost/cloudstream3/CloudStreamApp.kt",
     "com/lagradost/cloudstream3/utils/DataStore.kt",
-    "com/lagradost/cloudstream3/utils/UiText.kt",
 )
 
 val copyVendorStubs by tasks.registering(Copy::class) {
@@ -54,8 +53,10 @@ dependencies {
     implementation(project(":android-stubs"))
     implementation(project(":common"))
     implementation(libs.nicehttp)
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
 }
 
 application {

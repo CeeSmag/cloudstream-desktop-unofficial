@@ -12,7 +12,7 @@ use crate::event_worker::EventWorker;
 use crate::frame_renderer::{FrameRenderer, FrameShared};
 use crate::mpv_api::{MpvApi, MpvHandle};
 use crate::mpv_log::log_level;
-use crate::mpv_option_format::{header_fields, start_option};
+use crate::mpv_option_format::apply_request_options;
 use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
 use crate::pending_subtitles::{queue_for_new_stream, PendingSubtitles};
 use crate::player_configuration::configure;
@@ -146,12 +146,7 @@ impl VideoPlayer for MpvPlayer {
 
     #[tracing::instrument(level = "debug", skip_all, err)]
     fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError> {
-        self.handle
-            .set_property("http-header-fields", &header_fields(&request.headers))?;
-        self.handle.set_property("referrer", &request.referer)?;
-        self.handle
-            .set_property("force-media-title", &request.title)?;
-        self.handle.set_property("start", &start_option(request))?;
+        apply_request_options(&self.handle, request)?;
         // Any subtitle download still running belongs to the previous stream. The generation and
         // the queued files change together under one lock, so the event thread never pairs the new
         // files with the old stream (or the old files with the new one).

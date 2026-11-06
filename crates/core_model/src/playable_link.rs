@@ -26,6 +26,12 @@ pub struct PlayableLink {
     /// Stream container kind: `VIDEO`, `M3U8`, `DASH`, `TORRENT` or `MAGNET`.
     #[serde(default, rename = "type")]
     pub link_type: String,
+    /// ClearKey DRM key identifier (`DrmExtractorLink.kid`), in Base64, Base64URL or hex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kid: Option<String>,
+    /// ClearKey DRM decryption key (`DrmExtractorLink.key`), in Base64, Base64URL or hex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 /// An external subtitle file offered with a stream.
@@ -70,5 +76,24 @@ mod tests {
         assert!(links.success);
         assert_eq!(links.links[0].link_type, "VIDEO");
         assert_eq!(links.links[0].quality, 400);
+        assert_eq!(links.links[0].kid, None);
+        assert_eq!(links.links[0].key, None);
+    }
+
+    #[test]
+    fn deserialize_playable_links_reads_drm_clear_key_fields() {
+        let json = r#"{"success":true,"links":[{"source":"LivXow","name":"TNT SPORTS FHD",
+            "url":"https://otte.cache.aiv-cdn.net/live/cenc.mpd","referer":"","quality":400,
+            "headers":{"User-Agent":"Mozilla/5.0"},"type":"DASH",
+            "kid":"8994QwgK50O_hl3F_fZMaA","key":"VnyGO8Eut0eI6nSIjAQuGw"}],"subtitles":[]}"#;
+        let links: PlayableLinks = serde_json::from_str(json).expect("valid DRM links JSON");
+        assert_eq!(
+            links.links[0].kid.as_deref(),
+            Some("8994QwgK50O_hl3F_fZMaA")
+        );
+        assert_eq!(
+            links.links[0].key.as_deref(),
+            Some("VnyGO8Eut0eI6nSIjAQuGw")
+        );
     }
 }

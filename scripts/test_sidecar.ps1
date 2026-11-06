@@ -23,6 +23,12 @@ if (-not (Test-Path $Target)) {
 if ($Jdk21 -and (Test-Path (Join-Path $Jdk21 "bin\java.exe"))) { $env:JAVA_HOME = $Jdk21 }
 if (-not $env:JAVA_HOME) { throw "Pass -Jdk21 <JDK 21 home> or set JAVA_HOME to a JDK 21." }
 
+Write-Host "[test_sidecar] applying overlay patches into $Repo"
+$Overlay = Join-Path $ProjectRoot "sidecar\overlay"
+if (Test-Path $Overlay) {
+    Copy-Item -Recurse -Force "$Overlay\*" $Repo
+}
+
 Write-Host "[test_sidecar] copying the module into $Target"
 Copy-Item -Recurse -Force (Join-Path $ProjectRoot "sidecar\cs-sidecar\src") $Target
 Copy-Item -Force (Join-Path $ProjectRoot "sidecar\cs-sidecar\build.gradle.kts") (Join-Path $Target "build.gradle.kts")

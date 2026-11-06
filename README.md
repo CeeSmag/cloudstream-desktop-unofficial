@@ -1,0 +1,106 @@
+# CloudStream RS (Desktop)
+
+A high-performance desktop rewrite of **CloudStream** built with **Rust**, **Tauri v2**, **React 18**, and **libmpv**.
+
+---
+
+> **Disclaimer:**
+> This repository is an independent, unofficial community project. It is **not** officially affiliated with, endorsed by, or maintained by the official CloudStream team or upstream repository ([recloudstream/cloudstream](https://github.com/recloudstream/cloudstream)).
+>
+> CloudStream RS is an open-source media player and plugin runtime engine. **It does not host, scrape, bundle, or distribute any media files, video streams, or copyrighted material.** Users configure their own plugin repositories.
+
+---
+
+## Features
+
+- **Full CloudStream Plugin Compatibility**: Executes real `.cs3` plugins via an out-of-process JVM sidecar (`cs-sidecar`) with comprehensive Android stubs and DEX bytecode translation.
+- **3-Pillar Security Sandbox**: Untrusted extensions run in a restricted class loader sandbox preventing unauthorized file system, native process, and reflection abuse.
+- **libmpv Video Engine**: High-fidelity media playback powered by `libmpv` with support for hardware decoding (`d3d11va`, `nvdec`, `vaapi`), subtitles, and embedded canvas rendering.
+- **Live Stream & ClearKey DRM Support**: First-class support for live DASH (`.mpd`) and HLS (`.m3u8`) streams, including automatic ClearKey CENC decryption and stream option extraction.
+- **Smart Link Resolver & Stream Checker**: Discovers and tests video links concurrently, sorts by quality and health, and provides transparent playback failover when a host drops.
+- **Subtitle Normalization & Prefetching**: Automatically downloads, decompresses (`.zip`/`.gz`), converts encoding (UTF-16/Windows-1252 to UTF-8), and aligns subtitles to the viewer's preferred languages.
+- **Modern Desktop UI**: Smooth desktop interface crafted with React 18, TypeScript, Tailwind CSS, Lucide icons, and Tauri v2 IPC.
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    UI[Tauri Frontend / React 18] -->|IPC Commands| Shell[desktop_tauri]
+    Shell --> Services[crates/app_services]
+    Services --> Core[crates/core_model]
+    Services --> Storage[crates/storage / SQLite WAL]
+    Services --> Cache[crates/title_cache & subtitle_store]
+    Services --> PlayerAPI[crates/player_api]
+    Services --> ExtAPI[crates/extension_api]
+    PlayerAPI --> MPV[crates/player_mpv / libmpv-2.dll]
+    ExtAPI --> Runtime[crates/extension_runtime]
+    Runtime --> Sidecar[sidecar/cs-sidecar JVM Process]
+```
+
+---
+
+## Building from Source
+
+### Prerequisites
+
+- **Rust**: `1.80+` (stable)
+- **Node.js**: `18+` and `npm`
+- **Java**: JDK 21 (for compiling and running the JVM extension sidecar)
+- **libmpv**: `libmpv-2.dll` (Windows), `libmpv.so.2` (Linux), or `libmpv.dylib` (macOS)
+
+### 1. Set up the Sidecar Bridge
+
+```powershell
+# Clones reference client, applies compatibility overlays, and builds sidecar distribution
+powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1
+```
+
+### 2. Install Frontend Dependencies
+
+```bash
+cd crates/desktop_tauri/frontend
+npm install
+cd ../../..
+```
+
+### 3. Run Development Build
+
+```powershell
+# Point to your libmpv library
+$env:CS_LIBMPV_PATH = "C:\path\to\libmpv-2.dll"
+
+# Launch the Tauri desktop app
+powershell -ExecutionPolicy Bypass -File .\scripts\run_tauri.ps1
+```
+
+### 4. Build Release Packages
+
+```powershell
+# Builds installer and portable package in .\dist
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Arch x64 -Kind all
+```
+
+---
+
+## Quality & Testing Gates
+
+The repository strictly enforces safety, reliability, and code formatting invariants:
+
+```bash
+# Verify formatting
+cargo fmt --all -- --check
+
+# Strict lint checks (zero unwrap/panic allowed)
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Execute test suite (Rust unit & race tests)
+cargo test --workspace
+```
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. See the [LICENSE](LICENSE) file for the full license text.

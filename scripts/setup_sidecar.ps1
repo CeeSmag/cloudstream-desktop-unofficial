@@ -54,6 +54,12 @@ try {
     git submodule update --init --depth 1
 } finally { Pop-Location }
 
+Write-Step "applying overlay patches"
+$Overlay = Join-Path $ProjectRoot "sidecar\overlay"
+if (Test-Path $Overlay) {
+    Copy-Item -Recurse -Force "$Overlay\*" $Repo
+}
+
 Write-Step "installing sidecar module"
 $Target = Join-Path $Repo "cs-sidecar"
 if (Test-Path $Target) { Remove-Item -Recurse -Force $Target }

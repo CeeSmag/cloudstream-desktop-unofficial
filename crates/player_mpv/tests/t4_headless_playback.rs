@@ -199,9 +199,12 @@ fn missing_library_is_reported_as_unavailable_not_a_panic() {
 #[ignore = "needs libmpv and network; set CS_TEST_STREAM_URL"]
 fn plays_the_stream_named_by_the_environment() {
     let url = std::env::var("CS_TEST_STREAM_URL").expect("CS_TEST_STREAM_URL must be set");
+    let clear_key = std::env::var("CS_TEST_CLEAR_KEY").ok();
     let player = headless_player();
     let request = PlaybackRequest {
         url,
+        headers: vec![("User-Agent".to_owned(), "Mozilla/5.0".to_owned())],
+        clear_key,
         ..PlaybackRequest::default()
     };
     player.play(&request).expect("loadfile accepted");

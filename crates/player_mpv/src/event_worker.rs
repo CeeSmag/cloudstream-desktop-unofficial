@@ -210,15 +210,19 @@ impl EventWorker {
     }
 
     fn poll_progress(&self) {
-        let (Some(position), Some(duration)) = (
-            self.handle.get_double("time-pos"),
-            self.handle.get_double("duration"),
-        ) else {
+        let Some(position) = self.handle.get_double("time-pos") else {
             return;
         };
+        // Live streams (infinite HLS or dynamic DASH) often have no finite `duration` property in
+        // mpv; defaulting to 0.0 keeps `position_ms` and the `pause` state updating normally.
+        let duration = self
+            .handle
+            .get_double("duration")
+            .filter(|d| d.is_finite() && *d > 0.0)
+            .unwrap_or(0.0);
         let paused = self.handle.get_flag("pause").unwrap_or(false);
         self.tracker.update_progress(
-            (position * 1000.0) as i64,
+            (position.max(0.0) * 1000.0) as i64,
             (duration * 1000.0) as i64,
             paused,
         );

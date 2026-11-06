@@ -166,13 +166,13 @@ fn load_with_file(content: &[u8]) -> (Lookup, bool) {
 
 #[test]
 fn an_empty_truncated_or_garbage_file_is_a_miss_and_is_deleted() {
-    let good = br#"{"version":1,"saved_at":1700000000,"complete":true,"links":[]}"#;
+    let good = br#"{"version":2,"saved_at":1700000000,"complete":true,"links":[]}"#;
     for (content, label) in [
         (&b""[..], "empty"),
         (&good[..30], "truncated"),
         (&b"not json at all"[..], "garbage"),
         (&b"[1,2,3]"[..], "wrong shape"),
-        (&b"{\"version\":1}"[..], "missing saved_at"),
+        (&b"{\"version\":2}"[..], "missing saved_at"),
     ] {
         let (lookup, still_there) = load_with_file(content);
         assert_eq!(lookup, Lookup::Miss(Miss::Corrupt), "{label}");
@@ -182,9 +182,9 @@ fn an_empty_truncated_or_garbage_file_is_a_miss_and_is_deleted() {
 
 #[test]
 fn a_file_of_another_format_version_is_a_miss_and_is_deleted() {
-    let other = br#"{"version":2,"saved_at":1700000000,"something":"new"}"#;
+    let other = br#"{"version":1,"saved_at":1700000000,"something":"old"}"#;
     let (lookup, still_there) = load_with_file(other);
-    assert_eq!(lookup, Lookup::Miss(Miss::WrongVersion(2)));
+    assert_eq!(lookup, Lookup::Miss(Miss::WrongVersion(1)));
     assert!(!still_there);
 }
 
@@ -203,7 +203,7 @@ fn a_field_this_version_does_not_know_is_ignored() {
         .save("seed", &many("seed", 1))
         .expect("makes the folder");
     let json = format!(
-        r#"{{"version":1,"saved_at":{},"complete":true,"future":[1,2],"links":[{{"link":{{"url":"u","extra":1}},"health":"working","note":"x"}}],"last_good":"u"}}"#,
+        r#"{{"version":2,"saved_at":{},"complete":true,"future":[1,2],"links":[{{"link":{{"url":"u","extra":1}},"health":"working","note":"x"}}],"last_good":"u"}}"#,
         crate::test_folder::START
     );
     fs::write(cache.path_of(KEY), json).expect("written");

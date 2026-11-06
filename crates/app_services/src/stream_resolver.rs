@@ -4,6 +4,7 @@ use std::time::Instant;
 use core_model::{PlayableLink, PlayableLinks};
 use extension_api::{GatewayError, ProviderGateway};
 
+use crate::clear_key::normalize_pipe_link;
 use crate::{LinkSearch, ServiceError};
 
 /// How many times link loading is attempted when it comes back empty or the call times out.
@@ -36,10 +37,11 @@ pub fn link_rank(link: &PlayableLink) -> i32 {
     }
 }
 
-/// Keeps only links the player can open and sorts them best quality first.
+/// Keeps only links the player can open, normalizes pipe options, and sorts best quality first.
 pub fn playable_links_best_first(links: Vec<PlayableLink>) -> Vec<PlayableLink> {
     let mut playable: Vec<PlayableLink> = links
         .into_iter()
+        .map(normalize_pipe_link)
         .filter(|link| {
             PLAYABLE_TYPES.contains(&link.link_type.as_str()) || link.link_type.is_empty()
         })
