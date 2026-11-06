@@ -7,3 +7,9 @@ build/
 hs_err_pid*.log
 node_modules/
 dist/
+__pycache__/
+*.pyc
+tools/**/cache*/
+tools/**/logs/
+tools/**/replies/
+tools/**/__pycache__/

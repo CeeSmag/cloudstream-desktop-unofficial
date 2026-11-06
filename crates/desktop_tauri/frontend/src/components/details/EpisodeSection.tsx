@@ -3,8 +3,12 @@ import { ArrowDownAZ, ArrowUpAZ, Check, Play } from 'lucide-react';
 import { Episode } from '../../types';
 import { EpisodeMark } from '../../utils/episodeMarks';
 import {
+  CHUNK_SIZE,
+  MACRO_CHUNK_COUNT,
   chunkEpisodes,
   chunkLabel,
+  groupChunksIntoMacro,
+  macroGroupLabel,
   seasonLabel,
   sortEpisodes,
 } from '../../utils/episodeGroups';
@@ -155,7 +159,11 @@ export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
   const [ascending, setAscending] = React.useState(true);
   const [rangeIndex, setRangeIndex] = React.useState(0);
   const chunks = React.useMemo(() => chunkEpisodes(sortEpisodes(episodes, ascending)), [episodes, ascending]);
+  const macroGroups = React.useMemo(() => groupChunksIntoMacro(chunks), [chunks]);
   const range = Math.min(rangeIndex, Math.max(chunks.length - 1, 0));
+  const activeMacroIndex = Math.floor(range / MACRO_CHUNK_COUNT);
+  const activeMacroChunks = macroGroups[activeMacroIndex] ?? [];
+  const activeMacroStartChunk = activeMacroIndex * MACRO_CHUNK_COUNT;
 
   React.useEffect(() => setRangeIndex(0), [selectedSeason, ascending]);
 
@@ -186,13 +194,42 @@ export const EpisodeSection: React.FC<EpisodeSectionProps> = (props) => {
         </div>
       </div>
 
-      {chunks.length > 1 && (
-        <div className="flex gap-2 mb-5 overflow-x-auto no-scrollbar">
-          {chunks.map((chunk, index) => (
-            <button key={index} onClick={() => setRangeIndex(index)} className={pillClass(index === range)}>
-              {chunkLabel(chunk, index)}
+      {macroGroups.length > 1 && (
+        <div
+          role="group"
+          aria-label={`Episode groups (${CHUNK_SIZE * MACRO_CHUNK_COUNT} per group)`}
+          className="flex flex-wrap gap-2 mb-3"
+        >
+          {macroGroups.map((macroChunks, macroIdx) => (
+            <button
+              key={macroIdx}
+              onClick={() => setRangeIndex(macroIdx * MACRO_CHUNK_COUNT)}
+              className={pillClass(macroIdx === activeMacroIndex)}
+            >
+              {macroGroupLabel(macroChunks, macroIdx)}
             </button>
           ))}
+        </div>
+      )}
+
+      {activeMacroChunks.length > 1 && (
+        <div
+          role="group"
+          aria-label="Episode sub-ranges"
+          className="flex flex-wrap gap-2 mb-5"
+        >
+          {activeMacroChunks.map((chunk, subIdx) => {
+            const globalChunkIdx = activeMacroStartChunk + subIdx;
+            return (
+              <button
+                key={globalChunkIdx}
+                onClick={() => setRangeIndex(globalChunkIdx)}
+                className={pillClass(globalChunkIdx === range)}
+              >
+                {chunkLabel(chunk, globalChunkIdx)}
+              </button>
+            );
+          })}
         </div>
       )}
 

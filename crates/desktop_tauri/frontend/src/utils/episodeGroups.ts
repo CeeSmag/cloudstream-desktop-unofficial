@@ -3,6 +3,9 @@ import { Episode } from '../types';
 /** How many episodes are listed at a time; longer seasons are split into ranges. */
 export const CHUNK_SIZE = 20;
 
+/** How many 20-episode sub-ranges belong to one 100-episode macro-group. */
+export const MACRO_CHUNK_COUNT = 5;
+
 /** Episodes without a season belong to season 1. */
 export function groupBySeason(episodes: Episode[]): Map<number, Episode[]> {
   const groups = new Map<number, Episode[]>();
@@ -47,5 +50,25 @@ export function chunkEpisodes(episodes: Episode[]): Episode[][] {
 export function chunkLabel(chunk: Episode[], index: number): string {
   const first = chunk[0]?.episode ?? index * CHUNK_SIZE + 1;
   const last = chunk[chunk.length - 1]?.episode ?? index * CHUNK_SIZE + chunk.length;
+  return `${first}–${last}`;
+}
+
+/** Groups 20-episode sub-chunks into macro-groups of at most [MACRO_CHUNK_COUNT] chunks (100 episodes). */
+export function groupChunksIntoMacro(chunks: Episode[][]): Episode[][][] {
+  const macroGroups: Episode[][][] = [];
+  for (let start = 0; start < chunks.length; start += MACRO_CHUNK_COUNT) {
+    macroGroups.push(chunks.slice(start, start + MACRO_CHUNK_COUNT));
+  }
+  return macroGroups;
+}
+
+/** The label of a 100-episode macro-group, such as "1–100": the numbers of its first and last episode. */
+export function macroGroupLabel(macroChunks: Episode[][], macroIndex: number): string {
+  const firstChunkIdx = macroIndex * MACRO_CHUNK_COUNT;
+  const lastChunkIdx = firstChunkIdx + Math.max(macroChunks.length - 1, 0);
+  const firstChunk = macroChunks[0] ?? [];
+  const lastChunk = macroChunks[macroChunks.length - 1] ?? [];
+  const first = firstChunk[0]?.episode ?? firstChunkIdx * CHUNK_SIZE + 1;
+  const last = lastChunk[lastChunk.length - 1]?.episode ?? lastChunkIdx * CHUNK_SIZE + lastChunk.length;
   return `${first}–${last}`;
 }

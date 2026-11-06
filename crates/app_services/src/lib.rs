@@ -3,6 +3,7 @@
 
 mod catalog_service;
 mod check_queue;
+mod clear_key;
 mod clock;
 mod extension_load_report;
 mod extension_service;
@@ -23,6 +24,7 @@ mod test_support;
 
 pub use catalog_service::{CatalogService, ProviderSearchOutcome};
 pub use check_queue::CheckQueue;
+pub use clear_key::{decode_key_to_hex, normalize_clear_key, normalize_pipe_link};
 pub use clock::{Clock, SystemClock};
 pub use extension_load_report::{ExtensionLoadReport, LoadProgress};
 pub use extension_service::ExtensionService;

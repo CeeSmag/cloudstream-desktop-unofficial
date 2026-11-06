@@ -3,6 +3,7 @@ package sidecar
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.lagradost.runtime.loader.stubs.URLStub
 import java.io.PrintStream
 
 private val mapper: ObjectMapper = jacksonObjectMapper()
@@ -16,6 +17,7 @@ fun main() {
     // Debug output of plugins is dropped here unless the app switched debug logging on.
     System.setErr(PrintStream(DebugLineFilter(System.err), true, "UTF-8"))
     System.setOut(System.err) // plugins may println; keep stdout clean for the protocol
+    URLStub.installNetworkGuard()
     val service = ProviderService()
     SidecarLog.info("ready")
     generateSequence(::readLine).forEach { line ->
