@@ -10,7 +10,7 @@ use crate::cached_title::CachedTitle;
 use crate::title_cache_error::TitleCacheError;
 
 /// The format written now. A file with another number is discarded, never guessed at.
-pub(crate) const FORMAT_VERSION: u32 = 1;
+pub(crate) const FORMAT_VERSION: u32 = 2;
 
 /// Marks a file that is still being written (or was left behind by a crash).
 pub(crate) const TEMPORARY_MARK: &str = ".tmp";
