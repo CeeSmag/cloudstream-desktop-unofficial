@@ -217,7 +217,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app_services"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "extension_api",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "app_shell"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "app_services",
@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "core_model"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1230,7 +1230,7 @@ dependencies = [
 
 [[package]]
 name = "desktop_tauri"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "app_services",
@@ -1764,7 +1764,7 @@ dependencies = [
 
 [[package]]
 name = "extension_api"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "thiserror 2.0.21",
@@ -1772,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "extension_repo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "serde",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "extension_runtime"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "extension_api",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "extractors"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "extension_api",
 ]
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "html_parsing"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "http"
@@ -3496,7 +3496,7 @@ dependencies = [
 
 [[package]]
 name = "network_client"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "new_debug_unreachable"
@@ -4321,14 +4321,14 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "player_api"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "player_mpv"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "libloading 0.8.9",
  "player_api",
@@ -4431,7 +4431,7 @@ dependencies = [
 
 [[package]]
 name = "portable_launcher"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "flate2",
@@ -5274,7 +5274,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skip_times"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -5473,7 +5473,7 @@ checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
 
 [[package]]
 name = "storage"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "rusqlite",
@@ -5522,7 +5522,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "subtitle_store"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "flate2",
@@ -6084,7 +6084,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "title_cache"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "core_model",
  "serde",
@@ -6402,7 +6402,7 @@ dependencies = [
 
 [[package]]
 name = "ui_app"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "app_services",
  "core_model",
