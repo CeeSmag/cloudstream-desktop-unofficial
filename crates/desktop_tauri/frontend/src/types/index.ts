@@ -307,3 +307,23 @@ export interface BrowsePageResult {
   page: number;
   total_pages: number;
 }
+
+/** Result of checking GitHub for application updates. */
+export interface UpdateCheckResult {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_name: string | null;
+  release_notes: string | null;
+  download_url: string | null;
+  asset_name: string | null;
+  asset_size: number | null;
+  is_portable: boolean;
+}
+
+/** Download progress payload emitted during update installation. */
+export interface UpdateProgressPayload {
+  downloaded_bytes: number;
+  total_bytes: number;
+  percent: number;
+}
