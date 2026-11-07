@@ -8,7 +8,7 @@
 # and a Java runtime of its own (downloaded once into target\bundle-cache). Results land in .\dist.
 param(
     [ValidateSet('x64', 'arm64')][string[]]$Arch = @('x64', 'arm64'),
-    [ValidateSet('all', 'installer', 'portable')][string]$Kind = 'all',
+    [ValidateSet('all', 'installer', 'portable', 'single-exe')][string]$Kind = 'all',
     [string]$SidecarHome = 'C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar',
     # Where to take libmpv-2.dll from; when absent it is downloaded (mpv-winbuild, latest).
     [string]$LibMpvX64 = 'C:\cs3d\mpv\libmpv-2.dll',
@@ -246,6 +246,31 @@ function New-Portable([string]$arch, [string]$stage) {
     return $zip
 }
 
+function New-SingleExePortable([string]$arch, [string]$stage) {
+    Write-Step "Making the single-exe portable app for $arch"
+    $triple = $targets[$arch].Triple
+    $exe = Join-Path $repoRoot "target\$triple\release\desktop_tauri.exe"
+    $payloadFolder = Join-Path $stageRoot "single-exe-$arch\payload"
+    if (Test-Path (Split-Path $payloadFolder)) { Remove-Item (Split-Path $payloadFolder) -Recurse -Force }
+    New-Item -ItemType Directory -Force $payloadFolder | Out-Null
+    Copy-Item $exe (Join-Path $payloadFolder 'desktop_tauri.exe')
+    Copy-Item (Join-Path $stage 'libmpv-2.dll') $payloadFolder
+    Copy-Item (Join-Path $stage 'sidecar') $payloadFolder -Recurse
+    Copy-Item (Join-Path $stage 'jre') $payloadFolder -Recurse
+
+    $archive = Join-Path $stageRoot "payload-$arch.tar.gz"
+    if (Test-Path $archive) { Remove-Item $archive }
+    Invoke-Native "Archiving payload ($arch)" 'tar' @('-czf', $archive, '-C', $payloadFolder, '.')
+
+    $env:CS_PAYLOAD_ARCHIVE = $archive
+    Invoke-Native "Compiling single-exe launcher ($arch)" 'cargo' @('build', '--release', '--target', $triple, '-p', 'portable_launcher')
+
+    $singleExe = Join-Path $repoRoot "target\$triple\release\portable_launcher.exe"
+    $dest = Join-Path $OutDir "CloudStream_${version}_${arch}_portable.exe"
+    Copy-Item $singleExe $dest -Force
+    return $dest
+}
+
 # --- main -------------------------------------------------------------------------------------
 
 if (-not (Test-Path (Join-Path $SidecarHome 'bin'))) {
@@ -266,8 +291,9 @@ foreach ($a in $Arch) {
     if ($a -eq 'x64' -and $given -and -not (Test-Path $given)) { $given = '' }
     $stage = New-Stage $a (Get-LibMpv $a $given) (Get-Jre $a)
     Build-App $a (New-BundleConfig $a $stage)
-    if ($Kind -ne 'portable') { $results += Copy-Installer $a }
-    if ($Kind -ne 'installer') { $results += New-Portable $a $stage }
+    if ($Kind -eq 'all' -or $Kind -eq 'installer') { $results += Copy-Installer $a }
+    if ($Kind -eq 'all' -or $Kind -eq 'portable') { $results += New-Portable $a $stage }
+    if ($Kind -eq 'all' -or $Kind -eq 'single-exe') { $results += New-SingleExePortable $a $stage }
 }
 
 Write-Step "Done in $(Get-Elapsed $started)"
