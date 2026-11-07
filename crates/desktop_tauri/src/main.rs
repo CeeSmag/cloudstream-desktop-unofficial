@@ -48,6 +48,7 @@ mod subtitle_tests;
 mod test_subtitles;
 #[cfg(test)]
 mod test_titles;
+mod update_commands;
 mod video_commands;
 mod video_opening;
 mod window_commands;
@@ -125,6 +126,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             video_commands::set_video_surface,
             window_commands::set_window_fullscreen,
             video_commands::get_video_frame,
+            update_commands::check_for_updates,
+            update_commands::apply_update,
         ])
 }
 

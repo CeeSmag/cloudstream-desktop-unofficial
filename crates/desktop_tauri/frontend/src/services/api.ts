@@ -18,6 +18,7 @@ import {
   SourceInfo,
   StartupStatus,
   SkipSegment,
+  UpdateCheckResult,
   WatchProgress,
 } from '../types';
 import { describeValue, isDebugLogging, logEvent } from '../utils/logger';
@@ -207,4 +208,10 @@ export const api = {
 
   setExtensionTrusted: (internalName: string, trusted: boolean) =>
     invokeTauri<void>('set_extension_trusted', { internalName, trusted }),
+
+  /** Checks GitHub releases for an available application update. */
+  checkForUpdates: () => invokeTauri<UpdateCheckResult>('check_for_updates'),
+
+  /** Downloads the update payload and launches the updater script. */
+  applyUpdate: (downloadUrl: string) => invokeTauri<void>('apply_update', { downloadUrl }),
 };
