@@ -177,7 +177,14 @@ fi
 cp "$ICONS_DIR/256x256.png" "$APPDIR/CloudStream.png"
 cp "$ICONS_DIR/256x256.png" "$APPDIR/.DirIcon"
 
-cat <<'EOF' > "$APPDIR/CloudStream.desktop"
+mkdir -p "$APPDIR/usr/share/applications"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/usr/share/metainfo"
+
+cp "$ICONS_DIR/256x256.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/CloudStream.png"
+cp "$ICONS_DIR/256x256.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/com.cloudstream.desktop.png"
+
+cat <<EOF > "$APPDIR/CloudStream.desktop"
 [Desktop Entry]
 Name=CloudStream
 Comment=CloudStream desktop streaming application
@@ -187,7 +194,41 @@ Terminal=false
 Type=Application
 Categories=AudioVideo;Video;Player;
 StartupWMClass=CloudStream
+X-AppImage-Version=${VERSION}
+X-AppImage-Name=CloudStream
 EOF
+
+cp "$APPDIR/CloudStream.desktop" "$APPDIR/com.cloudstream.desktop.desktop"
+cp "$APPDIR/CloudStream.desktop" "$APPDIR/usr/share/applications/CloudStream.desktop"
+cp "$APPDIR/CloudStream.desktop" "$APPDIR/usr/share/applications/com.cloudstream.desktop.desktop"
+
+TODAY=$(date +%Y-%m-%d)
+cat <<EOF > "$APPDIR/usr/share/metainfo/com.cloudstream.desktop.metainfo.xml"
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.cloudstream.desktop</id>
+  <name>CloudStream</name>
+  <summary>CloudStream desktop streaming application</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <url type="homepage">https://github.com/CeeSmag/cloudstream-desktop-unofficial</url>
+  <description>
+    <p>CloudStream is a fast and responsive desktop streaming application with universal extension support.</p>
+  </description>
+  <developer id="com.cloudstream">
+    <name>CloudStream Team</name>
+  </developer>
+  <launchable type="desktop-id">com.cloudstream.desktop.desktop</launchable>
+  <provides>
+    <id>CloudStream.desktop</id>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="${VERSION}" date="${TODAY}"/>
+  </releases>
+</component>
+EOF
+cp "$APPDIR/usr/share/metainfo/com.cloudstream.desktop.metainfo.xml" "$APPDIR/usr/share/metainfo/com.cloudstream.desktop.appdata.xml"
 
 # Create AppRun script
 cat <<'EOF' > "$APPDIR/AppRun"
@@ -231,6 +272,7 @@ rm -f "$OUTPUT_APPIMAGE"
 
 echo "Running appimagetool..."
 export ARCH=x86_64
+export VERSION="$VERSION"
 if ! "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_APPIMAGE"; then
     echo "Standard execution failed (possibly FUSE restriction); trying with --appimage-extract-and-run..."
     "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT_APPIMAGE"
