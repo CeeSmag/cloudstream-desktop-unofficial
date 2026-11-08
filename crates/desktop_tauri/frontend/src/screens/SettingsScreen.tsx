@@ -8,6 +8,8 @@ import { useExtensions } from '../hooks/useExtensions';
 
 interface SettingsScreenProps {
   providers: ProviderInfo[];
+  /** Jumps to a page each time `nonce` changes. */
+  request?: { page: string; nonce: number };
   /** Shows a failure to the user. */
   onError: (error: unknown) => void;
 }
@@ -21,9 +23,16 @@ const PAGES: { id: SettingsPage; label: string }[] = [
 ];
 
 /** Settings, split into pages; extensions have a page of their own. */
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, onError }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, request, onError }) => {
   const [page, setPage] = React.useState<SettingsPage>('extensions');
   const extensions = useExtensions(onError);
+  React.useEffect(() => {
+    if (request && request.nonce > 0 && PAGES.some((p) => p.id === request.page)) {
+      setPage(request.page as SettingsPage);
+      extensions.closeRepository?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.nonce]);
   // Kept here so coming back from a repository's page lands on the tab it was opened from.
   const [extensionsTab, setExtensionsTab] = React.useState<ExtensionsTab>('repositories');
 

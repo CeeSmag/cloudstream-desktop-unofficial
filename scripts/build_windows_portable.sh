@@ -70,6 +70,17 @@ print('libmpv-2.dll cached successfully.')
 "
 fi
 
+# 3b. Vulkan loader. libmpv-2.dll imports vulkan-1.dll; PCs without a GPU driver have none, so
+# libmpv fails to load there. Shipping the loader beside it fixes that (no GPU is needed to run it).
+# Use VULKAN_LOADER_DLL=/path/to/vulkan-1.dll, or drop the file at $CACHE_DIR/vulkan-1.dll
+# (take it from C:\Windows\System32 of a PC with the Vulkan SDK/runtime; Wine's copy will not work).
+VULKAN_DLL="${VULKAN_LOADER_DLL:-$CACHE_DIR/vulkan-1.dll}"
+if [ ! -f "$VULKAN_DLL" ]; then
+    echo "ERROR: vulkan-1.dll not found at $VULKAN_DLL" >&2
+    echo "Set VULKAN_LOADER_DLL or copy the real Windows vulkan-1.dll (x64) there." >&2
+    exit 1
+fi
+
 # 4. Ensure Windows Adoptium Temurin 21 JRE is cached
 echo "[4/6] Ensuring Temurin 21 JRE for Windows x64 is cached..."
 JRE_DIR="$CACHE_DIR/jre-win-x64"
@@ -122,6 +133,7 @@ mkdir -p "$PAYLOAD_DIR"
 
 cp "$REPO_ROOT/target/$TRIPLE/release/desktop_tauri.exe" "$PAYLOAD_DIR/desktop_tauri.exe"
 cp "$MPV_DLL" "$PAYLOAD_DIR/libmpv-2.dll"
+cp "$VULKAN_DLL" "$PAYLOAD_DIR/vulkan-1.dll"
 cp -rf "$SIDECAR_DIST" "$PAYLOAD_DIR/sidecar"
 cp -rf "$JRE_DIR" "$PAYLOAD_DIR/jre"
 

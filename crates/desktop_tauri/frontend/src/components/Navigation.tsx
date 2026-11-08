@@ -1,6 +1,7 @@
 import React from 'react';
 import { Home, Compass, Search, Bookmark, Settings, ChevronDown, Film } from 'lucide-react';
 import { ProviderInfo } from '../types';
+import { UpdateIndicator } from './UpdateIndicator';
 
 interface NavigationProps {
   currentTab: string;
@@ -8,6 +9,8 @@ interface NavigationProps {
   providers: ProviderInfo[];
   selectedProvider: string;
   onSelectProvider: (provider: string) => void;
+  /** Opens Settings > General, where updates are installed. */
+  onOpenUpdates: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -16,6 +19,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   providers,
   selectedProvider,
   onSelectProvider,
+  onOpenUpdates,
 }) => {
   const [providerOpen, setProviderOpen] = React.useState(false);
 
@@ -65,7 +69,9 @@ export const Navigation: React.FC<NavigationProps> = ({
         })}
       </nav>
 
-      {/* Right Controls: Provider Pill */}
+      {/* Right Controls: Update indicator + Provider Pill */}
+      <div className="flex flex-none items-center gap-2">
+      <UpdateIndicator onOpenSettings={onOpenUpdates} />
       <div className="relative flex-none">
         <button
           onClick={() => setProviderOpen(!providerOpen)}
@@ -100,6 +106,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             ))}
           </div>
         )}
+      </div>
       </div>
     </header>
   );

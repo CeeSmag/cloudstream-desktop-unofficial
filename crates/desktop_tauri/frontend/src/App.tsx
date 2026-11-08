@@ -23,6 +23,7 @@ import { defaultBrowseFilters, pickBestSearchMatch } from './utils/browseFilters
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
+  const [settingsRequest, setSettingsRequest] = React.useState({ page: 'general', nonce: 0 });
   // The tab bar answers a click at once; the page below follows in a render that does not block it.
   const shownTab = React.useDeferredValue(currentTab);
   const [errorText, setErrorText] = React.useState<string | null>(null);
@@ -269,6 +270,11 @@ export const App: React.FC = () => {
         providers={providers}
         selectedProvider={selectedProvider}
         onSelectProvider={handleSelectProvider}
+        onOpenUpdates={() => {
+          setActiveDetails(null);
+          setSettingsRequest((r) => ({ page: 'general', nonce: r.nonce + 1 }));
+          setCurrentTab('settings');
+        }}
       />
 
       {/* Main View Area */}
@@ -332,7 +338,7 @@ export const App: React.FC = () => {
               />
             )}
             {shownTab === 'settings' && (
-              <SettingsScreen providers={providers} onError={(error) => setErrorText(describeError(error))} />
+              <SettingsScreen providers={providers} request={settingsRequest} onError={(error) => setErrorText(describeError(error))} />
             )}
           </div>
         )}
