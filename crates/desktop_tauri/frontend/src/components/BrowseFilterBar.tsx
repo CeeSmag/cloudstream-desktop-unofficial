@@ -211,7 +211,8 @@ const PrimaryTabsRow: React.FC<PrimaryTabsRowProps> = ({
         <select
           value={filters.year ?? ''}
           onChange={(e) => onYear(e.target.value ? Number(e.target.value) : null)}
-          className="bg-transparent text-white font-semibold text-xs outline-none cursor-pointer pr-1"
+          style={{ colorScheme: 'dark' }}
+          className="bg-[#161624] text-white font-semibold text-xs outline-none cursor-pointer pr-1 py-0.5 rounded-md border border-white/10 focus:border-violet-400/60"
         >
           <option value="" className="bg-[#161624] text-zinc-300">All Years</option>
           {YEARS.map((y) => (

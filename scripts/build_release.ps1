@@ -13,6 +13,9 @@ param(
     # Where to take libmpv-2.dll from; when absent it is downloaded (mpv-winbuild, latest).
     [string]$LibMpvX64 = 'C:\cs3d\mpv\libmpv-2.dll',
     [string]$LibMpvArm64 = '',
+    # vulkan-1.dll (the Vulkan loader) that libmpv imports; PCs without a GPU driver lack it and libmpv
+    # then fails to load. Default: target\bundle-cache\vulkan-1.dll, then this PC's System32.
+    [string]$VulkanDll = '',
     [string]$OutDir = ''
 )
 
@@ -174,6 +177,14 @@ function Repair-SidecarScript([string]$script) {
     Set-Content $script $fixed -Encoding ASCII
 }
 
+# The Vulkan loader libmpv-2.dll imports; shipped beside it so a PC without a GPU driver can load libmpv.
+function Get-VulkanLoader() {
+    $candidates = @($VulkanDll, (Join-Path $cache 'vulkan-1.dll'), (Join-Path $env:WINDIR 'System32\vulkan-1.dll'))
+    $found = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if (-not $found) { throw "vulkan-1.dll not found. Pass -VulkanDll or install the Vulkan runtime/SDK on this PC." }
+    return $found
+}
+
 # Lays out what ships beside the program: libmpv-2.dll, sidecar\, jre\.
 function New-Stage([string]$arch, [string]$libMpv, [string]$jre) {
     Write-Step "Collecting libmpv, the sidecar and Java for $arch"
@@ -181,6 +192,7 @@ function New-Stage([string]$arch, [string]$libMpv, [string]$jre) {
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force $stage | Out-Null
     Copy-Item $libMpv (Join-Path $stage 'libmpv-2.dll')
+    Copy-Item (Get-VulkanLoader) (Join-Path $stage 'vulkan-1.dll')
     Copy-Item $SidecarHome (Join-Path $stage 'sidecar') -Recurse
     Repair-SidecarScript (Join-Path $stage 'sidecar\bin\cs-sidecar.bat')
     Copy-Item $jre (Join-Path $stage 'jre') -Recurse
@@ -194,6 +206,7 @@ function New-BundleConfig([string]$arch, [string]$stage) {
         bundle = @{
             resources = [ordered]@{
                 (& $slash (Join-Path $stage 'libmpv-2.dll')) = 'libmpv-2.dll'
+                (& $slash (Join-Path $stage 'vulkan-1.dll')) = 'vulkan-1.dll'
                 (& $slash (Join-Path $stage 'sidecar'))      = 'sidecar'
                 (& $slash (Join-Path $stage 'jre'))          = 'jre'
             }
@@ -236,6 +249,7 @@ function New-Portable([string]$arch, [string]$stage) {
     New-Item -ItemType Directory -Force $folder | Out-Null
     Copy-Item $exe (Join-Path $folder 'CloudStream.exe')
     Copy-Item (Join-Path $stage 'libmpv-2.dll') $folder
+    Copy-Item (Join-Path $stage 'vulkan-1.dll') $folder
     Copy-Item (Join-Path $stage 'sidecar') $folder -Recurse
     Copy-Item (Join-Path $stage 'jre') $folder -Recurse
     # The marker makes the app keep its data in the "data" folder next to it.
@@ -255,6 +269,7 @@ function New-SingleExePortable([string]$arch, [string]$stage) {
     New-Item -ItemType Directory -Force $payloadFolder | Out-Null
     Copy-Item $exe (Join-Path $payloadFolder 'desktop_tauri.exe')
     Copy-Item (Join-Path $stage 'libmpv-2.dll') $payloadFolder
+    Copy-Item (Join-Path $stage 'vulkan-1.dll') $payloadFolder
     Copy-Item (Join-Path $stage 'sidecar') $payloadFolder -Recurse
     Copy-Item (Join-Path $stage 'jre') $payloadFolder -Recurse
 
