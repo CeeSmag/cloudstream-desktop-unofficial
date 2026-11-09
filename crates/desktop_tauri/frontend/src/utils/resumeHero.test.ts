@@ -18,7 +18,7 @@ const entry = (overrides: Partial<WatchProgress> = {}): WatchProgress => ({
 describe('pickResumeHero', () => {
   it('takes the first entry, which is the newest', () => {
     const list = [entry({ title: 'A' }), entry({ title: 'B', detail_url: 'other' })];
-    expect(pickResumeHero(list)?.title).toBe('A');
+    expect(pickResumeHero(list, 'P')?.title).toBe('A');
   });
 
   it('skips an entry that is watched (80 percent or more) and one without a title page', () => {
@@ -27,17 +27,39 @@ describe('pickResumeHero', () => {
       entry({ title: 'old', detail_url: '' }),
       entry({ title: 'next' }),
     ];
-    expect(pickResumeHero(list)?.title).toBe('next');
+    expect(pickResumeHero(list, 'P')?.title).toBe('next');
   });
 
   it('keeps an entry at 79.9 percent and drops one at exactly 80', () => {
-    expect(pickResumeHero([entry({ position_ms: 799_000 })])).not.toBeNull();
-    expect(pickResumeHero([entry({ position_ms: 800_000 })])).toBeNull();
+    expect(pickResumeHero([entry({ position_ms: 799_000 })], 'P')).not.toBeNull();
+    expect(pickResumeHero([entry({ position_ms: 800_000 })], 'P')).toBeNull();
   });
 
   it('keeps a not-started next episode and gives nothing for an empty list', () => {
-    expect(pickResumeHero([entry({ position_ms: 0, duration_ms: 0 })])).not.toBeNull();
-    expect(pickResumeHero([])).toBeNull();
+    expect(pickResumeHero([entry({ position_ms: 0, duration_ms: 0 })], 'P')).not.toBeNull();
+    expect(pickResumeHero([], 'P')).toBeNull();
+  });
+});
+
+describe('pickResumeHero per provider', () => {
+  const list = [
+    entry({ title: 'One Piece', provider: 'AnimePahe' }),
+    entry({ title: 'Other', provider: 'AllWish', detail_url: 'https://other.test/x' }),
+  ];
+
+  it("offers only the selected provider's own last title", () => {
+    expect(pickResumeHero(list, 'AnimePahe')?.title).toBe('One Piece');
+    expect(pickResumeHero(list, 'AllWish')?.title).toBe('Other');
+  });
+
+  it('gives nothing for a provider with nothing in progress, even when others have titles', () => {
+    expect(pickResumeHero(list, 'CineStream')).toBeNull();
+    expect(pickResumeHero(list, '')).toBeNull();
+  });
+
+  it("skips a finished title of the provider instead of falling back to another provider's", () => {
+    const finished = [entry({ title: 'done', provider: 'AnimePahe', position_ms: 900_000 }), list[1]];
+    expect(pickResumeHero(finished, 'AnimePahe')).toBeNull();
   });
 });
 

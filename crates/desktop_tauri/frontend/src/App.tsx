@@ -396,6 +396,7 @@ export const App: React.FC = () => {
           <div key={shownTab} className="screen-in flex flex-1 min-w-0 overflow-hidden">
             {shownTab === 'home' && (
               <HomeScreen
+                selectedProvider={selectedProvider}
                 cloudflareNeeded={cloudflareNeeded}
                 cloudflareBusy={cloudflareBusy}
                 onVerifyCloudflare={handleVerifyCloudflare}
