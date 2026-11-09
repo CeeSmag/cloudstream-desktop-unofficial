@@ -36,7 +36,7 @@ pub async fn report_image(
     };
     let host = address.host_str().unwrap_or("?").to_owned();
     let cookies: Vec<String> = app
-        .get_webview_window("main")
+        .get_webview("main")
         .and_then(|view| view.cookies_for_url(address.clone()).ok())
         .unwrap_or_default()
         .iter()

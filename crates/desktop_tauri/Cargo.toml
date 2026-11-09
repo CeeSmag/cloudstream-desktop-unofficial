@@ -11,7 +11,7 @@ workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["unstable"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -42,6 +42,7 @@ mod saved_start;
 #[cfg(test)]
 mod session_race_tests;
 mod settings_commands;
+mod shutdown;
 mod skip_commands;
 mod source_commands;
 mod source_discovery;
@@ -79,9 +80,12 @@ fn main() -> anyhow::Result<()> {
     wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream-tauri starting");
 
-    build_app(paths, debug_logs)
-        .run(tauri::generate_context!())
-        .map_err(|error| anyhow::anyhow!("tauri error: {error}"))
+    let app = build_app(paths, debug_logs)
+        .build(tauri::generate_context!())
+        .map_err(|error| anyhow::anyhow!("tauri error: {error}"))?;
+    app.run(|handle, event| shutdown::handle(handle, &event));
+    tracing::info!("cloudstream-tauri finished");
+    Ok(())
 }
 
 // The body is one flat list of command names; there is nothing to split.
@@ -188,6 +192,7 @@ fn init_services(
     )));
     app.manage(std::sync::Arc::new(browse_commands::BrowseClient::default()));
     app.manage(startup::StartupTracker::default());
+    app.manage(std::sync::Arc::new(shutdown::Closer::default()));
     let gate = std::sync::Arc::new(cloudflare_gate::Gate::default());
     app.manage(std::sync::Arc::clone(&gate));
     cloudflare_watch::start(app.handle(), paths.data_dir(), &extensions, gate);
