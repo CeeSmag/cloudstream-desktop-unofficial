@@ -33,14 +33,26 @@ pub async fn get_home_sections(
                 return Ok(Vec::new());
             };
             let mut sections = Vec::new();
+            let mut first_error: Option<String> = None;
             for entry in &provider_info.main_page {
-                if let Ok(Some(page)) = services.catalog.home(&provider_info.name, entry) {
-                    for section in page.items {
-                        sections.push(map_home_section(section, &provider_info.name));
+                match services.catalog.home(&provider_info.name, entry) {
+                    Ok(Some(page)) => {
+                        for section in page.items {
+                            sections.push(map_home_section(section, &provider_info.name));
+                        }
+                    }
+                    Ok(None) => tracing::debug!(provider = %provider_info.name, category = %entry.name, "the provider has nothing for this Home category"),
+                    Err(error) => {
+                        tracing::warn!(provider = %provider_info.name, category = %entry.name, %error, "a Home category failed to load");
+                        first_error.get_or_insert_with(|| error.to_string());
                     }
                 }
             }
-            Ok(sections)
+            // Nothing to show and something went wrong: say so, instead of an empty page.
+            match (sections.is_empty(), first_error) {
+                (true, Some(error)) => Err(format!("{} could not load its Home page: {error}", provider_info.name)),
+                _ => Ok(sections),
+            }
         })
         .await
 }

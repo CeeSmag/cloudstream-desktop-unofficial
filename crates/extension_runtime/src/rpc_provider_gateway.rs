@@ -159,6 +159,10 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
         self.call_typed("take_added_repositories", json!({}), PROVIDER_CALL_TIMEOUT)
     }
 
+    fn extend_call_deadline(&self, extra: Duration) {
+        self.transport.extend_call_deadline(extra);
+    }
+
     fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
         let params = json!({ "enabled": enabled });
         // A restarted runtime starts with debug logging off; the choice is sent again.

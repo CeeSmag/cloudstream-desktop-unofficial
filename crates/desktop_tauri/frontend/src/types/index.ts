@@ -210,6 +210,12 @@ export interface StartupFailure {
 }
 
 /** How far the app's start-up (loading the installed extensions) has come. */
+/** A site that needs Cloudflare's check before it can load, and the viewer's go-ahead to open the check window. */
+export interface CloudflareNeeded {
+  host: string;
+  provider: string | null;
+}
+
 export interface StartupStatus {
   ready: boolean;
   finished: number;

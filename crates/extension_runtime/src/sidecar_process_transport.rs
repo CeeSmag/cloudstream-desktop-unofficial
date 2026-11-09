@@ -1,14 +1,15 @@
 use std::io::Write;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use extension_api::GatewayError;
 use serde_json::Value;
 
-use crate::rpc_message::{encode_request, parse_reply};
+use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
+use crate::rpc_message::encode_request;
 use crate::sidecar_output::{forward_stdout, log_stderr};
 use crate::{RpcTransport, SidecarLaunchConfig};
 
@@ -31,6 +32,8 @@ pub struct SidecarProcessTransport {
     config: SidecarLaunchConfig,
     running: Mutex<Option<RunningSidecar>>,
     next_request_id: AtomicU64,
+    /// Keeps calls in flight from timing out while a verification window is open.
+    hold: DeadlineHold,
     /// Calls repeated on every fresh start, for example loading the installed extensions.
     startup_calls: Mutex<Vec<StartupCall>>,
 }
@@ -49,6 +52,7 @@ impl SidecarProcessTransport {
             config,
             running: Mutex::new(None),
             next_request_id: AtomicU64::new(1),
+            hold: DeadlineHold::default(),
             startup_calls: Mutex::new(Vec::new()),
         }
     }
@@ -67,6 +71,7 @@ impl SidecarProcessTransport {
                 method: &call.method,
                 params: &call.params,
                 timeout: call.timeout,
+                hold: &self.hold,
             };
             match exchange(running, &pending) {
                 Ok(_) => {
@@ -98,6 +103,7 @@ impl RpcTransport for SidecarProcessTransport {
             method,
             params: &params,
             timeout,
+            hold: &self.hold,
         };
         let outcome = match slot.as_mut() {
             Some(running) => exchange(running, &pending),
@@ -111,6 +117,10 @@ impl RpcTransport for SidecarProcessTransport {
             discard(&mut slot);
         }
         outcome
+    }
+
+    fn extend_call_deadline(&self, extra: Duration) {
+        self.hold.extend(extra);
     }
 
     fn remember_setting_for_restart(&self, method: &str, params: Value, timeout: Duration) {
@@ -225,48 +235,10 @@ fn spawn_reader(name: &str, body: impl FnOnce() + Send + 'static) -> Result<(), 
         .map_err(|source| GatewayError::Transport(format!("cannot start {name} thread: {source}")))
 }
 
-/// One request in flight.
-struct PendingCall<'a> {
-    id: u64,
-    method: &'a str,
-    params: &'a Value,
-    timeout: Duration,
-}
-
 fn exchange(running: &mut RunningSidecar, call: &PendingCall<'_>) -> Result<Value, GatewayError> {
     let line = encode_request(call.id, call.method, call.params);
     writeln!(running.stdin, "{line}")
         .and_then(|()| running.stdin.flush())
         .map_err(|source| GatewayError::Transport(format!("cannot write request: {source}")))?;
-    await_reply(&running.replies, call.id, call.method, call.timeout)
-}
-
-fn await_reply(
-    replies: &Receiver<String>,
-    id: u64,
-    method: &str,
-    timeout: Duration,
-) -> Result<Value, GatewayError> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        match replies.recv_timeout(remaining) {
-            Ok(line) => match parse_reply(&line) {
-                Ok(reply) if reply.id == Some(id) => return reply.into_value(),
-                Ok(stale) => tracing::warn!(expected = id, got = ?stale.id, "ignoring stale reply"),
-                Err(error) => tracing::warn!(%error, "ignoring unreadable sidecar line"),
-            },
-            Err(RecvTimeoutError::Timeout) => {
-                return Err(GatewayError::Timeout {
-                    method: method.to_owned(),
-                    seconds: timeout.as_secs(),
-                })
-            }
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(GatewayError::Transport(
-                    "sidecar exited unexpectedly".to_owned(),
-                ))
-            }
-        }
-    }
+    await_reply(&running.replies, call)
 }

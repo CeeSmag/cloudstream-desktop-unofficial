@@ -31,7 +31,7 @@ declare global {
 }
 
 /** Commands called many times a second; logging each call would only bury the rest. */
-const SILENT_COMMANDS = ['get_video_frame', 'get_playback_status', 'log_from_webapp', 'get_debug_logging'];
+const SILENT_COMMANDS = ['get_video_frame', 'get_playback_status', 'log_from_webapp', 'get_debug_logging', 'report_image'];
 
 /** A readable message for anything that was thrown or rejected. */
 export function describeError(error: unknown): string {
@@ -165,6 +165,10 @@ export const api = {
 
   /** Tells the backend the viewer picked another provider, so saved stream links are not used any more. */
   providerSwitched: (from: string, to: string) => invokeTauri<boolean>('provider_switched', { from, to }),
+  /** Lets the Cloudflare check window open for a site (the Verify button on Home). */
+  allowCloudflareHost: (host: string) => invokeTauri<void>('allow_cloudflare_host', { host }),
+  /** How an image from the web fared; the backend logs it with what its browser holds for that address. */
+  reportImage: (url: string, loaded: boolean) => invokeTauri<void>('report_image', { url, loaded }),
 
   /** The intro, recap and credits of the playing video; empty when none are known. */
   getSkipSegments: (request: SkipRequest) => invokeTauri<SkipSegment[]>('get_skip_segments', { request }),

@@ -3,6 +3,10 @@
 use std::io::{BufRead, BufReader, Read};
 use std::sync::mpsc::Sender;
 
+/// Lines the sidecar's Cloudflare handling prints carry this tag; they get their own log file and
+/// are always kept in the main log (the whole story of a verification must be traceable).
+const CLOUDFLARE_TAG: &str = "[cloudflare]";
+
 /// Longest sidecar output line kept in the log, in characters.
 const MAX_LOGGED_LINE_CHARS: usize = 400;
 
@@ -34,6 +38,10 @@ pub(crate) fn log_stderr(stderr: impl Read) {
     let mut previous = LineLevel::Info;
     for line in lossy_lines(stderr) {
         let line = shortened(&line);
+        if line.contains(CLOUDFLARE_TAG) {
+            log_cloudflare_line(line, previous);
+            continue;
+        }
         previous = classify(line, previous);
         match previous {
             LineLevel::Error => tracing::error!(target: "sidecar", "{line}"),
@@ -42,6 +50,19 @@ pub(crate) fn log_stderr(stderr: impl Read) {
             LineLevel::Debug => tracing::debug!(target: "sidecar", "{line}"),
             LineLevel::Trace => tracing::trace!(target: "sidecar", "{line}"),
         }
+    }
+}
+
+/// Logs one Cloudflare line under its own target, never below info.
+fn log_cloudflare_line(line: &str, previous: LineLevel) {
+    match classify(line, previous) {
+        LineLevel::Error => {
+            tracing::error!(target: "extension_runtime::cloudflare_sidecar", "{line}")
+        }
+        LineLevel::Warn => {
+            tracing::warn!(target: "extension_runtime::cloudflare_sidecar", "{line}")
+        }
+        _ => tracing::info!(target: "extension_runtime::cloudflare_sidecar", "{line}"),
     }
 }
 

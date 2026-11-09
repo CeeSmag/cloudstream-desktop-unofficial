@@ -2,10 +2,11 @@ import React from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
-import { Bookmark, BrowseFilters, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
+import { Bookmark, BrowseFilters, CloudflareNeeded, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
 import { homeEmptyState } from './utils/homeEmptyState';
+import { createLatestRequest } from './utils/latestRequest';
 import { BrowseScreen } from './screens/BrowseScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DetailsScreen } from './screens/DetailsScreen';
@@ -51,8 +52,17 @@ export const App: React.FC = () => {
   );
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = React.useState('');
+  // The latest pick, for callbacks that run later (plugins finishing their loading in the background).
+  const selectedProviderRef = React.useRef('');
+  selectedProviderRef.current = selectedProvider;
   const [homeSections, setHomeSections] = React.useState<HomeSection[]>([]);
   const [homeLoading, setHomeLoading] = React.useState(true);
+  // Loading a Home page replaces the one before it; an answer to an older request must not show.
+  const homeRequests = React.useRef(createLatestRequest()).current;
+  // A site that needs Cloudflare's check and waits for the viewer's go-ahead (instead of a window popping up by itself).
+  const [cloudflareNeeded, setCloudflareNeeded] = React.useState<CloudflareNeeded | null>(null);
+  const [cloudflareBusy, setCloudflareBusy] = React.useState(false);
+  const cloudflareNeededRef = React.useRef<CloudflareNeeded | null>(null);
   // Plugins installed on this PC (null until known); decides whether Home asks the viewer to add some.
   const [installedCount, setInstalledCount] = React.useState<number | null>(null);
 
@@ -73,9 +83,25 @@ export const App: React.FC = () => {
   const refreshProviders = React.useCallback(async () => {
     const provs = await api.getProviders();
     setProviders(provs);
-    const first = provs[0]?.name || '';
-    setSelectedProvider((current) => (provs.some((p) => p.name === current) ? current : first));
-    setHomeSections(first ? await api.getHomeSections(first) : []);
+    // Keep the provider the viewer picked when it is still there; else the first one.
+    const picked = selectedProviderRef.current;
+    const target = provs.some((p) => p.name === picked) ? picked : provs[0]?.name || '';
+    setSelectedProvider(target);
+    const isCurrent = homeRequests.begin();
+    try {
+      const sections = target ? await api.getHomeSections(target) : [];
+      if (isCurrent()) {
+        setHomeSections(sections);
+        if (sections.length > 0) setCloudflareNeeded(null);
+      }
+    } catch (error) {
+      // The reason is shown, not an empty page that looks like nothing happened; a Cloudflare check
+      // that waits for the viewer's go-ahead has its own card on Home instead.
+      if (isCurrent()) {
+        setHomeSections([]);
+        if (!cloudflareNeededRef.current) setErrorText(describeError(error));
+      }
+    }
     setInstalledCount(await api.getInstalledExtensions().then((list) => list.length).catch(() => null));
   }, []);
 
@@ -116,6 +142,37 @@ export const App: React.FC = () => {
     return () => unlisten?.();
   }, [refreshProviders]);
 
+  // The sidecar needs a site verified: the viewer is asked, instead of a window opening by itself.
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<CloudflareNeeded>('cloudflare-needed', (event) => {
+      cloudflareNeededRef.current = event.payload;
+      setCloudflareNeeded(event.payload);
+    })
+      .then((stop) => {
+        unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => unlisten?.();
+  }, []);
+
+  // The viewer pressed Verify: the check window may open now, and Home loads again.
+  const handleVerifyCloudflare = guard(async () => {
+    const needed = cloudflareNeededRef.current;
+    if (!needed) return;
+    setCloudflareBusy(true);
+    try {
+      await api.allowCloudflareHost(needed.host);
+      cloudflareNeededRef.current = null;
+      setCloudflareNeeded(null);
+      setHomeLoading(true);
+      await refreshProviders();
+    } finally {
+      setHomeLoading(false);
+      setCloudflareBusy(false);
+    }
+  });
+
   // Switch provider
   const handleSelectProvider = guard(async (p: string) => {
     // Before anything else: from now on every video is searched afresh, never from saved links.
@@ -124,12 +181,17 @@ export const App: React.FC = () => {
     setActiveDetails(null);
     setBrowseData(null);
     setBrowseFilterKey('');
+    // Start from nothing: the old provider's rows must not stay under the new provider's name.
+    setHomeSections([]);
+    cloudflareNeededRef.current = null;
+    setCloudflareNeeded(null);
     setHomeLoading(true);
+    const isCurrent = homeRequests.begin();
     try {
       const sections = await api.getHomeSections(p);
-      setHomeSections(sections);
+      if (isCurrent()) setHomeSections(sections);
     } finally {
-      setHomeLoading(false);
+      if (isCurrent()) setHomeLoading(false);
     }
   });
 
@@ -300,6 +362,9 @@ export const App: React.FC = () => {
           <div key={shownTab} className="screen-in flex flex-1 min-w-0 overflow-hidden">
             {shownTab === 'home' && (
               <HomeScreen
+                cloudflareNeeded={cloudflareNeeded}
+                cloudflareBusy={cloudflareBusy}
+                onVerifyCloudflare={handleVerifyCloudflare}
                 emptyState={homeEmptyState({ loading: homeLoading, providerCount: providers.length, installedCount })}
                 onOpenExtensions={() => {
                   setSettingsRequest((r) => ({ page: 'extensions', nonce: r.nonce + 1 }));

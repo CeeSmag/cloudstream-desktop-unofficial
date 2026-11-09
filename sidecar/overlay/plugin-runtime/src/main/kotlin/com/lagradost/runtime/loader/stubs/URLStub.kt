@@ -73,6 +73,9 @@ object URLStub {
         if (!builder.interceptors().contains(SafeInterceptor)) {
             builder.addInterceptor(SafeInterceptor)
         }
+        if (!builder.interceptors().contains(CloudflareSolver.interceptor)) {
+            builder.addInterceptor(CloudflareSolver.interceptor)
+        }
         builder.dns(SafeDns)
         return builder.build()
     }

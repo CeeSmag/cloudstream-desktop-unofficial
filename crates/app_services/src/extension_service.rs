@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
 use extension_api::ProviderGateway;
@@ -133,6 +133,12 @@ impl ExtensionService {
                 }
             }
         }
+    }
+
+    /// Keeps extension calls in flight from timing out for the next `extra` while the viewer passes a
+    /// check in a browser window; call it again to keep them waiting.
+    pub fn extend_call_deadline(&self, extra: Duration) {
+        self.gateway.extend_call_deadline(extra);
     }
 
     /// Tells the extension runtime whether debug logging is on. A runtime that cannot be
