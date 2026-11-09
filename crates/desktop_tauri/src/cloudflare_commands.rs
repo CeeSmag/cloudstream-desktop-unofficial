@@ -14,17 +14,25 @@ pub fn allow_cloudflare_host(host: String, gate: State<'_, Arc<Gate>>) {
     gate.allow(&host);
 }
 
+/// Async on purpose: reading the browser's cookies from a synchronous command deadlocks WebView2 on Windows
+/// and freezes the whole app.
+///
 /// The page tells how an image from the web fared: the first few per site are logged with what the app's
 /// own browser holds for that address, which is what tells a blocked image from a broken one.
 #[tauri::command]
-pub fn report_image(url: String, loaded: bool, app: tauri::AppHandle, gate: State<'_, Arc<Gate>>) {
+pub async fn report_image(
+    url: String,
+    loaded: bool,
+    app: tauri::AppHandle,
+    gate: State<'_, Arc<Gate>>,
+) -> Result<(), String> {
     use tauri::Manager;
     let Ok(address) = url.parse::<tauri::Url>() else {
         tracing::warn!(
             loaded,
             "an image address that is not a web address was reported"
         );
-        return;
+        return Ok(());
     };
     let host = address.host_str().unwrap_or("?").to_owned();
     let cookies: Vec<String> = app
@@ -40,4 +48,5 @@ pub fn report_image(url: String, loaded: bool, app: tauri::AppHandle, gate: Stat
     } else {
         tracing::warn!(%host, %image, ?cookies, check_allowed = gate.is_allowed(&host), "an image did NOT load; the cookies are what the app's browser sends for it");
     }
+    Ok(())
 }
