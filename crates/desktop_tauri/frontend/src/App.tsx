@@ -4,6 +4,8 @@ import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
 import { CloudflarePanel } from './components/CloudflarePanel';
 import { DetailsLoading } from './components/DetailsLoading';
+import { CloudflareAsk } from './components/CloudflareAsk';
+import { failureAction } from './utils/failureAction';
 import { Bookmark, BrowseFilters, CloudflareNeeded, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
@@ -17,7 +19,7 @@ import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { usePlayback } from './hooks/usePlayback';
 import { useStartup } from './hooks/useStartup';
-import { setDebugLogging } from './utils/logger';
+import { logEvent, setDebugLogging } from './utils/logger';
 import { StartupScreen } from './components/StartupScreen';
 import { ContextMenu } from './components/ContextMenu';
 import { useContextMenu } from './hooks/useContextMenu';
@@ -40,6 +42,10 @@ export const App: React.FC = () => {
     setBrowseData(data);
   }, []);
 
+  // The viewer is asked to verify because something failed meanwhile; the failed action runs again afterwards.
+  const [askToVerify, setAskToVerify] = React.useState(false);
+  const retryAfterVerifyRef = React.useRef<(() => Promise<void>) | null>(null);
+
   // Runs an async action and shows its failure instead of dropping it.
   const guard = React.useCallback(
     <A extends unknown[]>(action: (...args: A) => Promise<void>) =>
@@ -47,6 +53,13 @@ export const App: React.FC = () => {
         try {
           await action(...args);
         } catch (error) {
+          if (failureAction(cloudflareNeededRef.current) === 'ask-to-verify') {
+            // The site is waiting for the viewer's go-ahead: say so, and try again once it is verified.
+            logEvent('info', `an action failed while ${cloudflareNeededRef.current?.host} waits for verification; asking the viewer to verify (${describeError(error)})`);
+            retryAfterVerifyRef.current = () => action(...args);
+            setAskToVerify(true);
+            return;
+          }
           setErrorText(describeError(error));
         }
       },
@@ -167,11 +180,19 @@ export const App: React.FC = () => {
       await api.allowCloudflareHost(needed.host);
       cloudflareNeededRef.current = null;
       setCloudflareNeeded(null);
+      setAskToVerify(false);
       setHomeLoading(true);
       await refreshProviders();
     } finally {
       setHomeLoading(false);
       setCloudflareBusy(false);
+    }
+    // Whatever failed while the site waited for this go-ahead is tried again now.
+    const retry = retryAfterVerifyRef.current;
+    retryAfterVerifyRef.current = null;
+    if (retry) {
+      logEvent('info', 'verification done; running again the action that failed before it');
+      await retry();
     }
   });
 
@@ -329,6 +350,18 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen bg-midnight text-white overflow-hidden">
       <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
       <CloudflarePanel />
+      {askToVerify && cloudflareNeeded && (
+        <CloudflareAsk
+          host={cloudflareNeeded.host}
+          provider={cloudflareNeeded.provider}
+          busy={cloudflareBusy}
+          onVerify={handleVerifyCloudflare}
+          onClose={() => {
+            retryAfterVerifyRef.current = null;
+            setAskToVerify(false);
+          }}
+        />
+      )}
       <ContextMenu menu={contextMenu.menu} onClose={contextMenu.close} />
       {/* Top Navigation */}
       <Navigation
