@@ -23,6 +23,7 @@ import {
 } from '../types';
 import { describeValue, isDebugLogging, logEvent } from '../utils/logger';
 import type { SkipRequest } from '../playback/skipRequest';
+import { createDetailsLoader } from '../utils/detailsLoader';
 
 declare global {
   interface Window {
@@ -62,6 +63,12 @@ async function invokeTauri<T>(cmd: string, args: Record<string, unknown> = {}): 
   }
 }
 
+/** Titles take up to a minute and a half to load on some sites and the runtime answers one call at a time. */
+const loadDetails = createDetailsLoader<MediaDetails>(
+  (providerId, url) => invokeTauri<MediaDetails>('get_media_details', { providerId, url }),
+  { ttlMs: 30 * 60 * 1000, limit: 40, now: () => Date.now(), note: (message) => logEvent('info', message) },
+);
+
 export const api = {
   getStartupStatus: () => invokeTauri<StartupStatus>('get_startup_status'),
 
@@ -99,8 +106,8 @@ export const api = {
   browseCatalog: (filters: BrowseFilters) =>
     invokeTauri<BrowsePageResult>('browse_catalog', { request: filters }),
 
-  getDetails: (providerId: string, url: string) =>
-    invokeTauri<MediaDetails>('get_media_details', { providerId, url }),
+  /** A title's details; one loaded a moment ago is reused and a load already running is joined (see detailsLoader). */
+  getDetails: (providerId: string, url: string) => loadDetails(providerId, url),
 
   playMedia: (params: {
     provider: string;
