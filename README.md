@@ -82,9 +82,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_tauri.ps1
 ### 4. Build Release Packages
 
 ```powershell
-# Builds installer and portable package in .\dist
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Arch x64 -Kind all
+# Windows PC: x64 installer + single-file portable exe in .\dist (-Kind installer|portable to build one)
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
+# Linux PC (run once with --install-deps): the AppImage for this PC's CPU (x86_64 or aarch64)
+scripts/build_release.sh
 ```
+GitHub builds all of them: Actions > "Release build" > Run workflow, or push a `v*` tag for a draft release.
 
 ---
 

@@ -1,20 +1,25 @@
-# Builds the Windows release: an installer and a portable zip for each CPU type.
+# Builds the Windows (x64) release files:
 #
-#   .\scripts\build_release.ps1                       # installer + portable, x64 and arm64
-#   .\scripts\build_release.ps1 -Arch x64             # only 64-bit Intel/AMD
-#   .\scripts\build_release.ps1 -Kind portable        # only the portable zip
+#   CloudStream_<ver>_x64-setup.exe       installer
+#   CloudStream_<ver>_x64_portable.exe    single-file portable
 #
-# Every package carries what the app needs to run on a clean PC: libmpv, the extension sidecar
-# and a Java runtime of its own (downloaded once into target\bundle-cache). Results land in .\dist.
+#   .\scripts\build_release.ps1                    # both
+#   .\scripts\build_release.ps1 -Kind portable     # only one: installer or portable
+#
+# The Linux AppImage is built by scripts/build_release.sh. GitHub builds all of them
+# (.github/workflows/release.yml), or run each script on its own OS.
+#
+# Needs: the Rust MSVC toolchain, Node 20+, and the extension sidecar built once with
+# scripts\setup_sidecar.ps1. Every package carries what the app needs to run on a clean PC:
+# libmpv, vulkan-1.dll, the sidecar and a Java runtime (downloaded once into target\bundle-cache).
+# Results land in .\dist.
 param(
-    [ValidateSet('x64', 'arm64')][string[]]$Arch = @('x64', 'arm64'),
-    [ValidateSet('all', 'installer', 'portable', 'single-exe')][string]$Kind = 'all',
+    [ValidateSet('all', 'installer', 'portable')][string]$Kind = 'all',
     [string]$SidecarHome = 'C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar',
     # Where to take libmpv-2.dll from; when absent it is downloaded (mpv-winbuild, latest).
-    [string]$LibMpvX64 = 'C:\cs3d\mpv\libmpv-2.dll',
-    [string]$LibMpvArm64 = '',
+    [string]$LibMpv = 'C:\cs3d\mpv\libmpv-2.dll',
     # vulkan-1.dll (the Vulkan loader) that libmpv imports; PCs without a GPU driver lack it and libmpv
-    # then fails to load. Default: target\bundle-cache\vulkan-1.dll, then this PC's System32.
+    # then fails to load. Default: scripts\vendor\vulkan\x64\vulkan-1.dll (kept in the repo).
     [string]$VulkanDll = '',
     [string]$OutDir = ''
 )
@@ -28,12 +33,7 @@ $cache = Join-Path $repoRoot 'target\bundle-cache'
 $stageRoot = Join-Path $repoRoot 'target\bundle-stage'
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot 'dist' }
 $version = (Get-Content (Join-Path $appDir 'tauri.conf.json') -Raw | ConvertFrom-Json).version
-
-# What differs between the two CPU types.
-$targets = @{
-    x64   = @{ Triple = 'x86_64-pc-windows-msvc'; Jre = 'x64'; Mpv = 'x86_64' }
-    arm64 = @{ Triple = 'aarch64-pc-windows-msvc'; Jre = 'aarch64'; Mpv = 'aarch64' }
-}
+$triple = 'x86_64-pc-windows-msvc'
 
 $started = Get-Date
 $logDir = Join-Path $repoRoot 'target\bundle-logs'
@@ -96,39 +96,23 @@ function Get-Download([string]$url, [string]$file) {
     if (Test-Path $file) { return }
     Write-Host "    downloading $url"
     New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
-    # curl.exe (part of Windows) shows a live progress meter, unlike Invoke-WebRequest.
-    curl.exe -L -f --progress-bar -o "$file.part" $url
+    # curl prints its progress meter on stderr; that must not count as an error.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { curl.exe -L -f --progress-bar -o "$file.part" $url 2>&1 | Out-Host } finally { $ErrorActionPreference = $previous }
     if ($LASTEXITCODE -ne 0) { throw "Downloading $url failed (curl exit code $LASTEXITCODE)." }
     Move-Item "$file.part" $file
 }
 
-function Assert-ArmToolchain {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    $found = $false
-    if (Test-Path $vswhere) {
-        $found = [bool](& $vswhere -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' -property installationPath)
-    }
-    if (-not $found) {
-        throw @"
-The ARM64 C++ build tools are not installed, and the arm64 build needs them.
-Install them once (as administrator), then run this script again:
-  & "`${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe" modify --installPath "<your Visual Studio / Build Tools folder>" --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --passive
-or tick "MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools" in the Visual Studio Installer.
-Or build only the other CPU type with:  .\scripts\build_release.ps1 -Arch x64
-"@
-    }
-}
-
-function Get-Jre([string]$arch) {
-    $name = $targets[$arch].Jre
-    $folder = Join-Path $cache "jre-$name"
+function Get-Jre {
+    $folder = Join-Path $cache 'jre-x64'
     if (Test-Path (Join-Path $folder 'bin\java.exe')) { return $folder }
-    Write-Step "Java runtime for $arch (Temurin 21)"
-    $api = "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=$name&image_type=jre&os=windows"
+    Write-Step 'Java runtime (Temurin 21)'
+    $api = 'https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jre&os=windows'
     $release = (Invoke-RestMethod -Uri $api -UseBasicParsing) | Select-Object -First 1
     $zip = Join-Path $cache (Split-Path $release.binary.package.link -Leaf)
     Get-Download $release.binary.package.link $zip
-    $unpacked = Join-Path $cache "jre-$name-unpacked"
+    $unpacked = Join-Path $cache 'jre-x64-unpacked'
     if (Test-Path $unpacked) { Remove-Item $unpacked -Recurse -Force }
     Expand-Archive $zip -DestinationPath $unpacked
     $inner = Get-ChildItem $unpacked -Directory | Select-Object -First 1
@@ -138,21 +122,19 @@ function Get-Jre([string]$arch) {
     return $folder
 }
 
-function Get-LibMpv([string]$arch, [string]$given) {
-    if ($given -and (Test-Path $given)) { return $given }
-    if ($given) { throw "libmpv not found at '$given'." }
-    $name = $targets[$arch].Mpv
-    $file = Join-Path $cache "libmpv-$name\libmpv-2.dll"
+function Get-LibMpv {
+    if ($LibMpv -and (Test-Path $LibMpv)) { return $LibMpv }
+    $file = Join-Path $cache 'libmpv-x86_64\libmpv-2.dll'
     if (Test-Path $file) { return $file }
-    Write-Step "libmpv for $arch (mpv-winbuild)"
+    Write-Step 'libmpv (mpv-winbuild)'
     $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest' -UseBasicParsing
-    $asset = $latest.assets | Where-Object { $_.name -match "^mpv-dev-$name-\d" } | Select-Object -First 1
-    if (-not $asset) { throw "No libmpv package for $name in the latest mpv-winbuild release." }
+    $asset = $latest.assets | Where-Object { $_.name -match '^mpv-dev-x86_64-\d' } | Select-Object -First 1
+    if (-not $asset) { throw 'No x86_64 libmpv package in the latest mpv-winbuild release.' }
     $archive = Join-Path $cache $asset.name
     Get-Download $asset.browser_download_url $archive
-    $unpacked = Join-Path $cache "libmpv-$name-unpacked"
+    $unpacked = Join-Path $cache 'libmpv-x86_64-unpacked'
     New-Item -ItemType Directory -Force $unpacked | Out-Null
-    Invoke-Native "Unpacking libmpv ($arch)" 'tar' @('-xf', $archive, '-C', $unpacked)
+    Invoke-Native 'Unpacking libmpv' 'tar' @('-xf', $archive, '-C', $unpacked)
     $dll = Get-ChildItem $unpacked -Recurse -Filter 'libmpv-2.dll' | Select-Object -First 1
     if (-not $dll) { throw "libmpv-2.dll is not in $($asset.name)." }
     New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
@@ -178,111 +160,92 @@ function Repair-SidecarScript([string]$script) {
 }
 
 # The Vulkan loader libmpv-2.dll imports; shipped beside it so a PC without a GPU driver can load libmpv.
-function Get-VulkanLoader() {
-    $candidates = @($VulkanDll, (Join-Path $cache 'vulkan-1.dll'), (Join-Path $env:WINDIR 'System32\vulkan-1.dll'))
-    $found = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-    if (-not $found) { throw "vulkan-1.dll not found. Pass -VulkanDll or install the Vulkan runtime/SDK on this PC." }
+# The build stops when it is missing or is built for another CPU type.
+function Get-VulkanLoader {
+    $vendored = Join-Path $PSScriptRoot 'vendor\vulkan\x64\vulkan-1.dll'
+    $found = @($VulkanDll, $vendored) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if (-not $found) { throw "vulkan-1.dll not found. Expected $vendored (see scripts\vendor\vulkan\README.md) or pass -VulkanDll." }
+    $bytes = [IO.File]::ReadAllBytes($found)
+    $machine = '{0:X4}' -f [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4)
+    if ($machine -ne '8664') { throw "$found is built for CPU type $machine, but the x64 build needs 8664." }
     return $found
 }
 
-# Lays out what ships beside the program: libmpv-2.dll, sidecar\, jre\.
-function New-Stage([string]$arch, [string]$libMpv, [string]$jre) {
-    Write-Step "Collecting libmpv, the sidecar and Java for $arch"
-    $stage = Join-Path $stageRoot $arch
+function Assert-InPayload([string]$archive, [string]$name) {
+    $listing = & tar -tzf $archive
+    if (-not ($listing | Where-Object { $_ -match "(^|/)$([regex]::Escape($name))$" })) {
+        throw "$name is missing from the portable payload ($archive); the build is not safe to ship."
+    }
+}
+
+# Lays out what ships beside the program: libmpv-2.dll, vulkan-1.dll, sidecar\, jre\.
+function New-Stage {
+    Write-Step 'Collecting libmpv, vulkan-1.dll, the sidecar and Java'
+    $stage = Join-Path $stageRoot 'x64'
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force $stage | Out-Null
-    Copy-Item $libMpv (Join-Path $stage 'libmpv-2.dll')
+    Copy-Item (Get-LibMpv) (Join-Path $stage 'libmpv-2.dll')
     Copy-Item (Get-VulkanLoader) (Join-Path $stage 'vulkan-1.dll')
     Copy-Item $SidecarHome (Join-Path $stage 'sidecar') -Recurse
     Repair-SidecarScript (Join-Path $stage 'sidecar\bin\cs-sidecar.bat')
-    Copy-Item $jre (Join-Path $stage 'jre') -Recurse
+    Copy-Item (Get-Jre) (Join-Path $stage 'jre') -Recurse
     return $stage
 }
 
 # The installer build copies the staged files next to the program through tauri's `resources`.
-function New-BundleConfig([string]$arch, [string]$stage) {
-    $slash = { param($p) $p.Replace('\', '/') }
-    $config = @{
-        bundle = @{
-            resources = [ordered]@{
-                (& $slash (Join-Path $stage 'libmpv-2.dll')) = 'libmpv-2.dll'
-                (& $slash (Join-Path $stage 'vulkan-1.dll')) = 'vulkan-1.dll'
-                (& $slash (Join-Path $stage 'sidecar'))      = 'sidecar'
-                (& $slash (Join-Path $stage 'jre'))          = 'jre'
-            }
-        }
+function New-BundleConfig([string]$stage) {
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
+        if (-not (Test-Path (Join-Path $stage $name))) { throw "$name is not staged; the installer would ship without it." }
     }
-    $file = Join-Path $stageRoot "tauri.bundle.$arch.json"
-    $config | ConvertTo-Json -Depth 6 | Set-Content $file -Encoding UTF8
+    $slash = { param($p) $p.Replace('\', '/') }
+    $resources = [ordered]@{}
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') { $resources[(& $slash (Join-Path $stage $name))] = $name }
+    $file = Join-Path $stageRoot 'tauri.bundle.x64.json'
+    @{ bundle = @{ resources = $resources } } | ConvertTo-Json -Depth 6 | Set-Content $file -Encoding UTF8
     return $file
 }
 
-function Build-App([string]$arch, [string]$configFile) {
-    $triple = $targets[$arch].Triple
-    Write-Step "Building $arch ($triple)"
-    Invoke-Native "Adding the $arch Rust target" 'rustup' @('target', 'add', $triple)
+function Build-App([string]$configFile) {
+    Write-Step "Building the app ($triple)"
+    Invoke-Native 'Adding the Rust target' 'rustup' @('target', 'add', $triple)
     Push-Location $appDir
     try {
         $bundling = if ($Kind -eq 'portable') { @('--no-bundle') } else { @('--bundles', 'nsis') }
         $tauri = Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'
-        Invoke-Native "Compiling and packaging $arch (the first build takes several minutes)" $tauri (@('build', '--target', $triple, '--config', $configFile) + $bundling)
+        Invoke-Native 'Compiling and packaging (the first build takes several minutes)' $tauri (@('build', '--target', $triple, '--config', $configFile) + $bundling)
     }
     finally { Pop-Location }
 }
 
-function Copy-Installer([string]$arch) {
-    $triple = $targets[$arch].Triple
+function Copy-Installer {
     $setup = Get-ChildItem (Join-Path $repoRoot "target\$triple\release\bundle\nsis") -Filter '*-setup.exe' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $setup) { throw "The $arch installer was not produced." }
-    $dest = Join-Path $OutDir "CloudStream_${version}_${arch}-setup.exe"
+    if (-not $setup) { throw 'The installer was not produced.' }
+    $dest = Join-Path $OutDir "CloudStream_${version}_x64-setup.exe"
     Copy-Item $setup.FullName $dest -Force
     return $dest
 }
 
-function New-Portable([string]$arch, [string]$stage) {
-    Write-Step "Making the portable app for $arch"
-    $triple = $targets[$arch].Triple
+function New-Portable([string]$stage) {
+    Write-Step 'Making the single-exe portable app'
     $exe = Join-Path $repoRoot "target\$triple\release\desktop_tauri.exe"
-    $folder = Join-Path $stageRoot "portable-$arch\CloudStream"
-    if (Test-Path (Split-Path $folder)) { Remove-Item (Split-Path $folder) -Recurse -Force }
-    New-Item -ItemType Directory -Force $folder | Out-Null
-    Copy-Item $exe (Join-Path $folder 'CloudStream.exe')
-    Copy-Item (Join-Path $stage 'libmpv-2.dll') $folder
-    Copy-Item (Join-Path $stage 'vulkan-1.dll') $folder
-    Copy-Item (Join-Path $stage 'sidecar') $folder -Recurse
-    Copy-Item (Join-Path $stage 'jre') $folder -Recurse
-    # The marker makes the app keep its data in the "data" folder next to it.
-    Set-Content (Join-Path $folder 'portable.txt') 'Everything CloudStream stores is kept in the "data" folder next to this file. Delete this file to use the normal user folder instead.'
-    $zip = Join-Path $OutDir "CloudStream_${version}_${arch}_portable.zip"
-    if (Test-Path $zip) { Remove-Item $zip }
-    Invoke-Native "Zipping the portable app ($arch)" 'tar' @('-a', '-cf', $zip, '-C', (Split-Path $folder), 'CloudStream')
-    return $zip
-}
-
-function New-SingleExePortable([string]$arch, [string]$stage) {
-    Write-Step "Making the single-exe portable app for $arch"
-    $triple = $targets[$arch].Triple
-    $exe = Join-Path $repoRoot "target\$triple\release\desktop_tauri.exe"
-    $payloadFolder = Join-Path $stageRoot "single-exe-$arch\payload"
+    $payloadFolder = Join-Path $stageRoot 'single-exe-x64\payload'
     if (Test-Path (Split-Path $payloadFolder)) { Remove-Item (Split-Path $payloadFolder) -Recurse -Force }
     New-Item -ItemType Directory -Force $payloadFolder | Out-Null
     Copy-Item $exe (Join-Path $payloadFolder 'desktop_tauri.exe')
-    Copy-Item (Join-Path $stage 'libmpv-2.dll') $payloadFolder
-    Copy-Item (Join-Path $stage 'vulkan-1.dll') $payloadFolder
-    Copy-Item (Join-Path $stage 'sidecar') $payloadFolder -Recurse
-    Copy-Item (Join-Path $stage 'jre') $payloadFolder -Recurse
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payloadFolder }
+    foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payloadFolder -Recurse }
 
-    $archive = Join-Path $stageRoot "payload-$arch.tar.gz"
+    $archive = Join-Path $stageRoot 'payload-x64.tar.gz'
     if (Test-Path $archive) { Remove-Item $archive }
-    Invoke-Native "Archiving payload ($arch)" 'tar' @('-czf', $archive, '-C', $payloadFolder, '.')
+    Invoke-Native 'Archiving the payload' 'tar' @('-czf', $archive, '-C', $payloadFolder, '.')
 
+    Assert-InPayload $archive 'vulkan-1.dll'
     $env:CS_PAYLOAD_ARCHIVE = $archive
-    Invoke-Native "Compiling single-exe launcher ($arch)" 'cargo' @('build', '--release', '--target', $triple, '-p', 'portable_launcher')
+    Invoke-Native 'Compiling the single-exe launcher' 'cargo' @('build', '--release', '--target', $triple, '-p', 'portable_launcher')
 
-    $singleExe = Join-Path $repoRoot "target\$triple\release\portable_launcher.exe"
-    $dest = Join-Path $OutDir "CloudStream_${version}_${arch}_portable.exe"
-    Copy-Item $singleExe $dest -Force
+    $dest = Join-Path $OutDir "CloudStream_${version}_x64_portable.exe"
+    Copy-Item (Join-Path $repoRoot "target\$triple\release\portable_launcher.exe") $dest -Force
     return $dest
 }
 
@@ -291,7 +254,6 @@ function New-SingleExePortable([string]$arch, [string]$stage) {
 if (-not (Test-Path (Join-Path $SidecarHome 'bin'))) {
     throw "The extension sidecar is not built at '$SidecarHome'. Run scripts\setup_sidecar.ps1 or pass -SidecarHome."
 }
-if ($Arch -contains 'arm64') { Assert-ArmToolchain }
 New-Item -ItemType Directory -Force $OutDir, $cache | Out-Null
 
 if (-not (Test-Path (Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'))) {
@@ -300,16 +262,12 @@ if (-not (Test-Path (Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'))) {
     try { Invoke-Native 'npm install' 'npm.cmd' @('install', '--no-audit', '--no-fund') } finally { Pop-Location }
 }
 
+$stage = New-Stage
+Build-App (New-BundleConfig $stage)
+
 $results = @()
-foreach ($a in $Arch) {
-    $given = if ($a -eq 'x64') { $LibMpvX64 } else { $LibMpvArm64 }
-    if ($a -eq 'x64' -and $given -and -not (Test-Path $given)) { $given = '' }
-    $stage = New-Stage $a (Get-LibMpv $a $given) (Get-Jre $a)
-    Build-App $a (New-BundleConfig $a $stage)
-    if ($Kind -eq 'all' -or $Kind -eq 'installer') { $results += Copy-Installer $a }
-    if ($Kind -eq 'all' -or $Kind -eq 'portable') { $results += New-Portable $a $stage }
-    if ($Kind -eq 'all' -or $Kind -eq 'single-exe') { $results += New-SingleExePortable $a $stage }
-}
+if ($Kind -eq 'all' -or $Kind -eq 'installer') { $results += Copy-Installer }
+if ($Kind -eq 'all' -or $Kind -eq 'portable') { $results += New-Portable $stage }
 
 Write-Step "Done in $(Get-Elapsed $started)"
 foreach ($file in $results) {
