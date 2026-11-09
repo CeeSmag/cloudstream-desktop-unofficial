@@ -18,6 +18,7 @@ use crate::cloudflare_exchange::{Outcome, VerifyRequest};
 use crate::cloudflare_fetch::{run_fetch, FetchOutcome, FetchRequest};
 use crate::cloudflare_open::{open, reuse};
 use crate::cloudflare_panel::{announce, PanelControl, Rect};
+use crate::cloudflare_share::share_cookies;
 
 /// How often an open window is looked at.
 const WINDOW_PAUSE: Duration = Duration::from_millis(500);
@@ -80,6 +81,7 @@ pub fn verify(
         announce(app, &request.host, false);
     }
     if matches!(outcome, Outcome::Passed { .. }) {
+        share_cookies(app, surface.view(), &url);
         surface.keep_hidden();
         tracing::info!(%label, panel = surface.is_panel(), "the check passed; it is hidden and kept for requests made in the browser");
     } else {
