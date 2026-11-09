@@ -13,7 +13,7 @@ mod sidecar_discovery;
 mod unavailable_gateway;
 
 pub use app_paths::AppPaths;
-pub use data_wipe::{request_wipe, wipe_if_requested, RetryPlan, WipeOutcome};
+pub use data_wipe::{request_wipe, running_folder_name, wipe_if_requested, RetryPlan, WipeOutcome};
 pub use debug_logs::{DebugLogs, LogFileInfo};
 pub use logging_setup::start_logging;
 pub use service_wiring::{build_services, ServiceOptions};

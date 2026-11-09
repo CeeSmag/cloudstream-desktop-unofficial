@@ -9,9 +9,18 @@ use std::time::Duration;
 /// Marker the settings page leaves to ask for a wipe at the next start.
 pub const WIPE_MARKER: &str = "delete_all_data.pending";
 
-/// Folders that start like this hold the program the portable exe unpacked beside the data
-/// (`runtime-<version>`); the wipe must leave them, they are what is running.
-const KEEP_PREFIX: &str = "runtime-";
+/// The name of the folder (inside `data_dir`) the running program was unpacked into, when it runs from
+/// there (`runtime-<version>` of the portable exe). The wipe must leave exactly this folder, it is what
+/// is running; older `runtime-*` folders are deleted with the rest.
+pub fn running_folder_name(data_dir: &Path, exe: Option<&Path>) -> Option<String> {
+    let folder = exe?.parent()?;
+    if folder.parent()? != data_dir {
+        return None;
+    }
+    folder
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+}
 
 /// How often a wipe tries again when something is still in use (the app that asked for it may take a
 /// moment to exit), and the pause between tries.
@@ -79,6 +88,13 @@ pub fn request_wipe(data_dir: &Path) -> io::Result<()> {
 
 /// Deletes everything in `data_dir` when a wipe was requested; call it first thing at start-up.
 pub fn wipe_if_requested(data_dir: &Path, retry: RetryPlan) -> WipeOutcome {
+    let exe = std::env::current_exe().ok();
+    let keep = running_folder_name(data_dir, exe.as_deref());
+    wipe_keeping(data_dir, retry, keep.as_deref())
+}
+
+/// [`wipe_if_requested`] with the name of the one program folder to leave.
+fn wipe_keeping(data_dir: &Path, retry: RetryPlan, keep: Option<&str>) -> WipeOutcome {
     // A folder without a parent is a drive root: never empty that, whatever a marker says.
     if data_dir.parent().is_none() || !data_dir.join(WIPE_MARKER).is_file() {
         return WipeOutcome::NotRequested;
@@ -87,7 +103,7 @@ pub fn wipe_if_requested(data_dir: &Path, retry: RetryPlan) -> WipeOutcome {
     let mut removed = 0;
     let mut remaining = 0;
     for attempt in 1..=attempts {
-        let pass = remove_entries(data_dir);
+        let pass = remove_entries(data_dir, keep);
         removed += pass.removed;
         remaining = pass.failed;
         if remaining == 0 {
@@ -114,8 +130,8 @@ struct Pass {
     failed: usize,
 }
 
-/// One pass over the folder: removes every entry except the marker and the kept program folders.
-fn remove_entries(data_dir: &Path) -> Pass {
+/// One pass over the folder: removes every entry except the marker and the running program's folder.
+fn remove_entries(data_dir: &Path, keep: Option<&str>) -> Pass {
     let mut pass = Pass::default();
     let Ok(entries) = std::fs::read_dir(data_dir) else {
         pass.failed += 1;
@@ -123,7 +139,7 @@ fn remove_entries(data_dir: &Path) -> Pass {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name == WIPE_MARKER || name.starts_with(KEEP_PREFIX) {
+        if name == WIPE_MARKER || Some(name.as_str()) == keep {
             continue;
         }
         let path = entry.path();
@@ -187,21 +203,40 @@ mod tests {
     }
 
     #[test]
-    fn the_unpacked_portable_program_is_kept() {
+    fn only_the_running_program_folder_is_kept_and_older_ones_go() {
         let dir = data_folder("keep");
-        std::fs::create_dir_all(dir.join("runtime-0.3.4")).expect("runtime folder");
-        std::fs::write(dir.join("runtime-0.3.4").join("desktop_tauri.exe"), b"exe").expect("exe");
+        for version in ["runtime-0.3.4", "runtime-0.3.7"] {
+            std::fs::create_dir_all(dir.join(version)).expect("runtime folder");
+            std::fs::write(dir.join(version).join("desktop_tauri.exe"), b"exe").expect("exe");
+        }
         request_wipe(&dir).expect("request");
         assert!(matches!(
-            wipe_if_requested(&dir, QUICK),
+            wipe_keeping(&dir, QUICK, Some("runtime-0.3.7")),
             WipeOutcome::Done { .. }
         ));
         assert!(dir
-            .join("runtime-0.3.4")
+            .join("runtime-0.3.7")
             .join("desktop_tauri.exe")
             .is_file());
+        assert!(
+            !dir.join("runtime-0.3.4").exists(),
+            "an older program folder must be deleted too"
+        );
         assert!(!dir.join("cloudstream.db").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_running_folder_is_found_only_directly_inside_the_data_folder() {
+        let data = PathBuf::from("/data");
+        let inside = PathBuf::from("/data/runtime-0.3.7/desktop_tauri.exe");
+        let elsewhere = PathBuf::from("/Program Files/CloudStream/cloudstream.exe");
+        assert_eq!(
+            running_folder_name(&data, Some(&inside)).as_deref(),
+            Some("runtime-0.3.7")
+        );
+        assert_eq!(running_folder_name(&data, Some(&elsewhere)), None);
+        assert_eq!(running_folder_name(&data, None), None);
     }
 
     #[test]

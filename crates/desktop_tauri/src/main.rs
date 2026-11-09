@@ -56,6 +56,9 @@ mod source_notes;
 mod source_session;
 mod sources_cleanup;
 mod startup;
+mod storage_cap;
+mod storage_cap_plan;
+mod storage_cap_scan;
 mod subtitle_delivery;
 #[cfg(test)]
 mod subtitle_tests;
@@ -157,6 +160,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             cloudflare_panel::place_cloudflare_panel,
             cloudflare_panel::cancel_cloudflare_panel,
             data_commands::delete_all_data,
+            storage_cap::get_storage_cap,
+            storage_cap::set_storage_cap,
         ])
 }
 
@@ -201,6 +206,7 @@ fn init_services(
     let gate = std::sync::Arc::new(cloudflare_gate::Gate::default());
     app.manage(std::sync::Arc::clone(&gate));
     cloudflare_watch::start(app.handle(), paths.data_dir(), &extensions, gate);
+    storage_cap::start(app.handle(), paths.data_dir().to_path_buf());
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())
 }

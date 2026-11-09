@@ -4,6 +4,7 @@ import { ProviderInfo } from '../../types';
 import { DebugLoggingCard } from '../../components/DebugLoggingCard';
 import { UpdateCard } from '../../components/UpdateCard';
 import { DeleteDataCard } from '../../components/DeleteDataCard';
+import { StorageCapCard } from '../../components/StorageCapCard';
 
 interface GeneralSettingsProps {
   providers: ProviderInfo[];
@@ -17,6 +18,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ providers, onE
   <div className="space-y-8 sm:space-y-10">
     <UpdateCard onError={onError} />
     <DebugLoggingCard onError={onError} />
+    <StorageCapCard onError={onError} />
 
     <div className={SECTION}>
       <h2 className="text-lg font-bold text-white">Active Providers ({providers.length})</h2>

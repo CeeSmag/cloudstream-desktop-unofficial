@@ -8,6 +8,7 @@ import {
   MediaDetails,
   NextEpisode,
   PlaybackStatus,
+  StorageInfo,
   PluginHit,
   Preferences,
   ProviderInfo,
@@ -179,6 +180,10 @@ export const api = {
     invokeTauri<void>('place_cloudflare_panel', { host, rect }),
   /** The viewer cancelled the Cloudflare check. */
   cancelCloudflarePanel: (host: string) => invokeTauri<void>('cancel_cloudflare_panel', { host }),
+  /** The limit for the data folder (1 to 10 GB) and how much of it is used. */
+  getStorageCap: () => invokeTauri<StorageInfo>('get_storage_cap'),
+  /** Sets the limit; what is over it and can be made again is deleted at once. */
+  setStorageCap: (gb: number) => invokeTauri<StorageInfo>('set_storage_cap', { gb }),
   /** How an image from the web fared; the backend logs it with what its browser holds for that address. */
   reportImage: (url: string, loaded: boolean) => invokeTauri<void>('report_image', { url, loaded }),
 
