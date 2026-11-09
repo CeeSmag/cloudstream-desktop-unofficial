@@ -19,6 +19,8 @@ mod cloudflare_watch;
 mod cloudflare_window;
 mod data_commands;
 mod data_helper;
+#[cfg(test)]
+mod deadlock_tests;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;
