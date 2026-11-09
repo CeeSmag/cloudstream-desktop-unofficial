@@ -52,6 +52,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const resumeItem = pickResumeHero(continueWatching, selectedProvider);
   const bannerTitle = resumeItem?.title ?? null;
   React.useEffect(() => {
+    if (!selectedProvider) return; // no provider picked yet: nothing to say
     logEvent('info', bannerTitle ? `Home banner for ${selectedProvider}: continue "${bannerTitle}"` : `Home banner for ${selectedProvider}: nothing in progress, showing its featured title`);
   }, [selectedProvider, bannerTitle]);
 
