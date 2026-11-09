@@ -232,7 +232,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Build System**: Gradle 8.x + Kotlin 2.1 (JVM Target 21).
 - **Compatibility Bridge**: Converts Android DEX bytecode to JVM bytecode via `dex2jar` / `plugin-runtime` and provides fake Android environment classes (`android-stubs`).
 - **Verified Kotlin Modules (`src/main/kotlin/`)**:
-  - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages.
+  - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
   - `sidecar/LinkSearches.kt`: Coordinates asynchronous streaming link searches and channel buffers.
   - `sidecar/AddedRepositories.kt`: Buffers repositories discovered/added dynamically by extensions.
@@ -309,7 +309,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `app_paths.rs`: Locates data directory: `CS_DATA_DIR` -> `%LOCALAPPDATA%\CloudStreamRs` (Windows) -> `~/.local/share/cloudstream-rs` (Linux). Holds `database_file()`, `extensions_dir()`, `log_file()`.
   - `logging_setup.rs`: Initializes `tracing-subscriber` logging to `<data>/logs/cloudstream.log` and reloadable debug/problem category layers in `<data>/logs/debug/` (`DebugLogs`).
   - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME` or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`.
-  - `data_wipe.rs`: "Delete all saved data". `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the portable exe's `runtime-<version>` folders, retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
+  - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the portable exe's `runtime-<version>` folders, retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
   - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing.
 
@@ -336,7 +336,8 @@ This document is the verified architectural index, navigation map, and modificat
   - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
   - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
   - `video_commands.rs`: Delivers mpv RGBA frames to the frontend as binary data (`16-byte header: width, height, serial + pixels`).
-  - `data_commands.rs`: `delete_all_data` (stops playback, writes the wipe marker with `app_shell::request_wipe`, restarts the app by its own file: portable exe via `CS_PORTABLE_EXE`, AppImage via `APPIMAGE`).
+  - `data_commands.rs`: `delete_all_data` (stops playback, starts the helper, closes the app).
+  - `data_helper.rs`: the helper behind it: a PowerShell (Windows) or `sh` script written to the temp folder and started detached. It waits for the app's PID to exit, ends `java.exe` processes whose command line holds the data folder (the sidecar), deletes everything except `runtime-*` folders (retrying while files are in use), starts the app again (portable exe via `CS_PORTABLE_EXE`, AppImage via `APPIMAGE`, else the running program) and removes itself.
   - `update_commands.rs`: The self-updater (`check_for_updates`, `apply_update`). Reads the latest GitHub release and chooses the asset by name: `*-setup.exe` (installed Windows app), `*_portable.exe` (portable, replaced through `CS_PORTABLE_EXE`), `*.AppImage` whose name contains `x86_64` or `aarch64` (Linux). Keep the release file names (see `docs/RELEASING.md`).
 - **Frontend Architecture (`frontend/src/`)**:
   - `App.tsx`: Main application shell, keyboard shortcuts, and tab routing (`home`, `browse`, `search`, `library`, `settings`).
@@ -523,7 +524,7 @@ All 56 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `set_window_fullscreen` | Toggles fullscreen window state. |
 | **Updates** | `check_for_updates` | Asks GitHub for the latest release and picks the file for this PC (installer, portable exe or AppImage, by file name). |
 | | `apply_update` | Downloads that file, then a helper script swaps it in for the running program (the portable exe via `CS_PORTABLE_EXE`, the AppImage via `APPIMAGE`) and restarts it. |
-| **Data** | `delete_all_data` | Settings > General > "Delete all saved data": leaves a marker file and restarts the app; the next start deletes everything in the data folder before opening anything (`app_shell::data_wipe`). |
+| **Data** | `delete_all_data` | Settings > General > "Delete all saved data": starts a separate helper process (`data_helper.rs`) and closes the app; the helper ends leftover sidecar Java processes, deletes everything in the data folder (except `runtime-*`) and starts the app again. Fallback if the helper cannot start: a marker file that the next start acts on (`app_shell::data_wipe`). |
 
 ---
 

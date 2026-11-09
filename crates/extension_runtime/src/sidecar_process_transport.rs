@@ -153,6 +153,7 @@ impl Drop for SidecarProcessTransport {
 #[tracing::instrument(level = "debug", skip_all)]
 fn discard(slot: &mut Option<RunningSidecar>) {
     if let Some(mut running) = slot.take() {
+        kill_process_tree(running.child.id());
         if let Err(error) = running.child.kill() {
             tracing::debug!(%error, "sidecar already exited");
         }
@@ -161,6 +162,26 @@ fn discard(slot: &mut Option<RunningSidecar>) {
         }
     }
 }
+
+/// On Windows the sidecar starts through `cs-sidecar.bat` (cmd.exe), which starts `java.exe`; ending
+/// only the wrapper leaves the JVM running, holding the plugin files. `taskkill /T` ends the whole tree.
+#[cfg(windows)]
+fn kill_process_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    let outcome = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+    if let Err(error) = outcome {
+        tracing::debug!(%error, "cannot end the sidecar's process tree");
+    }
+}
+
+/// Elsewhere the sidecar's script `exec`s the JVM, so there is no wrapper to leave it behind.
+#[cfg(not(windows))]
+fn kill_process_tree(_pid: u32) {}
 
 #[tracing::instrument(level = "debug", skip_all, err)]
 fn start_sidecar(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
