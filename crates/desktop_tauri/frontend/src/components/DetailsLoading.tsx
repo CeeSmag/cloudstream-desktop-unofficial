@@ -7,7 +7,12 @@ import { loadingLines, PluginProgress } from '../utils/loadingProgress';
 const LOG_EVERY_S = 10;
 
 /** The spinner shown while a title page loads; after a few seconds it explains the wait and shows progress. */
-export const DetailsLoading: React.FC = () => {
+interface DetailsLoadingProps {
+  /** The viewer gave up waiting: go back to what was on screen before. */
+  onCancel: () => void;
+}
+
+export const DetailsLoading: React.FC<DetailsLoadingProps> = ({ onCancel }) => {
   const [waited, setWaited] = React.useState(0);
   const [progress, setProgress] = React.useState<PluginProgress | null>(null);
 
@@ -45,6 +50,15 @@ export const DetailsLoading: React.FC = () => {
           {line}
         </p>
       ))}
+      <button
+        onClick={onCancel}
+        className="mt-5 rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-200 hover:bg-white/10"
+      >
+        Cancel
+      </button>
+      <p className="mt-2 max-w-md text-[11px] text-zinc-500">
+        The site keeps loading in the background, so opening this title again later is quicker.
+      </p>
     </div>
   );
 };
