@@ -3,11 +3,16 @@ import { canOpenTitlePage, episodeBadgeText, formatRemainingTime } from './conti
 import { markOf } from './episodeMarks';
 
 /**
- * The title the Home banner offers to continue: the newest Continue Watching entry that has a
- * title page and is not already finished (80 percent or more watched).
+ * The title the Home banner offers to continue: the newest Continue Watching entry of the selected
+ * provider that has a title page and is not already finished (80 percent or more watched). Every provider
+ * has its own banner: a title watched on another provider is never offered here, so a blocked or unverified
+ * site cannot cause errors while the viewer is on a different one.
  */
-export function pickResumeHero(list: WatchProgress[]): WatchProgress | null {
-  return list.find((item) => canOpenTitlePage(item) && markOf(item)?.kind !== 'watched') ?? null;
+export function pickResumeHero(list: WatchProgress[], provider: string): WatchProgress | null {
+  return (
+    list.find((item) => item.provider === provider && canOpenTitlePage(item) && markOf(item)?.kind !== 'watched') ??
+    null
+  );
 }
 
 /** The short facts line of the banner, such as "S2 E5 · 54% watched · 22m left" or "S2 E6 · Up next". */

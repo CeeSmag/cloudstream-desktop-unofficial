@@ -9,8 +9,11 @@ import { pickResumeHero } from '../utils/resumeHero';
 import { HomeEmptyState } from '../utils/homeEmptyState';
 import { NoPluginsPrompt } from '../components/NoPluginsPrompt';
 import { CloudflarePrompt } from '../components/CloudflarePrompt';
+import { logEvent } from '../utils/logger';
 
 interface HomeScreenProps {
+  /** The selected provider: the banner offers only its own last-watched title. */
+  selectedProvider: string;
   /** A site that needs Cloudflare's check, waiting for the viewer's go-ahead. */
   cloudflareNeeded: CloudflareNeeded | null;
   cloudflareBusy: boolean;
@@ -31,6 +34,7 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  selectedProvider,
   cloudflareNeeded,
   cloudflareBusy,
   onVerifyCloudflare,
@@ -45,7 +49,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onRemoveContinue,
 }) => {
   const heroItem = sections[0]?.items[0];
-  const resumeItem = pickResumeHero(continueWatching);
+  const resumeItem = pickResumeHero(continueWatching, selectedProvider);
+  const bannerTitle = resumeItem?.title ?? null;
+  React.useEffect(() => {
+    logEvent('info', bannerTitle ? `Home banner for ${selectedProvider}: continue "${bannerTitle}"` : `Home banner for ${selectedProvider}: nothing in progress, showing its featured title`);
+  }, [selectedProvider, bannerTitle]);
 
   return (
     <div className="flex-1 overflow-y-auto pb-20 select-none">
