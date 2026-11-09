@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
 import { CloudflarePanel } from './components/CloudflarePanel';
+import { DetailsLoading } from './components/DetailsLoading';
 import { Bookmark, BrowseFilters, CloudflareNeeded, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
@@ -349,10 +350,7 @@ export const App: React.FC = () => {
       {/* Main View Area */}
       <main className="flex-1 flex overflow-hidden">
         {detailsLoading ? (
-          <div className="flex-1 flex items-center justify-center text-zinc-500">
-            <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mb-4" />
-            <span className="ml-3 text-sm">Loading details...</span>
-          </div>
+          <DetailsLoading />
         ) : activeDetails ? (
           <DetailsScreen
             details={activeDetails}

@@ -21,7 +21,7 @@ use crate::cloudflare_fetch::{
 };
 use crate::cloudflare_gate::{provider_of_host, Gate};
 use crate::cloudflare_open::{close_kept, find};
-use crate::cloudflare_patience::Patience;
+use crate::cloudflare_patience::{Patience, Progress};
 use crate::cloudflare_window::{label_for, short, verify};
 
 /// How often the exchange folder is looked at.
@@ -32,6 +32,8 @@ const FETCH_LIMIT: Duration = Duration::from_secs(90);
 const WINDOW_IDLE: Duration = Duration::from_secs(20 * 60);
 /// How far each answered browser request pushes the waiting plugin call's deadline.
 const PROGRESS_HOLD: Duration = Duration::from_secs(30);
+/// The page event that tells how a plugin's burst of browser requests is going.
+pub const PROGRESS_EVENT: &str = "plugin-progress";
 /// The page event that tells the UI a site needs the viewer's go-ahead.
 pub const NEEDED_EVENT: &str = "cloudflare-needed";
 
@@ -83,8 +85,10 @@ fn watch(app: &AppHandle, folders: &Folders, helpers: (&ExtensionService, &Gate)
         }
         for request in pending_fetches(&folders.exchange, &mut seen) {
             hold_calls(extensions, &mut patience, &request);
-            answer_fetch(app, folders, &request);
+            let status = answer_fetch(app, folders, &request);
+            patience.record(status);
             hold_calls(extensions, &mut patience, &request);
+            announce_progress(app, &request.host, &patience);
             last_used.insert(label_for(&request.host), Instant::now());
         }
         close_idle_windows(app, &mut last_used);
@@ -170,7 +174,7 @@ fn log_outcome(request: &VerifyRequest, outcome: &Outcome, took: Duration) {
 }
 
 /// A browser fetch: run it in the site's window, if there is one.
-fn answer_fetch(app: &AppHandle, folders: &Folders, request: &FetchRequest) {
+fn answer_fetch(app: &AppHandle, folders: &Folders, request: &FetchRequest) -> Option<u16> {
     let started = Instant::now();
     let label = label_for(&request.host);
     let outcome = match find(app, &label) {
@@ -181,6 +185,38 @@ fn answer_fetch(app: &AppHandle, folders: &Folders, request: &FetchRequest) {
     let name = format!("fetchresult-{}", request.id);
     if let Err(error) = write_named(&folders.exchange, &name, &format_fetch_result(&outcome)) {
         tracing::error!(id = %request.id, %error, "cannot hand the browser's answer to the sidecar; the request will time out");
+    }
+    match outcome {
+        FetchOutcome::Done { status, .. } => Some(status),
+        FetchOutcome::Failed { .. } => None,
+    }
+}
+
+/// What the page is told while a plugin keeps the browser busy.
+#[derive(Debug, Clone, Serialize)]
+struct ProgressPayload {
+    host: String,
+    requests: u32,
+    limited: u32,
+    elapsed_s: u64,
+}
+
+/// Tells the page how the burst is going, so a long wait can show progress; a failure is logged.
+fn announce_progress(app: &AppHandle, host: &str, patience: &Patience) {
+    let Progress {
+        requests,
+        limited,
+        elapsed_s,
+    } = patience.progress(Instant::now());
+    let payload = ProgressPayload {
+        host: host.to_owned(),
+        requests,
+        limited,
+        elapsed_s,
+    };
+    tracing::debug!(%host, requests, limited, elapsed_s, "plugin progress sent to the page");
+    if let Err(error) = app.emit(PROGRESS_EVENT, payload) {
+        tracing::warn!(%error, "cannot tell the page how the plugin's requests are going");
     }
 }
 
