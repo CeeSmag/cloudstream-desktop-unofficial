@@ -16,6 +16,7 @@ mod cloudflare_fetch;
 mod cloudflare_gate;
 mod cloudflare_open;
 mod cloudflare_panel;
+mod cloudflare_patience;
 mod cloudflare_share;
 mod cloudflare_watch;
 mod cloudflare_window;
