@@ -11,6 +11,7 @@ mod check_gate;
 mod check_gate_state;
 mod check_progress;
 mod data_commands;
+mod data_helper;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;

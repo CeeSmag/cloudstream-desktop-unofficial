@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.runtime.loader.stubs.URLStub
 import java.io.PrintStream
+import kotlin.system.exitProcess
 
 private val mapper: ObjectMapper = jacksonObjectMapper()
 
@@ -24,6 +25,10 @@ fun main() {
         val reply = handleLine(service, line)
         protocolOut.println(mapper.writeValueAsString(reply))
     }
+    // The app closed our input: it is gone. Plugin threads would keep this process alive for ever,
+    // holding the plugin files open, so end it here.
+    SidecarLog.info("input closed, exiting")
+    exitProcess(0)
 }
 
 private fun elapsedMillis(startedAt: Long) = (System.nanoTime() - startedAt) / 1_000_000

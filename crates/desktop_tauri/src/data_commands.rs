@@ -7,16 +7,18 @@ use app_shell::request_wipe;
 use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
+use crate::data_helper;
 use crate::source_manager::SourceManager;
 
 /// Where the app keeps everything it saves (database, extensions, saved sources, subtitles, logs).
 pub struct DataFolder(pub PathBuf);
 
-/// Gives the page time to receive the answer and clear its own saved state before the app restarts.
-const RESTART_DELAY: Duration = Duration::from_millis(600);
+/// Gives the page time to receive the answer and clear its own saved state before the app closes.
+const EXIT_DELAY: Duration = Duration::from_millis(600);
 
-/// Asks for all saved data to be deleted, then restarts the app. The deletion itself runs at the
-/// next start, before anything is opened (see `app_shell::wipe_if_requested`).
+/// Deletes all saved data and starts the app again. The deleting is done by a separate helper
+/// process after this app has closed (nothing can be in use then); if the helper cannot be
+/// started, a marker is left instead and the next start deletes everything (`app_shell::data_wipe`).
 #[tauri::command]
 #[tracing::instrument(level = "info", skip_all, err)]
 pub async fn delete_all_data(
@@ -27,10 +29,15 @@ pub async fn delete_all_data(
 ) -> Result<(), String> {
     sources.close();
     stop_playback(&state);
-    request_wipe(&folder.0)
-        .map_err(|error| format!("Cannot ask for the saved data to be deleted: {error}"))?;
-    tracing::info!("all saved data will be deleted at the next start; restarting");
-    schedule_restart(app);
+    match data_helper::start_helper(&folder.0) {
+        Ok(()) => tracing::info!("helper started; closing so it can delete all saved data"),
+        Err(error) => {
+            tracing::warn!(%error, "cannot start the helper; the next start will delete instead");
+            request_wipe(&folder.0)
+                .map_err(|error| format!("Cannot delete the saved data: {error}"))?;
+        }
+    }
+    schedule_exit(app);
     Ok(())
 }
 
@@ -44,30 +51,16 @@ fn stop_playback(state: &AppState) {
     }
 }
 
-fn schedule_restart(app: AppHandle) {
+/// Closes the app shortly, once the page has its answer. The helper (or, failing that, the user)
+/// starts it again.
+fn schedule_exit(app: AppHandle) {
     let spawned = std::thread::Builder::new()
-        .name("restart-after-wipe".to_owned())
+        .name("close-after-delete".to_owned())
         .spawn(move || {
-            std::thread::sleep(RESTART_DELAY);
-            restart(&app);
+            std::thread::sleep(EXIT_DELAY);
+            app.exit(0);
         });
     if let Err(error) = spawned {
-        tracing::error!(%error, "cannot schedule the restart; close and reopen the app");
+        tracing::error!(%error, "cannot schedule closing the app; close and reopen it");
     }
-}
-
-/// Starts the app again and ends this process. The portable exe and the AppImage are started by their
-/// own file (the program inside them is only a part of them); everything else restarts itself.
-fn restart(app: &AppHandle) {
-    let launcher = std::env::var_os("CS_PORTABLE_EXE").or_else(|| std::env::var_os("APPIMAGE"));
-    if let Some(launcher) = launcher {
-        match std::process::Command::new(&launcher).spawn() {
-            Ok(_) => {
-                app.exit(0);
-                return;
-            }
-            Err(error) => tracing::warn!(%error, "cannot start the app again by its own file"),
-        }
-    }
-    app.restart();
 }
