@@ -4,12 +4,11 @@
 //! When the folder is over the limit, things that can be made again are deleted, cheapest first (older
 //! program folders, finished debug logs, subtitles, saved stream sources, the check browser's cache), only
 //! as much as needed. The database, plugins and settings are never touched, so a limit below what the app
-//! itself needs cannot be reached; that is reported, not hidden. It runs a little after start, every hour,
+//! itself needs cannot be reached; that is reported, not hidden. It runs as a task of the cleanup queue (after start-up, then hourly)
 //! and at once when the limit is changed. Every deletion and every failure is logged.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, TryLockError};
-use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -20,9 +19,6 @@ use crate::storage_cap_plan::{plan, Plan};
 use crate::storage_cap_scan::{collect, delete, dir_size};
 
 const BYTES_PER_GB: u64 = 1024 * 1024 * 1024;
-/// The first check waits, so it does not compete with start-up.
-const FIRST_CHECK_AFTER: Duration = Duration::from_secs(30);
-const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
 
 /// Only one enforcement runs at a time (the hourly one and one asked for by a changed limit).
 static BUSY: Mutex<()> = Mutex::new(());
@@ -202,24 +198,8 @@ pub async fn set_storage_cap(
     .map_err(|error| format!("cannot apply the data folder limit: {error}"))
 }
 
-/// Starts the hourly check for the data folder `data_dir`.
-pub fn start(app: &AppHandle, data_dir: PathBuf) {
-    let app = app.clone();
-    let spawned = std::thread::Builder::new()
-        .name("storage-cap".to_owned())
-        .spawn(move || {
-            std::thread::sleep(FIRST_CHECK_AFTER);
-            loop {
-                check_once(&app, &data_dir);
-                std::thread::sleep(CHECK_EVERY);
-            }
-        });
-    if let Err(error) = spawned {
-        tracing::error!(%error, "cannot start the data folder size check; the limit will only apply when it is changed");
-    }
-}
-
-fn check_once(app: &AppHandle, data_dir: &Path) {
+/// Applies the saved limit to `data_dir` (a task of the cleanup queue).
+pub(crate) fn check_once(app: &AppHandle, data_dir: &Path) {
     let Some(state) = app.try_state::<AppState>() else {
         tracing::warn!("no settings yet; the data folder limit was not checked");
         return;
