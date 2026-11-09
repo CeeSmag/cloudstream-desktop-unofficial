@@ -84,6 +84,15 @@ export const App: React.FC = () => {
   // Navigation states
   const [activeDetails, setActiveDetails] = React.useState<MediaDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = React.useState(false);
+  // Opening a title can take over a minute; the viewer can cancel, and an answer that arrives after that is dropped.
+  const detailsRequests = React.useRef(createLatestRequest()).current;
+  const cancelDetailsLoading = React.useCallback(() => {
+    detailsRequests.begin(); // makes any title still loading stale
+    setDetailsLoading((loading) => {
+      if (loading) logEvent('info', 'the viewer cancelled opening a title; its answer will be ignored');
+      return false;
+    });
+  }, [detailsRequests]);
 
   const playback = usePlayback((error) => setErrorText(describeError(error)));
   const startup = useStartup();
@@ -198,6 +207,7 @@ export const App: React.FC = () => {
 
   // Switch provider
   const handleSelectProvider = guard(async (p: string) => {
+    cancelDetailsLoading();
     // Before anything else: from now on every video is searched afresh, never from saved links.
     if (p !== selectedProvider) await api.providerSwitched(selectedProvider, p);
     setSelectedProvider(p);
@@ -220,34 +230,45 @@ export const App: React.FC = () => {
 
   // Open Details Screen
   const handleSelectItem = guard(async (item: HomeItem) => {
+    const isCurrent = detailsRequests.begin();
     setDetailsLoading(true);
     try {
       const details = await api.getDetails(item.provider, item.url);
+      if (!isCurrent()) {
+        logEvent('info', `the details of ${item.provider} arrived after the viewer cancelled; kept for later, not shown`);
+        return;
+      }
       setActiveDetails(details);
       const bookmarked = await api.isBookmarked(details.provider, details.url);
-      setIsCurrentBookmarked(bookmarked);
+      if (isCurrent()) setIsCurrentBookmarked(bookmarked);
     } finally {
-      setDetailsLoading(false);
+      if (isCurrent()) setDetailsLoading(false);
     }
   });
 
   // Open details for an item selected on the Browse screen
   const handleSelectBrowseItem = guard(async (item: BrowseItem) => {
+    const isCurrent = detailsRequests.begin();
     setDetailsLoading(true);
     try {
       const results = await api.search(item.name, selectedProvider || undefined);
+      if (!isCurrent()) return;
       const match = pickBestSearchMatch(item, results);
       if (match) {
         const details = await api.getDetails(match.provider, match.url);
+        if (!isCurrent()) {
+          logEvent('info', `the details of ${match.provider} arrived after the viewer cancelled; kept for later, not shown`);
+          return;
+        }
         setActiveDetails(details);
         const bookmarked = await api.isBookmarked(details.provider, details.url);
-        setIsCurrentBookmarked(bookmarked);
+        if (isCurrent()) setIsCurrentBookmarked(bookmarked);
       } else {
         setSearchQuery(item.name);
         setCurrentTab('search');
       }
     } finally {
-      setDetailsLoading(false);
+      if (isCurrent()) setDetailsLoading(false);
     }
   });
 
@@ -367,6 +388,7 @@ export const App: React.FC = () => {
       <Navigation
         currentTab={currentTab}
         onSelectTab={(tab) => {
+          cancelDetailsLoading();
           setActiveDetails(null);
           setCurrentTab(tab);
         }}
@@ -374,6 +396,7 @@ export const App: React.FC = () => {
         selectedProvider={selectedProvider}
         onSelectProvider={handleSelectProvider}
         onOpenUpdates={() => {
+          cancelDetailsLoading();
           setActiveDetails(null);
           setSettingsRequest((r) => ({ page: 'general', nonce: r.nonce + 1 }));
           setCurrentTab('settings');
@@ -383,7 +406,7 @@ export const App: React.FC = () => {
       {/* Main View Area */}
       <main className="flex-1 flex overflow-hidden">
         {detailsLoading ? (
-          <DetailsLoading />
+          <DetailsLoading onCancel={cancelDetailsLoading} />
         ) : activeDetails ? (
           <DetailsScreen
             details={activeDetails}

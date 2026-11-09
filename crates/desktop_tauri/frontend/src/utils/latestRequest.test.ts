@@ -20,4 +20,11 @@ describe('createLatestRequest', () => {
     if (slow()) shown.push('slow provider');
     expect(shown).toEqual(['fast provider']);
   });
+
+  it('a cancel (a new ticket nobody waits for) makes the title still loading stale', () => {
+    const latest = createLatestRequest();
+    const opening = latest.begin();
+    latest.begin(); // the viewer pressed Cancel
+    expect(opening()).toBe(false);
+  });
 });
