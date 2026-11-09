@@ -22,7 +22,7 @@ From the directory:
 
 Or from anywhere with full paths:
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\mlsee\Application Files\cloudstream-master\cloudstream-rs\tools\extension_recorder\record_extensions.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<repo>\tools\extension_recorder\record_extensions.ps1"
 ```
 
 ### High-Speed 8-Worker Scan

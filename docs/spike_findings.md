@@ -1,5 +1,9 @@
 # Wasm extension runtime spike — findings (2026-11-02)
 
+> **Historical.** This spike (`spikes/`) evaluated running extensions as Kotlin/Wasm in Wasmtime. The route was not
+> taken: the app runs real `.cs3` plugins in a JVM sidecar (see the addendum at the end and `AGENTS.md`). The code and
+> these notes are kept only as reference.
+
 Setup: Kotlin 2.4.0 `wasmWasi` plugin, Wasmtime 50.0.1 host (GC + exceptions on), JDK 25.
 
 ## Proven (code in `spikes/`)
