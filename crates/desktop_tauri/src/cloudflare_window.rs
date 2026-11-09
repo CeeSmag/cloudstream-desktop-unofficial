@@ -10,11 +10,14 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use app_services::ExtensionService;
-use tauri::{AppHandle, Url, Webview};
+use std::sync::Arc;
+
+use tauri::{AppHandle, Manager, Url, Webview};
 
 use crate::cloudflare_exchange::{Outcome, VerifyRequest};
 use crate::cloudflare_fetch::{run_fetch, FetchOutcome, FetchRequest};
 use crate::cloudflare_open::{open, reuse};
+use crate::cloudflare_panel::{announce, PanelControl, Rect};
 
 /// How often an open window is looked at.
 const WINDOW_PAUSE: Duration = Duration::from_millis(500);
@@ -65,13 +68,23 @@ pub fn verify(
             Err(reason) => return Outcome::Declined(reason),
         },
     };
-    let outcome = wait_for_clearance(surface.view(), &url, extensions);
+    let control = app.try_state::<Arc<PanelControl>>().map(|c| Arc::clone(&c));
+    if let Some(control) = control.as_ref() {
+        control.begin();
+    }
+    if surface.is_panel() {
+        announce(app, &request.host, true);
+    }
+    let outcome = wait_for_clearance(surface.view(), &url, (extensions, control.as_deref()));
+    if surface.is_panel() {
+        announce(app, &request.host, false);
+    }
     if matches!(outcome, Outcome::Passed { .. }) {
         surface.keep_hidden();
-        tracing::info!(%label, "the check passed; it is hidden and kept for requests made in the browser");
+        tracing::info!(%label, panel = surface.is_panel(), "the check passed; it is hidden and kept for requests made in the browser");
     } else {
-        surface.dispose();
-        tracing::info!(%label, "the check is closed");
+        surface.release();
+        tracing::info!(%label, panel = surface.is_panel(), "the check ended without a pass; it is closed or parked");
     }
     outcome
 }
@@ -82,19 +95,30 @@ struct Watching {
     looks: u32,
     probes: u32,
     last_report: Instant,
+    placed: Option<Rect>,
 }
 
 /// Looks at the window until the check is passed, the window is closed, or the time is up.
-fn wait_for_clearance(window: &Webview, url: &Url, extensions: &ExtensionService) -> Outcome {
+fn wait_for_clearance(
+    window: &Webview,
+    url: &Url,
+    helpers: (&ExtensionService, Option<&PanelControl>),
+) -> Outcome {
+    let (extensions, control) = helpers;
     let deadline = Instant::now() + VIEWER_TIME;
     let mut state = Watching {
         agent: None,
         looks: 0,
         probes: 0,
         last_report: Instant::now(),
+        placed: None,
     };
     while Instant::now() < deadline {
         extensions.extend_call_deadline(HOLD_STEP);
+        if control.is_some_and(PanelControl::is_cancelled) {
+            return Outcome::Declined("the viewer cancelled the check".to_owned());
+        }
+        state.placed = control.and_then(PanelControl::placed);
         let Ok(current) = window.url() else {
             return Outcome::Declined("the window was closed".to_owned());
         };
@@ -186,6 +210,7 @@ fn report(current: &Url, cookies: &[(String, String)], state: &mut Watching) {
         ?names,
         agent_known = state.agent.is_some(),
         looks = state.looks,
+        placed = ?state.placed,
         "waiting for the Cloudflare check to be passed"
     );
 }

@@ -15,6 +15,7 @@ mod cloudflare_exchange;
 mod cloudflare_fetch;
 mod cloudflare_gate;
 mod cloudflare_open;
+mod cloudflare_panel;
 mod cloudflare_watch;
 mod cloudflare_window;
 mod data_commands;
@@ -151,6 +152,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             update_commands::apply_update,
             cloudflare_commands::allow_cloudflare_host,
             cloudflare_commands::report_image,
+            cloudflare_panel::place_cloudflare_panel,
+            cloudflare_panel::cancel_cloudflare_panel,
             data_commands::delete_all_data,
         ])
 }
@@ -192,7 +195,7 @@ fn init_services(
     )));
     app.manage(std::sync::Arc::new(browse_commands::BrowseClient::default()));
     app.manage(startup::StartupTracker::default());
-    app.manage(std::sync::Arc::new(shutdown::Closer::default()));
+    manage_closing_state(app);
     let gate = std::sync::Arc::new(cloudflare_gate::Gate::default());
     app.manage(std::sync::Arc::clone(&gate));
     cloudflare_watch::start(app.handle(), paths.data_dir(), &extensions, gate);
@@ -246,4 +249,12 @@ fn spawn_extension_loading(
     if let Err(error) = spawned {
         tracing::error!(%error, "cannot start extension loading");
     }
+}
+
+/// State the closer and the in-app Cloudflare check share with the commands.
+fn manage_closing_state(app: &mut tauri::App) {
+    app.manage(std::sync::Arc::new(shutdown::Closer::default()));
+    app.manage(std::sync::Arc::new(
+        cloudflare_panel::PanelControl::default(),
+    ));
 }

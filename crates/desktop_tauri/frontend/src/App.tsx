@@ -2,6 +2,7 @@ import React from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { api, describeError } from './services/api';
 import { ErrorToast } from './components/ErrorToast';
+import { CloudflarePanel } from './components/CloudflarePanel';
 import { Bookmark, BrowseFilters, CloudflareNeeded, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
@@ -301,6 +302,7 @@ export const App: React.FC = () => {
     return (
       <>
         <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
+      <CloudflarePanel />
         <ContextMenu menu={contextMenu.menu} onClose={contextMenu.close} />
         <PlayerOverlay
           title={playback.title}
@@ -325,6 +327,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen bg-midnight text-white overflow-hidden">
       <ErrorToast message={errorText} onDismiss={() => setErrorText(null)} />
+      <CloudflarePanel />
       <ContextMenu menu={contextMenu.menu} onClose={contextMenu.close} />
       {/* Top Navigation */}
       <Navigation
