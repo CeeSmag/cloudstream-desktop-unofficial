@@ -7,10 +7,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// What the helper does on Windows. `runtime-*` folders hold the program the portable exe unpacked
-/// beside the data; they are what is running, so they stay.
+/// What the helper does on Windows. The folder the running program was unpacked into (`$KeepDir`, a
+/// `runtime-*` folder beside the data) stays, because the app starts from it again; all older ones go.
 #[cfg(any(windows, test))]
-const WINDOWS_SCRIPT: &str = r#"param([int]$AppPid, [string]$DataDir, [string]$Relaunch = '')
+const WINDOWS_SCRIPT: &str = r#"param([int]$AppPid, [string]$DataDir, [string]$Relaunch = '', [string]$KeepDir = '')
 $ErrorActionPreference = 'SilentlyContinue'
 # 1. Wait for the app to close; after 30 seconds end it.
 $app = Get-Process -Id $AppPid
@@ -20,10 +20,10 @@ Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" |
     Where-Object { $_.CommandLine -and $_.CommandLine.Contains($DataDir) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-Sleep -Milliseconds 500
-# 3. Delete everything except the unpacked program (runtime-*), trying again while something is in use.
+# 3. Delete everything except the folder of the running program, trying again while something is in use.
 for ($try = 0; $try -lt 40; $try++) {
     $left = 0
-    Get-ChildItem -LiteralPath $DataDir -Force | Where-Object { $_.Name -notlike 'runtime-*' } | ForEach-Object {
+    Get-ChildItem -LiteralPath $DataDir -Force | Where-Object { $_.Name -ne $KeepDir } | ForEach-Object {
         Remove-Item -LiteralPath $_.FullName -Recurse -Force
         if (Test-Path -LiteralPath $_.FullName) { $left++ }
     }
@@ -38,7 +38,7 @@ Remove-Item -LiteralPath $PSCommandPath -Force
 /// What the helper does on Linux and macOS (same steps as the Windows script).
 #[cfg(any(unix, test))]
 const UNIX_SCRIPT: &str = r#"#!/bin/sh
-APP_PID="$1"; DATA_DIR="$2"; RELAUNCH="$3"
+APP_PID="$1"; DATA_DIR="$2"; RELAUNCH="$3"; KEEP="$4"
 n=0
 while kill -0 "$APP_PID" 2>/dev/null; do
   n=$((n+1))
@@ -49,8 +49,8 @@ pkill -9 -f "cloudstream.data.dir=$DATA_DIR" 2>/dev/null
 sleep 0.5
 n=0
 while [ "$n" -lt 40 ]; do
-  find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name 'runtime-*' -exec rm -rf {} + 2>/dev/null
-  if [ -z "$(find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name 'runtime-*' 2>/dev/null | head -n 1)" ]; then break; fi
+  find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name "$KEEP" -exec rm -rf {} + 2>/dev/null
+  if [ -z "$(find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name "$KEEP" 2>/dev/null | head -n 1)" ]; then break; fi
   n=$((n+1)); sleep 0.5
 done
 if [ -n "$RELAUNCH" ]; then nohup "$RELAUNCH" >/dev/null 2>&1 & fi
@@ -74,8 +74,11 @@ pub fn start_helper(data_dir: &Path) -> io::Result<()> {
         std::env::var_os("APPIMAGE").map(PathBuf::from),
         std::env::current_exe().ok(),
     );
+    let exe = std::env::current_exe().ok();
+    let keep = app_shell::running_folder_name(data_dir, exe.as_deref());
+    tracing::info!(keep = ?keep, relaunch = ?relaunch, "starting the helper that deletes all saved data; it keeps only the running program's folder");
     let script = write_script()?;
-    let mut command = helper_command(&script, data_dir, relaunch.as_deref());
+    let mut command = helper_command(&script, data_dir, (relaunch.as_deref(), keep.as_deref()));
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -99,7 +102,12 @@ fn write_script() -> io::Result<PathBuf> {
 }
 
 #[cfg(windows)]
-fn helper_command(script: &Path, data_dir: &Path, relaunch: Option<&Path>) -> Command {
+fn helper_command(
+    script: &Path,
+    data_dir: &Path,
+    targets: (Option<&Path>, Option<&str>),
+) -> Command {
+    let (relaunch, keep) = targets;
     let mut command = Command::new("powershell.exe");
     command
         .args([
@@ -115,17 +123,26 @@ fn helper_command(script: &Path, data_dir: &Path, relaunch: Option<&Path>) -> Co
     if let Some(program) = relaunch {
         command.arg("-Relaunch").arg(program);
     }
+    if let Some(folder) = keep {
+        command.arg("-KeepDir").arg(folder);
+    }
     command
 }
 
 #[cfg(not(windows))]
-fn helper_command(script: &Path, data_dir: &Path, relaunch: Option<&Path>) -> Command {
+fn helper_command(
+    script: &Path,
+    data_dir: &Path,
+    targets: (Option<&Path>, Option<&str>),
+) -> Command {
+    let (relaunch, keep) = targets;
     let mut command = Command::new("sh");
     command
         .arg(script)
         .arg(std::process::id().to_string())
         .arg(data_dir)
-        .arg(relaunch.map(Path::as_os_str).unwrap_or_default());
+        .arg(relaunch.map(Path::as_os_str).unwrap_or_default())
+        .arg(keep.unwrap_or_default());
     command
 }
 
@@ -181,13 +198,14 @@ mod tests {
     }
 
     #[test]
-    fn both_scripts_keep_the_unpacked_program_and_wait_for_the_app() {
-        for script in [WINDOWS_SCRIPT, UNIX_SCRIPT] {
-            assert!(
-                script.contains("runtime-"),
-                "the program folder must be kept"
-            );
-        }
+    fn both_scripts_keep_only_the_running_program_folder_and_wait_for_the_app() {
+        assert!(WINDOWS_SCRIPT.contains("$_.Name -ne $KeepDir"));
+        assert!(
+            !WINDOWS_SCRIPT.contains("runtime-*"),
+            "older program folders must be deleted too"
+        );
+        assert!(UNIX_SCRIPT.contains("! -name \"$KEEP\""));
+        assert!(!UNIX_SCRIPT.contains("runtime-*"));
         assert!(WINDOWS_SCRIPT.contains("WaitForExit"));
         assert!(WINDOWS_SCRIPT.contains("java.exe"));
         assert!(UNIX_SCRIPT.contains("kill -0"));

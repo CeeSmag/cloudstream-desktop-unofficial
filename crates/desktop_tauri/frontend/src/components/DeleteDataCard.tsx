@@ -13,6 +13,7 @@ const DELETED = [
   'Installed plugins and added repositories',
   'Your settings (languages, playback options, hidden providers)',
   'Saved stream sources, subtitles and log files',
+  'Older program versions left in the data folder by updates (the one running now stays)',
 ];
 
 type Step = 'idle' | 'confirming' | 'deleting';

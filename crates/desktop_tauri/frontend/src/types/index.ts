@@ -333,3 +333,10 @@ export interface UpdateProgressPayload {
   total_bytes: number;
   percent: number;
 }
+
+/** The data folder's size limit and how much of it is used. */
+export interface StorageInfo {
+  cap_gb: number;
+  used_bytes: number;
+  over: boolean;
+}

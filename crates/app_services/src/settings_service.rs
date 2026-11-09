@@ -13,8 +13,13 @@ const AUTO_SUBTITLES_KEY: &str = "auto_subtitles";
 const AUTOPLAY_NEXT_KEY: &str = "autoplay_next";
 const SOURCES_VALID_FROM_KEY: &str = "sources_valid_from";
 const SKIP_LOOKUP_KEY: &str = "skip_lookup";
+const STORAGE_CAP_KEY: &str = "storage_cap_gb";
 const ENABLED: &str = "yes";
 const DISABLED: &str = "no";
+/// The least, the most and the usual size (in GB) the app's data folder may grow to.
+pub const MIN_STORAGE_CAP_GB: u32 = 1;
+pub const MAX_STORAGE_CAP_GB: u32 = 10;
+pub const DEFAULT_STORAGE_CAP_GB: u32 = 2;
 /// Most subtitle languages the viewer can prefer; the player shows one flag for each.
 pub const MAX_PREFERRED_SUBTITLES: usize = 3;
 const LIST_SEPARATOR: char = '\n';
@@ -129,6 +134,27 @@ impl SettingsService {
     /// Remembers whether skip times are looked up online.
     pub fn set_skip_lookup(&self, enabled: bool) -> Result<(), ServiceError> {
         self.set_flag(SKIP_LOOKUP_KEY, enabled)
+    }
+
+    /// How many GB the app's data folder may use before old cache is deleted: 2 until the viewer
+    /// chooses 1 to 10. A stored value out of range (edited by hand) counts as the default.
+    pub fn storage_cap_gb(&self) -> Result<u32, ServiceError> {
+        let stored = self.store.get(STORAGE_CAP_KEY)?;
+        Ok(stored
+            .and_then(|text| text.parse::<u32>().ok())
+            .filter(|gb| (MIN_STORAGE_CAP_GB..=MAX_STORAGE_CAP_GB).contains(gb))
+            .unwrap_or(DEFAULT_STORAGE_CAP_GB))
+    }
+
+    /// Remembers the data folder's size limit; only 1 to 10 GB are accepted.
+    pub fn set_storage_cap_gb(&self, gb: u32) -> Result<(), ServiceError> {
+        if !(MIN_STORAGE_CAP_GB..=MAX_STORAGE_CAP_GB).contains(&gb) {
+            return Err(ServiceError::NotFound(format!(
+                "the storage limit must be {MIN_STORAGE_CAP_GB} to {MAX_STORAGE_CAP_GB} GB, not {gb}"
+            )));
+        }
+        self.store.set(STORAGE_CAP_KEY, &gb.to_string())?;
+        Ok(())
     }
 
     /// The time (seconds since 1970) of the last provider switch: saved stream links from before it
@@ -296,5 +322,19 @@ mod tests {
             .set_provider_enabled("A", false)
             .expect("disable again");
         assert_eq!(service.disabled_providers().expect("read"), ["A"]);
+    }
+
+    #[test]
+    fn the_storage_limit_is_two_gb_until_chosen_and_only_one_to_ten_are_accepted() {
+        let service = service();
+        assert_eq!(
+            service.storage_cap_gb().expect("default"),
+            DEFAULT_STORAGE_CAP_GB
+        );
+        service.set_storage_cap_gb(7).expect("seven");
+        assert_eq!(service.storage_cap_gb().expect("read"), 7);
+        assert!(service.set_storage_cap_gb(0).is_err());
+        assert!(service.set_storage_cap_gb(11).is_err());
+        assert_eq!(service.storage_cap_gb().expect("unchanged"), 7);
     }
 }
