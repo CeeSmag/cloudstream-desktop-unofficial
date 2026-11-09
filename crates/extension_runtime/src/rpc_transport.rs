@@ -26,4 +26,8 @@ pub trait RpcTransport: Send + Sync {
     fn remember_setting_for_restart(&self, method: &str, params: Value, timeout: Duration) {
         let _ = (method, params, timeout);
     }
+
+    /// The app is closing: stops the runtime and everything it started, and starts none again.
+    /// Transports without a process ignore it.
+    fn shutdown(&self) {}
 }
