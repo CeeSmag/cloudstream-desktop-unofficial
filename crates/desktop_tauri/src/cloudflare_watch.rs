@@ -21,6 +21,7 @@ use crate::cloudflare_fetch::{
 };
 use crate::cloudflare_gate::{provider_of_host, Gate};
 use crate::cloudflare_open::{close_kept, find};
+use crate::cloudflare_patience::Patience;
 use crate::cloudflare_window::{label_for, short, verify};
 
 /// How often the exchange folder is looked at.
@@ -29,6 +30,8 @@ const WATCH_PAUSE: Duration = Duration::from_millis(250);
 const FETCH_LIMIT: Duration = Duration::from_secs(90);
 /// A window nobody has used for this long is closed.
 const WINDOW_IDLE: Duration = Duration::from_secs(20 * 60);
+/// How far each answered browser request pushes the waiting plugin call's deadline.
+const PROGRESS_HOLD: Duration = Duration::from_secs(30);
 /// The page event that tells the UI a site needs the viewer's go-ahead.
 pub const NEEDED_EVENT: &str = "cloudflare-needed";
 
@@ -72,17 +75,29 @@ fn watch(app: &AppHandle, folders: &Folders, helpers: (&ExtensionService, &Gate)
     let (extensions, gate) = helpers;
     let mut seen = std::collections::HashSet::new();
     let mut last_used: HashMap<String, Instant> = HashMap::new();
+    let mut patience = Patience::default();
     loop {
         for request in pending_requests(&folders.exchange, &mut seen) {
             answer_verification(app, folders, (extensions, gate), &request);
             last_used.insert(label_for(&request.host), Instant::now());
         }
         for request in pending_fetches(&folders.exchange, &mut seen) {
+            hold_calls(extensions, &mut patience, &request);
             answer_fetch(app, folders, &request);
+            hold_calls(extensions, &mut patience, &request);
             last_used.insert(label_for(&request.host), Instant::now());
         }
         close_idle_windows(app, &mut last_used);
         std::thread::sleep(WATCH_PAUSE);
+    }
+}
+
+/// The browser is answering a plugin's request, so the call is making progress: its deadline moves ahead.
+fn hold_calls(extensions: &ExtensionService, patience: &mut Patience, request: &FetchRequest) {
+    if patience.allow(Instant::now()) {
+        extensions.extend_call_deadline(PROGRESS_HOLD);
+    } else {
+        tracing::warn!(host = %request.host, "a plugin has been making browser requests for over 10 minutes; its call is no longer held past its timeout");
     }
 }
 
