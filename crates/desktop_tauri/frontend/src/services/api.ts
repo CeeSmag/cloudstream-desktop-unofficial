@@ -85,6 +85,8 @@ export const api = {
   setDebugLogging: (enabled: boolean) => invokeTauri<DebugLoggingInfo>('set_debug_logging', { enabled }),
 
   openLogsFolder: () => invokeTauri<void>('open_logs_folder'),
+  /** Deletes everything the app saved, then restarts it. */
+  deleteAllData: () => invokeTauri<void>('delete_all_data'),
 
   getProviders: () => invokeTauri<ProviderInfo[]>('get_available_providers'),
 

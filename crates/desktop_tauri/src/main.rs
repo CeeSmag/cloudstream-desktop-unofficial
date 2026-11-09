@@ -10,6 +10,7 @@ mod catalog_commands;
 mod check_gate;
 mod check_gate_state;
 mod check_progress;
+mod data_commands;
 mod debug_log_commands;
 mod dto;
 mod extension_commands;
@@ -53,13 +54,19 @@ mod video_commands;
 mod video_opening;
 mod window_commands;
 
-use app_shell::{build_services, start_logging, AppPaths, DebugLogs, ServiceOptions};
+use app_shell::{
+    build_services, start_logging, wipe_if_requested, AppPaths, DebugLogs, RetryPlan,
+    ServiceOptions,
+};
 use app_state::AppState;
 use tauri::{Builder, Manager, Wry};
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::from_environment()?;
+    // First of all: a requested "delete all saved data" runs before anything is opened.
+    let wipe = wipe_if_requested(paths.data_dir(), RetryPlan::default());
     let debug_logs = start_logging(&paths.log_file());
+    wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream-tauri starting");
 
     build_app(paths, debug_logs)
@@ -128,6 +135,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             video_commands::get_video_frame,
             update_commands::check_for_updates,
             update_commands::apply_update,
+            data_commands::delete_all_data,
         ])
 }
 
@@ -143,6 +151,7 @@ fn init_services(
     let services = build_services(paths, &options)?;
     let debug_on = debug_log_commands::restore_saved_choice(&services.settings, &debug_logs);
     app.manage(debug_logs);
+    app.manage(data_commands::DataFolder(paths.data_dir().to_path_buf()));
     preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
     if let (true, Some(playback)) = (debug_on, services.playback.as_ref()) {
         playback.set_verbose_player_log(true);

@@ -3,6 +3,7 @@ import { Cpu, CheckCircle } from 'lucide-react';
 import { ProviderInfo } from '../../types';
 import { DebugLoggingCard } from '../../components/DebugLoggingCard';
 import { UpdateCard } from '../../components/UpdateCard';
+import { DeleteDataCard } from '../../components/DeleteDataCard';
 
 interface GeneralSettingsProps {
   providers: ProviderInfo[];
@@ -55,5 +56,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ providers, onE
         ))}
       </div>
     </div>
+
+    <DeleteDataCard onError={onError} />
   </div>
 );
