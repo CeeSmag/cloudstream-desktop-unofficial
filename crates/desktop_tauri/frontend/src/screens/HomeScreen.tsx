@@ -6,8 +6,14 @@ import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
 import { ResumeHero } from '../components/ResumeHero';
 import { continueKey } from '../utils/continueWatching';
 import { pickResumeHero } from '../utils/resumeHero';
+import { HomeEmptyState } from '../utils/homeEmptyState';
+import { NoPluginsPrompt } from '../components/NoPluginsPrompt';
 
 interface HomeScreenProps {
+  /** Set when Home is empty because there is no usable plugin. */
+  emptyState: HomeEmptyState;
+  /** Opens Settings on the Extensions page. */
+  onOpenExtensions: () => void;
   sections: HomeSection[];
   onSelectItem: (item: HomeItem) => void;
   loading: boolean;
@@ -20,6 +26,8 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  emptyState,
+  onOpenExtensions,
   sections,
   onSelectItem,
   loading,
@@ -113,6 +121,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mb-4" />
             <span className="ml-3 text-sm">Loading feed...</span>
           </div>
+        ) : emptyState !== 'none' && sections.length === 0 ? (
+          <NoPluginsPrompt state={emptyState} onOpenExtensions={onOpenExtensions} />
         ) : (
           sections.map((section, idx) => (
             <ShelfRow

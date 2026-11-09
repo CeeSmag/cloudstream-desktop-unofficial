@@ -5,6 +5,7 @@ import { ErrorToast } from './components/ErrorToast';
 import { Bookmark, BrowseFilters, BrowseItem, BrowsePageResult, Episode, HomeItem, HomeSection, MediaDetails, ProviderInfo, WatchProgress } from './types';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
+import { homeEmptyState } from './utils/homeEmptyState';
 import { BrowseScreen } from './screens/BrowseScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DetailsScreen } from './screens/DetailsScreen';
@@ -52,6 +53,8 @@ export const App: React.FC = () => {
   const [selectedProvider, setSelectedProvider] = React.useState('');
   const [homeSections, setHomeSections] = React.useState<HomeSection[]>([]);
   const [homeLoading, setHomeLoading] = React.useState(true);
+  // Plugins installed on this PC (null until known); decides whether Home asks the viewer to add some.
+  const [installedCount, setInstalledCount] = React.useState<number | null>(null);
 
   // Navigation states
   const [activeDetails, setActiveDetails] = React.useState<MediaDetails | null>(null);
@@ -73,6 +76,7 @@ export const App: React.FC = () => {
     const first = provs[0]?.name || '';
     setSelectedProvider((current) => (provs.some((p) => p.name === current) ? current : first));
     setHomeSections(first ? await api.getHomeSections(first) : []);
+    setInstalledCount(await api.getInstalledExtensions().then((list) => list.length).catch(() => null));
   }, []);
 
   // The saved debug logging choice decides whether this page sends detailed logs.
@@ -296,6 +300,11 @@ export const App: React.FC = () => {
           <div key={shownTab} className="screen-in flex flex-1 min-w-0 overflow-hidden">
             {shownTab === 'home' && (
               <HomeScreen
+                emptyState={homeEmptyState({ loading: homeLoading, providerCount: providers.length, installedCount })}
+                onOpenExtensions={() => {
+                  setSettingsRequest((r) => ({ page: 'extensions', nonce: r.nonce + 1 }));
+                  setCurrentTab('settings');
+                }}
                 sections={homeSections}
                 onSelectItem={handleSelectItem}
                 loading={homeLoading}
