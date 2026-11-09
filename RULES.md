@@ -175,7 +175,8 @@ Any file that shares state between threads (`Mutex`, `RwLock`, `Condvar`, atomic
 ## 11. Git Workflow
 
 - Larger work happens on a feature branch; small, finished changes may go straight to `main`. Releases are made by tagging `main` (see `docs/RELEASING.md`).
-- **Commit on every complete set of implementation**: a coherent unit (feature/fix/refactor) with its tests passing and all §8 gates green. Not mid-way, not with failing tests, not one giant commit at the end.
+- **Commit on every change, always** (owner's rule, 2026-11-09): after each finished change (feature, fix, refactor, test, docs, even a small tweak) make a local commit straight away, so any change can be undone on its own with `git revert`/`git reset`. Never leave finished work uncommitted, never batch several changes into one commit, never one giant commit at the end. Each commit has its tests passing and all §8 gates green; not mid-way, not with failing tests.
+- Commit locally only. Never push, tag or release unless the owner says so.
 - One logical change per commit. Don't mix refactor + feature + formatting.
 - Message format (Conventional Commits): `type(scope): imperative summary` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`. Body explains *why* and lists tests added. **No AI attribution lines** (no `Co-Authored-By` trailer, no "generated with" footer): the maintainer does not want tools listed as contributors.
 - Never `--no-verify`, never force-push shared branches (history was rewritten once, on 2026-11-09, to remove AI trailers; do not repeat it), never commit secrets, build output (`target/`), or large binaries.
