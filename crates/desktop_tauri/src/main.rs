@@ -10,6 +10,13 @@ mod catalog_commands;
 mod check_gate;
 mod check_gate_state;
 mod check_progress;
+mod cloudflare_commands;
+mod cloudflare_exchange;
+mod cloudflare_fetch;
+mod cloudflare_gate;
+mod cloudflare_open;
+mod cloudflare_watch;
+mod cloudflare_window;
 mod data_commands;
 mod data_helper;
 mod debug_log_commands;
@@ -136,6 +143,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             video_commands::get_video_frame,
             update_commands::check_for_updates,
             update_commands::apply_update,
+            cloudflare_commands::allow_cloudflare_host,
+            cloudflare_commands::report_image,
             data_commands::delete_all_data,
         ])
 }
@@ -177,6 +186,9 @@ fn init_services(
     )));
     app.manage(std::sync::Arc::new(browse_commands::BrowseClient::default()));
     app.manage(startup::StartupTracker::default());
+    let gate = std::sync::Arc::new(cloudflare_gate::Gate::default());
+    app.manage(std::sync::Arc::clone(&gate));
+    cloudflare_watch::start(app.handle(), paths.data_dir(), &extensions, gate);
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())
 }

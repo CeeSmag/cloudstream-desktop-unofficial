@@ -8,6 +8,12 @@ pub trait RpcTransport: Send + Sync {
     /// Sends one request and waits at most `timeout` for its reply.
     fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, GatewayError>;
 
+    /// Lets calls in flight run until at least `extra` from now, past their own timeout. Used while
+    /// the viewer works on something a call waits for. Transports without timeouts ignore it.
+    fn extend_call_deadline(&self, extra: Duration) {
+        let _ = extra;
+    }
+
     /// Asks the transport to repeat this call whenever it has to start a fresh runtime (after a
     /// crash or timeout), so state built up by earlier calls, such as loaded extensions, is not
     /// lost. Transports that never restart ignore it.

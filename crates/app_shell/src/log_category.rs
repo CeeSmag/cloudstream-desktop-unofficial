@@ -38,6 +38,8 @@ pub enum LogCategory {
     Extensions,
     /// Finding, checking and switching streams.
     Streams,
+    /// Cloudflare verification: the sidecar's challenge handling and the verification window.
+    Cloudflare,
     /// The database.
     Storage,
     /// The user interface (the web app).
@@ -47,6 +49,8 @@ pub enum LogCategory {
 /// Module path prefixes and the category they belong to; the first match wins.
 const ROUTES: &[(&str, LogCategory)] = &[
     ("sidecar", LogCategory::Sidecar),
+    ("desktop_tauri::cloudflare", LogCategory::Cloudflare),
+    ("extension_runtime::cloudflare", LogCategory::Cloudflare),
     ("webapp", LogCategory::Webapp),
     ("player_", LogCategory::Player),
     ("app_services::playback", LogCategory::Player),
@@ -70,12 +74,13 @@ const ROUTES: &[(&str, LogCategory)] = &[
 
 impl LogCategory {
     /// Every category, in the order they are listed to the user.
-    pub const ALL: [LogCategory; 7] = [
+    pub const ALL: [LogCategory; 8] = [
         LogCategory::App,
         LogCategory::Player,
         LogCategory::Sidecar,
         LogCategory::Extensions,
         LogCategory::Streams,
+        LogCategory::Cloudflare,
         LogCategory::Storage,
         LogCategory::Webapp,
     ];
@@ -96,6 +101,7 @@ impl LogCategory {
             LogCategory::Sidecar => "sidecar-logs.txt",
             LogCategory::Extensions => "extensions-logs.txt",
             LogCategory::Streams => "streams-logs.txt",
+            LogCategory::Cloudflare => "cloudflare-logs.txt",
             LogCategory::Storage => "storage-logs.txt",
             LogCategory::Webapp => "webapp-logs.txt",
         }
@@ -109,6 +115,7 @@ impl LogCategory {
             LogCategory::Sidecar => "JVM sidecar and plugins",
             LogCategory::Extensions => "Extensions and repositories",
             LogCategory::Streams => "Stream finding and checking",
+            LogCategory::Cloudflare => "Cloudflare verification",
             LogCategory::Storage => "Database",
             LogCategory::Webapp => "User interface",
         }
@@ -118,6 +125,15 @@ impl LogCategory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloudflare_verification_has_its_own_file_on_both_sides() {
+        let app = LogCategory::for_target("desktop_tauri::cloudflare_window");
+        let sidecar = LogCategory::for_target("extension_runtime::cloudflare_sidecar");
+        assert_eq!(app, LogCategory::Cloudflare);
+        assert_eq!(sidecar, LogCategory::Cloudflare);
+        assert_eq!(LogCategory::Cloudflare.file_name(), "cloudflare-logs.txt");
+    }
 
     #[test]
     fn modules_are_routed_to_their_own_file() {

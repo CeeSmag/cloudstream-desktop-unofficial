@@ -150,7 +150,7 @@ mod tests {
         let logs = DebugLogs::new(std::env::temp_dir().join("cs_debug_dto"));
         let described = describe(&logs);
         assert!(!described.enabled);
-        assert_eq!(described.files.len(), 8);
+        assert_eq!(described.files.len(), 9);
         assert!(described.files.iter().all(|file| file.size_bytes.is_none()));
     }
 }

@@ -72,6 +72,13 @@ pub trait ProviderGateway: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Lets calls in flight run until at least `extra` from now, past their own timeout: the viewer
+    /// is busy with something a call waits for (passing a Cloudflare check in a browser window).
+    /// Runtimes whose calls do not time out ignore it.
+    fn extend_call_deadline(&self, extra: Duration) {
+        let _ = extra;
+    }
+
     /// Tells the runtime whether debug logging is on; while it is off the runtime and its
     /// plugins keep their detailed output to themselves. Runtimes without such a switch ignore it.
     fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {

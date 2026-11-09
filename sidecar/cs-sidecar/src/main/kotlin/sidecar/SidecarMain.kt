@@ -19,6 +19,7 @@ fun main() {
     System.setErr(PrintStream(DebugLineFilter(System.err), true, "UTF-8"))
     System.setOut(System.err) // plugins may println; keep stdout clean for the protocol
     URLStub.installNetworkGuard()
+    CloudflareSetup.install()
     val service = ProviderService()
     SidecarLog.info("ready")
     generateSequence(::readLine).forEach { line ->

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Info, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
-import { HomeItem, HomeSection, WatchProgress } from '../types';
+import { CloudflareNeeded, HomeItem, HomeSection, WatchProgress } from '../types';
 import { PosterCard } from '../components/PosterCard';
 import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
 import { ResumeHero } from '../components/ResumeHero';
@@ -8,8 +8,13 @@ import { continueKey } from '../utils/continueWatching';
 import { pickResumeHero } from '../utils/resumeHero';
 import { HomeEmptyState } from '../utils/homeEmptyState';
 import { NoPluginsPrompt } from '../components/NoPluginsPrompt';
+import { CloudflarePrompt } from '../components/CloudflarePrompt';
 
 interface HomeScreenProps {
+  /** A site that needs Cloudflare's check, waiting for the viewer's go-ahead. */
+  cloudflareNeeded: CloudflareNeeded | null;
+  cloudflareBusy: boolean;
+  onVerifyCloudflare: () => void;
   /** Set when Home is empty because there is no usable plugin. */
   emptyState: HomeEmptyState;
   /** Opens Settings on the Extensions page. */
@@ -26,6 +31,9 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
+  cloudflareNeeded,
+  cloudflareBusy,
+  onVerifyCloudflare,
   emptyState,
   onOpenExtensions,
   sections,
@@ -121,6 +129,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mb-4" />
             <span className="ml-3 text-sm">Loading feed...</span>
           </div>
+        ) : cloudflareNeeded && sections.length === 0 ? (
+          <CloudflarePrompt
+            host={cloudflareNeeded.host}
+            provider={cloudflareNeeded.provider}
+            busy={cloudflareBusy}
+            onVerify={onVerifyCloudflare}
+          />
         ) : emptyState !== 'none' && sections.length === 0 ? (
           <NoPluginsPrompt state={emptyState} onOpenExtensions={onOpenExtensions} />
         ) : (

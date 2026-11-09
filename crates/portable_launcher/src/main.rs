@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Fingerprint of the packed program (see `build.rs`): two builds of one version never share a folder.
+const PAYLOAD_ID: &str = env!("CS_PAYLOAD_ID");
 
 #[cfg(has_payload)]
 const PAYLOAD: &[u8] = include_bytes!(env!("CS_PAYLOAD_ARCHIVE"));
@@ -28,7 +30,7 @@ fn get_runtime_dir() -> anyhow::Result<PathBuf> {
 
     Ok(local_data
         .join("CloudStreamRs")
-        .join(format!("runtime-{APP_VERSION}")))
+        .join(format!("runtime-{APP_VERSION}-{PAYLOAD_ID}")))
 }
 
 fn extract_payload_if_needed(runtime_dir: &Path) -> anyhow::Result<()> {

@@ -3,7 +3,7 @@
 //! searched afresh. Watch progress and Continue Watching are not touched.
 
 use app_services::SettingsService;
-use tauri::State;
+use tauri::{Manager, State};
 use title_cache::TitleCache;
 
 use crate::app_state::AppState;
@@ -43,9 +43,18 @@ pub async fn provider_switched(
     from: String,
     to: String,
     state: State<'_, AppState>,
-    sources: State<'_, SourceManager>,
+    app: tauri::AppHandle,
 ) -> Result<bool, String> {
+    let sources = app.state::<SourceManager>();
+    let gate = app.state::<std::sync::Arc<crate::cloudflare_gate::Gate>>();
     let services = state.read();
+    // Picking a provider is the viewer asking for its site: a Cloudflare check may open a window for it.
+    if let Some(host) =
+        crate::cloudflare_gate::host_of_provider(&services.extensions.providers(), &to)
+    {
+        tracing::info!(provider = %to, %host, "provider picked; Cloudflare verification is allowed for its site");
+        gate.allow(&host);
+    }
     Ok(apply_switch(
         &services.settings,
         &sources.titles,
