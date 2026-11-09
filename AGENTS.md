@@ -657,9 +657,13 @@ just sidecar
 # Run Kotlin sidecar JUnit tests
 powershell -File scripts/test_sidecar.ps1
 
-# Build release packages into dist/: installer (NSIS) + portable zip, x64 and arm64
-# (arm64 needs the MSVC ARM64 build tools; use -Arch x64 / -Kind portable to narrow it)
+# Windows x64 release files into dist/: NSIS installer + single-file portable exe (-Kind installer|portable)
 powershell -File scripts/build_release.ps1
+
+# Linux AppImage for this PC's CPU; first run: scripts/build_release.sh --install-deps
+scripts/build_release.sh
+
+# GitHub builds all of them: .github/workflows/release.yml (manual run, or a v* tag makes a draft release)
 ```
 
 ### Environment Variables

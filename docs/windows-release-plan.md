@@ -7,7 +7,9 @@ Changes since 0.3.2:
 - Nav bar: update indicator left of the provider pill; click opens Settings > General.
 - Windows: ship `vulkan-1.dll` next to `libmpv-2.dll`. libmpv imports it; PCs with no GPU driver
   have none, so libmpv failed to load and the player did not run.
-- `scripts/build_all.sh` (Linux) builds the portable exe + AppImage into `dist/`.
+- Two release scripts: `scripts/build_release.ps1` (Windows: x64 installer + single-file portable exe) and
+  `scripts/build_release.sh` (Linux: AppImage for the PC's CPU). No more portable zip.
+- `.github/workflows/release.yml` builds all of them on GitHub (Windows x64, AppImage x86_64 and aarch64).
 
 ## 0. Prerequisites on the Windows PC
 - Rust (MSVC toolchain), Node 20+, `gh` (logged in: `gh auth status`), git.
@@ -38,14 +40,14 @@ cargo test --workspace
 
 ## 4. Build
 ```powershell
-.\scripts\build_release.ps1 -Arch x64 -Kind all
-# add -VulkanDll C:\path\vulkan-1.dll if System32 has none
+.\scripts\build_release.ps1
+# -Kind installer|portable builds one; -VulkanDll overrides scripts\vendor\vulkan\x64\vulkan-1.dll
 ```
-Produces in `dist\`: `CloudStream_0.3.3_x64-setup.exe`, `CloudStream_0.3.3_x64_portable.zip`,
-`CloudStream_0.3.3_x64_portable.exe`. (arm64 needs the MSVC ARM64 tools and an ARM64 vulkan-1.dll.)
+Produces in `dist\`: `CloudStream_0.3.3_x64-setup.exe` and `CloudStream_0.3.3_x64_portable.exe`.
+The AppImages come from `scripts/build_release.sh` on Linux, or from the GitHub workflow.
 
 ## 5. Test before releasing
-1. Run the single-exe on this PC: Browse > Year dropdown is dark; the update indicator shows a spinner,
+1. Run the x64 portable exe on this PC: Browse > Year dropdown is dark; the update indicator shows a spinner,
    then a check; clicking it opens Settings > General.
 2. Confirm `vulkan-1.dll` is next to `libmpv-2.dll` in the extracted payload.
 3. **Main test:** run the portable exe on a PC/VM with no GPU driver and no Vulkan SDK; play a video.
@@ -57,10 +59,9 @@ git add -A
 git commit -m "feat: update indicator, themed year select, ship vulkan loader for GPU-less PCs"
 git commit --allow-empty -m "chore(release): bump version to 0.3.3"   # or fold the bump into the commit above
 git push origin main
-gh release create v0.3.3 dist\CloudStream_0.3.3_x64-setup.exe dist\CloudStream_0.3.3_x64_portable.zip dist\CloudStream_0.3.3_x64_portable.exe `
+gh release create v0.3.3 dist\CloudStream_0.3.3_x64-setup.exe dist\CloudStream_0.3.3_x64_portable.exe `
   --title "CloudStream RS 0.3.3" --notes "See docs/windows-release-plan.md for changes."
 ```
-Also attach the Linux AppImage (`scripts/build_all.sh linux` on Linux) if you want parity with earlier releases.
 
 ## 7. After
 - In the app, Settings > General > Check for update should show "latest" on 0.3.3.
