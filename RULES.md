@@ -12,8 +12,7 @@ Read this file fully before every task. If a rule conflicts with a request, say 
 3. **Extensions run at 100% fidelity**: providers, extractors, plugins, scripts, and their behavior must match the Kotlin reference.
 4. **Parity is proven by tests** (see §9), not assumed. A feature is not "done" until its parity test passes.
 
-> Open decision: the extension runtime (Wasm-recompiled vs. JVM sidecar) is chosen in the feasibility spike. Until then, code against the `ExtensionRuntime` trait (§3), never a concrete runtime.
-> Verified facts for the spike: Wasmtime enabled the Wasm GC proposal by default in v47.0.0 (2026-07-20); later notes say Winch does not enable GC types by default, so use the Cranelift strategy. Kotlin/Wasm needs Wasm GC. Re-check the current Kotlin/Wasm maturity before committing to it.
+> Decided: extensions run in an out-of-process **JVM sidecar** (`sidecar/cs-sidecar`: converted DEX bytecode against Android stubs). The Wasm route was spiked and not taken (`docs/spike_findings.md`). Code against the `ProviderGateway` trait (§3), never the concrete runtime.
 > `player_mpv`: use the maintained `libmpv2` / `libmpv2-sys` bindings (the older `mpv-rs` is deprecated). The libmpv C API is generally thread-safe. mpv is GPLv2+ (the client API is ISC): confirm the licensing consequences of linking before distribution.
 
 ---
@@ -25,19 +24,23 @@ Read this file fully before every task. If a rule conflicts with a request, say 
 ```
 crates/
   core_model/        # pure data types (Movie, Episode, SearchResponse, ...). No I/O.
-  extension_api/     # traits + host-function contracts exposed to extensions
-  extension_runtime/ # loads/executes extensions behind ExtensionRuntime trait
-  extension_repo/    # repository manifests, install/update/remove of plugins
-  network_client/    # HTTP, cookies, headers, Cloudflare/webview-resolver abstraction
-  html_parsing/      # selector/DOM layer (Jsoup-compatible behavior)
-  extractors/        # one file per extractor
-  player_mpv/        # libmpv wrapper only
-  storage/           # settings, library, history, downloads DB
-  ui_app/            # screens, widgets, theme, navigation
-  app_shell/         # main(): wiring only, no logic
-tests/
-  t1_unit/ t2_integration/ t3_parity/ t4_end_to_end/   (or per-crate equivalents, see §9)
+  extension_api/     # ProviderGateway trait + error types between the app and extension runtimes
+  extension_runtime/ # JSON-lines RPC to the JVM sidecar, behind ProviderGateway
+  extension_repo/    # repository manifests, install/update/remove of plugins, stream probes
+  player_api/        # VideoPlayer trait + player types
+  player_mpv/        # libmpv wrapper only (the only crate with FFI unsafe)
+  storage/           # settings, library, history (SQLite)
+  subtitle_store/    # subtitle download, cleaning and disk cache
+  title_cache/       # saved stream links per title
+  skip_times/        # intro/recap/credits times from online databases
+  app_services/      # use cases behind the screens
+  desktop_tauri/     # Tauri v2 app + React frontend (the main app)
+  ui_app/ app_shell/ # the native egui shell: screens, and main() wiring only, no logic
+  portable_launcher/ # the single-file Windows portable exe
+  network_client/ html_parsing/ extractors/   # reserved stubs for native Rust extractors
 ```
+
+Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`, frontend `*.test.ts`), grouped by the tiers in §9.
 
 - **Dependency direction is one-way**: `ui_app → services → traits ← implementations`. `core_model` depends on nothing internal. No cycles. Enforce with `cargo deny`/`cargo-modules` in CI.
 - `app_shell` is the only place where concrete implementations are wired to traits (dependency injection by constructor).
@@ -165,16 +168,17 @@ Any file that shares state between threads (`Mutex`, `RwLock`, `Condvar`, atomic
 - **Behavior checks** include: request headers/cookies sent, redirect handling, error and fallback behavior, ordering of results, null/empty handling, pagination, rate-limit/retry behavior, JS interpreter outputs (`JsInterpreter` test vectors from the Kotlin tests are ported 1:1).
 - The Kotlin test suites in `library/src/commonTest` are ported to Rust (T1) and their vectors reused as T3 fixtures.
 - Each real extension gets a parity case; the CI report lists extensions as `PASS` / `FAIL` / `UNTESTED`. Releases require zero `FAIL`.
-- Any intentional deviation is documented in `docs/parity_deviations.md` with a reason, and requires user approval.
+- Any intentional deviation is written down (commit message and the crate README) with a reason, and requires user approval.
+- Status: the full T3 suite is not built yet; the recorded sidecar replies (§9, boundary tests) are the current parity check.
 - Never mark parity "done" from reading code; only from a passing T3 run.
 
 ## 11. Git Workflow
 
-- Repository is initialised with `git init`; work happens on feature branches, never directly on `main`.
+- Larger work happens on a feature branch; small, finished changes may go straight to `main`. Releases are made by tagging `main` (see `docs/RELEASING.md`).
 - **Commit on every complete set of implementation**: a coherent unit (feature/fix/refactor) with its tests passing and all §8 gates green. Not mid-way, not with failing tests, not one giant commit at the end.
 - One logical change per commit. Don't mix refactor + feature + formatting.
-- Message format (Conventional Commits): `type(scope): imperative summary` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`. Body explains *why* and lists tests added. Include the attribution trailer required by the tooling.
-- Never `--no-verify`, never force-push shared branches, never commit secrets, build output (`target/`), or large binaries.
+- Message format (Conventional Commits): `type(scope): imperative summary` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`. Body explains *why* and lists tests added. **No AI attribution lines** (no `Co-Authored-By` trailer, no "generated with" footer): the maintainer does not want tools listed as contributors.
+- Never `--no-verify`, never force-push shared branches (history was rewritten once, on 2026-11-09, to remove AI trailers; do not repeat it), never commit secrets, build output (`target/`), or large binaries.
 - Do not commit unless the §8 gates pass; report honestly if something was skipped or failing.
 
 ## 12. AI Working Procedure
@@ -186,5 +190,10 @@ Any file that shares state between threads (`Mutex`, `RwLock`, `Condvar`, atomic
 5. Run the gates in §8 and the affected tiers.
 6. Commit (§11). Update the crate `README.md` if public behavior changed.
 7. Report: what changed, what was tested, what was **not** verified. Never claim success without having run the tests.
+
+## 13. Releasing
+
+Releases are built by GitHub when a `v*` tag is pushed, or by the two scripts in `scripts/`. Steps, file names and the
+`vulkan-1.dll` requirement are in `docs/RELEASING.md`. Never publish without running the gates in §8 first.
 
 When uncertain about requirements (especially extension fidelity trade-offs), **ask** rather than guess.

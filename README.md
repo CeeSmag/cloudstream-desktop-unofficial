@@ -27,6 +27,24 @@ A high-performance desktop rewrite of **CloudStream** built with **Rust**, **Tau
 
 ---
 
+## Download
+
+Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest):
+
+| File | For |
+|---|---|
+| `CloudStream_<version>_x64-setup.exe` | Windows (x64), installer |
+| `CloudStream_<version>_x64_portable.exe` | Windows (x64), one file, nothing to install |
+| `CloudStream-<version>-x86_64.AppImage` / `-aarch64.AppImage` | Linux (Intel/AMD or ARM) |
+
+Everything the app needs (libmpv, the plugin runtime and Java) is inside, so it runs on a clean PC. The app checks
+for updates itself (Settings > General).
+
+**First run:** CloudStream comes with no plugins. Open Settings > Extensions, add a repository and install a plugin;
+the Home page fills up from the plugins you install (the app shows a short guide until you do).
+
+---
+
 ## Architecture Overview
 
 ```mermaid
@@ -50,7 +68,7 @@ flowchart TD
 ### Prerequisites
 
 - **Rust**: `1.80+` (stable)
-- **Node.js**: `18+` and `npm`
+- **Node.js**: `20+` and `npm`
 - **Java**: JDK 21 (for compiling and running the JVM extension sidecar)
 - **libmpv**: `libmpv-2.dll` (Windows), `libmpv.so.2` (Linux), or `libmpv.dylib` (macOS)
 
@@ -88,6 +106,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 scripts/build_release.sh
 ```
 GitHub builds all of them: Actions > "Release build" > Run workflow, or push a `v*` tag for a draft release.
+The full release steps are in [docs/RELEASING.md](docs/RELEASING.md).
 
 ---
 
@@ -104,7 +123,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 # Execute test suite (Rust unit & race tests)
 cargo test --workspace
+
+# Frontend tests and type-checked build
+cd crates/desktop_tauri/frontend && npm test && npm run build
 ```
+
+More for contributors: [AGENTS.md](AGENTS.md) (code map and recipes), [RULES.md](RULES.md) (coding rules), [docs/](docs/) (releasing, notices).
 
 ---
 

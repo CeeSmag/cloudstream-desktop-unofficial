@@ -14,6 +14,10 @@ Hosts the React/Tailwind frontend in an opaque window. libmpv renders frames int
 - `playback_commands.rs`: IPC commands for stream resolution, player state, track selection, and seek.
 - `library_commands.rs`: Bookmarks and continue watching progress management.
 - `settings_commands.rs`: Extension repository and provider configuration.
+- `extension_commands.rs`, `plugin_catalog_commands.rs`: Installed extensions, repository plugin lists and install/uninstall.
+- `source_manager.rs`, `source_fallback.rs`, `check_gate.rs`: Finding, checking and failing over between stream sources.
+- `update_commands.rs`: The self-updater (reads the latest GitHub release; the file is chosen by its name).
+- `frontend/`: The React app (`src/screens`, `src/components`, `src/hooks`, `src/utils`; tests with `npm test`).
 
 ## Testing
 
