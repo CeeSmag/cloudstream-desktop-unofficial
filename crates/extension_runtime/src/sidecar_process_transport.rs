@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -36,6 +36,10 @@ pub struct SidecarProcessTransport {
     hold: DeadlineHold,
     /// Calls repeated on every fresh start, for example loading the installed extensions.
     startup_calls: Mutex<Vec<StartupCall>>,
+    /// Process id of the running sidecar (0 when none), readable without the lock a call holds.
+    pid: AtomicU32,
+    /// Set when the app is closing: no sidecar is started any more.
+    closed: AtomicBool,
 }
 
 /// A call to repeat whenever a fresh sidecar is started.
@@ -54,6 +58,8 @@ impl SidecarProcessTransport {
             next_request_id: AtomicU64::new(1),
             hold: DeadlineHold::default(),
             startup_calls: Mutex::new(Vec::new()),
+            pid: AtomicU32::new(0),
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -91,9 +97,13 @@ impl SidecarProcessTransport {
 
 impl RpcTransport for SidecarProcessTransport {
     fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, GatewayError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(GatewayError::Unavailable("the app is closing".to_owned()));
+        }
         let mut slot = self.lock_running();
         if slot.is_none() {
             let mut fresh = start_sidecar(&self.config)?;
+            self.pid.store(fresh.child.id(), Ordering::SeqCst);
             self.replay_startup_calls(&mut fresh);
             *slot = Some(fresh);
         }
@@ -115,8 +125,30 @@ impl RpcTransport for SidecarProcessTransport {
         ) {
             tracing::warn!(method, "discarding sidecar process after failed call");
             discard(&mut slot);
+            self.pid.store(0, Ordering::SeqCst);
         }
         outcome
+    }
+
+    fn shutdown(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        let pid = self.pid.swap(0, Ordering::SeqCst);
+        if pid == 0 {
+            tracing::info!("closing: the sidecar was not running, nothing to stop");
+            return;
+        }
+        tracing::info!(
+            pid,
+            "closing: stopping the sidecar and everything it started"
+        );
+        kill_process_tree(pid);
+        match self.running.try_lock() {
+            Ok(mut slot) => discard(&mut slot),
+            Err(_) => tracing::warn!(
+                pid,
+                "closing: a call was still running; the sidecar was ended by its process id"
+            ),
+        }
     }
 
     fn extend_call_deadline(&self, extra: Duration) {
@@ -184,8 +216,15 @@ fn kill_process_tree(pid: u32) {
         .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .status();
-    if let Err(error) = outcome {
-        tracing::debug!(%error, "cannot end the sidecar's process tree");
+    match outcome {
+        Ok(status) => tracing::info!(
+            pid,
+            success = status.success(),
+            "ended the sidecar's process tree"
+        ),
+        Err(error) => {
+            tracing::warn!(pid, %error, "cannot end the sidecar's process tree; it may keep running")
+        }
     }
 }
 

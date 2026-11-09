@@ -141,6 +141,11 @@ impl ExtensionService {
         self.gateway.extend_call_deadline(extra);
     }
 
+    /// The app is closing: ends the extension runtime and every process it started.
+    pub fn shutdown(&self) {
+        self.gateway.shutdown();
+    }
+
     /// Tells the extension runtime whether debug logging is on. A runtime that cannot be
     /// reached is not an error here: it picks the choice up when it starts.
     pub fn set_debug_logging(&self, enabled: bool) {

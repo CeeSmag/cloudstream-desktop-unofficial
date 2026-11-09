@@ -124,3 +124,40 @@ fn a_remembered_setting_is_repeated_once_with_its_latest_value() {
     // One repeat on the first start plus the `handled` call itself.
     assert_eq!(transport.call("handled", Value::Null, SHORT), Ok(json!(2)));
 }
+
+#[test]
+fn after_shutdown_no_sidecar_is_started_again() {
+    let transport = transport();
+    assert_eq!(
+        transport.call("ping", Value::Null, SHORT),
+        Ok(json!("pong"))
+    );
+    transport.shutdown();
+    let outcome = transport.call("ping", Value::Null, SHORT);
+    assert!(
+        matches!(outcome, Err(GatewayError::Unavailable(_))),
+        "got {outcome:?}"
+    );
+}
+
+#[test]
+fn shutdown_ends_the_sidecar_even_while_a_call_is_waiting_on_it() {
+    use std::sync::Arc;
+    use std::time::Instant;
+    let transport = Arc::new(transport());
+    let waiting = Arc::clone(&transport);
+    let call = std::thread::spawn(move || {
+        let started = Instant::now();
+        let outcome = waiting.call("hang", Value::Null, Duration::from_secs(30));
+        (outcome, started.elapsed())
+    });
+    // Let the call reach the sidecar and start waiting.
+    std::thread::sleep(Duration::from_millis(800));
+    transport.shutdown();
+    let (outcome, took) = call.join().expect("call thread");
+    assert!(outcome.is_err(), "the call must not succeed: {outcome:?}");
+    assert!(
+        took < Duration::from_secs(10),
+        "the waiting call was not released by the shutdown (took {took:?})"
+    );
+}
