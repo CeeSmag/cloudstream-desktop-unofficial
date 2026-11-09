@@ -20,7 +20,7 @@ This document is the verified architectural index, navigation map, and modificat
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (55 Commands Reference)](#4-tauri-ipc-interface-55-commands-reference)
+4. [Tauri IPC Interface (56 Commands Reference)](#4-tauri-ipc-interface-56-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -309,6 +309,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `app_paths.rs`: Locates data directory: `CS_DATA_DIR` -> `%LOCALAPPDATA%\CloudStreamRs` (Windows) -> `~/.local/share/cloudstream-rs` (Linux). Holds `database_file()`, `extensions_dir()`, `log_file()`.
   - `logging_setup.rs`: Initializes `tracing-subscriber` logging to `<data>/logs/cloudstream.log` and reloadable debug/problem category layers in `<data>/logs/debug/` (`DebugLogs`).
   - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME` or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`.
+  - `data_wipe.rs`: "Delete all saved data". `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the portable exe's `runtime-<version>` folders, retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
   - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing.
 
@@ -335,12 +336,13 @@ This document is the verified architectural index, navigation map, and modificat
   - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
   - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
   - `video_commands.rs`: Delivers mpv RGBA frames to the frontend as binary data (`16-byte header: width, height, serial + pixels`).
+  - `data_commands.rs`: `delete_all_data` (stops playback, writes the wipe marker with `app_shell::request_wipe`, restarts the app by its own file: portable exe via `CS_PORTABLE_EXE`, AppImage via `APPIMAGE`).
   - `update_commands.rs`: The self-updater (`check_for_updates`, `apply_update`). Reads the latest GitHub release and chooses the asset by name: `*-setup.exe` (installed Windows app), `*_portable.exe` (portable, replaced through `CS_PORTABLE_EXE`), `*.AppImage` whose name contains `x86_64` or `aarch64` (Linux). Keep the release file names (see `docs/RELEASING.md`).
 - **Frontend Architecture (`frontend/src/`)**:
   - `App.tsx`: Main application shell, keyboard shortcuts, and tab routing (`home`, `browse`, `search`, `library`, `settings`).
   - `screens/`: `HomeScreen.tsx`, `BrowseScreen.tsx`, `SearchScreen.tsx`, `DetailsScreen.tsx` (shows "Resume" button with time left, highlights/scrolls to resume episode), `LibraryScreen.tsx`, `SettingsScreen.tsx`, `PlayerOverlay.tsx`.
   - `screens/settings/`: `GeneralSettings.tsx`, `PreferencesPage.tsx`, `SubtitleLanguages.tsx`, `RepositoryPage.tsx`, `PluginsTab.tsx`, `ExtensionsPage.tsx`.
-  - `components/`: `VideoCanvas.tsx` (canvas pixel renderer), `SeekBar.tsx`, `SourceCheckPanel.tsx`, `OptionMenu.tsx`, `SubtitleFilter.tsx`, `PosterCard.tsx`, `BrowseCard.tsx`, `BrowseFilterBar.tsx`, `ContinueWatchingCard.tsx` (badge "S1 E3", progress bar), `ContextMenu.tsx`, `FeedbackPopup.tsx`, `DebugLoggingCard.tsx`, `StartupScreen.tsx`, `ResumeHero.tsx` (Home banner for the last unfinished title), `EpisodeButtons.tsx`, `UpdateIndicator.tsx` (nav bar update check) and `UpdateCard.tsx` (Settings > General update card), `NoPluginsPrompt.tsx` (Home's "add a plugin" card).
+  - `components/`: `VideoCanvas.tsx` (canvas pixel renderer), `SeekBar.tsx`, `SourceCheckPanel.tsx`, `OptionMenu.tsx`, `SubtitleFilter.tsx`, `PosterCard.tsx`, `BrowseCard.tsx`, `BrowseFilterBar.tsx`, `ContinueWatchingCard.tsx` (badge "S1 E3", progress bar), `ContextMenu.tsx`, `FeedbackPopup.tsx`, `DebugLoggingCard.tsx`, `StartupScreen.tsx`, `ResumeHero.tsx` (Home banner for the last unfinished title), `EpisodeButtons.tsx`, `UpdateIndicator.tsx` (nav bar update check) and `UpdateCard.tsx` (Settings > General update card), `NoPluginsPrompt.tsx` (Home's "add a plugin" card), `DeleteDataCard.tsx` (the "Delete all saved data" card at the bottom of Settings > General).
   - `components/details/`: `CastRow.tsx`, `EpisodeSection.tsx` (supports `highlightedKey` and auto-scrolling).
   - `playback/`: `episodeLookup.ts` (`orderedEpisodes`, `findNextEpisode`, `findPreviousEpisode`, `findEpisodeForKey`, `movieAsEpisode`, `playbackTitle`), `autoAdvance.ts` (`shouldAutoAdvance`: next episode starts when a video ended at >= 90 %), `skipPrompt.ts` (Skip Intro / Next episode button), `skipRequest.ts`.
   - `utils/episodeMarks.ts`: episode marks on the title page (bar while started, Watched from 80 %).
@@ -461,9 +463,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (55 Commands Reference)
+## 4. Tauri IPC Interface (56 Commands Reference)
 
-All 55 commands registered in `crates/desktop_tauri/src/main.rs`:
+All 56 commands registered in `crates/desktop_tauri/src/main.rs`:
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -521,6 +523,7 @@ All 55 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `set_window_fullscreen` | Toggles fullscreen window state. |
 | **Updates** | `check_for_updates` | Asks GitHub for the latest release and picks the file for this PC (installer, portable exe or AppImage, by file name). |
 | | `apply_update` | Downloads that file, then a helper script swaps it in for the running program (the portable exe via `CS_PORTABLE_EXE`, the AppImage via `APPIMAGE`) and restarts it. |
+| **Data** | `delete_all_data` | Settings > General > "Delete all saved data": leaves a marker file and restarts the app; the next start deletes everything in the data folder before opening anything (`app_shell::data_wipe`). |
 
 ---
 
@@ -547,6 +550,7 @@ All 55 commands registered in `crates/desktop_tauri/src/main.rs`:
 | **SQLite Schema Migrations** | `crates/storage/src/schema_migrations.rs` |
 | **Subtitle Cleaner & Decompressor** | `crates/subtitle_store/src/normalize_subtitle.rs` |
 | **Stream Title Disk Cache** | `crates/title_cache/src/title_cache.rs` |
+| **Delete all saved data** | `crates/app_shell/src/data_wipe.rs`, `crates/desktop_tauri/src/data_commands.rs`, `frontend/src/components/DeleteDataCard.tsx` |
 | **Self-updater** | `crates/desktop_tauri/src/update_commands.rs` |
 | **Home "add a plugin" prompt** | `frontend/src/components/NoPluginsPrompt.tsx`, `frontend/src/utils/homeEmptyState.ts` |
 | **Release scripts & workflow** | `scripts/build_release.ps1`, `scripts/build_release.sh`, `.github/workflows/release.yml`, `docs/RELEASING.md` |
