@@ -134,8 +134,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       }`}
       onClick={(e) => {
         if (e.target !== e.currentTarget) return;
-        if (videoClickAction(trackMenu !== 'none') === 'close-menu') setTrackMenu('none');
-        else controls.clicks.onClick();
+        const closing = videoClickAction(trackMenu !== 'none') === 'close-menu';
+        if (closing) setTrackMenu('none');
+        controls.clicks.onClick(closing ? 0 : e.detail);
       }}
       onDoubleClick={(e) => {
         if (e.target === e.currentTarget) controls.clicks.onDoubleClick();
@@ -244,7 +245,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       >
         <div className="max-w-5xl 2xl:max-w-7xl mx-auto space-y-1 sm:space-y-2">
           <SeekBar
-            positionMs={status.position_ms}
+            positionMs={controls.positionMs}
             durationMs={status.duration_ms}
             onSeek={controls.jumpTo}
             segments={skipSegments}
@@ -268,7 +269,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
               </button>
               <EpisodeButtons onPrevious={onPrevious} onNext={onNext} />
               <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 ml-1 sm:ml-2 tracking-wide font-mono whitespace-nowrap">
-                {formatTime(status.position_ms)} / {formatTime(status.duration_ms)}
+                {formatTime(controls.positionMs)} / {formatTime(status.duration_ms)}
               </span>
             </div>
 

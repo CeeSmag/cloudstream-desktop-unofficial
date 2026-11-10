@@ -4,22 +4,58 @@ use player_api::{Chapter, MediaTrack, PlaybackState, PlaybackStatus};
 
 use crate::mpv_event::{EndReason, MpvEvent};
 
+/// What the event thread read from mpv in one go.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Reading {
+    pub(crate) position_ms: i64,
+    pub(crate) duration_ms: i64,
+    pub(crate) paused: bool,
+    /// [`StatusTracker::pause_commands`] taken before mpv was read. A pause or play given since
+    /// then makes the reading out of date.
+    pub(crate) pause_commands: u64,
+}
+
+/// The snapshot with the number of pause/play commands it has seen; they change together.
+#[derive(Default)]
+struct Tracked {
+    status: PlaybackStatus,
+    pause_commands: u64,
+}
+
 /// Shared playback snapshot updated by the event thread and read by the UI.
 #[derive(Default)]
 pub(crate) struct StatusTracker {
-    status: Mutex<PlaybackStatus>,
+    status: Mutex<Tracked>,
     tracks: Mutex<Vec<MediaTrack>>,
     chapters: Mutex<Vec<Chapter>>,
 }
 
 impl StatusTracker {
-    fn lock(&self) -> MutexGuard<'_, PlaybackStatus> {
+    fn lock(&self) -> MutexGuard<'_, Tracked> {
         self.status.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Returns a copy of the current snapshot.
     pub(crate) fn snapshot(&self) -> PlaybackStatus {
-        self.lock().clone()
+        self.lock().status.clone()
+    }
+
+    /// How many pause/play commands the viewer has given; see [`Reading::pause_commands`].
+    pub(crate) fn pause_commands(&self) -> u64 {
+        self.lock().pause_commands
+    }
+
+    /// Shows a pause or play the moment mpv has accepted it, instead of at the event thread's
+    /// next reading. Call it after mpv has the new value.
+    pub(crate) fn set_paused(&self, paused: bool) {
+        let mut tracked = self.lock();
+        tracked.pause_commands += 1;
+        if matches!(
+            tracked.status.state,
+            PlaybackState::Playing | PlaybackState::Paused
+        ) {
+            tracked.status.state = paused_state(paused);
+        }
     }
 
     /// The latest track list.
@@ -45,7 +81,7 @@ impl StatusTracker {
 
     /// Records whether the loaded stream has a picture.
     pub(crate) fn set_has_video(&self, has_video: bool) {
-        self.lock().has_video = has_video;
+        self.lock().status.has_video = has_video;
     }
 
     /// Replaces the track list.
@@ -57,7 +93,7 @@ impl StatusTracker {
     pub(crate) fn begin_loading(&self) {
         self.set_tracks(Vec::new());
         self.set_chapters(Vec::new());
-        *self.lock() = PlaybackStatus {
+        self.lock().status = PlaybackStatus {
             state: PlaybackState::Loading,
             // Assume a picture until the track list says otherwise, so nothing flickers.
             has_video: true,
@@ -69,12 +105,13 @@ impl StatusTracker {
     pub(crate) fn reset_to_idle(&self) {
         self.set_tracks(Vec::new());
         self.set_chapters(Vec::new());
-        *self.lock() = PlaybackStatus::default();
+        self.lock().status = PlaybackStatus::default();
     }
 
     /// Applies an mpv event to the snapshot.
     pub(crate) fn apply(&self, event: MpvEvent) {
-        let mut status = self.lock();
+        let mut tracked = self.lock();
+        let status = &mut tracked.status;
         match event {
             MpvEvent::StartFile => status.state = PlaybackState::Loading,
             MpvEvent::FileLoaded => status.state = PlaybackState::Playing,
@@ -90,81 +127,37 @@ impl StatusTracker {
         tracing::debug!(?event, state = ?status.state, "player event applied");
     }
 
-    /// Records the latest position/length and pause flag while a stream is active.
-    pub(crate) fn update_progress(&self, position_ms: i64, duration_ms: i64, paused: bool) {
-        let mut status = self.lock();
+    /// Records the latest position/length and pause flag while a stream is active. A reading taken
+    /// before the viewer's last pause or play is dropped: its pause flag may be the old one, and
+    /// the next reading is at most a moment away.
+    pub(crate) fn update_progress(&self, reading: Reading) {
+        let mut tracked = self.lock();
+        if reading.pause_commands != tracked.pause_commands {
+            return;
+        }
+        let status = &mut tracked.status;
         if !matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
             return;
         }
-        status.position_ms = position_ms;
-        status.duration_ms = duration_ms;
-        status.state = if paused {
-            PlaybackState::Paused
-        } else {
-            PlaybackState::Playing
-        };
+        status.position_ms = reading.position_ms;
+        status.duration_ms = reading.duration_ms;
+        status.state = paused_state(reading.paused);
     }
 
     /// Replaces a generic failure with a more specific message.
     pub(crate) fn fail(&self, reason: String) {
-        self.lock().state = PlaybackState::Failed(reason);
+        self.lock().status.state = PlaybackState::Failed(reason);
+    }
+}
+
+fn paused_state(paused: bool) -> PlaybackState {
+    if paused {
+        PlaybackState::Paused
+    } else {
+        PlaybackState::Playing
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_loaded_moves_loading_to_playing_and_progress_updates_apply() {
-        let tracker = StatusTracker::default();
-        tracker.begin_loading();
-        assert_eq!(tracker.snapshot().state, PlaybackState::Loading);
-        tracker.apply(MpvEvent::FileLoaded);
-        tracker.update_progress(1_500, 9_000, false);
-        let snapshot = tracker.snapshot();
-        assert_eq!(
-            (snapshot.state, snapshot.position_ms, snapshot.duration_ms),
-            (PlaybackState::Playing, 1_500, 9_000)
-        );
-    }
-
-    #[test]
-    fn reset_to_idle_clears_position_tracks_and_state() {
-        let tracker = StatusTracker::default();
-        tracker.apply(MpvEvent::FileLoaded);
-        tracker.update_progress(1_500, 9_000, true);
-        tracker.reset_to_idle();
-        assert_eq!(tracker.snapshot(), PlaybackStatus::default());
-        assert!(tracker.tracks().is_empty());
-        assert!(tracker.chapters().is_empty());
-    }
-
-    #[test]
-    fn progress_is_ignored_when_nothing_is_playing() {
-        let tracker = StatusTracker::default();
-        tracker.update_progress(5, 5, false);
-        assert_eq!(tracker.snapshot(), PlaybackStatus::default());
-    }
-
-    #[test]
-    fn pause_flag_switches_between_playing_and_paused() {
-        let tracker = StatusTracker::default();
-        tracker.apply(MpvEvent::FileLoaded);
-        tracker.update_progress(1, 2, true);
-        assert_eq!(tracker.snapshot().state, PlaybackState::Paused);
-        tracker.update_progress(1, 2, false);
-        assert_eq!(tracker.snapshot().state, PlaybackState::Playing);
-    }
-
-    #[test]
-    fn end_events_map_to_ended_idle_and_failed() {
-        let tracker = StatusTracker::default();
-        tracker.apply(MpvEvent::EndFile(EndReason::Finished));
-        assert_eq!(tracker.snapshot().state, PlaybackState::Ended);
-        tracker.apply(MpvEvent::EndFile(EndReason::Stopped));
-        assert_eq!(tracker.snapshot().state, PlaybackState::Idle);
-        tracker.apply(MpvEvent::EndFile(EndReason::Failed(-13)));
-        assert!(matches!(tracker.snapshot().state, PlaybackState::Failed(_)));
-    }
-}
+#[path = "status_tracker_tests.rs"]
+mod tests;

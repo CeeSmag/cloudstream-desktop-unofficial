@@ -8,6 +8,7 @@ export type Shortcut =
   | { type: 'seek'; deltaMs: number }
   | { type: 'volume'; delta: number }
   | { type: 'mute' }
+  | { type: 'playpause' }
   | { type: 'fullscreen' };
 
 /** The parts of a keyboard event that decide what it means. */
@@ -30,8 +31,8 @@ function isTyping(target: KeyPress['target']): boolean {
 }
 
 /**
- * The player action for a key: M mutes, F toggles fullscreen, the left and right arrows go back and
- * forward 5 seconds, the up and down arrows change the volume. Anything else, keys held with
+ * The player action for a key: Space pauses or plays, M mutes, F toggles fullscreen, the left and
+ * right arrows go back and forward 5 seconds, the up and down arrows change the volume. Anything else, keys held with
  * Ctrl, Alt or Meta, and typing in a text field mean nothing here.
  */
 export function shortcutFor(press: KeyPress): Shortcut | null {
@@ -45,6 +46,9 @@ export function shortcutFor(press: KeyPress): Shortcut | null {
       return { type: 'volume', delta: KEY_VOLUME_STEP };
     case 'ArrowDown':
       return { type: 'volume', delta: -KEY_VOLUME_STEP };
+    case ' ':
+    case 'Spacebar':
+      return { type: 'playpause' };
     case 'm':
     case 'M':
       return { type: 'mute' };

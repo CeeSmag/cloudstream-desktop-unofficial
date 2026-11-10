@@ -6,9 +6,10 @@ import { logEvent } from '../utils/logger';
 import { useSkipSegments } from './useSkipSegments';
 import { CheckProgress, Episode, MediaDetails, PlaybackStatus, SourceInfo } from '../types';
 import { onBackendEvent } from '../utils/backendEvents';
+import { PlayIntent, sameStatus, withPlayIntent } from '../utils/playIntent';
 
 /** How often the player state is read while the player is open. */
-const STATUS_POLL_MS = 800;
+const STATUS_POLL_MS = 250;
 
 const IDLE_STATUS: PlaybackStatus = {
   state: 'Idle',
@@ -55,10 +56,23 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
   const autoplayRef = React.useRef(true);
   /** The episode whose end already started the next one, so it happens once. */
   const advancedRef = React.useRef<string | null>(null);
+  /** The viewer's last pause or play: shown at once, before the player confirms it. */
+  const intentRef = React.useRef<PlayIntent | null>(null);
+  /** The state on screen, also between two drawings, so two quick presses pause and then play. */
+  const shownStateRef = React.useRef(status.state);
+  shownStateRef.current = status.state;
 
   React.useEffect(() => {
     if (!isOpen) return undefined;
-    const timer = setInterval(async () => setStatus(await api.getStatus()), STATUS_POLL_MS);
+    const poll = async () => {
+      const opening = openingRef.current;
+      const fresh = await api.getStatus();
+      if (openingRef.current !== opening) return; // an answer for a video the viewer already left
+      const next = withPlayIntent(fresh, intentRef.current, Date.now());
+      // An unchanged status (a paused video) keeps the old object, so nothing is drawn again.
+      setStatus((current) => (sameStatus(current, next) ? current : next));
+    };
+    const timer = setInterval(() => void poll().catch(() => undefined), STATUS_POLL_MS);
     return () => clearInterval(timer);
   }, [isOpen]);
 
@@ -84,6 +98,7 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
 
   const close = () => {
     openingRef.current += 1;
+    intentRef.current = null;
     setIsOpen(false);
     setCheck(null);
     setStatus(IDLE_STATUS);
@@ -96,6 +111,7 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     const name = playbackTitle(details.name, episode.name);
     const opening = openingRef.current + 1;
     openingRef.current = opening;
+    intentRef.current = null;
     setTitle(name);
     setStatus(IDLE_STATUS);
     setSources([]);
@@ -166,12 +182,27 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, playing, next]);
 
+  /** Pauses or plays. The screen shows the new state at once; the player follows within milliseconds. */
   const togglePlay = async () => {
-    if (status.state === 'Playing') await api.pause();
-    else await api.resume();
+    const shown = shownStateRef.current;
+    const pause = shown === 'Playing';
+    if (shown === 'Playing' || shown === 'Paused') {
+      const state = pause ? 'Paused' : 'Playing';
+      intentRef.current = { paused: pause, at: Date.now() };
+      shownStateRef.current = state;
+      setStatus((current) => ({ ...current, state }));
+    }
+    try {
+      if (pause) await api.pause();
+      else await api.resume();
+    } catch (error) {
+      intentRef.current = null; // the player did not follow; show what it really does
+      throw error;
+    }
   };
 
   const switchSource = async (index: number) => {
+    intentRef.current = null;
     await api.switchSource(index);
     setStatus(LOADING_STATUS);
     await refreshSources();

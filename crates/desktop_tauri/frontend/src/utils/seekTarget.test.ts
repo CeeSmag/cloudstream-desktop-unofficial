@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seekTarget, SETTLE_MS } from './seekTarget';
+import { ARRIVED_MS, seekTarget, SETTLE_MS, shownPosition } from './seekTarget';
 
 const base = { positionMs: 100_000, durationMs: 1_000_000, deltaMs: 5000, pending: null, now: 10_000 };
 
@@ -35,5 +35,28 @@ describe('seekTarget', () => {
     expect(seekTarget({ ...base, positionMs: 2000, deltaMs: -5000 })).toBe(0);
     expect(seekTarget({ ...base, positionMs: 998_000, deltaMs: 5000 })).toBe(1_000_000);
     expect(seekTarget({ ...base, durationMs: 0 })).toBe(105_000);
+  });
+});
+
+describe('shownPosition', () => {
+  const pending = { targetMs: 110_000, at: 10_000 };
+
+  it('shows the reported position when no jump is on its way', () => {
+    expect(shownPosition({ positionMs: 100_000, pending: null, now: 10_000 })).toBe(100_000);
+  });
+
+  it('shows the target of a jump at once, while the player still reports the old place', () => {
+    expect(shownPosition({ positionMs: 100_000, pending, now: 10_000 })).toBe(110_000);
+    expect(shownPosition({ positionMs: 100_000, pending, now: 10_000 + SETTLE_MS - 1 })).toBe(110_000);
+  });
+
+  it('follows the player again as soon as it has arrived near the target', () => {
+    expect(shownPosition({ positionMs: 110_400, pending, now: 10_300 })).toBe(110_400);
+    expect(shownPosition({ positionMs: 110_000 - ARRIVED_MS, pending, now: 10_300 })).toBe(110_000 - ARRIVED_MS);
+    expect(shownPosition({ positionMs: 110_000 - ARRIVED_MS - 1, pending, now: 10_300 })).toBe(110_000);
+  });
+
+  it('trusts the player once the jump has had its time, wherever it is', () => {
+    expect(shownPosition({ positionMs: 100_000, pending, now: 10_000 + SETTLE_MS })).toBe(100_000);
   });
 });

@@ -25,6 +25,16 @@ describe('shortcutFor', () => {
     expect(shortcutFor(press('F'))).toEqual({ type: 'fullscreen' });
   });
 
+  it('maps Space to pause or play, but not while typing or with Ctrl, Alt or Meta', () => {
+    expect(shortcutFor(press(' '))).toEqual({ type: 'playpause' });
+    expect(shortcutFor(press('Spacebar'))).toEqual({ type: 'playpause' });
+    expect(shortcutFor(press(' ', { target: { tagName: 'BUTTON' } }))).toEqual({ type: 'playpause' });
+    expect(shortcutFor(press(' ', { target: { tagName: 'INPUT', type: 'search' } }))).toBeNull();
+    expect(shortcutFor(press(' ', { target: { tagName: 'TEXTAREA' } }))).toBeNull();
+    expect(shortcutFor(press(' ', { target: { isContentEditable: true } }))).toBeNull();
+    expect(shortcutFor(press(' ', { ctrlKey: true }))).toBeNull();
+  });
+
   it('ignores other keys and keys held with Ctrl, Alt or Meta', () => {
     expect(shortcutFor(press('x'))).toBeNull();
     expect(shortcutFor(press('f', { ctrlKey: true }))).toBeNull();
