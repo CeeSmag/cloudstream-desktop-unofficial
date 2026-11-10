@@ -1,7 +1,11 @@
-/** How long the arrow keys must be quiet before the jump is sent (ms). */
-export const QUIET_MS = 250;
-/** The longest a held key waits before a jump is sent anyway, so the picture still follows it (ms). */
-export const MAX_WAIT_MS = 1000;
+/** The shortest time between two jumps sent to the player while keys are tapped (ms). */
+export const FAST_GAP_MS = 200;
+/** The shortest time between two jumps once a key has been held or tapped for [`SUSTAINED_MS`] (ms). */
+export const SLOW_GAP_MS = 500;
+/** How long a run of presses lasts before it counts as a held key (ms). */
+export const SUSTAINED_MS = 1000;
+/** A pause between presses this long ends a run; the next press starts a new one (ms). */
+export const RUN_ENDS_MS = 400;
 
 /** The clock and timers the scheduler uses; tests bring their own. */
 export interface Timers {
@@ -17,7 +21,7 @@ const realTimers: Timers = {
 };
 
 export interface SeekScheduler {
-  /** Asks for a jump to `targetMs`; a newer ask replaces it before it is sent. */
+  /** Asks for a jump to `targetMs`: sent at once, or as soon as the last jump is old enough. */
   press: (targetMs: number) => void;
   /** Sends a jump at once and forgets any waiting one (a click on the seek bar). */
   sendNow: (targetMs: number) => void;
@@ -26,10 +30,12 @@ export interface SeekScheduler {
 }
 
 /**
- * Turns a burst of key presses into a few jumps. Each jump makes the player fetch the video again
- * from the new place, and a server that limits requests answers a flood of them with "429 Too Many
- * Requests", after which the player skips minutes of video. So a jump is sent once the keys have
- * been quiet for [`QUIET_MS`], and at most every [`MAX_WAIT_MS`] while a key is held down.
+ * Sends the first press of the arrow keys to the player at once and spaces out the ones that
+ * follow. Each jump can make the player fetch the video again from the new place, and a server that
+ * limits requests answers a flood of them with "429 Too Many Requests", after which the player
+ * skips minutes of video. So after a jump the next one waits until [`FAST_GAP_MS`] have passed
+ * (carrying the newest target), and a key held for longer than [`SUSTAINED_MS`] sends one only
+ * every [`SLOW_GAP_MS`].
  */
 export function createSeekScheduler(
   send: (targetMs: number) => void,
@@ -37,35 +43,39 @@ export function createSeekScheduler(
 ): SeekScheduler {
   let waiting: unknown = null;
   let target = 0;
-  let firstPressAt: number | null = null;
+  let lastSentAt: number | null = null;
+  let lastPressAt: number | null = null;
+  let runStartedAt = 0;
 
   const clear = () => {
     if (waiting !== null) timers.clearTimer(waiting);
     waiting = null;
-    firstPressAt = null;
   };
 
-  const flush = () => {
-    const place = target;
+  const sendTarget = () => {
     clear();
-    send(place);
+    lastSentAt = timers.now();
+    send(target);
   };
 
   return {
     press: (targetMs) => {
       target = targetMs;
       const now = timers.now();
-      firstPressAt ??= now;
-      if (now - firstPressAt >= MAX_WAIT_MS) {
-        flush();
+      if (lastPressAt === null || now - lastPressAt >= RUN_ENDS_MS) runStartedAt = now;
+      lastPressAt = now;
+      const gap = now - runStartedAt >= SUSTAINED_MS ? SLOW_GAP_MS : FAST_GAP_MS;
+      const wait = lastSentAt === null ? 0 : lastSentAt + gap - now;
+      if (wait <= 0) {
+        sendTarget();
         return;
       }
-      if (waiting !== null) timers.clearTimer(waiting);
-      waiting = timers.setTimer(flush, QUIET_MS);
+      clear();
+      waiting = timers.setTimer(sendTarget, wait);
     },
     sendNow: (targetMs) => {
-      clear();
-      send(targetMs);
+      target = targetMs;
+      sendTarget();
     },
     cancel: clear,
   };

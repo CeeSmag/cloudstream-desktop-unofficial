@@ -11,15 +11,16 @@ use crate::mpv_event::MpvEvent;
 use crate::pending_subtitles::{take_when_loaded, PendingSubtitles};
 use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
 use crate::preferred_subtitles::{preferred_subtitle_choice, SubtitleChoice, SubtitlePreference};
-use crate::status_tracker::StatusTracker;
+use crate::status_tracker::{Reading, StatusTracker};
 use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
 use crate::track_reader::{has_video_track, read_tracks};
 
-/// How long the event thread waits per iteration; also its stop-latency.
-const EVENT_WAIT: Duration = Duration::from_millis(200);
+/// How long the event thread waits per iteration; also its stop-latency and how old the position
+/// the app shows can get.
+const EVENT_WAIT: Duration = Duration::from_millis(100);
 
 /// The track list is re-read every this many event iterations (about once a second).
-const TRACK_REFRESH_EVERY: u32 = 5;
+const TRACK_REFRESH_EVERY: u32 = 10;
 
 /// Background loop that turns mpv events and property polls into status updates.
 pub(crate) struct EventWorker {
@@ -210,6 +211,8 @@ impl EventWorker {
     }
 
     fn poll_progress(&self) {
+        // Taken before mpv is read: a pause given while reading makes this reading out of date.
+        let pause_commands = self.tracker.pause_commands();
         let Some(position) = self.handle.get_double("time-pos") else {
             return;
         };
@@ -221,10 +224,11 @@ impl EventWorker {
             .filter(|d| d.is_finite() && *d > 0.0)
             .unwrap_or(0.0);
         let paused = self.handle.get_flag("pause").unwrap_or(false);
-        self.tracker.update_progress(
-            (position.max(0.0) * 1000.0) as i64,
-            (duration * 1000.0) as i64,
+        self.tracker.update_progress(Reading {
+            position_ms: (position.max(0.0) * 1000.0) as i64,
+            duration_ms: (duration * 1000.0) as i64,
             paused,
-        );
+            pause_commands,
+        });
     }
 }

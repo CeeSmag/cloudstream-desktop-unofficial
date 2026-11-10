@@ -4,7 +4,7 @@ import { clampVolume, loadVolume, saveVolume } from '../utils/volume';
 import { seekText, volumeText } from '../utils/feedbackText';
 import { wheelVolumeDelta } from '../utils/wheelVolume';
 import { formatTime } from '../utils/playerTime';
-import { PendingSeek, seekTarget } from '../utils/seekTarget';
+import { PendingSeek, seekTarget, shownPosition } from '../utils/seekTarget';
 import { createSeekScheduler } from '../utils/seekScheduler';
 import { useClickOrDoubleClick } from './useClickOrDoubleClick';
 import { useFeedbackPopup } from './useFeedbackPopup';
@@ -64,8 +64,8 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
   /** Where the last jump aimed, so quick presses add up before the player reports the new position. */
   const pendingSeek = React.useRef<PendingSeek | null>(null);
 
-  // Key presses become one jump per burst: every jump makes the player fetch the video again, and a
-  // flood of them gets the player refused (HTTP 429) by servers that limit requests.
+  // The first key press jumps at once; the ones right after it are spaced out, because every jump
+  // can make the player fetch the video again and a flood of them gets it refused (HTTP 429).
   const latestSeek = React.useRef(onSeek);
   latestSeek.current = onSeek;
   const [scheduler] = React.useState(() => createSeekScheduler((ms) => latestSeek.current(ms)));
@@ -97,6 +97,7 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
   };
 
   usePlayerShortcuts({
+    togglePlay,
     seekBy,
     volumeBy: (delta) => changeVolume(level.current + delta),
     toggleMute,
@@ -114,10 +115,12 @@ export function usePlayerControls({ status, onTogglePlay, onSeek, onVolume, reve
     changeVolume(level.current + step.delta);
   };
 
-  // One click pauses or plays; a double click toggles fullscreen without pausing.
+  // One click pauses or plays, at once; a double click toggles fullscreen and takes the pause back.
   const clicks = useClickOrDoubleClick(togglePlay, () => void toggleFullscreen());
 
   return {
+    /** Where the seek bar stands: the target of a jump still on its way, else the player's position. */
+    positionMs: shownPosition({ positionMs: status.position_ms, pending: pendingSeek.current, now: Date.now() }),
     popup,
     popupVisible,
     show,

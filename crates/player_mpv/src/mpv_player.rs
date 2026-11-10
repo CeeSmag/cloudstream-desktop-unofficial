@@ -186,7 +186,10 @@ impl VideoPlayer for MpvPlayer {
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     fn set_paused(&self, paused: bool) -> Result<(), PlayerError> {
         self.handle
-            .set_property("pause", if paused { "yes" } else { "no" })
+            .set_property("pause", if paused { "yes" } else { "no" })?;
+        // The status says so at once; the event thread's next reading is up to 100 ms away.
+        self.tracker.set_paused(paused);
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(position_ms = ?position_ms), err)]

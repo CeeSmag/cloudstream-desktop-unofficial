@@ -1,36 +1,19 @@
 import React from 'react';
-
-/** How long a click waits to see whether it is the first half of a double click. */
-export const DOUBLE_CLICK_MS = 250;
+import { ClickSorter, createClickSorter } from '../utils/clickSorter';
 
 /**
- * Separates a single click from a double click: the single action runs only if no second click
- * follows within [`DOUBLE_CLICK_MS`], so a double click does not also pause and resume the video.
+ * Separates a single click from a double click. The single action runs at once (no wait to see
+ * whether a second click follows); a double click takes it back and runs the double action, so it
+ * does not leave the video paused. See [`createClickSorter`].
  */
-export function useClickOrDoubleClick(onSingle: () => void, onDouble: () => void) {
-  const timer = React.useRef<number | null>(null);
+export function useClickOrDoubleClick(onSingle: () => void, onDouble: () => void): ClickSorter {
   const latest = React.useRef({ onSingle, onDouble });
   latest.current = { onSingle, onDouble };
-
-  const cancel = React.useCallback(() => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = null;
-  }, []);
-
-  React.useEffect(() => cancel, [cancel]);
-
-  const onClick = () => {
-    cancel();
-    timer.current = window.setTimeout(() => {
-      timer.current = null;
-      latest.current.onSingle();
-    }, DOUBLE_CLICK_MS);
-  };
-
-  const onDoubleClick = () => {
-    cancel();
-    latest.current.onDouble();
-  };
-
-  return { onClick, onDoubleClick };
+  const [sorter] = React.useState(() =>
+    createClickSorter(
+      () => latest.current.onSingle(),
+      () => latest.current.onDouble(),
+    ),
+  );
+  return sorter;
 }

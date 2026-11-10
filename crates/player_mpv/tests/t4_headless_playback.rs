@@ -276,8 +276,13 @@ fn wait_for_tracks(
 }
 
 /// Writes a one-line subtitle file and returns its path.
+/// A subtitle file of its own for each caller: the tests run side by side and each deletes its
+/// file when it is done, so a shared one could vanish under a test that still needs it.
 fn temp_subtitle_file() -> std::path::PathBuf {
-    let srt = std::env::temp_dir().join(format!("cs_subtitle_test_{}.srt", std::process::id()));
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let number = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = format!("cs_subtitle_test_{}_{number}.srt", std::process::id());
+    let srt = std::env::temp_dir().join(name);
     std::fs::write(
         &srt,
         "1
