@@ -55,6 +55,7 @@ fn status(state: PlaybackState, position_ms: i64) -> PlaybackStatus {
         position_ms,
         duration_ms: 100_000,
         has_video: true,
+        ..PlaybackStatus::default()
     }
 }
 

@@ -224,10 +224,30 @@ impl EventWorker {
             .filter(|d| d.is_finite() && *d > 0.0)
             .unwrap_or(0.0);
         let paused = self.handle.get_flag("pause").unwrap_or(false);
+        let paused_for_cache = self.handle.get_flag("paused-for-cache").unwrap_or(false);
+        let cache_buffering = self.handle.get_double("cache-buffering-state");
+        let is_buffering =
+            paused_for_cache || cache_buffering.is_some_and(|pct| pct < 100.0 && !paused);
+        let buffer_percent = cache_buffering.map(|pct| pct.clamp(0.0, 100.0) as u32);
+        let cache_sec = self
+            .handle
+            .get_double("demuxer-cache-duration")
+            .or_else(|| self.handle.get_double("demuxer-cache-time"))
+            .filter(|d| d.is_finite() && *d > 0.0)
+            .unwrap_or(0.0);
+        let position_ms = (position.max(0.0) * 1000.0) as i64;
+        let duration_ms = (duration * 1000.0) as i64;
+        let mut buffered_ms = position_ms + (cache_sec * 1000.0) as i64;
+        if duration_ms > 0 && buffered_ms > duration_ms {
+            buffered_ms = duration_ms;
+        }
         self.tracker.update_progress(Reading {
-            position_ms: (position.max(0.0) * 1000.0) as i64,
-            duration_ms: (duration * 1000.0) as i64,
+            position_ms,
+            duration_ms,
             paused,
+            buffered_ms,
+            is_buffering,
+            buffer_percent,
             pause_commands,
         });
     }
