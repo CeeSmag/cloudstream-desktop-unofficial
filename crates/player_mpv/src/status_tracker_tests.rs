@@ -190,3 +190,77 @@ fn the_status_always_shows_the_last_pause_while_the_event_thread_keeps_reading()
     }
     assert_eq!(wrong, 0, "the status showed the state from before a pause");
 }
+
+fn buffering_reading(tracker: &StatusTracker) -> Reading {
+    Reading {
+        buffered_ms: 3_000,
+        is_buffering: true,
+        buffer_percent: Some(30),
+        pause_commands: tracker.pause_commands(),
+        ..Reading::default()
+    }
+}
+
+#[test]
+fn buffering_is_cleared_when_the_stream_ends_fails_or_restarts() {
+    for event in [
+        MpvEvent::EndFile(EndReason::Finished),
+        MpvEvent::EndFile(EndReason::Stopped),
+        MpvEvent::EndFile(EndReason::Failed(-1)),
+    ] {
+        let tracker = playing_tracker();
+        tracker.update_progress(buffering_reading(&tracker));
+        assert!(tracker.snapshot().is_buffering);
+        tracker.apply(event);
+        let snapshot = tracker.snapshot();
+        assert!(!snapshot.is_buffering && snapshot.buffer_percent.is_none());
+    }
+    let tracker = playing_tracker();
+    tracker.update_progress(buffering_reading(&tracker));
+    tracker.begin_loading();
+    assert!(!tracker.snapshot().is_buffering);
+}
+
+/// A reading that arrives after the stream ended must not bring "buffering" back.
+#[test]
+fn late_buffering_readings_never_revive_the_indicator_after_the_end() {
+    let tracker = Arc::new(playing_tracker());
+    let stop = Arc::new(AtomicBool::new(false));
+    let readers: Vec<_> = (0..3)
+        .map(|_| {
+            let (tracker, stop) = (Arc::clone(&tracker), Arc::clone(&stop));
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    tracker.update_progress(buffering_reading(&tracker));
+                }
+            })
+        })
+        .collect();
+    for _ in 0..500 {
+        tracker.apply(MpvEvent::EndFile(EndReason::Finished));
+        assert!(
+            !tracker.snapshot().is_buffering,
+            "ended streams do not buffer"
+        );
+        tracker.apply(MpvEvent::FileLoaded);
+    }
+    stop.store(true, Ordering::Relaxed);
+    for reader in readers {
+        reader.join().expect("reader thread finished");
+    }
+}
+
+#[test]
+fn a_playing_stream_without_a_position_can_be_marked_as_waiting() {
+    let tracker = playing_tracker();
+    tracker.set_waiting(true);
+    assert!(tracker.snapshot().is_buffering);
+    tracker.set_waiting(false);
+    assert!(!tracker.snapshot().is_buffering);
+    tracker.apply(MpvEvent::EndFile(EndReason::Finished));
+    tracker.set_waiting(true);
+    assert!(
+        !tracker.snapshot().is_buffering,
+        "an ended stream does not wait"
+    );
+}

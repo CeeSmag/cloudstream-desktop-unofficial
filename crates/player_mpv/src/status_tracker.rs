@@ -127,6 +127,11 @@ impl StatusTracker {
             MpvEvent::Shutdown => status.state = PlaybackState::Idle,
             MpvEvent::Nothing | MpvEvent::Other => return,
         }
+        if !matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
+            // Nothing is being fetched any more; do not leave "buffering" on screen.
+            status.is_buffering = false;
+            status.buffer_percent = None;
+        }
         tracing::debug!(?event, state = ?status.state, "player event applied");
     }
 
@@ -148,6 +153,17 @@ impl StatusTracker {
         status.is_buffering = reading.is_buffering;
         status.buffer_percent = reading.buffer_percent;
         status.state = paused_state(reading.paused);
+    }
+
+    /// Records that the stream is (not) waiting for its first data, while no position is known
+    /// yet. Only a playing stream can wait; the percentage is unknown then.
+    pub(crate) fn set_waiting(&self, waiting: bool) {
+        let mut tracked = self.lock();
+        let status = &mut tracked.status;
+        if matches!(status.state, PlaybackState::Playing) {
+            status.is_buffering = waiting;
+            status.buffer_percent = None;
+        }
     }
 
     /// Replaces a generic failure with a more specific message.
