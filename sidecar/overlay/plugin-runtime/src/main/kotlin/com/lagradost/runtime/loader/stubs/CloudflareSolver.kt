@@ -67,6 +67,13 @@ object CloudflareSolver {
 
     private data class Declined(val until: Long, val reason: String)
 
+    /**
+     * The last "ask again next time" answer per host (the app only wants the viewer's go-ahead) and when
+     * it came. Requests that queued for the host while it was being asked share that answer, so one page
+     * load with dozens of requests costs one round trip to the app, not one each.
+     */
+    private val retryAnswers = ConcurrentHashMap<String, Declined>()
+
     /** The interceptor to add to every HTTP client plugins use. */
     val interceptor: Interceptor = Interceptor { chain -> intercept(chain) }
 
@@ -170,9 +177,14 @@ object CloudflareSolver {
                 return it
             }
             refuseIfDeclined(host)
+            retryAnswers[host]?.takeIf { it.until >= waitingSince }?.let {
+                log("INFO", "$host was asked about while this request waited (${it.reason}); failing at once")
+                throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
+            }
             val answer = askApp(host, url)
             val clearance = answer.clearance
             if (clearance == null) {
+                if (!answer.remember) retryAnswers[host] = Declined(System.currentTimeMillis(), answer.reason)
                 if (answer.remember) declined[host] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
                 log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
                 throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
@@ -257,6 +269,7 @@ object CloudflareSolver {
     fun reset() {
         clearances.clear()
         declined.clear()
+        retryAnswers.clear()
         browserOnly.clear()
     }
 }

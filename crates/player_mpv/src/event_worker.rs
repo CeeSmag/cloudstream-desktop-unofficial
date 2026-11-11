@@ -210,10 +210,20 @@ impl EventWorker {
         );
     }
 
+    fn core_idle(&self) -> bool {
+        self.handle.get_flag("core-idle").unwrap_or(false)
+    }
+
+    fn waiting_for_data(&self) -> bool {
+        !self.handle.get_flag("pause").unwrap_or(false) && self.core_idle()
+    }
+
     fn poll_progress(&self) {
         // Taken before mpv is read: a pause given while reading makes this reading out of date.
         let pause_commands = self.tracker.pause_commands();
         let Some(position) = self.handle.get_double("time-pos") else {
+            // No position yet: the opening seek or the first data is still on its way.
+            self.tracker.set_waiting(self.waiting_for_data());
             return;
         };
         // Live streams (infinite HLS or dynamic DASH) often have no finite `duration` property in
@@ -225,10 +235,14 @@ impl EventWorker {
             .unwrap_or(0.0);
         let paused = self.handle.get_flag("pause").unwrap_or(false);
         let paused_for_cache = self.handle.get_flag("paused-for-cache").unwrap_or(false);
-        let cache_buffering = self.handle.get_double("cache-buffering-state");
-        let is_buffering =
-            paused_for_cache || cache_buffering.is_some_and(|pct| pct < 100.0 && !paused);
-        let buffer_percent = cache_buffering.map(|pct| pct.clamp(0.0, 100.0) as u32);
+        // `core-idle` is true while mpv waits for data or a seek (the first picture after a resume
+        // jump included), which `paused-for-cache` does not cover. `cache-buffering-state` is not
+        // used for the decision: it is below 100 also while idle.
+        let is_buffering = paused_for_cache || (!paused && self.core_idle());
+        let buffer_percent = paused_for_cache
+            .then(|| self.handle.get_double("cache-buffering-state"))
+            .flatten()
+            .map(|pct| pct.clamp(0.0, 100.0) as u32);
         let cache_sec = self
             .handle
             .get_double("demuxer-cache-duration")

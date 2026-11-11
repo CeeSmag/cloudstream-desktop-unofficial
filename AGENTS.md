@@ -264,7 +264,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/player_mpv/`
 - **Dependencies**: `player_api`, `libloading = "0.8"`, `tracing`
 - **Unsafe Scope**: Confined strictly to `src/mpv_api.rs` with `// SAFETY:` justifications.
-- **Dynamic Locator (`libmpv_locator.rs`)**: Searches `CS_LIBMPV_PATH`, then the directory of `current_exe()`, then `current_dir()`. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows.
+- **Dynamic Locator (`libmpv_locator.rs`)**: Candidates in order: `CS_LIBMPV_PATH` (if the file exists), the directory of `current_exe()`, `current_dir()`, then (Linux/macOS) the bare names for the system loader. `MpvPlayer::auto_detect` tries each until one loads; `locate_libmpv()` returns the first. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows. When nothing is found the error lists every path searched.
 - **Player Configuration (`player_configuration.rs`)**:
   - `PlayerOptions`: `headless: bool` (`vo=null, ao=null`), `embedded: bool` (`vo=libmpv`), `wid: Option<i64>` (`vo=gpu, hwdec=auto-safe`).
   - Sets common options: `idle=yes`, `keep-open=no`, `osc=no`, `input-default-bindings=no`, `hwdec=auto-copy-safe`, `ytdl=no`, `alang=eng,en`.
@@ -276,6 +276,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Track & Subtitle Management**:
   - `preferred_audio.rs`: Automatically activates audio tracks matching ISO language preference (`AudioChoice::Switch { id }`).
   - `preferred_subtitles.rs`: Selects preferred subtitle languages once streams load without overriding manual user track picks, guarded by stream generation counters (`chosen_for`, `changed_by_viewer_for`).
+  - Buffering: `PlaybackStatus.buffered_ms` / `is_buffering` / `buffer_percent` come from mpv's `paused-for-cache`, `cache-buffering-state` and `demuxer-cache-duration`; `StatusTracker` clears them when the stream ends or restarts. The page shows `BufferingIndicator.tsx` and the buffered stretch on `SeekBar.tsx`.
   - `pending_subtitles.rs`: Queues subtitle tracks arriving asynchronously while mpv is initializing.
 
 ---

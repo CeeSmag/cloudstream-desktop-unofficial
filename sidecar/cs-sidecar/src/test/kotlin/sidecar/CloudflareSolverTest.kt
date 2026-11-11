@@ -180,6 +180,23 @@ class CloudflareSolverTest {
     }
 
     @Test
+    fun `requests queued while the app is asked for a go-ahead share that answer`() {
+        val app = FakeApp(exchange, listOf("ok=false\nreason=waiting for the go-ahead\nretry=true\n"))
+        val shared = client()
+        val failures = CopyOnWriteArrayList<String>()
+        val start = CountDownLatch(1)
+        val workers = (1..12).map {
+            thread { start.await(); runCatching { get(shared) }.onFailure { failures.add(it.message.orEmpty()) } }
+        }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(12, failures.size, "every request fails with the reason")
+        assertTrue(failures.all { it.contains("waiting for the go-ahead") }, "$failures")
+        assertTrue(app.verified.get() < 12, "not one round trip per request: ${app.verified.get()}")
+    }
+
+    @Test
     fun `no answer from the app within the time fails the request instead of waiting for ever`() {
         CloudflareSolver.solveTimeoutMs = 700
         val error = assertFailsWith<IOException> { get(client()) }
