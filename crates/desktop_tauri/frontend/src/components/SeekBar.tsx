@@ -11,6 +11,8 @@ interface SeekBarProps {
   segments?: SkipSegment[];
   /** Chapters of the stream; their starts divide the bar into sections. */
   chapters?: Chapter[];
+  /** How much of the video (in ms) is loaded/cached ahead of playback. */
+  bufferedMs?: number;
 }
 
 /** The colour of each kind of stretch drawn on the bar. */
@@ -26,8 +28,20 @@ const MARK_COLORS: Record<SkipSegment['kind'], string> = {
  * of that point (and which stretch it is, when the intro, recap or credits are known); those
  * stretches are drawn on the bar.
  */
-export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek, segments = [], chapters = [] }) => {
+export const SeekBar: React.FC<SeekBarProps> = ({
+  positionMs,
+  durationMs,
+  onSeek,
+  segments = [],
+  chapters = [],
+  bufferedMs = 0,
+}) => {
   const percent = progressPercent(positionMs, durationMs);
+  const bufferedPercent = React.useMemo(() => {
+    if (durationMs <= 0) return 0;
+    const loaded = Math.max(bufferedMs, positionMs);
+    return Math.min(100, Math.max(0, (loaded / durationMs) * 100));
+  }, [bufferedMs, positionMs, durationMs]);
   const [hover, setHover] = React.useState<HoverInfo | null>(null);
   const marks = React.useMemo(() => segmentMarks(segments, durationMs), [segments, durationMs]);
   const notches = React.useMemo(() => chapterNotches(chapters, durationMs), [chapters, durationMs]);
@@ -70,6 +84,13 @@ export const SeekBar: React.FC<SeekBarProps> = ({ positionMs, durationMs, onSeek
             aria-hidden="true"
           />
         ))}
+        {bufferedPercent > 0 && (
+          <div
+            className="absolute left-0 top-0 bottom-0 rounded-full bg-white/25 group-hover:bg-white/30 transition-all duration-150"
+            style={{ width: `${bufferedPercent}%` }}
+            aria-hidden="true"
+          />
+        )}
         <div
           className="absolute left-0 top-0 bottom-0 rounded-full bg-gradient-to-r from-accent to-purple-400 shadow-sm"
           style={{ width: `${percent}%` }}

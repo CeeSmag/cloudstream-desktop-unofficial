@@ -1,18 +1,7 @@
 import React from 'react';
 import {
-  ArrowLeft,
-  Play,
-  Pause,
-  RotateCcw,
-  RotateCw,
-  Volume2,
-  VolumeX,
-  Maximize2,
-  Minimize2,
-  Subtitles,
-  AudioLines,
-  Layers,
-  Loader2,
+  ArrowLeft, Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX,
+  Maximize2, Minimize2, Subtitles, AudioLines, Layers, Loader2,
 } from 'lucide-react';
 import { CheckProgress, PlaybackStatus, SkipSegment, SourceInfo } from '../types';
 import { skipPrompt } from '../playback/skipPrompt';
@@ -23,6 +12,7 @@ import { VideoCanvas } from '../components/VideoCanvas';
 import { OptionMenu } from '../components/OptionMenu';
 import { videoClickAction } from '../utils/menuHold';
 import { SeekBar } from '../components/SeekBar';
+import { BufferingIndicator } from '../components/BufferingIndicator';
 import { formatTime } from '../utils/playerTime';
 import { sourceText, trackText } from '../utils/feedbackText';
 import { trackOptions } from '../utils/trackMenu';
@@ -145,6 +135,10 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     >
       <VideoCanvas visible={status.has_video} />
       <FeedbackPopup feedback={controls.popup} visible={controls.popupVisible} />
+      <BufferingIndicator
+        buffering={Boolean(status.is_buffering && status.state !== 'Loading' && status.state !== 'Failed')}
+        percent={status.buffer_percent}
+      />
 
       {/* Top bar: back, title, track menus */}
       <div
@@ -247,6 +241,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           <SeekBar
             positionMs={controls.positionMs}
             durationMs={status.duration_ms}
+            bufferedMs={status.buffered_ms}
             onSeek={controls.jumpTo}
             segments={skipSegments}
             chapters={status.chapters}

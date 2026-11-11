@@ -50,6 +50,15 @@ pub struct PlaybackStatusDto {
     pub has_video: bool,
     /// Current volume (0 to 100).
     pub volume: f64,
+    /// Furthest position in milliseconds loaded into the buffer.
+    #[serde(default)]
+    pub buffered_ms: i64,
+    /// True when the player has paused to load/buffer network cache.
+    #[serde(default)]
+    pub is_buffering: bool,
+    /// Buffering completion percentage (0-100) until playback resumes, if known.
+    #[serde(default)]
+    pub buffer_percent: Option<u32>,
     /// Audio and subtitle tracks.
     pub tracks: Vec<MediaTrackDto>,
     /// Chapters of the stream, in time order; empty when it has none.

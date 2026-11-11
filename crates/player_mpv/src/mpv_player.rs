@@ -51,6 +51,11 @@ impl MpvPlayer {
         }
     }
 
+    /// Discovers candidate libmpv library paths and starts the player with the first working one.
+    pub fn auto_detect(options: &PlayerOptions) -> Result<Self, PlayerError> {
+        crate::libmpv_locator::auto_detect_player(options)
+    }
+
     /// Loads libmpv from `library_path` and starts an idle player.
     #[tracing::instrument(level = "debug", skip_all, fields(library_path = ?library_path), err)]
     pub fn new(library_path: &Path, options: &PlayerOptions) -> Result<Self, PlayerError> {

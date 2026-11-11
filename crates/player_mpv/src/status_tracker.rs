@@ -5,11 +5,14 @@ use player_api::{Chapter, MediaTrack, PlaybackState, PlaybackStatus};
 use crate::mpv_event::{EndReason, MpvEvent};
 
 /// What the event thread read from mpv in one go.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Reading {
     pub(crate) position_ms: i64,
     pub(crate) duration_ms: i64,
     pub(crate) paused: bool,
+    pub(crate) buffered_ms: i64,
+    pub(crate) is_buffering: bool,
+    pub(crate) buffer_percent: Option<u32>,
     /// [`StatusTracker::pause_commands`] taken before mpv was read. A pause or play given since
     /// then makes the reading out of date.
     pub(crate) pause_commands: u64,
@@ -141,6 +144,9 @@ impl StatusTracker {
         }
         status.position_ms = reading.position_ms;
         status.duration_ms = reading.duration_ms;
+        status.buffered_ms = reading.buffered_ms;
+        status.is_buffering = reading.is_buffering;
+        status.buffer_percent = reading.buffer_percent;
         status.state = paused_state(reading.paused);
     }
 

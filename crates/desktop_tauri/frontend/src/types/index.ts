@@ -150,6 +150,9 @@ export interface PlaybackStatus {
   /** Chapters of the stream in time order; empty when it has none. */
   chapters: Chapter[];
   error?: string | null;
+  buffered_ms?: number;
+  is_buffering?: boolean;
+  buffer_percent?: number | null;
 }
 
 export interface RepositoryEntry {

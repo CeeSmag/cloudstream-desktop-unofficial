@@ -10,7 +10,7 @@ use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
 use extension_runtime::{RpcProviderGateway, SidecarProcessTransport};
 use player_api::VideoPlayer;
-use player_mpv::{locate_libmpv, MpvPlayer, PlayerOptions};
+use player_mpv::{MpvPlayer, PlayerOptions};
 use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
@@ -88,18 +88,13 @@ fn build_playback(
     clock: &Arc<dyn Clock>,
     options: &ServiceOptions,
 ) -> (Option<Arc<PlaybackService>>, Option<String>) {
-    let player: Result<MpvPlayer, String> = locate_libmpv()
-        .and_then(|library| {
-            MpvPlayer::new(
-                &library,
-                &PlayerOptions {
-                    headless: options.headless_player,
-                    embedded: !options.headless_player && options.player_wid.is_none(),
-                    wid: options.player_wid,
-                },
-            )
-        })
-        .map_err(|error| error.to_string());
+    let player_options = PlayerOptions {
+        headless: options.headless_player,
+        embedded: !options.headless_player && options.player_wid.is_none(),
+        wid: options.player_wid,
+    };
+    let player: Result<MpvPlayer, String> =
+        MpvPlayer::auto_detect(&player_options).map_err(|error| error.to_string());
     match player {
         Ok(player) => {
             let player: Arc<dyn VideoPlayer> = Arc::new(player);

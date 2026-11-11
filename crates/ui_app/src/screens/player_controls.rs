@@ -90,6 +90,15 @@ fn paint_seek_track(ui: &egui::Ui, rect: Rect, status: &PlaybackStatus, active: 
     let track = Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 4.5));
     ui.painter()
         .rect_filled(track, 2.5, Color32::from_white_alpha(50));
+    if status.duration_ms > 0 && status.buffered_ms > 0 {
+        let buf_fraction = (status.buffered_ms as f32 / status.duration_ms as f32).clamp(0.0, 1.0);
+        let buffered = Rect::from_min_size(
+            track.min,
+            Vec2::new(track.width() * buf_fraction, track.height()),
+        );
+        ui.painter()
+            .rect_filled(buffered, 2.5, Color32::from_white_alpha(90));
+    }
     let fraction = if status.duration_ms > 0 {
         (status.position_ms as f32 / status.duration_ms as f32).clamp(0.0, 1.0)
     } else {

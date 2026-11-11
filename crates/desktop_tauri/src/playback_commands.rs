@@ -205,14 +205,14 @@ fn state_name(state: &PlaybackState) -> &'static str {
 }
 
 fn track_dto(track: player_api::MediaTrack) -> MediaTrackDto {
-    let title = track.label();
+    let kind = match track.kind {
+        TrackKind::Audio => "audio".to_owned(),
+        TrackKind::Subtitle => "subtitle".to_owned(),
+    };
     MediaTrackDto {
         id: track.id,
-        kind: match track.kind {
-            TrackKind::Audio => "audio".to_owned(),
-            TrackKind::Subtitle => "subtitle".to_owned(),
-        },
-        title,
+        kind,
+        title: track.label(),
         language: Some(track.language),
         selected: track.selected,
     }
@@ -229,6 +229,9 @@ fn map_playback_status(status: PlaybackStatus, streams: StreamParts) -> Playback
         duration_ms: status.duration_ms,
         has_video: status.has_video,
         volume: 100.0,
+        buffered_ms: status.buffered_ms,
+        is_buffering: status.is_buffering,
+        buffer_percent: status.buffer_percent,
         tracks: streams.tracks.into_iter().map(track_dto).collect(),
         chapters: streams
             .chapters
@@ -275,18 +278,13 @@ mod tests {
 
     #[test]
     fn chapters_and_tracks_reach_the_page_in_order() {
+        let chapter = |title: &str, time_ms| player_api::Chapter {
+            title: title.to_owned(),
+            time_ms,
+        };
         let streams = StreamParts {
             tracks: Vec::new(),
-            chapters: vec![
-                player_api::Chapter {
-                    title: "Opening".to_owned(),
-                    time_ms: 0,
-                },
-                player_api::Chapter {
-                    title: "Part A".to_owned(),
-                    time_ms: 93_000,
-                },
-            ],
+            chapters: vec![chapter("Opening", 0), chapter("Part A", 93_000)],
         };
         let dto = map_playback_status(PlaybackStatus::default(), streams);
         let chapters: Vec<_> = dto

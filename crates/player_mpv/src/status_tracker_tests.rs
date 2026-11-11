@@ -10,6 +10,7 @@ fn fresh(tracker: &StatusTracker, position_ms: i64, duration_ms: i64, paused: bo
         duration_ms,
         paused,
         pause_commands: tracker.pause_commands(),
+        ..Reading::default()
     }
 }
 
@@ -57,6 +58,20 @@ fn pause_flag_switches_between_playing_and_paused() {
     assert_eq!(tracker.snapshot().state, PlaybackState::Paused);
     tracker.update_progress(fresh(&tracker, 1, 2, false));
     assert_eq!(tracker.snapshot().state, PlaybackState::Playing);
+}
+
+#[test]
+fn buffering_and_buffered_position_are_tracked() {
+    let tracker = playing_tracker();
+    let mut reading = fresh(&tracker, 1_000, 10_000, false);
+    reading.buffered_ms = 4_000;
+    reading.is_buffering = true;
+    reading.buffer_percent = Some(40);
+    tracker.update_progress(reading);
+    let snapshot = tracker.snapshot();
+    assert_eq!(snapshot.buffered_ms, 4_000);
+    assert!(snapshot.is_buffering);
+    assert_eq!(snapshot.buffer_percent, Some(40));
 }
 
 #[test]
@@ -139,6 +154,7 @@ fn event_thread(tracker: &StatusTracker, mpv_paused: &AtomicBool, stop: &AtomicB
             duration_ms: 2,
             paused,
             pause_commands,
+            ..Reading::default()
         });
     }
 }

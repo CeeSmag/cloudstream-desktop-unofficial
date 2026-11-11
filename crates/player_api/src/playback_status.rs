@@ -27,7 +27,11 @@ pub struct PlaybackStatus {
     pub duration_ms: i64,
     /// Whether the stream has a picture. `false` once loaded means audio only (for example an
     /// `.mp3` source), so the app should not keep showing the previous picture.
-    /// Whether the stream has a picture. `false` once loaded means audio only (for example an
-    /// `.mp3` source), so the app should not keep showing the previous picture.
     pub has_video: bool,
+    /// Furthest position in milliseconds loaded into the buffer.
+    pub buffered_ms: i64,
+    /// Whether the player is currently paused waiting for network buffer/cache.
+    pub is_buffering: bool,
+    /// Buffering progress percentage (0..100) until playback unpauses, if known.
+    pub buffer_percent: Option<u32>,
 }

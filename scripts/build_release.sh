@@ -220,12 +220,10 @@ export PATH="$APPDIR/usr/bin:$APPDIR/usr/jre/bin:$PATH"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:${LD_LIBRARY_PATH:-}"
 export CS_SIDECAR_HOME="$APPDIR/usr/bin/sidecar"
 export CS_SIDECAR_JAVA_HOME="$APPDIR/usr/jre"
-if [ -f "$APPDIR/usr/lib/libmpv.so.2" ]; then
-    export CS_LIBMPV_PATH="$APPDIR/usr/lib/libmpv.so.2"
-fi
 exec "$APPDIR/usr/bin/desktop_tauri" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
+chmod -R a+rX "$APPDIR"
 
 step "Packing the AppImage"
 TOOL="$CACHE_DIR/appimagetool-$(uname -m)"
