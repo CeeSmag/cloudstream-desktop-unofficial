@@ -160,8 +160,12 @@ ln -s ../jre "$APPDIR/usr/bin/jre"
 MPV_DIR=""
 for d in "/usr/lib/$GNU_DIR" /usr/lib /usr/lib64; do [ -f "$d/libmpv.so.2" ] && MPV_DIR="$d" && break; done
 [ -n "$MPV_DIR" ] || die "libmpv.so.2 not found (install libmpv2)."
-cp -a "$MPV_DIR"/libmpv.so* "$APPDIR/usr/lib/"
-ln -s ../lib/libmpv.so.2 "$APPDIR/usr/bin/libmpv.so.2"
+# The bundled libmpv gets its own folder, NOT on LD_LIBRARY_PATH: it needs the ffmpeg of the system it
+# was built on (Debian 12 on GitHub), which other distros may not have. The app tries it first through
+# CS_LIBMPV_PATH and, when it cannot load, falls back to the libmpv of the running system, which only
+# resolves to the system's when this copy is out of the loader's search path.
+mkdir -p "$APPDIR/usr/lib/mpv"
+cp -a "$MPV_DIR"/libmpv.so* "$APPDIR/usr/lib/mpv/"
 
 cp "$ICONS/256x256.png" "$APPDIR/CloudStream.png"
 cp "$ICONS/256x256.png" "$APPDIR/.DirIcon"
@@ -221,8 +225,8 @@ export LD_LIBRARY_PATH="$APPDIR/usr/lib:${LD_LIBRARY_PATH:-}"
 export CS_SIDECAR_HOME="$APPDIR/usr/bin/sidecar"
 export CS_SIDECAR_JAVA_HOME="$APPDIR/usr/jre"
 # The bundled libmpv goes first; the app falls back to the system's when this file is absent.
-if [ -f "$APPDIR/usr/lib/libmpv.so.2" ]; then
-    export CS_LIBMPV_PATH="$APPDIR/usr/lib/libmpv.so.2"
+if [ -f "$APPDIR/usr/lib/mpv/libmpv.so.2" ]; then
+    export CS_LIBMPV_PATH="$APPDIR/usr/lib/mpv/libmpv.so.2"
 fi
 exec "$APPDIR/usr/bin/desktop_tauri" "$@"
 EOF
