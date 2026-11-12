@@ -141,6 +141,9 @@ export const api = {
   /** Puts the application window into or out of native fullscreen. */
   setWindowFullscreen: (fullscreen: boolean) => invokeTauri<void>('set_window_fullscreen', { fullscreen }),
 
+  /** True when mpv draws into the window itself (no canvas frames are needed). */
+  getVideoMode: () => invokeTauri<boolean>('get_video_mode'),
+
   setVideoSurface: (width: number, height: number) =>
     invokeTauri<void>('set_video_surface', { width, height }),
 

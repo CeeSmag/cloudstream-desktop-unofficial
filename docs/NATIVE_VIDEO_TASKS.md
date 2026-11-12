@@ -21,11 +21,15 @@ Chosen design: **E** (one window, mpv under a transparent web view). Mark a task
 - [ ] 0.9 **Gate:** write the final decision at the end of the plan (E passes, or fall back to A).
 - [ ] 0.10 Find out why design F2 (commit `cd6ad46`) failed while E works, or record that it stays unexplained.
 
-## Phase 1 — enable design E in the app (after the gate)
+## Phase 1 — enable design E in the app
 
-- [ ] 1.1 Window `transparent: true` in `tauri.conf.json`; make sure every page paints an opaque background (R2) and the
+Implemented in this branch (`native_video.rs`, `tauri.conf.json`, `PlayerOverlay.tsx`). Verified: builds, clippy and
+all tests pass, the app starts in native mode and the transparent window shows its pages normally. **Not yet verified:
+playing a real title** (needs a provider plugin; see 0.6).
+
+- [x] 1.1 Window `transparent: true` in `tauri.conf.json`; make sure every page paints an opaque background (R2) and the
       player screen has an opaque backdrop until mpv paints.
-- [ ] 1.2 Build the player after the main window exists, with `wid` = its native handle (F1, R5); keep the embedded
+- [x] 1.2 Build the player after the main window exists, with `wid` = its native handle (F1, R5); keep the embedded
       canvas player as the fallback and for other platforms.
 - [ ] 1.3 If lowering mpv's window is needed (0.7): one small Win32 module, `// SAFETY:` comments, `RULES.md`
       exception.
@@ -35,7 +39,7 @@ Chosen design: **E** (one window, mpv under a transparent web view). Mark a task
 
 ## Phase 2 — controls
 
-- [ ] 2.1 `PlayerOverlay.tsx` transparent over the video; skip `VideoCanvas` and the `get_video_frame` loop in
+- [x] 2.1 `PlayerOverlay.tsx` transparent over the video; skip `VideoCanvas` and the `get_video_frame` loop in
       native mode.
 - [ ] 2.2 Fullscreen (`set_window_fullscreen`), resize, maximize, minimize/restore, focus (R3).
 - [ ] 2.3 Keyboard shortcuts and clicks still work (`playerShortcuts.ts`, `clickSorter.ts`); the web view receives

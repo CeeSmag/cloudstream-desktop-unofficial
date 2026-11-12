@@ -33,6 +33,7 @@ mod extension_commands;
 mod failure_tally;
 mod library_commands;
 mod link_ledger;
+mod native_video;
 #[cfg(test)]
 mod opening_flow_tests;
 mod playback_commands;
@@ -155,6 +156,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             extension_commands::set_extension_trusted,
             video_commands::set_video_surface,
             window_commands::set_window_fullscreen,
+            native_video::get_video_mode,
             video_commands::get_video_frame,
             update_commands::check_for_updates,
             update_commands::apply_update,
@@ -173,9 +175,13 @@ fn init_services(
     paths: &AppPaths,
     debug_logs: DebugLogs,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let wid = native_video::window_handle(app);
+    app.manage(native_video::VideoMode {
+        native: wid.is_some(),
+    });
     let options = ServiceOptions {
         headless_player: false,
-        player_wid: None,
+        player_wid: wid,
     };
     let services = build_services(paths, &options)?;
     let debug_on = debug_log_commands::restore_saved_choice(&services.settings, &debug_logs);

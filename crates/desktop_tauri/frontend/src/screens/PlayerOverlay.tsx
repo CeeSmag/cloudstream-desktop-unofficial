@@ -9,6 +9,7 @@ import { EpisodeButtons, SkipPromptButton } from '../components/EpisodeButtons';
 import { useSkipPromptWindow } from '../hooks/useSkipPromptWindow';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
+import { useNativeVideo } from '../hooks/useNativeVideo';
 import { OptionMenu } from '../components/OptionMenu';
 import { videoClickAction } from '../utils/menuHold';
 import { SeekBar } from '../components/SeekBar';
@@ -115,11 +116,16 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     else onSeek(prompt.toMs);
   };
 
+  // Native video: mpv's own window is under this page, so the page is see-through once it plays.
+  const nativeVideo = useNativeVideo();
+  const seeThrough =
+    nativeVideo && status.has_video && (status.state === 'Playing' || status.state === 'Paused');
+
   const fade = controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-black flex flex-col justify-between transition-opacity duration-300 select-none ${
+      className={`fixed inset-0 z-50 ${seeThrough ? 'bg-transparent' : 'bg-black'} flex flex-col justify-between transition-opacity duration-300 select-none ${
         controlsVisible ? 'cursor-default' : 'cursor-none'
       }`}
       onClick={(e) => {
@@ -133,7 +139,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
       }}
       onWheel={controls.onWheel}
     >
-      <VideoCanvas visible={status.has_video} />
+      {!nativeVideo && <VideoCanvas visible={status.has_video} />}
       <FeedbackPopup feedback={controls.popup} visible={controls.popupVisible} />
       <BufferingIndicator
         buffering={Boolean(status.is_buffering && status.state !== 'Loading' && status.state !== 'Failed')}
