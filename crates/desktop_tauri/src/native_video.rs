@@ -30,11 +30,6 @@ impl VideoMode {
     }
 }
 
-/// Whether to try native video: Windows only for now.
-pub(crate) fn wants_native(windows: bool) -> bool {
-    windows
-}
-
 /// Decides the video mode at start-up, stores it for the page (`get_video_mode`) and returns the
 /// window handle mpv should draw into, or `None` to keep the canvas player.
 pub fn prepare(app: &App) -> Option<i64> {
@@ -43,12 +38,10 @@ pub fn prepare(app: &App) -> Option<i64> {
     handle
 }
 
-/// The handle mpv should draw into, or `None` to keep the canvas player.
+/// The main window's handle. `hwnd()` exists only in Windows builds of Tauri, so this is split by
+/// platform at compile time (the Linux AppImage build failed on it once).
+#[cfg(windows)]
 fn window_handle(app: &App) -> Option<i64> {
-    if !wants_native(cfg!(windows)) {
-        tracing::info!("video mode: canvas");
-        return None;
-    }
     let window = app.get_webview_window("main")?;
     match window.hwnd() {
         Ok(handle) => {
@@ -65,6 +58,13 @@ fn window_handle(app: &App) -> Option<i64> {
     }
 }
 
+/// Other platforms keep the canvas player for now (`--wid` needs per-platform handling).
+#[cfg(not(windows))]
+fn window_handle(_app: &App) -> Option<i64> {
+    tracing::info!("video mode: canvas (native video is Windows-only for now)");
+    None
+}
+
 /// Tells the page where the picture comes from: mpv's own window (no canvas needed) or frames.
 #[tauri::command]
 pub async fn get_video_mode(mode: State<'_, VideoMode>) -> Result<VideoMode, String> {
@@ -74,12 +74,6 @@ pub async fn get_video_mode(mode: State<'_, VideoMode>) -> Result<VideoMode, Str
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn native_is_used_on_windows_only() {
-        assert!(wants_native(true));
-        assert!(!wants_native(false));
-    }
 
     #[test]
     fn the_mode_is_native_exactly_when_there_is_a_window_handle() {
