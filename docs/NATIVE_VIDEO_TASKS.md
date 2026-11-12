@@ -1,45 +1,52 @@
 # Native video window — tasks
 
-Plan and the facts behind it: [NATIVE_VIDEO_PLAN.md](NATIVE_VIDEO_PLAN.md) (F1–F11 are referenced below).
-Mark a task `[x]` only when it is done **and** verified. Phase 0 is finished; the rest is not started.
+Plan and the facts behind it: [NATIVE_VIDEO_PLAN.md](NATIVE_VIDEO_PLAN.md) (F1–F15, R1–R8 are referenced below).
+Chosen design: **E** (one window, mpv under a transparent web view). Mark a task `[x]` only when it is done
+**and** verified.
 
 ## Phase 0 — spike (decision gate)
 
-- [ ] 0.1 Get a local 2K test file and set `CS_BENCH_VIDEO`; record CPU use and dropped frames of the **current**
-      canvas path on this PC as the baseline (`t4_responsiveness.rs` timings).
-- [x] 0.2 Spike B (fails, see plan section 7): child HWND for mpv (`wid`) under a transparent web view. Does video show? (F2 says it failed on
-      the main HWND.) Record yes/no with a screenshot.
-- [x] 0.3 Spike A (works: video, transparency, clicks, follow on move/resize): child HWND for mpv plus a transparent, undecorated top-level Tauri window above it with one
-      test button. Video visible? Button clickable? Window follows move/resize?
-- [x] 0.4 Repeat 0.2/0.3 with and without `--disable-gpu` in `additionalBrowserArgs` (F10).
-- [ ] 0.5 (half done: native CPU measured, about 5% of one core on a static clip; same test on the canvas path and on a busy 2K clip still missing) Measure CPU use and dropped frames of the winning layout on the same 2K file.
-- [x] 0.6 **Gate: passed for design A** (plan section 7). write the result at the end of the plan. If neither layout works, stop and do Phase 4 only.
+- [ ] 0.1 Get a local 2K/4K test file with real motion (the recordings on this PC are mostly static) and set
+      `CS_BENCH_VIDEO`; record CPU use and dropped frames of the **current** canvas path as the baseline
+      (`t4_responsiveness.rs`).
+- [x] 0.2 Spike B (own child window under a transparent web view): fails.
+- [x] 0.3 Spike A (owned overlay window): works; maximize animation flaw (kept as fallback).
+- [x] 0.4 `--disable-gpu` on and off: no difference for A and E.
+- [x] 0.5 Spike E (mpv gets the main window handle, transparent window and web view): video shows with the control
+      floating over it (GPU flag on and off).
+- [ ] 0.6 Spike E, still to test by hand: real mouse click on the control; resize by edges; maximize; fullscreen;
+      minimize/restore; keep playing smoothly through all of them.
+- [ ] 0.7 Spike E: is lowering mpv's window needed? Run without it and print the z-order.
+- [ ] 0.8 Measure CPU use and dropped frames of E on the heavy file from 0.1 and compare with the canvas baseline.
+- [ ] 0.9 **Gate:** write the final decision at the end of the plan (E passes, or fall back to A).
+- [ ] 0.10 Find out why design F2 (commit `cd6ad46`) failed while E works, or record that it stays unexplained.
 
-## Phase 1 — native video surface (only if the gate passes)
+## Phase 1 — enable design E in the app (after the gate)
 
-- [ ] 1.1 Decide where the Win32 code lives and add the `RULES.md` exception for `unsafe` (one module, `// SAFETY:`
-      comments).
-- [ ] 1.2 `NativeVideoSurface`: create, resize/move, show/hide, destroy a child HWND.
-- [ ] 1.3 Player construction takes the surface's `wid` (F1: today `main.rs:178` passes `None`).
-- [ ] 1.4 Failure path: if the surface or `vo=gpu` fails, fall back to the canvas player and log why.
-- [ ] 1.5 Tests: surface lifecycle, fallback on failure.
+- [ ] 1.1 Window `transparent: true` in `tauri.conf.json`; make sure every page paints an opaque background (R2) and the
+      player screen has an opaque backdrop until mpv paints.
+- [ ] 1.2 Build the player after the main window exists, with `wid` = its native handle (F1, R5); keep the embedded
+      canvas player as the fallback and for other platforms.
+- [ ] 1.3 If lowering mpv's window is needed (0.7): one small Win32 module, `// SAFETY:` comments, `RULES.md`
+      exception.
+- [ ] 1.4 mpv's window is hidden or absent while not playing; no stray rectangle over the pages.
+- [ ] 1.5 Failure path: if the native player cannot start, fall back to the canvas player and log why.
+- [ ] 1.6 Tests: fallback on failure; window/player creation order.
 
-## Phase 2 — controls on top
+## Phase 2 — controls
 
-- [ ] 2.1 Page reports the player area rectangle (model on `place_cloudflare_panel`, async commands only — see
-      `deadlock_tests.rs`).
-- [ ] 2.2 Host the existing `PlayerOverlay.tsx` UI in the chosen layer; make its background transparent over the video.
-- [ ] 2.3 Maximize animation (overlay currently jumps ahead), minimize/restore, taskbar and Alt+Tab, plus fullscreen (`set_window_fullscreen`), resize, minimize/restore, move, focus, always-on-top behaviour.
-- [ ] 2.4 Keyboard shortcuts and clicks still reach the player (`playerShortcuts.ts`, `clickSorter.ts`).
-- [ ] 2.5 Race tests for rectangle updates versus window events, with the proof-of-failure step (recipe 6).
-- [ ] 2.6 Remove or hide `VideoCanvas` and the `get_video_frame` loop while the native surface is active.
+- [ ] 2.1 `PlayerOverlay.tsx` transparent over the video; skip `VideoCanvas` and the `get_video_frame` loop in
+      native mode.
+- [ ] 2.2 Fullscreen (`set_window_fullscreen`), resize, maximize, minimize/restore, focus (R3).
+- [ ] 2.3 Keyboard shortcuts and clicks still work (`playerShortcuts.ts`, `clickSorter.ts`); the web view receives
+      input and commands the player through IPC (R4).
+- [ ] 2.4 Race tests for any new shared state, with the proof-of-failure step (R6, recipe 6).
 
 ## Phase 3 — mode switch
 
-- [ ] 3.1 Setting `video_mode` (Auto / Native / Canvas) in `SettingsService`; applied at restart because the player is
-      built once (F1).
+- [ ] 3.1 Setting `video_mode` (Auto / Native / Canvas) in `SettingsService`; applied at restart.
 - [ ] 3.2 Settings > Playback control and text.
-- [ ] 3.3 Auto rule: native on Windows when the surface worked, canvas otherwise (F4: Linux Wayland, macOS).
+- [ ] 3.3 Auto rule: native on Windows when it worked, canvas otherwise (R7: Linux Wayland, macOS).
 - [ ] 3.4 Log which mode is active at start.
 
 ## Phase 4 — quality fixes (independent, can run in parallel)
@@ -63,5 +70,5 @@ Mark a task `[x]` only when it is done **and** verified. Phase 0 is finished; th
 ## Open questions for the owner
 
 1. Is Windows-only acceptable for the native mode (Linux and macOS stay on canvas)?
-2. Why was `--disable-gpu` added to WebView2? Removing it may help or hurt.
+2. Why was `--disable-gpu` added to WebView2? E works with and without it; removing it might help the page.
 3. Is a restart acceptable when the video mode setting changes?
