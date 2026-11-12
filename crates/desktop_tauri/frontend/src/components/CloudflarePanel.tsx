@@ -37,12 +37,27 @@ export const CloudflarePanel: React.FC = () => {
 
   usePanelPlacement(host, frame, setProblem);
 
+  const open = host !== null;
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHost(null);
+        if (host) api.cancelCloudflarePanel(host).catch(() => undefined);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, host]);
+
   if (!host) return null;
 
+  // The panel closes at once, whatever the backend answers: a check that has nothing left to cancel
+  // (the site showed no challenge) must never leave the viewer stuck behind it.
   const cancel = () => {
+    setHost(null);
     api.cancelCloudflarePanel(host).catch((error: unknown) => {
       logEvent('error', `cannot cancel the check for ${host}: ${describeValue(error)}`);
-      setProblem(describeValue(error));
     });
   };
 
