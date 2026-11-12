@@ -20,7 +20,7 @@ This document is the verified architectural index, navigation map, and modificat
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (56 Commands Reference)](#4-tauri-ipc-interface-56-commands-reference)
+4. [Tauri IPC Interface (57 Commands Reference)](#4-tauri-ipc-interface-57-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -337,6 +337,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `source_fallback.rs` & `source_fallback_steps.rs`: Monitors playback and automatically fails over to the next best source upon playback error.
   - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
   - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
+  - `native_video.rs`: native video on Windows. The main window is transparent (`tauri.conf.json`); mpv gets the window's own handle (`wid`, `vo=gpu`) and draws below the transparent web view, so the player screen (`PlayerOverlay.tsx`, see-through while `Playing`/`Paused`, `hooks/useNativeVideo.ts`) floats over the picture and no frame crosses the IPC. `CS_VIDEO_MODE=canvas` forces the old canvas path; other platforms use it too. Plan: `docs/NATIVE_VIDEO_PLAN.md`.
   - `video_commands.rs`: Delivers mpv RGBA frames to the frontend as binary data (`16-byte header: width, height, serial + pixels`).
   - `data_commands.rs`: `delete_all_data` (stops playback, starts the helper, closes the app).
   - `data_helper.rs`: the helper behind it: a PowerShell (Windows) or `sh` script written to the temp folder and started detached. It waits for the app's PID to exit, ends `java.exe` processes whose command line holds the data folder (the sidecar), deletes everything except the folder of the running program (`-KeepDir`, a `runtime-*` folder; older ones are deleted), retrying while files are in use, starts the app again (portable exe via `CS_PORTABLE_EXE`, AppImage via `APPIMAGE`, else the running program) and removes itself.
@@ -472,9 +473,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (56 Commands Reference)
+## 4. Tauri IPC Interface (57 Commands Reference)
 
-All 56 commands registered in `crates/desktop_tauri/src/main.rs`:
+All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -527,7 +528,8 @@ All 56 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
 | | `set_playback_option` | Switches `autoplay_next` or `skip_lookup`. |
 | | `provider_switched` | The viewer picked another provider: saved stream links from before are not used. |
-| **Video/Window** | `set_video_surface` | Informs player of viewport dimensions. |
+| **Video/Window** | `get_video_mode` | True when mpv draws into the main window itself (native video), so the page needs no canvas. |
+| | `set_video_surface` | Informs player of viewport dimensions. |
 | | `get_video_frame` | Returns binary header + RGBA pixels for canvas rendering. |
 | | `set_window_fullscreen` | Toggles fullscreen window state. |
 | **Updates** | `check_for_updates` | Asks GitHub for the latest release and picks the file for this PC (installer, portable exe or AppImage, by file name). |
