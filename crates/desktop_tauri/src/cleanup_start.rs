@@ -20,6 +20,25 @@ use crate::storage_cap::{check_once, running_folder};
 const HOURLY: Duration = Duration::from_secs(60 * 60);
 const EVERY_SIX_HOURS: Duration = Duration::from_secs(6 * 60 * 60);
 
+/// Puts the cleanups of the running app into the queue: `paths` say where the app keeps its files,
+/// `caches` are the saved sources and the subtitles it tidies.
+pub fn start_for_app(
+    app: &tauri::App,
+    paths: &app_shell::AppPaths,
+    caches: (Arc<TitleCache>, Arc<subtitle_store::SubtitleLoader>),
+) {
+    let (sources, subtitles) = caches;
+    start(
+        app.handle(),
+        Cleanup {
+            data_dir: paths.data_dir().to_path_buf(),
+            log_file: paths.log_file(),
+            sources,
+            subtitles,
+        },
+    );
+}
+
 /// What the app has to clean, and where.
 pub struct Cleanup {
     pub data_dir: PathBuf,
