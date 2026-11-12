@@ -140,6 +140,9 @@ export interface Chapter {
   time_ms: number;
 }
 
+/** Where the picture comes from: mpv's own window under the page, or frames painted on a canvas. */
+export type VideoMode = 'native' | 'canvas';
+
 export interface PlaybackStatus {
   state: 'Idle' | 'Loading' | 'Playing' | 'Paused' | 'Ended' | 'Failed';
   position_ms: number;
