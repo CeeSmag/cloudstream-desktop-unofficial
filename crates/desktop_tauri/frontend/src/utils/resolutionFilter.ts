@@ -29,6 +29,17 @@ export function filterSourcesByResolution(sources: SourceInfo[], wanted: Resolut
   });
 }
 
+/**
+ * The sources with a known file size first, biggest first; the ones without a size follow in
+ * their old order (the sort is stable). The list is not changed.
+ */
+export function sortBySizeDescending(sources: SourceInfo[]): SourceInfo[] {
+  const sized = sources.filter((source) => source.size_bytes !== null);
+  const unsized = sources.filter((source) => source.size_bytes === null);
+  sized.sort((a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0));
+  return [...sized, ...unsized];
+}
+
 /** How many sources are in each group (sources of unknown resolution count in none). */
 export function countByTier(sources: SourceInfo[]): Record<ResolutionTier, number> {
   const counts: Record<ResolutionTier, number> = { '1080p': 0, '2160p': 0 };

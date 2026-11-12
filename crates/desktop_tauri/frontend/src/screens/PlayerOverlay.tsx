@@ -22,7 +22,12 @@ import { filterSourcesBySubtitles } from '../utils/sourceFilter';
 import { preferredFlags } from '../utils/subtitleFlags';
 import { SubtitleFilter } from '../components/SubtitleFilter';
 import { ResolutionFilter } from '../components/ResolutionFilter';
-import { countByTier, filterSourcesByResolution, ResolutionTier } from '../utils/resolutionFilter';
+import {
+  countByTier,
+  filterSourcesByResolution,
+  ResolutionTier,
+  sortBySizeDescending,
+} from '../utils/resolutionFilter';
 import { sourceRow } from '../utils/sourceRows';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
@@ -93,7 +98,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     setResolutionFilter((current) => (current.includes(tier) ? current.filter((t) => t !== tier) : [...current, tier]));
   const bySubtitles = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
   const byResolution = filterSourcesByResolution(sources, resolutionFilter);
-  const visibleSources = filterSourcesByResolution(bySubtitles, resolutionFilter);
+  const matching = filterSourcesByResolution(bySubtitles, resolutionFilter);
+  // With a resolution picked the biggest files come first (sources without a known size follow).
+  const visibleSources = resolutionFilter.length > 0 ? sortBySizeDescending(matching) : matching;
   const filterLanguages = preferences ? preferredFlags(preferences) : [];
   useSubtitleDiagnostics({
     tracks: status.tracks,
