@@ -3,7 +3,6 @@ name = "desktop_tauri"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "desktop_tauri"
 
 [lints]
 workspace = true
