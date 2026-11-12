@@ -31,6 +31,17 @@ const COMMON: &[(&str, &str)] = &[
     ("demuxer-max-back-bytes", "16MiB"),
 ];
 
+/// Options for drawing into a window the app owns (`wid`): GPU output with hardware decoding, and
+/// `force-window` so mpv's window, which paints solid black, stays when nothing plays. The app's
+/// window is transparent and its page is see-through while a video plays, so mpv's window is the
+/// only opaque layer behind the page: without `force-window` it disappears at the end of a video,
+/// while a stream loads and when a source is switched, and the desktop shows through.
+const WINDOW_OPTIONS: &[(&str, &str)] = &[
+    ("vo", "gpu"),
+    ("hwdec", "auto-safe"),
+    ("force-window", "yes"),
+];
+
 /// Applies the options; `embedded` says the render API will be used (no mpv window).
 pub(crate) fn configure(
     handle: &MpvHandle,
@@ -52,8 +63,9 @@ pub(crate) fn configure(
     } else if let Some(wid) = options.wid {
         let wid_str = wid.to_string();
         handle.set_option("wid", &wid_str)?;
-        handle.set_option("vo", "gpu")?;
-        handle.set_option("hwdec", "auto-safe")?;
+        for (name, value) in WINDOW_OPTIONS {
+            handle.set_option(name, value)?;
+        }
     } else if embedded {
         // `vo=libmpv` renders into memory through the render API (no mpv window); `sw-fast`
         // trades a little quality for speed on the CPU renderer.
@@ -90,6 +102,18 @@ mod tests {
             ..PlayerOptions::default()
         };
         assert_eq!(options.wid, Some(12345678));
+    }
+
+    #[test]
+    fn a_window_the_app_owns_keeps_mpvs_black_window_when_nothing_plays() {
+        let value = |name: &str| {
+            WINDOW_OPTIONS
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("force-window"), Some("yes"));
+        assert_eq!(value("vo"), Some("gpu"));
     }
 
     #[test]
