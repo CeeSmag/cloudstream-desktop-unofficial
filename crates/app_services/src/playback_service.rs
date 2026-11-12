@@ -73,6 +73,11 @@ impl PlaybackService {
         subtitles: &[SubtitleTrack],
     ) -> Result<(), ServiceError> {
         let start_position_ms = self.resume_position_ms(&item)?;
+        tracing::info!(
+            start_position_ms,
+            media_key = %item.media_key,
+            "playing from the saved position (0 means from the start)"
+        );
         self.start_at(
             item,
             &StreamSelection {

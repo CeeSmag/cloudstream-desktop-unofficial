@@ -4,6 +4,7 @@ use app_services::{
     full_label, link_rank, stream_host, stream_kind, PlaybackService, StreamSelection,
 };
 use core_model::PlayableLink;
+use player_api::PlaybackState;
 use serde::Serialize;
 use tauri::State;
 
@@ -67,6 +68,12 @@ pub async fn switch_source(
     switch_to(&sources, playback, index)
 }
 
+/// Which of the open video's streams to start, and from where.
+struct SourceStart {
+    index: usize,
+    position_ms: i64,
+}
+
 /// Starts the stream at `index` where the video stopped. The viewer chose it, so the count of
 /// automatic fallbacks starts over.
 pub(crate) fn switch_to(
@@ -78,26 +85,67 @@ pub(crate) fn switch_to(
         .session()
         .start_snapshot()
         .ok_or_else(|| "Nothing is playing.".to_owned())?;
+    let live_position_ms = playback.tick().position_ms;
+    let position_ms = if live_position_ms > 0 {
+        live_position_ms
+    } else {
+        active.position_ms
+    };
+    start_source(
+        sources,
+        playback,
+        &active,
+        SourceStart { index, position_ms },
+    )
+}
+
+/// A video that has played to its end is gone from mpv, so Play or a seek would do nothing. When
+/// the viewer presses Play or seeks after the end, the stream that was playing starts again at
+/// `position_ms`. Returns whether it did; false and nothing done when the video has not ended or
+/// is no longer open.
+pub(crate) fn restart_if_ended(
+    sources: &SourceManager,
+    playback: &PlaybackService,
+    position_ms: i64,
+) -> Result<bool, String> {
+    if playback.tick().state != PlaybackState::Ended {
+        return Ok(false);
+    }
+    let Some(active) = sources.session().start_snapshot() else {
+        return Ok(false);
+    };
+    tracing::info!(position_ms, "the video had ended; playing it again");
+    let index = active.selected;
+    start_source(
+        sources,
+        playback,
+        &active,
+        SourceStart { index, position_ms },
+    )?;
+    Ok(true)
+}
+
+fn start_source(
+    sources: &SourceManager,
+    playback: &PlaybackService,
+    active: &ActiveSources,
+    start: SourceStart,
+) -> Result<(), String> {
     let link = active
         .links
-        .get(index)
-        .ok_or_else(|| format!("There is no source number {}.", index + 1))?;
-    let live_position_ms = playback.tick().position_ms;
+        .get(start.index)
+        .ok_or_else(|| format!("There is no source number {}.", start.index + 1))?;
     let stream = StreamSelection {
         link,
         subtitles: &active.subtitles,
-        start_position_ms: if live_position_ms > 0 {
-            live_position_ms
-        } else {
-            active.position_ms
-        },
+        start_position_ms: start.position_ms,
     };
-    tracing::info!(index, stream = %title_cache::redact_url(&link.url), "switching source");
+    tracing::info!(index = start.index, stream = %title_cache::redact_url(&link.url), "starting a source");
     sources.fallback().reset();
     playback
         .start_at(active.item.clone(), &stream)
         .map_err(|error| format!("Cannot switch source: {error}"))?;
-    sources.session().mark_selected(index);
+    sources.session().mark_selected(start.index);
     let late = sources.session().unsent_subtitles(active.generation);
     if !late.is_empty() {
         playback.add_subtitles(&late);

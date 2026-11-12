@@ -47,46 +47,6 @@ pub async fn skip_source_check(
     Ok(())
 }
 
-/// Pauses current playback.
-#[tauri::command]
-#[tracing::instrument(level = "debug", skip_all, err)]
-pub async fn pause_playback(state: State<'_, AppState>) -> Result<(), String> {
-    let services = state.read();
-    let playback = services
-        .playback
-        .as_ref()
-        .ok_or_else(|| "Playback service unavailable".to_string())?;
-    playback.set_paused(true).map_err(|error| error.to_string())
-}
-
-/// Resumes current playback.
-#[tauri::command]
-#[tracing::instrument(level = "debug", skip_all, err)]
-pub async fn resume_playback(state: State<'_, AppState>) -> Result<(), String> {
-    let services = state.read();
-    let playback = services
-        .playback
-        .as_ref()
-        .ok_or_else(|| "Playback service unavailable".to_string())?;
-    playback
-        .set_paused(false)
-        .map_err(|error| error.to_string())
-}
-
-/// Seeks to a specific millisecond position.
-#[tauri::command]
-#[tracing::instrument(level = "debug", skip_all, fields(position_ms = ?position_ms), err)]
-pub async fn seek_to(position_ms: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let services = state.read();
-    let playback = services
-        .playback
-        .as_ref()
-        .ok_or_else(|| "Playback service unavailable".to_string())?;
-    playback
-        .seek_to(position_ms)
-        .map_err(|error| error.to_string())
-}
-
 /// Stops playback and frees video resources.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, err)]
