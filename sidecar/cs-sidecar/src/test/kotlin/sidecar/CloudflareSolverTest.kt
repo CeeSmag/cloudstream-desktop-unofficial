@@ -180,6 +180,16 @@ class CloudflareSolverTest {
     }
 
     @Test
+    fun `a request that starts in the same millisecond as a refusal is asked again, not refused with the old answer`() {
+        CloudflareSolver.clock = { 1_000L } // time stands still: the worst case of the race
+        val app = FakeApp(exchange, listOf("ok=false\nreason=waiting for the go-ahead\nretry=true\n", passed))
+        assertFailsWith<IOException> { get(client()) }
+        assertEquals(200, get(client()).first, "the second request came after the refusal, so it asks again")
+        app.stop()
+        assertEquals(2, app.verified.get())
+    }
+
+    @Test
     fun `requests queued while the app is asked for a go-ahead share that answer`() {
         val app = FakeApp(exchange, listOf("ok=false\nreason=waiting for the go-ahead\nretry=true\n"))
         val shared = client()
