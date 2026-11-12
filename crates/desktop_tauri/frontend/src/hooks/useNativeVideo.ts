@@ -1,23 +1,25 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
-
-let answer: Promise<boolean> | null = null;
+import type { VideoMode } from '../types';
 
 /**
  * True when mpv draws the picture into the application window itself (native video), so the
- * page must leave the player area see-through instead of painting frames on a canvas.
+ * page must leave the player area see-through instead of painting frames on a canvas. The answer
+ * is asked from the backend each time the player screen opens; until it arrives the canvas is assumed.
  */
 export function useNativeVideo(): boolean {
-  const [native, setNative] = useState(false);
+  const [mode, setMode] = useState<VideoMode>('canvas');
   useEffect(() => {
-    answer ??= api.getVideoMode().catch(() => false);
     let live = true;
-    void answer.then((value) => {
-      if (live) setNative(value);
-    });
+    api
+      .getVideoMode()
+      .then((answer) => {
+        if (live) setMode(answer);
+      })
+      .catch(() => undefined);
     return () => {
       live = false;
     };
   }, []);
-  return native;
+  return mode === 'native';
 }
