@@ -10,6 +10,7 @@ import { useSkipPromptWindow } from '../hooks/useSkipPromptWindow';
 import { SourceCheckPanel } from '../components/SourceCheckPanel';
 import { VideoCanvas } from '../components/VideoCanvas';
 import { useNativeVideo } from '../hooks/useNativeVideo';
+import { useSeeThrough } from '../hooks/useSeeThrough';
 import { OptionMenu } from '../components/OptionMenu';
 import { videoClickAction } from '../utils/menuHold';
 import { SeekBar } from '../components/SeekBar';
@@ -116,10 +117,15 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     else onSeek(prompt.toMs);
   };
 
-  // Native video: mpv's own window is under this page, so the page is see-through once it plays.
+  // Native video: mpv's own window is under this page, so the page is see-through once it has painted.
   const nativeVideo = useNativeVideo();
-  const seeThrough =
-    nativeVideo && status.has_video && (status.state === 'Playing' || status.state === 'Paused');
+  const seeThrough = useSeeThrough(nativeVideo, status);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('video-see-through', seeThrough);
+    return () => root.classList.remove('video-see-through');
+  }, [seeThrough]);
 
   const fade = controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
 

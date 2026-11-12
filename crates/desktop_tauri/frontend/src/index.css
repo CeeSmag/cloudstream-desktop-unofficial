@@ -139,3 +139,10 @@
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
+
+/* Native video: mpv's own window is under the page, so the page must not paint over it. */
+html.video-see-through,
+html.video-see-through body,
+html.video-see-through #root {
+  background: transparent !important;
+}
