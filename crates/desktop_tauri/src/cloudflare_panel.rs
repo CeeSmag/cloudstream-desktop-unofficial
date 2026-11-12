@@ -201,10 +201,16 @@ pub async fn place_cloudflare_panel(
 #[tauri::command]
 pub async fn cancel_cloudflare_panel(
     host: String,
+    app: AppHandle,
     control: State<'_, Arc<PanelControl>>,
 ) -> Result<(), String> {
     tracing::info!(%host, "the viewer cancelled the Cloudflare check");
     control.cancel();
+    // Park the view now: when no check is waiting (the site showed no challenge) nothing else would,
+    // and the view would stay over the page with no way to close it.
+    if let Some(view) = app.get_webview(&crate::cloudflare_window::label_for(&host)) {
+        park(&view);
+    }
     Ok(())
 }
 

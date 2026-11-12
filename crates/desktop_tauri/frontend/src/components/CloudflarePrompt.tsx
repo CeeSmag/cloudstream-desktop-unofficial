@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, ArrowRight } from 'lucide-react';
+import { ShieldCheck, ArrowRight, X } from 'lucide-react';
 
 interface CloudflarePromptProps {
   /** The site's host, as Cloudflare names it. */
@@ -9,14 +9,34 @@ interface CloudflarePromptProps {
   busy: boolean;
   /** The viewer says go: the check window may open. */
   onVerify: () => void;
+  /** When given, an X in the card's corner closes the message. */
+  onClose?: () => void;
+  /** Space around the card, for the Home page; a dialog turns it off. */
+  padded?: boolean;
 }
 
 /** Home's message when a site needs Cloudflare's "verify you are human" check before it can load. */
-export const CloudflarePrompt: React.FC<CloudflarePromptProps> = ({ host, provider, busy, onVerify }) => {
+export const CloudflarePrompt: React.FC<CloudflarePromptProps> = ({
+  host,
+  provider,
+  busy,
+  onVerify,
+  onClose,
+  padded = true,
+}) => {
   const name = provider ?? host;
   return (
-    <div className="flex justify-center py-12 sm:py-20">
-      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-surface-elevated p-6 sm:p-8 text-center">
+    <div className={`flex justify-center ${padded ? 'py-12 sm:py-20' : ''}`}>
+      <div className="relative w-full max-w-xl rounded-2xl border border-white/10 bg-surface-elevated p-6 sm:p-8 text-center">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-3 rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-accent/15 border border-accent/30">
           <ShieldCheck className="h-7 w-7 text-accent" />
         </div>
