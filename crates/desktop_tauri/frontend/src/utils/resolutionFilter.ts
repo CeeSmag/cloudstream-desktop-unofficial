@@ -1,24 +1,20 @@
 import { SourceInfo } from '../types';
 
 /** The resolution groups the viewer can filter the sources by. */
-export type ResolutionTier = '1K' | '2K' | '4K';
+export type ResolutionTier = '1080p' | '2160p';
 
 export const RESOLUTION_TIERS: { id: ResolutionTier; hint: string }[] = [
-  { id: '1K', hint: '1080p and lower' },
-  { id: '2K', hint: '1440p' },
-  { id: '4K', hint: '2160p (UHD) and higher' },
+  { id: '1080p', hint: '1080p and lower' },
+  { id: '2160p', hint: 'above 1080p: 1440p, 2160p (UHD) and higher' },
 ];
 
-/** Qualities up to this belong to 1K (1080p and lower), up to `TWO_K_LIMIT` to 2K, the rest to 4K. */
-const ONE_K_LIMIT = 1200;
-const TWO_K_LIMIT = 2000;
+/** Qualities up to this belong to 1080p (1080p and lower); anything above to 2160p. */
+const LOW_LIMIT = 1200;
 
-/** The group a stream's vertical resolution belongs to; null when the provider did not say. */
+/** The group a stream's vertical resolution (as the provider reports it) belongs to; null when unknown. */
 export function resolutionTier(quality: number): ResolutionTier | null {
   if (!Number.isFinite(quality) || quality <= 0) return null;
-  if (quality <= ONE_K_LIMIT) return '1K';
-  if (quality <= TWO_K_LIMIT) return '2K';
-  return '4K';
+  return quality <= LOW_LIMIT ? '1080p' : '2160p';
 }
 
 /**
@@ -35,7 +31,7 @@ export function filterSourcesByResolution(sources: SourceInfo[], wanted: Resolut
 
 /** How many sources are in each group (sources of unknown resolution count in none). */
 export function countByTier(sources: SourceInfo[]): Record<ResolutionTier, number> {
-  const counts: Record<ResolutionTier, number> = { '1K': 0, '2K': 0, '4K': 0 };
+  const counts: Record<ResolutionTier, number> = { '1080p': 0, '2160p': 0 };
   for (const source of sources) {
     const tier = resolutionTier(source.quality);
     if (tier !== null) counts[tier] += 1;

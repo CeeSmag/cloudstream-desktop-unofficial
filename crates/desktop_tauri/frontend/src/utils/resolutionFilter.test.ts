@@ -18,12 +18,12 @@ const source = (index: number, quality: number, selected = false): SourceInfo =>
 const indexes = (sources: SourceInfo[]) => sources.map((s) => s.index);
 
 describe('resolutionTier', () => {
-  it('puts 1080p and lower in 1K, 1440p in 2K, 2160p in 4K', () => {
-    expect(resolutionTier(360)).toBe('1K');
-    expect(resolutionTier(1080)).toBe('1K');
-    expect(resolutionTier(1440)).toBe('2K');
-    expect(resolutionTier(2160)).toBe('4K');
-    expect(resolutionTier(4320)).toBe('4K');
+  it('puts 1080p and lower in 1080p, and anything above in 2160p', () => {
+    expect(resolutionTier(360)).toBe('1080p');
+    expect(resolutionTier(1080)).toBe('1080p');
+    expect(resolutionTier(1440)).toBe('2160p');
+    expect(resolutionTier(2160)).toBe('2160p');
+    expect(resolutionTier(4320)).toBe('2160p');
   });
 
   it('has no group when the provider gave no resolution', () => {
@@ -40,25 +40,24 @@ describe('filterSourcesByResolution', () => {
     expect(indexes(filterSourcesByResolution(sources, []))).toEqual([0, 1, 2, 3, 4]);
   });
 
-  it('keeps the sources in any wanted group', () => {
-    expect(indexes(filterSourcesByResolution(sources, ['4K']))).toEqual([0]);
-    expect(indexes(filterSourcesByResolution(sources, ['1K']))).toEqual([1, 4]);
-    expect(indexes(filterSourcesByResolution(sources, ['2K', '4K']))).toEqual([0, 2]);
+  it('keeps the sources in a wanted group', () => {
+    expect(indexes(filterSourcesByResolution(sources, ['2160p']))).toEqual([0, 2]);
+    expect(indexes(filterSourcesByResolution(sources, ['1080p']))).toEqual([1, 4]);
   });
 
   it('hides sources of unknown resolution while a group is wanted', () => {
-    expect(indexes(filterSourcesByResolution(sources, ['1K', '2K', '4K']))).toEqual([0, 1, 2, 4]);
+    expect(indexes(filterSourcesByResolution(sources, ['1080p', '2160p']))).toEqual([0, 1, 2, 4]);
   });
 
   it('does not keep the playing source when it is not in a wanted group', () => {
     const playing = [source(0, 2160), source(1, 1080, true)];
-    expect(indexes(filterSourcesByResolution(playing, ['4K']))).toEqual([0]);
+    expect(indexes(filterSourcesByResolution(playing, ['2160p']))).toEqual([0]);
   });
 });
 
 describe('countByTier', () => {
   it('counts the sources in each group and ignores unknown resolutions', () => {
     const sources = [source(0, 2160), source(1, 1080), source(2, 1080), source(3, 0), source(4, 762)];
-    expect(countByTier(sources)).toEqual({ '1K': 3, '2K': 0, '4K': 1 });
+    expect(countByTier(sources)).toEqual({ '1080p': 3, '2160p': 1 });
   });
 });
