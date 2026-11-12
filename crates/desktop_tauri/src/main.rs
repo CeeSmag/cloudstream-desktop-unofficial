@@ -208,34 +208,13 @@ fn init_services(
     let gate = std::sync::Arc::new(cloudflare_gate::Gate::default());
     app.manage(std::sync::Arc::clone(&gate));
     cloudflare_watch::start(app.handle(), paths.data_dir(), &extensions, gate);
-    start_cleanup(app, paths, (sources, subtitles));
+    cleanup_start::start_for_app(app, paths, (sources, subtitles));
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())
 }
 
 /// How long downloaded subtitle files and the per-title lists are kept.
 const SUBTITLE_KEEP: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
-
-/// Puts the background cleanups into the cleanup queue, which waits until the app has fully started.
-fn start_cleanup(
-    app: &tauri::App,
-    paths: &AppPaths,
-    caches: (
-        std::sync::Arc<title_cache::TitleCache>,
-        std::sync::Arc<subtitle_store::SubtitleLoader>,
-    ),
-) {
-    let (sources, subtitles) = caches;
-    cleanup_start::start(
-        app.handle(),
-        cleanup_start::Cleanup {
-            data_dir: paths.data_dir().to_path_buf(),
-            log_file: paths.log_file(),
-            sources,
-            subtitles,
-        },
-    );
-}
 
 /// Wires the stream sources manager; returns the subtitle loader and the saved-sources cache it
 /// uses, which the cleanup queue also tidies.
