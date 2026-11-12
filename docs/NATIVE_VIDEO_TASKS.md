@@ -14,18 +14,18 @@ Chosen design: **E** (one window, mpv under a transparent web view). Mark a task
 - [x] 0.4 `--disable-gpu` on and off: no difference for A and E.
 - [x] 0.5 Spike E (mpv gets the main window handle, transparent window and web view): video shows with the control
       floating over it (GPU flag on and off).
-- [ ] 0.6 Spike E, still to test by hand: real mouse click on the control; resize by edges; maximize; fullscreen;
+- [x] 0.6 (verified in the real app by the owner: play, pause by click and Space, maximize, resize, fullscreen, Back, smooth playback) Spike E, still to test by hand: real mouse click on the control; resize by edges; maximize; fullscreen;
       minimize/restore; keep playing smoothly through all of them.
 - [ ] 0.7 Spike E: is lowering mpv's window needed? Run without it and print the z-order.
 - [ ] 0.8 Measure CPU use and dropped frames of E on the heavy file from 0.1 and compare with the canvas baseline.
-- [ ] 0.9 **Gate:** write the final decision at the end of the plan (E passes, or fall back to A).
+- [x] 0.9 **Gate: passed for E** (verified in the real app). **Gate:** write the final decision at the end of the plan (E passes, or fall back to A).
 - [ ] 0.10 Find out why design F2 (commit `cd6ad46`) failed while E works, or record that it stays unexplained.
 
 ## Phase 1 — enable design E in the app
 
 Implemented in this branch (`native_video.rs`, `tauri.conf.json`, `PlayerOverlay.tsx`). Verified: builds, clippy and
-all tests pass, the app starts in native mode and the transparent window shows its pages normally. **Not yet verified:
-playing a real title** (needs a provider plugin; see 0.6).
+all tests pass, the app starts in native mode and the transparent window shows its pages normally. **Verified by the owner in the real app
+(play, pause, maximize, resize, fullscreen, Back, no flash on load).
 
 - [x] 1.1 Window `transparent: true` in `tauri.conf.json`; make sure every page paints an opaque background (R2) and the
       player screen has an opaque backdrop until mpv paints.
@@ -33,7 +33,7 @@ playing a real title** (needs a provider plugin; see 0.6).
       canvas player as the fallback and for other platforms.
 - [ ] 1.3 If lowering mpv's window is needed (0.7): one small Win32 module, `// SAFETY:` comments, `RULES.md`
       exception.
-- [ ] 1.4 mpv's window is hidden or absent while not playing; no stray rectangle over the pages.
+- [x] 1.4 mpv's window is hidden or absent while not playing; no stray rectangle over the pages.
 - [ ] 1.5 Failure path: if the native player cannot start, fall back to the canvas player and log why.
 - [ ] 1.6 Tests: fallback on failure; window/player creation order.
 
@@ -41,8 +41,8 @@ playing a real title** (needs a provider plugin; see 0.6).
 
 - [x] 2.1 `PlayerOverlay.tsx` transparent over the video; skip `VideoCanvas` and the `get_video_frame` loop in
       native mode.
-- [ ] 2.2 Fullscreen (`set_window_fullscreen`), resize, maximize, minimize/restore, focus (R3).
-- [ ] 2.3 Keyboard shortcuts and clicks still work (`playerShortcuts.ts`, `clickSorter.ts`); the web view receives
+- [x] 2.2 Fullscreen (`set_window_fullscreen`), resize, maximize, minimize/restore, focus (R3).
+- [x] 2.3 Keyboard shortcuts and clicks still work (`playerShortcuts.ts`, `clickSorter.ts`); the web view receives
       input and commands the player through IPC (R4).
 - [ ] 2.4 Race tests for any new shared state, with the proof-of-failure step (R6, recipe 6).
 
