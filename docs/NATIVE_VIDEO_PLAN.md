@@ -2,7 +2,6 @@
 
 Branch: `feat/native-video-window`. Status: **Phase 0 mostly done. Chosen design: E (one window, mpv under a
 transparent web view).** Not yet proven: input, resize/maximize/fullscreen, heavy-file CPU. Production code not started.
-Task list: [NATIVE_VIDEO_TASKS.md](NATIVE_VIDEO_TASKS.md).
 
 ## 1. Problem
 
