@@ -20,6 +20,8 @@ pub struct SourceDto {
     pub label: String,
     /// `HLS`, `DASH`, a file type such as `MKV`, or `Video`.
     pub kind: String,
+    /// Vertical resolution the provider reports (for example 1080 or 2160), or 0 when unknown.
+    pub quality: i32,
     /// Host the stream is served from.
     pub host: String,
     /// The stream address, shown in full.
@@ -122,6 +124,7 @@ fn describe_sources(active: &ActiveSources) -> Vec<SourceDto> {
             index,
             label: full_label(link),
             kind: stream_kind(link),
+            quality: link.quality.max(0),
             host: stream_host(link),
             url: link.url.clone(),
             size_bytes: active.sizes.get(index).copied().flatten(),

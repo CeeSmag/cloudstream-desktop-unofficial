@@ -172,6 +172,8 @@ export interface SourceInfo {
   checking: boolean;
   /** `HLS`, `DASH`, a file type such as `MKV`, or `Video`. */
   kind: string;
+  /** Vertical resolution the provider reports (1080, 2160, ...), 0 when unknown. */
+  quality: number;
   /** Host the stream is served from. */
   host: string;
   /** The stream address. */

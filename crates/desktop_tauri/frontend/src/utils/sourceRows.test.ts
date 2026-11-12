@@ -8,6 +8,7 @@ const source = (over: Partial<SourceInfo>): SourceInfo => ({
   selected: false,
   checking: false,
   kind: 'MKV',
+  quality: 2160,
   host: 'cdn.example.com',
   url: 'https://cdn.example.com/file.mkv?sig=abc',
   size_bytes: 1_400_000_000,
