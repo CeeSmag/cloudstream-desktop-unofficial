@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SourceInfo } from '../types';
-import { filterSourcesByResolution, resolutionTier } from './resolutionFilter';
+import { countByTier, filterSourcesByResolution, resolutionTier } from './resolutionFilter';
 
 const source = (index: number, quality: number, selected = false): SourceInfo => ({
   index,
@@ -50,8 +50,15 @@ describe('filterSourcesByResolution', () => {
     expect(indexes(filterSourcesByResolution(sources, ['1K', '2K', '4K']))).toEqual([0, 1, 2, 4]);
   });
 
-  it('always keeps the source that is playing', () => {
+  it('does not keep the playing source when it is not in a wanted group', () => {
     const playing = [source(0, 2160), source(1, 1080, true)];
-    expect(indexes(filterSourcesByResolution(playing, ['4K']))).toEqual([0, 1]);
+    expect(indexes(filterSourcesByResolution(playing, ['4K']))).toEqual([0]);
+  });
+});
+
+describe('countByTier', () => {
+  it('counts the sources in each group and ignores unknown resolutions', () => {
+    const sources = [source(0, 2160), source(1, 1080), source(2, 1080), source(3, 0), source(4, 762)];
+    expect(countByTier(sources)).toEqual({ '1K': 3, '2K': 0, '4K': 1 });
   });
 });
