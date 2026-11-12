@@ -21,6 +21,8 @@ pub(crate) struct RecordingPlayer {
     pub(crate) refuses: Mutex<Vec<String>>,
     /// How long starting a stream takes.
     pub(crate) start_takes: Mutex<Duration>,
+    /// What `status` reports; the idle default when nothing is set.
+    pub(crate) reported: Mutex<Option<PlaybackStatus>>,
 }
 
 impl VideoPlayer for RecordingPlayer {
@@ -66,7 +68,11 @@ impl VideoPlayer for RecordingPlayer {
         Ok(())
     }
     fn status(&self) -> PlaybackStatus {
-        PlaybackStatus::default()
+        self.reported
+            .lock()
+            .expect("lock")
+            .clone()
+            .unwrap_or_default()
     }
 }
 
@@ -83,6 +89,15 @@ pub(crate) fn playing() -> PlaybackStatus {
     PlaybackStatus {
         state: PlaybackState::Playing,
         position_ms: 1_000,
+        ..PlaybackStatus::default()
+    }
+}
+
+/// What the player reports after a video has played to its end.
+pub(crate) fn ended() -> PlaybackStatus {
+    PlaybackStatus {
+        state: PlaybackState::Ended,
+        position_ms: 0,
         ..PlaybackStatus::default()
     }
 }

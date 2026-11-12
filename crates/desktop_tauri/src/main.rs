@@ -45,6 +45,8 @@ mod race_tests;
 #[cfg(test)]
 mod recording_player;
 mod repository_discovery;
+#[cfg(test)]
+mod restart_after_end_tests;
 mod saved_start;
 #[cfg(test)]
 mod session_race_tests;
@@ -70,6 +72,7 @@ mod subtitle_tests;
 mod test_subtitles;
 #[cfg(test)]
 mod test_titles;
+mod transport_commands;
 mod update_commands;
 mod video_commands;
 mod video_opening;
@@ -123,9 +126,9 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             browse_commands::browse_catalog,
             playback_commands::play_media,
             playback_commands::skip_source_check,
-            playback_commands::pause_playback,
-            playback_commands::resume_playback,
-            playback_commands::seek_to,
+            transport_commands::pause_playback,
+            transport_commands::resume_playback,
+            transport_commands::seek_to,
             playback_commands::stop_playback,
             playback_commands::get_playback_status,
             playback_commands::select_media_track,
