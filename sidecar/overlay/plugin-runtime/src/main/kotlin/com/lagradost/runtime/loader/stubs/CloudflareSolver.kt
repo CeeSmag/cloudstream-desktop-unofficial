@@ -54,6 +54,10 @@ object CloudflareSolver {
     @Volatile
     var heartbeatMs: Long = 10_000L
 
+    /** The clock that orders requests and answers; tests replace it to make a race exact. */
+    @Volatile
+    var clock: () -> Long = { System.currentTimeMillis() }
+
     private const val POLL_MS = 300L
     private const val PEEK_BYTES = 64 * 1024L
     private val CHALLENGE_MARKERS = listOf("Just a moment", "challenge-platform", "cf-chl", "_cf_chl_opt")
@@ -169,7 +173,7 @@ object CloudflareSolver {
     /** Has [host] verified, asking the app if needed; throws when the viewer did not (or could not) pass the check. */
     private fun solve(host: String, url: String): Clearance {
         refuseIfDeclined(host)
-        val waitingSince = System.currentTimeMillis()
+        val waitingSince = clock()
         synchronized(hostLocks.computeIfAbsent(host) { Any() }) {
             // Another request may have had the host verified while this one waited for its turn.
             clearances[host]?.takeIf { it.obtainedAt >= waitingSince }?.let {
@@ -177,14 +181,16 @@ object CloudflareSolver {
                 return it
             }
             refuseIfDeclined(host)
-            retryAnswers[host]?.takeIf { it.until >= waitingSince }?.let {
+            // Strictly later: a request that starts in the same millisecond as the answer came after it
+            // (it did not queue for it), so it asks the app again.
+            retryAnswers[host]?.takeIf { it.until > waitingSince }?.let {
                 log("INFO", "$host was asked about while this request waited (${it.reason}); failing at once")
                 throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
             }
             val answer = askApp(host, url)
             val clearance = answer.clearance
             if (clearance == null) {
-                if (!answer.remember) retryAnswers[host] = Declined(System.currentTimeMillis(), answer.reason)
+                if (!answer.remember) retryAnswers[host] = Declined(clock(), answer.reason)
                 if (answer.remember) declined[host] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
                 log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
                 throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
@@ -271,5 +277,6 @@ object CloudflareSolver {
         declined.clear()
         retryAnswers.clear()
         browserOnly.clear()
+        clock = { System.currentTimeMillis() }
     }
 }
