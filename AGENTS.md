@@ -138,7 +138,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 #### `crates/storage`
 - **Location**: `crates/storage/`
-- **Dependencies**: `core_model`, `rusqlite = "0.37"`, `thiserror`, `tracing`
+- **Dependencies**: `core_model`, `rusqlite = "0.41"`, `thiserror`, `tracing`
 - **Database Path**: `<data_dir>/cloudstream.db` (enables SQLite WAL mode).
 - **Verified Schema Migrations (`schema_migrations.rs`)**:
   - *Version 1*:

@@ -44,13 +44,21 @@ const MIGRATIONS: &[&str] = &[
              AND w.updated_at = latest.max_updated;",
 ];
 
+/// SQLite stores the schema version as a signed integer; one that does not fit is reported as
+/// an error instead of being guessed, because guessing could run the migrations again.
+fn version_conversion_error(error: std::num::TryFromIntError) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Integer, Box::new(error))
+}
+
 /// Brings the database schema up to date, running only the steps it has not seen.
 pub(crate) fn migrate(connection: &Connection) -> rusqlite::Result<()> {
-    let current: usize = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let stored: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let current = usize::try_from(stored).map_err(version_conversion_error)?;
     for (index, step) in MIGRATIONS.iter().enumerate().skip(current) {
-        tracing::info!(version = index + 1, "applying storage migration");
+        let version = i64::try_from(index + 1).map_err(version_conversion_error)?;
+        tracing::info!(version, "applying storage migration");
         connection.execute_batch(step)?;
-        connection.pragma_update(None, "user_version", index + 1)?;
+        connection.pragma_update(None, "user_version", version)?;
     }
     Ok(())
 }
@@ -64,10 +72,23 @@ mod tests {
         let connection = Connection::open_in_memory().expect("memory db");
         migrate(&connection).expect("first run");
         migrate(&connection).expect("second run");
-        let version: usize = connection
+        let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("version");
-        assert_eq!(version, MIGRATIONS.len());
+        assert_eq!(version, i64::try_from(MIGRATIONS.len()).expect("fits"));
+    }
+
+    #[test]
+    fn migrate_a_negative_stored_version_is_an_error_and_changes_nothing() {
+        let connection = Connection::open_in_memory().expect("memory db");
+        connection
+            .pragma_update(None, "user_version", -1)
+            .expect("set version");
+        assert!(migrate(&connection).is_err());
+        let tables: i64 = connection
+            .query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row.get(0))
+            .expect("count");
+        assert_eq!(tables, 0);
     }
 
     type MigratedPointer = (String, String, String, String, Option<String>, i64);
