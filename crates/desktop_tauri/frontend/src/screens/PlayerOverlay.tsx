@@ -21,6 +21,8 @@ import { trackOptions } from '../utils/trackMenu';
 import { filterSourcesBySubtitles } from '../utils/sourceFilter';
 import { preferredFlags } from '../utils/subtitleFlags';
 import { SubtitleFilter } from '../components/SubtitleFilter';
+import { ResolutionFilter } from '../components/ResolutionFilter';
+import { filterSourcesByResolution, ResolutionTier } from '../utils/resolutionFilter';
 import { sourceRow } from '../utils/sourceRows';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
@@ -86,7 +88,13 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   const [subtitleFilter, setSubtitleFilter] = React.useState<string[]>([]);
   const toggleSubtitleFilter = (code: string) =>
     setSubtitleFilter((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]));
-  const visibleSources = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
+  const [resolutionFilter, setResolutionFilter] = React.useState<ResolutionTier[]>([]);
+  const toggleResolutionFilter = (tier: ResolutionTier) =>
+    setResolutionFilter((current) => (current.includes(tier) ? current.filter((t) => t !== tier) : [...current, tier]));
+  const visibleSources = filterSourcesByResolution(
+    filterSourcesBySubtitles(sources, preferences, subtitleFilter),
+    resolutionFilter,
+  );
   const filterLanguages = preferences ? preferredFlags(preferences) : [];
   useSubtitleDiagnostics({
     tracks: status.tracks,
@@ -169,13 +177,21 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             icon={Layers}
             options={visibleSources.map((source) => sourceRow(source, preferences))}
             header={
-              <SubtitleFilter
-                languages={filterLanguages}
-                toggled={subtitleFilter}
-                onToggle={toggleSubtitleFilter}
-                shown={visibleSources.length}
-                total={sources.length}
-              />
+              <>
+                <ResolutionFilter
+                  toggled={resolutionFilter}
+                  onToggle={toggleResolutionFilter}
+                  shown={visibleSources.length}
+                  total={sources.length}
+                />
+                <SubtitleFilter
+                  languages={filterLanguages}
+                  toggled={subtitleFilter}
+                  onToggle={toggleSubtitleFilter}
+                  shown={visibleSources.length}
+                  total={sources.length}
+                />
+              </>
             }
             allowOff={false}
             wide

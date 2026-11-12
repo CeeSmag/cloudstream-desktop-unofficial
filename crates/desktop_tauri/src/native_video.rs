@@ -3,13 +3,10 @@
 //! The window is transparent and so is the page's player screen; mpv is given the window's own
 //! handle (`wid`) and makes a child window of its own below the web view, so the React controls
 //! float over the picture. Frames never pass through the CPU or the IPC. Where this is not
-//! possible (not Windows, a failed handle, or `CS_VIDEO_MODE=canvas`) the player keeps drawing
-//! into the page's canvas as before. See `docs/NATIVE_VIDEO_PLAN.md`.
+//! possible (not Windows, or no window handle) the player keeps drawing into the page's canvas as
+//! before. On Windows native is the only mode: there is no setting and no override. See `docs/NATIVE_VIDEO_PLAN.md`.
 
 use tauri::{App, Manager, State};
-
-/// The environment variable that forces a mode: `canvas` or `native`.
-pub const MODE_VARIABLE: &str = "CS_VIDEO_MODE";
 
 /// Which picture path the player was started with; read by the page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,19 +15,14 @@ pub struct VideoMode {
     pub native: bool,
 }
 
-/// Whether to try native video: Windows only, unless the variable says `canvas`.
-pub(crate) fn wants_native(variable: Option<&str>, windows: bool) -> bool {
-    match variable.map(str::trim) {
-        Some(value) if value.eq_ignore_ascii_case("canvas") => false,
-        Some(value) if value.eq_ignore_ascii_case("native") => true,
-        _ => windows,
-    }
+/// Whether to try native video: Windows only for now.
+pub(crate) fn wants_native(windows: bool) -> bool {
+    windows
 }
 
 /// The handle mpv should draw into, or `None` to keep the canvas player.
 pub fn window_handle(app: &App) -> Option<i64> {
-    let variable = std::env::var(MODE_VARIABLE).ok();
-    if !wants_native(variable.as_deref(), cfg!(windows)) {
+    if !wants_native(cfg!(windows)) {
         tracing::info!("video mode: canvas");
         return None;
     }
@@ -61,11 +53,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn windows_uses_native_unless_told_otherwise() {
-        assert!(wants_native(None, true));
-        assert!(!wants_native(None, false));
-        assert!(!wants_native(Some("canvas"), true));
-        assert!(wants_native(Some(" NATIVE "), false));
-        assert!(wants_native(Some("something else"), true));
+    fn native_is_used_on_windows_only() {
+        assert!(wants_native(true));
+        assert!(!wants_native(false));
     }
 }

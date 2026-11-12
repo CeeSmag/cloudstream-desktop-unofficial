@@ -20,6 +20,7 @@ const source = (index: number, languages: string[], selected = false): SourceInf
   selected,
   checking: false,
   kind: 'MKV',
+  quality: 1080,
   host: 'h',
   url: 'u',
   size_bytes: null,
