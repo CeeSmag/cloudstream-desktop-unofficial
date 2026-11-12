@@ -55,7 +55,7 @@ all tests pass, the app starts in native mode and the transparent window shows i
 
 ## Phase 4 — quality fixes (independent, can run in parallel)
 
-- [x] 4.1 (replaced by the owner's request: a 1K / 2K / 4K resolution filter in the player's Sources menu, same style as the subtitle filter) "Max quality" setting; `playable_links_best_first` prefers links at or under the cap, keeps the rest as fallbacks.
+- [x] 4.1 (replaced by the owner's request: a 1080p / 2160p resolution filter in the player's Sources menu, same style as the subtitle filter) "Max quality" setting; `playable_links_best_first` prefers links at or under the cap, keeps the rest as fallbacks.
 - [ ] 4.2 Automatic step-down: on sustained dropped frames, switch to the next lower verified source at the same
       position (reuse `source_fallback.rs`).
 - [ ] 4.3 Decoder options in `player_configuration.rs`: `vd-lavc-threads=0`, `vd-lavc-fast`, `framedrop=vo`, and try
