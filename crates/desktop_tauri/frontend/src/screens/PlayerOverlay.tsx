@@ -22,7 +22,7 @@ import { filterSourcesBySubtitles } from '../utils/sourceFilter';
 import { preferredFlags } from '../utils/subtitleFlags';
 import { SubtitleFilter } from '../components/SubtitleFilter';
 import { ResolutionFilter } from '../components/ResolutionFilter';
-import { filterSourcesByResolution, ResolutionTier } from '../utils/resolutionFilter';
+import { countByTier, filterSourcesByResolution, ResolutionTier } from '../utils/resolutionFilter';
 import { sourceRow } from '../utils/sourceRows';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
@@ -91,10 +91,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   const [resolutionFilter, setResolutionFilter] = React.useState<ResolutionTier[]>([]);
   const toggleResolutionFilter = (tier: ResolutionTier) =>
     setResolutionFilter((current) => (current.includes(tier) ? current.filter((t) => t !== tier) : [...current, tier]));
-  const visibleSources = filterSourcesByResolution(
-    filterSourcesBySubtitles(sources, preferences, subtitleFilter),
-    resolutionFilter,
-  );
+  const bySubtitles = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
+  const byResolution = filterSourcesByResolution(sources, resolutionFilter);
+  const visibleSources = filterSourcesByResolution(bySubtitles, resolutionFilter);
   const filterLanguages = preferences ? preferredFlags(preferences) : [];
   useSubtitleDiagnostics({
     tracks: status.tracks,
@@ -180,15 +179,16 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
               <>
                 <ResolutionFilter
                   toggled={resolutionFilter}
+                  counts={countByTier(sources)}
                   onToggle={toggleResolutionFilter}
-                  shown={visibleSources.length}
+                  shown={byResolution.length}
                   total={sources.length}
                 />
                 <SubtitleFilter
                   languages={filterLanguages}
                   toggled={subtitleFilter}
                   onToggle={toggleSubtitleFilter}
-                  shown={visibleSources.length}
+                  shown={bySubtitles.length}
                   total={sources.length}
                 />
               </>

@@ -23,12 +23,22 @@ export function resolutionTier(quality: number): ResolutionTier | null {
 
 /**
  * The sources whose resolution is in any of the wanted groups. With nothing wanted every source
- * is kept. The source that is playing always stays listed.
+ * is kept. Nothing else stays listed, not even the source that is playing: it would look like a match.
  */
 export function filterSourcesByResolution(sources: SourceInfo[], wanted: ResolutionTier[]): SourceInfo[] {
   if (wanted.length === 0) return sources;
   return sources.filter((source) => {
     const tier = resolutionTier(source.quality);
-    return source.selected || (tier !== null && wanted.includes(tier));
+    return tier !== null && wanted.includes(tier);
   });
+}
+
+/** How many sources are in each group (sources of unknown resolution count in none). */
+export function countByTier(sources: SourceInfo[]): Record<ResolutionTier, number> {
+  const counts: Record<ResolutionTier, number> = { '1K': 0, '2K': 0, '4K': 0 };
+  for (const source of sources) {
+    const tier = resolutionTier(source.quality);
+    if (tier !== null) counts[tier] += 1;
+  }
+  return counts;
 }
