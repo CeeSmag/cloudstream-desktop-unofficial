@@ -1,6 +1,6 @@
 # Native video window — plan
 
-Branch: `feat/native-video-window`. Status: **plan only, nothing built yet.**
+Branch: `feat/native-video-window`. Status: **Phase 0 done, gate passed for design A.** Production code not started.
 Task list: [NATIVE_VIDEO_TASKS.md](NATIVE_VIDEO_TASKS.md).
 
 ## 1. Problem
@@ -88,3 +88,27 @@ lower verified source on dropped frames, `hwdec` and decoder tuning, measured wi
 
 Windows, old laptop, 2K stream: smooth playback with controls visible and working; fullscreen works; seeking,
 pause, subtitles, source switching unchanged; falling back to canvas works; all quality gates pass.
+
+## 7. Phase 0 result (measured on this PC, Windows 11, 16 cores; spike code is in commit `44cbed6`)
+
+| Test | Result |
+|------|--------|
+| **B**: video child window under a transparent web view | **Fails.** The window shows the desktop behind it, no video, no controls (confirms F2). Dropped. |
+| **A**: mpv (`wid`, `vo=gpu`) in a child window, transparent owned top-level window above it | **Works.** Video plays in the native window; the HTML control draws over it with a see-through background. |
+| `--disable-gpu` on or off | No visible difference for A. |
+| Clicks on the overlay | **Work** (the viewer clicked it by hand; scripted clicks did not register, so only a real mouse is proven). |
+| Following the window while dragging | **Works**, stays glued (`WindowEvent::Moved/Resized` -> reposition). |
+| Resizing by the edges | Works. |
+| Maximize | **Flaw:** the overlay jumps to the final size before the window's animation finishes. Needs a fix (hide the overlay during the animation, or re-place it until the size settles). |
+| Playback while using the controls | Smooth (viewer's report). |
+| CPU | 0.19-0.27 CPU-seconds per 5 s (about 5% of one core) on a mostly static recording. **Not** compared with the canvas path, and this PC is not an old laptop. |
+
+**Gate: passed for design A.** Design B is dropped.
+
+Gotchas found (each cost time; the production code must handle them):
+1. The test exe needs the Windows manifest that `tauri_build` adds only to **bin** targets; as an example it crashed at start with `0xC0000139`.
+2. Windows of one app that share a WebView2 profile must have **identical** `additionalBrowserArgs`, or building the second one fails with `0x8007139F`. The overlay must use the main window's args.
+3. `tauri.conf.json` creates the `main` window itself; a code-built window needs another label.
+4. Data URLs need the `webview-data-url` feature; use a real page.
+5. When mpv's window goes away (stream ends) the empty child window class paints **white**; the surface must be hidden or cleared when playback stops.
+6. The overlay is a separate window: on maximize it leads the animation; minimize/restore, fullscreen, taskbar and Alt+Tab behaviour are **not yet tested**.

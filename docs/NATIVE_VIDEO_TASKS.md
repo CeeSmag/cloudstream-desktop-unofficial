@@ -1,19 +1,19 @@
 # Native video window — tasks
 
 Plan and the facts behind it: [NATIVE_VIDEO_PLAN.md](NATIVE_VIDEO_PLAN.md) (F1–F11 are referenced below).
-Mark a task `[x]` only when it is done **and** verified. Nothing is started yet.
+Mark a task `[x]` only when it is done **and** verified. Phase 0 is finished; the rest is not started.
 
 ## Phase 0 — spike (decision gate)
 
 - [ ] 0.1 Get a local 2K test file and set `CS_BENCH_VIDEO`; record CPU use and dropped frames of the **current**
       canvas path on this PC as the baseline (`t4_responsiveness.rs` timings).
-- [ ] 0.2 Spike B: child HWND for mpv (`wid`) under a transparent web view. Does video show? (F2 says it failed on
+- [x] 0.2 Spike B (fails, see plan section 7): child HWND for mpv (`wid`) under a transparent web view. Does video show? (F2 says it failed on
       the main HWND.) Record yes/no with a screenshot.
-- [ ] 0.3 Spike A: child HWND for mpv plus a transparent, undecorated top-level Tauri window above it with one
+- [x] 0.3 Spike A (works: video, transparency, clicks, follow on move/resize): child HWND for mpv plus a transparent, undecorated top-level Tauri window above it with one
       test button. Video visible? Button clickable? Window follows move/resize?
-- [ ] 0.4 Repeat 0.2/0.3 with and without `--disable-gpu` in `additionalBrowserArgs` (F10).
-- [ ] 0.5 Measure CPU use and dropped frames of the winning layout on the same 2K file.
-- [ ] 0.6 **Gate:** write the result at the end of the plan. If neither layout works, stop and do Phase 4 only.
+- [x] 0.4 Repeat 0.2/0.3 with and without `--disable-gpu` in `additionalBrowserArgs` (F10).
+- [ ] 0.5 (half done: native CPU measured, about 5% of one core on a static clip; same test on the canvas path and on a busy 2K clip still missing) Measure CPU use and dropped frames of the winning layout on the same 2K file.
+- [x] 0.6 **Gate: passed for design A** (plan section 7). write the result at the end of the plan. If neither layout works, stop and do Phase 4 only.
 
 ## Phase 1 — native video surface (only if the gate passes)
 
@@ -29,7 +29,7 @@ Mark a task `[x]` only when it is done **and** verified. Nothing is started yet.
 - [ ] 2.1 Page reports the player area rectangle (model on `place_cloudflare_panel`, async commands only — see
       `deadlock_tests.rs`).
 - [ ] 2.2 Host the existing `PlayerOverlay.tsx` UI in the chosen layer; make its background transparent over the video.
-- [ ] 2.3 Fullscreen (`set_window_fullscreen`), resize, minimize/restore, move, focus, always-on-top behaviour.
+- [ ] 2.3 Maximize animation (overlay currently jumps ahead), minimize/restore, taskbar and Alt+Tab, plus fullscreen (`set_window_fullscreen`), resize, minimize/restore, move, focus, always-on-top behaviour.
 - [ ] 2.4 Keyboard shortcuts and clicks still reach the player (`playerShortcuts.ts`, `clickSorter.ts`).
 - [ ] 2.5 Race tests for rectangle updates versus window events, with the proof-of-failure step (recipe 6).
 - [ ] 2.6 Remove or hide `VideoCanvas` and the `get_video_frame` loop while the native surface is active.
