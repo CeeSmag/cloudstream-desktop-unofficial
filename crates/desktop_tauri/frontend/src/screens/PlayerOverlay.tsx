@@ -18,16 +18,9 @@ import { BufferingIndicator } from '../components/BufferingIndicator';
 import { formatTime } from '../utils/playerTime';
 import { sourceText, trackText } from '../utils/feedbackText';
 import { trackOptions } from '../utils/trackMenu';
-import { filterSourcesBySubtitles } from '../utils/sourceFilter';
 import { preferredFlags } from '../utils/subtitleFlags';
-import { SubtitleFilter } from '../components/SubtitleFilter';
-import { ResolutionFilter } from '../components/ResolutionFilter';
-import {
-  countByTier,
-  filterSourcesByResolution,
-  ResolutionTier,
-  sortBySizeDescending,
-} from '../utils/resolutionFilter';
+import { SourceMenuHeader } from '../components/SourceMenuHeader';
+import { useSourceFilters } from '../hooks/useSourceFilters';
 import { sourceRow } from '../utils/sourceRows';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
@@ -90,22 +83,13 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   };
 
   const preferences = usePlayerPreferences();
-  const [subtitleFilter, setSubtitleFilter] = React.useState<string[]>([]);
-  const toggleSubtitleFilter = (code: string) =>
-    setSubtitleFilter((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]));
-  const [resolutionFilter, setResolutionFilter] = React.useState<ResolutionTier[]>([]);
-  const toggleResolutionFilter = (tier: ResolutionTier) =>
-    setResolutionFilter((current) => (current.includes(tier) ? current.filter((t) => t !== tier) : [...current, tier]));
-  const bySubtitles = filterSourcesBySubtitles(sources, preferences, subtitleFilter);
-  const byResolution = filterSourcesByResolution(sources, resolutionFilter);
-  const matching = filterSourcesByResolution(bySubtitles, resolutionFilter);
-  // With a resolution picked the biggest files come first (sources without a known size follow).
-  const visibleSources = resolutionFilter.length > 0 ? sortBySizeDescending(matching) : matching;
+  const filters = useSourceFilters(sources, preferences);
+  const visibleSources = filters.visibleSources;
   const filterLanguages = preferences ? preferredFlags(preferences) : [];
   useSubtitleDiagnostics({
     tracks: status.tracks,
     preferences,
-    filter: subtitleFilter,
+    filter: filters.subtitleFilter,
     shownSources: visibleSources.length,
     totalSources: sources.length,
   });
@@ -182,24 +166,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             label="Sources"
             icon={Layers}
             options={visibleSources.map((source) => sourceRow(source, preferences))}
-            header={
-              <>
-                <ResolutionFilter
-                  toggled={resolutionFilter}
-                  counts={countByTier(sources)}
-                  onToggle={toggleResolutionFilter}
-                  shown={byResolution.length}
-                  total={sources.length}
-                />
-                <SubtitleFilter
-                  languages={filterLanguages}
-                  toggled={subtitleFilter}
-                  onToggle={toggleSubtitleFilter}
-                  shown={bySubtitles.length}
-                  total={sources.length}
-                />
-              </>
-            }
+            header={<SourceMenuHeader filters={filters} languages={filterLanguages} total={sources.length} />}
             allowOff={false}
             wide
             open={trackMenu === 'sources'}
