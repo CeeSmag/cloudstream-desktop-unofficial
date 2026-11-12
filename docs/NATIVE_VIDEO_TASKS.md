@@ -82,7 +82,7 @@ all tests pass, the app starts in native mode and the transparent window shows i
 Found on 2026-11-13 after the 0.4.0 work. They are recorded here on purpose and are **not** to be fixed until the owner says so.
 
 - [x] F1 (done: now 297 lines, filters moved to `useSourceFilters.ts` and `SourceMenuHeader.tsx`) `PlayerOverlay.tsx` was 330 lines (limit 300, was 295 before this work): move the Sources menu header (resolution and subtitle filters) into its own component. (RULES §4)
-- [ ] F2 `crates/desktop_tauri/src/main.rs` is 303 lines (limit 300, was 297): move the native-video wiring out of `init_services`. (RULES §4)
+- [x] F2 (done: `native_video::prepare` does the start-up wiring; main.rs is now exactly 300 lines) `crates/desktop_tauri/src/main.rs` was 303 lines (limit 300, was 297): move the native-video wiring out of `init_services`. (RULES §4)
 - [ ] F3 `cargo deny check` fails on advisories: RUSTSEC-2026-0459 (`libsqlite3-sys`, C SQLite). It fails the same way on `024e478`, before this work, so it is not caused by it, but the gate was not run before the 0.4.0 release commit. Needs the owner's decision: update `rusqlite`/`libsqlite3-sys`, or a documented ignore. (RULES §8, §13)
 - [ ] F4 `crates/desktop_tauri/README.md` does not describe native video or the resolution filter. (RULES §12.6)
 - [x] F5 (done: the waiting logic is the pure `paintStep` in `utils/seeThrough.ts` with 8 tests incl. a stale-timeout race test, seen failing without its generation guard; the hook only feeds it) No test for the `useSeeThrough` hook itself (stays opaque until the position moves, the 1.5 s timeout for a video that starts paused, reset when playback stops); only its pure rule is tested. (RULES §9)

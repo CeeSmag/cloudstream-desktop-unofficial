@@ -175,8 +175,7 @@ fn init_services(
     paths: &AppPaths,
     debug_logs: DebugLogs,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wid = native_video::window_handle(app);
-    app.manage(native_video::VideoMode::from_handle(wid));
+    let wid = native_video::prepare(app);
     let options = ServiceOptions {
         headless_player: false,
         player_wid: wid,

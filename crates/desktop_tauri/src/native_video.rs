@@ -35,8 +35,16 @@ pub(crate) fn wants_native(windows: bool) -> bool {
     windows
 }
 
+/// Decides the video mode at start-up, stores it for the page (`get_video_mode`) and returns the
+/// window handle mpv should draw into, or `None` to keep the canvas player.
+pub fn prepare(app: &App) -> Option<i64> {
+    let handle = window_handle(app);
+    app.manage(VideoMode::from_handle(handle));
+    handle
+}
+
 /// The handle mpv should draw into, or `None` to keep the canvas player.
-pub fn window_handle(app: &App) -> Option<i64> {
+fn window_handle(app: &App) -> Option<i64> {
     if !wants_native(cfg!(windows)) {
         tracing::info!("video mode: canvas");
         return None;
