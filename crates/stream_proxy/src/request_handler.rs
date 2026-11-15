@@ -54,7 +54,8 @@ impl Handler {
     pub(crate) fn serve(&self, request: &HttpRequest, out: &mut impl Write) -> std::io::Result<()> {
         tracing::debug!(
             method = %request.method,
-            target = %request.target,
+            // The number only: the path also holds the stream's access token.
+            id = ?parse_path(&request.target).map(|path| path.id),
             range = ?request.header("range"),
             "a request to the stream proxy"
         );
