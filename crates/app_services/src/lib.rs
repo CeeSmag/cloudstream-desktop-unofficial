@@ -9,6 +9,7 @@ mod extension_load_report;
 mod extension_service;
 mod library_service;
 mod link_search;
+mod playback_resume;
 mod playback_service;
 mod playback_types;
 mod plugin_index;
@@ -33,9 +34,8 @@ pub use extension_load_report::{ExtensionLoadReport, LoadProgress};
 pub use extension_service::ExtensionService;
 pub use library_service::LibraryService;
 pub use link_search::{LinkBatch, LinkSearch};
-pub use playback_service::{
-    is_over_watch_threshold, PlaybackService, NEXT_WATCH_EPISODE_PERCENTAGE,
-};
+pub use playback_resume::{is_over_watch_threshold, NEXT_WATCH_EPISODE_PERCENTAGE};
+pub use playback_service::PlaybackService;
 pub use playback_types::{NextEpisode, PlaybackItem, StreamSelection};
 pub use plugin_index::{IndexedRepository, PluginHit, PluginIndex};
 pub use repository_service::RepositoryService;

@@ -1,28 +1,15 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
-use core_model::{PlayableLink, ResumePointer, SubtitleTrack, WatchProgress};
+use core_model::{PlayableLink, SubtitleTrack, WatchProgress};
 use player_api::{PlaybackState, PlaybackStatus, VideoPlayer};
 use storage::{ResumeStore, WatchProgressStore};
 
-use crate::playback_types::{build_request, subtitle_sources};
+use crate::playback_resume::{is_over_watch_threshold, resume_change, ResumeChange};
+use crate::playback_types::{build_request, subtitle_sources, PlaybackItem, StreamSelection};
 use crate::{Clock, ServiceError};
-
-#[allow(unused_imports)]
-pub use crate::playback_types::{NextEpisode, PlaybackItem, StreamSelection};
 
 /// Progress is saved when the position moved at least this far since the last save.
 const SAVE_EVERY_MS: i64 = 5_000;
-
-/// Percentage of video watched to advance to the next episode (or mark finished).
-pub const NEXT_WATCH_EPISODE_PERCENTAGE: f64 = 0.90;
-
-/// Returns whether playback reached the completion threshold to advance to the next episode.
-pub fn is_over_watch_threshold(position_ms: i64, duration_ms: i64) -> bool {
-    if duration_ms <= 0 {
-        return false;
-    }
-    (position_ms as f64) / (duration_ms as f64) >= NEXT_WATCH_EPISODE_PERCENTAGE
-}
 
 struct ActivePlayback {
     item: PlaybackItem,
@@ -263,38 +250,14 @@ impl PlaybackService {
         item: &PlaybackItem,
         status: &PlaybackStatus,
     ) -> Result<(), ServiceError> {
-        if item.detail_url.is_empty() {
-            return Ok(());
-        }
-        let finished = status.state == PlaybackState::Ended;
-        let over_threshold = is_over_watch_threshold(status.position_ms, status.duration_ms);
-        let now_ms = self.clock.now_ms();
-        if finished || over_threshold {
-            if let Some(next) = &item.next_episode {
-                self.resume.save(&ResumePointer {
-                    provider: item.provider.clone(),
-                    detail_url: item.detail_url.clone(),
-                    media_key: next.media_key.clone(),
-                    title: item.title.clone(),
-                    poster_url: item.poster_url.clone(),
-                    season: next.season,
-                    episode: next.episode,
-                    updated_at_ms: now_ms,
-                })?;
-            } else {
+        match resume_change(item, status, self.clock.now_ms()) {
+            ResumeChange::Nothing => {}
+            ResumeChange::Save(pointer) => {
+                self.resume.save(&pointer)?;
+            }
+            ResumeChange::Remove => {
                 self.resume.remove(&item.provider, &item.detail_url)?;
             }
-        } else {
-            self.resume.save(&ResumePointer {
-                provider: item.provider.clone(),
-                detail_url: item.detail_url.clone(),
-                media_key: item.media_key.clone(),
-                title: item.title.clone(),
-                poster_url: item.poster_url.clone(),
-                season: item.season,
-                episode: item.episode,
-                updated_at_ms: now_ms,
-            })?;
         }
         Ok(())
     }

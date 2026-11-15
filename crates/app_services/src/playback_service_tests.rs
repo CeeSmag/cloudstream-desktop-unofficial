@@ -1,6 +1,7 @@
 use storage::Database;
 
 use super::*;
+use crate::playback_types::NextEpisode;
 use crate::test_support::{FakePlayer, FixedClock};
 
 fn setup() -> (
