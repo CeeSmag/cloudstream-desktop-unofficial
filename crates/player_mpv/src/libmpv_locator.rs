@@ -178,8 +178,12 @@ mod tests {
         assert_eq!(sources(vec![folder], false).candidates(), vec![file]);
     }
 
+    /// An empty folder for one test. It is named by the process id, which Windows reuses: a folder
+    /// left by an earlier run with the same id still held its `libmpv-2.dll`, and the test that
+    /// expects an empty folder failed now and then. So any old one is removed first.
     fn tempfile_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("mpv_locator_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp folder created");
         dir
     }
