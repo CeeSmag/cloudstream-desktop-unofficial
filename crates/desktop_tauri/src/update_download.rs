@@ -5,6 +5,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use sha2::{Digest, Sha256};
+
 use crate::update_assets::GitHubRelease;
 use crate::update_error::UpdateError;
 
@@ -18,6 +20,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 /// How long connecting to GitHub may take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The checksum list and its signature are a few hundred bytes; anything far bigger is not one.
+const RELEASE_TEXT_LIMIT: u64 = 64 * 1024;
 /// Bytes read from the connection per step; each step reports progress.
 const CHUNK_BYTES: usize = 64 * 1024;
 /// Owner may read, write, run; others may read and run (an AppImage must be runnable).
@@ -66,14 +70,16 @@ fn content_length(response: &ureq::http::Response<ureq::Body>) -> u64 {
         .unwrap_or(0)
 }
 
-/// Copies `reader` into `dest`, telling `on_progress` after every chunk.
+/// Copies `reader` into `dest`, telling `on_progress` after every chunk, and returns the SHA-256 of
+/// everything copied (hashed on the way, so the file is not read twice).
 fn copy_with_progress(
     reader: &mut dyn Read,
     dest: &Path,
     total_bytes: u64,
     on_progress: &mut dyn FnMut(DownloadProgress),
-) -> Result<(), UpdateError> {
+) -> Result<[u8; 32], UpdateError> {
     let mut file = File::create(dest).map_err(|error| UpdateError::disk("create", dest, error))?;
+    let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; CHUNK_BYTES];
     let mut downloaded_bytes: u64 = 0;
     loop {
@@ -83,6 +89,7 @@ fn copy_with_progress(
         };
         file.write_all(chunk)
             .map_err(|error| UpdateError::disk("write", dest, error))?;
+        hasher.update(chunk);
         downloaded_bytes += chunk.len() as u64;
         on_progress(DownloadProgress {
             downloaded_bytes,
@@ -90,23 +97,20 @@ fn copy_with_progress(
         });
     }
     file.flush()
-        .map_err(|error| UpdateError::disk("write", dest, error))
+        .map_err(|error| UpdateError::disk("write", dest, error))?;
+    Ok(hasher.finalize().into())
 }
 
-/// Downloads `url` into the temp folder, named like `target` so the helper can move it into place,
-/// and returns where it is. The file appears under its final name only once it is complete.
+/// Downloads `url` to `dest` and returns the file's SHA-256. The file appears under `dest` only
+/// once it is complete (it is written to `<dest>.part` first).
 pub(crate) fn download_update(
     url: &str,
-    target: &Path,
+    dest: &Path,
     on_progress: &mut dyn FnMut(DownloadProgress),
-) -> Result<PathBuf, UpdateError> {
-    let extension = target
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or("exe");
-    let temp_dir = std::env::temp_dir();
-    let finished = temp_dir.join(format!("CloudStream_update.{extension}"));
-    let partial = temp_dir.join(format!("CloudStream_update.{extension}.part"));
+) -> Result<[u8; 32], UpdateError> {
+    let mut partial = dest.as_os_str().to_owned();
+    partial.push(".part");
+    let partial = PathBuf::from(partial);
 
     let response = http_agent(DOWNLOAD_TIMEOUT)
         .get(url)
@@ -115,24 +119,25 @@ pub(crate) fn download_update(
         .map_err(|error| UpdateError::request("download the update", error))?;
     let total_bytes = content_length(&response);
     let mut reader = response.into_body().into_reader();
-    copy_with_progress(&mut reader, &partial, total_bytes, on_progress)?;
+    let sha256 = copy_with_progress(&mut reader, &partial, total_bytes, on_progress)?;
 
-    remove_leftover(&finished);
-    std::fs::rename(&partial, &finished)
-        .map_err(|error| UpdateError::disk("move", &finished, error))?;
-    make_executable(&finished);
-    Ok(finished)
+    std::fs::rename(&partial, dest).map_err(|error| UpdateError::disk("move", dest, error))?;
+    make_executable(dest);
+    Ok(sha256)
 }
 
-/// A finished file from an earlier, abandoned update. If it cannot be removed, the rename below
-/// fails with the real reason, so only log it here.
-fn remove_leftover(path: &Path) {
-    if !path.exists() {
-        return;
-    }
-    if let Err(error) = std::fs::remove_file(path) {
-        tracing::warn!(path = %path.display(), %error, "cannot remove the previous update download");
-    }
+/// Downloads a small text file of the release (the checksum list, its signature).
+pub(crate) fn fetch_release_text(url: &str, what: &'static str) -> Result<String, UpdateError> {
+    http_agent(REQUEST_TIMEOUT)
+        .get(url)
+        .header("User-Agent", &user_agent())
+        .call()
+        .map_err(|error| UpdateError::request(what, error))?
+        .into_body()
+        .with_config()
+        .limit(RELEASE_TEXT_LIMIT)
+        .read_to_string()
+        .map_err(|error| UpdateError::request(what, error))
 }
 
 /// The AppImage must be runnable. If this fails the helper script runs `chmod +x` again, so a failure
@@ -161,7 +166,7 @@ mod tests {
         let data = vec![7u8; 150 * 1024];
         let mut seen = Vec::new();
 
-        copy_with_progress(&mut data.as_slice(), &dest, 150 * 1024, &mut |progress| {
+        let sha256 = copy_with_progress(&mut data.as_slice(), &dest, 150 * 1024, &mut |progress| {
             seen.push(progress.downloaded_bytes)
         })
         .unwrap();
@@ -169,7 +174,20 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), data);
         assert_eq!(seen.last(), Some(&(150 * 1024)));
         assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(sha256, <[u8; 32]>::from(Sha256::digest(&data)));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn copy_with_progress_known_input_returns_its_sha256() {
+        let dir = std::env::temp_dir().join(format!("cs_update_sha_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sha256 = copy_with_progress(&mut b"abc".as_slice(), &dir.join("abc"), 3, &mut |_| {});
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            crate::update_verify::to_hex(&sha256.unwrap()),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

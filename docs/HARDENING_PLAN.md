@@ -77,6 +77,8 @@ Done when: `cargo clippy -p desktop_tauri --all-targets -- -D warnings` and the 
 
 ### U4. Verify before installing
 
+**Status: done (app side).** `update_verify.rs`, `update_folder.rs`, `update_prepare.rs`; `apply_update` takes no address. Crates: `minisign-verify` (no dependencies), `sha2`; tests sign with `minisign` (dev only) and a key made per test, so no test key is checked in. `update_signing_key.pub` holds no key yet: until the owner adds theirs, every build refuses updates (`NoUpdateKey`). Not verified: a real end-to-end install (needs a signed release, U5).
+
 - `apply_update` no longer takes a URL. The page calls `apply_update()`; the backend fetches the latest release again, picks the asset itself (`update_assets.rs`) and also finds `SHA256SUMS` and `SHA256SUMS.minisig` in the same release. (Fixes 1a. Update `api.ts`, `UpdateCard.tsx`.)
 - New `update_verify.rs`: `verify_checksums(sums, sig, public_key) -> Result<Checksums, UpdateError>` and `verify_file(path, expected_sha256)`. Hash while streaming in `stream_to_file` (no second read).
 - Download into a fresh folder under the app's own data folder (`<data>/updates/<random>/`), not the shared temp folder; write the helper script there too (fixes 1b). Remove the folder on any failure.

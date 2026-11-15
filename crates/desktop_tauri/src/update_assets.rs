@@ -31,7 +31,21 @@ fn find_named(assets: &[GitHubAsset], fits: impl Fn(&str) -> bool) -> Option<&Gi
     assets.iter().find(|asset| fits(&asset.name.to_lowercase()))
 }
 
-/// The Windows file: the portable exe (or zip) for a portable copy, else the installer.
+/// The release's checksum list (`sha256sum` output for every release file).
+pub(crate) const CHECKSUMS_FILE: &str = "SHA256SUMS";
+
+/// The minisign signature of `CHECKSUMS_FILE`.
+pub(crate) const CHECKSUMS_SIGNATURE_FILE: &str = "SHA256SUMS.minisig";
+
+/// The release file named exactly `name`.
+pub(crate) fn find_release_file<'a>(
+    assets: &'a [GitHubAsset],
+    name: &str,
+) -> Option<&'a GitHubAsset> {
+    assets.iter().find(|asset| asset.name == name)
+}
+
+/// The Windows file:the portable exe (or zip) for a portable copy, else the installer.
 pub(crate) fn select_windows_asset(
     assets: &[GitHubAsset],
     is_portable: bool,
@@ -129,6 +143,20 @@ mod tests {
             _ => "CloudStream-0.3.1-x86_64.AppImage",
         };
         assert_eq!(name_of(select_linux_asset(&assets)), Some(expected));
+    }
+
+    #[test]
+    fn find_release_file_checksum_names_match_exactly() {
+        let assets = vec![asset("SHA256SUMS.minisig"), asset("SHA256SUMS")];
+        assert_eq!(
+            name_of(find_release_file(&assets, CHECKSUMS_FILE)),
+            Some("SHA256SUMS")
+        );
+        assert_eq!(
+            name_of(find_release_file(&assets, CHECKSUMS_SIGNATURE_FILE)),
+            Some("SHA256SUMS.minisig")
+        );
+        assert!(find_release_file(&assets, "sha256sums").is_none());
     }
 
     #[test]

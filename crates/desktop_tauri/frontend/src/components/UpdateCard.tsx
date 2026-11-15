@@ -51,7 +51,7 @@ export const UpdateCard: React.FC<UpdateCardProps> = ({ onError }) => {
     if (!updateInfo?.download_url) return;
     setUpdating(true);
     try {
-      await api.applyUpdate(updateInfo.download_url);
+      await api.applyUpdate();
     } catch (error) {
       onError(error);
       setStatusMessage(`Update failed: ${describeError(error)}`);

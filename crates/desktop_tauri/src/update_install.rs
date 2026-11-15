@@ -91,15 +91,20 @@ fn unix_script(pid: u32, downloaded: &Path, target: &Path) -> String {
     )
 }
 
-/// Writes the helper script and starts it detached. The caller exits the app right after.
+/// Writes the helper script into `folder` (the update attempt's own folder) and starts it detached.
+/// The caller exits the app right after.
 #[cfg(windows)]
-pub(crate) fn start_install_helper(downloaded: &Path, target: &Path) -> Result<(), UpdateError> {
+pub(crate) fn start_install_helper(
+    downloaded: &Path,
+    target: &Path,
+    folder: &Path,
+) -> Result<(), UpdateError> {
     use std::os::windows::process::CommandExt;
     /// Windows process flag: run the console helper without showing a console window.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let pid = std::process::id();
-    let script = std::env::temp_dir().join(format!("cs_update_{pid}.bat"));
+    let script = folder.join("install.bat");
     std::fs::write(&script, windows_script(pid, downloaded, target))
         .map_err(|error| UpdateError::disk("write", &script, error))?;
     std::process::Command::new("cmd.exe")
@@ -111,11 +116,16 @@ pub(crate) fn start_install_helper(downloaded: &Path, target: &Path) -> Result<(
     Ok(())
 }
 
-/// Writes the helper script and starts it detached. The caller exits the app right after.
+/// Writes the helper script into `folder` (the update attempt's own folder) and starts it detached.
+/// The caller exits the app right after.
 #[cfg(not(windows))]
-pub(crate) fn start_install_helper(downloaded: &Path, target: &Path) -> Result<(), UpdateError> {
+pub(crate) fn start_install_helper(
+    downloaded: &Path,
+    target: &Path,
+    folder: &Path,
+) -> Result<(), UpdateError> {
     let pid = std::process::id();
-    let script = std::env::temp_dir().join(format!("cs_update_{pid}.sh"));
+    let script = folder.join("install.sh");
     std::fs::write(&script, unix_script(pid, downloaded, target))
         .map_err(|error| UpdateError::disk("write", &script, error))?;
     // No permission change needed: the script is run as `sh <script>`, not executed directly.

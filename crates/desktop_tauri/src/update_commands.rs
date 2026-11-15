@@ -2,18 +2,18 @@
 //! `update_*` files; these commands run it off the window's thread and turn errors into text.
 #![forbid(unsafe_code)]
 
-use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, State};
+
+use crate::data_commands::DataFolder;
 use crate::update_assets::select_platform_asset;
-use crate::update_download::{
-    download_update, fetch_latest_release, DownloadProgress, CURRENT_VERSION,
-};
+use crate::update_download::{fetch_latest_release, DownloadProgress, CURRENT_VERSION};
 use crate::update_error::UpdateError;
-use crate::update_install::{
-    is_portable_environment, start_install_helper, target_executable_path,
-};
-use crate::update_version::{clean_version, is_version_newer};
+use crate::update_install::{is_portable_environment, start_install_helper};
+use crate::update_prepare::{offers_update, prepare_update};
+use crate::update_version::clean_version;
 
 const UPDATE_PROGRESS_EVENT: &str = "update-progress";
 
@@ -30,7 +30,8 @@ pub struct UpdateCheckResult {
     pub release_name: Option<String>,
     /// Release notes / body from GitHub.
     pub release_notes: Option<String>,
-    /// Direct download URL for the target platform asset.
+    /// Download address of the file for this system (shown only; `apply_update` finds the file
+    /// itself and never takes an address from the page).
     pub download_url: Option<String>,
     /// File name of the asset.
     pub asset_name: Option<String>,
@@ -51,15 +52,6 @@ pub struct UpdateProgressPayload {
     pub percent: u32,
 }
 
-/// Whether the release tagged `tag` is an update. A tag that is not a version is not offered, because
-/// guessing could offer an older release; the page then says this version is the latest.
-fn is_update(tag: &str) -> bool {
-    is_version_newer(tag, CURRENT_VERSION).unwrap_or_else(|error| {
-        tracing::warn!(%error, current = CURRENT_VERSION, "not offering the latest release");
-        false
-    })
-}
-
 fn check_latest_release() -> Result<UpdateCheckResult, UpdateError> {
     let release = fetch_latest_release()?;
     let is_portable = is_portable_environment();
@@ -67,7 +59,7 @@ fn check_latest_release() -> Result<UpdateCheckResult, UpdateError> {
     Ok(UpdateCheckResult {
         current_version: CURRENT_VERSION.to_string(),
         latest_version: clean_version(&release.tag_name).to_string(),
-        has_update: is_update(&release.tag_name),
+        has_update: offers_update(&release.tag_name),
         download_url: asset.map(|asset| asset.browser_download_url.clone()),
         asset_name: asset.map(|asset| asset.name.clone()),
         asset_size: asset.map(|asset| asset.size),
@@ -119,20 +111,24 @@ fn progress_reporter(app: &AppHandle) -> impl FnMut(DownloadProgress) + '_ {
     }
 }
 
-fn install_update(app: &AppHandle, download_url: &str) -> Result<(), UpdateError> {
-    let target = target_executable_path()?;
-    tracing::info!(download_url, target = %target.display(), "downloading the update");
-    let downloaded = download_update(download_url, &target, &mut progress_reporter(app))?;
-    start_install_helper(&downloaded, &target)?;
-    tracing::info!(downloaded = %downloaded.display(), "update downloaded; closing so the helper can install it");
+fn install_update(app: &AppHandle, data_dir: &Path) -> Result<(), UpdateError> {
+    let prepared = prepare_update(data_dir, &mut progress_reporter(app))?;
+    start_install_helper(&prepared.file, &prepared.target, &prepared.folder)?;
+    tracing::info!(
+        downloaded = %prepared.file.display(),
+        target = %prepared.target.display(),
+        "checked update downloaded; closing so the helper can install it"
+    );
     app.exit(0);
     Ok(())
 }
 
-/// Downloads the specified release asset and replaces the application.
+/// Downloads the latest release's file for this system, checks it against the release's signed
+/// checksum list and replaces the application with it. The page cannot choose what is downloaded.
 #[tauri::command]
-pub async fn apply_update(app: AppHandle, download_url: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || install_update(&app, &download_url))
+pub async fn apply_update(app: AppHandle, folder: State<'_, DataFolder>) -> Result<(), String> {
+    let data_dir = folder.0.clone();
+    tauri::async_runtime::spawn_blocking(move || install_update(&app, &data_dir))
         .await
         .map_err(|error| format!("Update stopped unexpectedly: {error}"))?
         .map_err(|error| {

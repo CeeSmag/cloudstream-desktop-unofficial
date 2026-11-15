@@ -240,6 +240,9 @@ export const api = {
   /** Checks GitHub releases for an available application update. */
   checkForUpdates: () => invokeTauri<UpdateCheckResult>('check_for_updates'),
 
-  /** Downloads the update payload and launches the updater script. */
-  applyUpdate: (downloadUrl: string) => invokeTauri<void>('apply_update', { downloadUrl }),
+  /**
+   * Downloads the latest release's file for this system, checks it against the release's signed
+   * checksum list and launches the updater script. The backend picks the file; the page cannot.
+   */
+  applyUpdate: () => invokeTauri<void>('apply_update'),
 };

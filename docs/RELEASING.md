@@ -11,6 +11,17 @@ A release is three files, built from one tagged commit:
 The in-app updater reads the GitHub release and picks the file by its name (`*-setup.exe`,
 `*_portable.exe`, and the `*.AppImage` whose name contains `x86_64` or `aarch64`), so keep these names.
 
+## Signed releases (the app refuses unsigned ones)
+
+From the version after 0.4.2 the app installs an update only when the release carries `SHA256SUMS`
+(`sha256sum` of every release file) and `SHA256SUMS.minisig` (its minisign signature), the signature
+is valid for the public key in `crates/desktop_tauri/update_signing_key.pub`, and the downloaded file's
+SHA-256 is the one in the list. Otherwise it shows why and installs nothing.
+
+Until the owner's public key is in that file (it holds only a comment now), every build refuses all
+updates: **do not release before the key is set up.** Signing in the release workflow is the next step
+(U5 in `docs/HARDENING_PLAN.md`).
+
 ## The normal way: let GitHub build it
 
 1. Bump the version to the new number in four places: `Cargo.toml` (`[workspace.package]`), `Cargo.lock`
