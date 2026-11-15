@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { findNextEpisode, findPreviousEpisode, playbackTitle } from '../playback/episodeLookup';
 import { shouldAutoAdvance } from '../playback/autoAdvance';
 import { logEvent } from '../utils/logger';
+import { useChapterSkips } from './useChapterSkips';
 import { useSkipSegments } from './useSkipSegments';
 import { CheckProgress, Episode, MediaDetails, PlaybackStatus, SourceInfo } from '../types';
 import { onBackendEvent } from '../utils/backendEvents';
@@ -165,7 +166,8 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
   const previous = playing ? findPreviousEpisode(playing.details.episodes, playing.episode) : null;
   const next = playing ? findNextEpisode(playing.details.episodes, playing.episode) : null;
 
-  const skipSegments = useSkipSegments(playing, status.duration_ms);
+  const onlineSkips = useSkipSegments(playing, status.duration_ms);
+  const skipSegments = useChapterSkips(status.chapters, status.duration_ms, onlineSkips);
 
   const playNeighbour = async (target: Episode | null) => {
     if (playing && target) await start(playing.details, target);
