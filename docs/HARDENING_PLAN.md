@@ -106,15 +106,34 @@ Quote paths with a proper shell-quoting function (a path with `"` or `$` current
 ## Phase 2: CI
 
 ### C1. `cargo deny` and `cargo audit` in CI
+**Status: done** (`supply-chain` job, also weekly on Mondays; the other jobs skip the weekly run).
+
 New job `supply-chain` on `ubuntu-latest`: `EmbarkStudios/cargo-deny-action@v2` (uses `deny.toml`) and `cargo audit` via `taiki-e/install-action`. Also run it on a weekly `schedule:` so a new advisory shows up without a push.
 
 ### C2. Linux Rust job
+**Status: job written, not green yet.** `rust-linux` (whole workspace, 60-minute timeout). A first run in a
+Debian 12 container (Rust 1.100, 2026-11-16, same packages as the job) found, before it was stopped:
+- **Clippy fails on Linux:** `cognitive_complexity` over 10 in `extension_runtime`: `reply_wait.rs`
+  `await_reply` (16), `rpc_provider_gateway.rs` `log_call` (32), `sidecar_output.rs` `log_stderr` (39) and
+  `log_cloudflare_line` (23), `sidecar_process_transport.rs` `replay_startup_calls` (26), `call` (12),
+  `shutdown` (24), and more (the output was cut). Windows CI passes with the same Rust, so these are
+  Linux-only paths. To do on Linux: `cargo clippy --workspace --all-targets -- -D warnings`, split them.
+- **A test hung:** `unix_replace_script_running_app_waits_until_it_ends` spawned the stand-in app and never
+  reaped it, so `kill -0` kept finding the zombie. Fixed (a thread reaps it, as the desktop reaps the real
+  app); not yet run on Linux.
+- Everything else in that run: the workflow YAML parses, the file-length tests pass. The tests did not
+  finish, so the rest of the Linux test results are unknown.
+
 New job `rust-linux` on `ubuntu-24.04`: install the Tauri/WebKitGTK build packages (reuse the list in `scripts/build_release.sh --install-deps`), then `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`. This compiles the `#[cfg(not(windows))]` updater path and runs U4/U6 tests on Unix. Start with `cargo test -p desktop_tauri -p app_services` if the whole workspace is too slow, then widen.
 
 ### C3. File-length check
+**Status: done**, on at once instead of after R1: the five files R1 splits are in `scripts/file_length_baseline.txt`, may not grow, and must leave the list when split. Integration-test files (`tests/`, `*tests.rs`) are not checked (`player_mpv/tests/t4_headless_playback.rs` has 470 lines).
+
 `scripts/check_file_lengths.py` (or a small `xtask`): fails on any `*.rs` outside `tests/` and `*_tests.rs` over 300 lines, prints the list. Add it to `ci.yml` and to the `justfile` `gates` target. Turn it on after R1, so it starts green.
 
 ### C4. Keep `gates` and CI the same list
+**Status: done** (`just gates` gained `lengths`; `RULES.md` §8 lists audit and the file check).
+
 Comment at the top of `ci.yml` and `justfile`: each lists the other; `RULES.md` §8 names both.
 
 ---

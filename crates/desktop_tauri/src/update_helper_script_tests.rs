@@ -148,22 +148,23 @@ fn unix_replace_script_running_app_waits_until_it_ends() {
     let folder = odd_folder("sh-wait");
     let downloaded = folder.join("new");
     let target = folder.join("old");
-    std::fs::write(
-        &downloaded,
-        "#!/bin/sh
-",
-    )
-    .unwrap();
+    std::fs::write(&downloaded, "#!/bin/sh\n").unwrap();
     std::fs::write(&target, "old").unwrap();
     let mut app = Command::new("sleep").arg("1").spawn().unwrap();
-    let script_text = unix_replace_script(app.id(), &downloaded, &target).unwrap();
+    let pid = app.id();
+    // The real app's parent (the desktop) reaps it when it ends. Without that, the ended process
+    // stays a zombie, `kill -0` still finds it, and the helper would wait for ever.
+    let reaper = std::thread::spawn(move || app.wait().map(|_| Instant::now()));
+    let script_text = unix_replace_script(pid, &downloaded, &target).unwrap();
     std::fs::write(folder.join(SH_SCRIPT_NAME), script_text).unwrap();
 
     let status = sh_command(&folder).status().unwrap();
+    let helper_done = Instant::now();
 
     assert!(status.success());
+    let app_ended = reaper.join().unwrap().unwrap();
     assert!(
-        app.try_wait().unwrap().is_some(),
+        app_ended <= helper_done,
         "the helper did not wait for the app to end"
     );
     assert!(!downloaded.exists());

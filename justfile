@@ -3,8 +3,9 @@
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
+# CI (.github/workflows/ci.yml) runs the same checks, on Windows and Linux: change the two together.
 # Everything that must pass before a commit (RULES.md section 8).
-gates: fmt clippy test deny audit
+gates: fmt clippy test deny audit lengths
 
 fmt:
     cargo fmt --all -- --check
@@ -21,6 +22,17 @@ deny:
 
 audit:
     cargo audit
+
+# Rust files outside the tests within 300 lines (RULES.md section 4; clippy only counts functions).
+[windows]
+lengths:
+    python -m unittest discover -s scripts -p "*_test.py"
+    python scripts/check_file_lengths.py
+
+[unix]
+lengths:
+    python3 -m unittest discover -s scripts -p "*_test.py"
+    python3 scripts/check_file_lengths.py
 
 # Ignored tests that need the sidecar, libmpv and network (set the CS_* variables first).
 live:

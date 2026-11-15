@@ -110,7 +110,12 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check        # licenses/advisories
+cargo audit             # known vulnerabilities
+python scripts/check_file_lengths.py   # the 300-line file limit of section 4 (clippy counts functions only)
 ```
+
+`just gates` runs all of them. CI (`.github/workflows/ci.yml`) runs the same on every push and pull request, clippy and
+tests on both Windows and Linux; keep the three lists the same.
 
 Required `clippy.toml` at the workspace root (limits mirror §4):
 
