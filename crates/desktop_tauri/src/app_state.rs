@@ -38,12 +38,4 @@ impl AppState {
         .await
         .map_err(|error| format!("Background task error: {error}"))?
     }
-
-    /// Obtains a write lock on services.
-    #[allow(dead_code)]
-    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, UiServices> {
-        self.services
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
 }
