@@ -1,9 +1,21 @@
-//! Swapping in the downloaded file. The running program cannot replace itself, so a small helper
-//! script waits for the app to exit, moves the new file over the old one and starts it.
+//! Putting a checked update in place. The running program cannot replace itself, so a helper script
+//! (`update_helper_script.rs`) waits for the app to exit and then either moves the new file over the
+//! old one (portable exe, AppImage) or runs the downloaded installer (installed Windows app).
 
 use std::path::{Path, PathBuf};
 
 use crate::update_error::UpdateError;
+
+/// How the downloaded file replaces the app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InstallMethod {
+    /// Move the download over this file (portable exe, AppImage, or the running program elsewhere).
+    ReplaceFile(PathBuf),
+    /// Run the downloaded Windows installer, which replaces the installed app and starts it. Moving
+    /// the installer over the app's exe would leave the installer running under the app's name,
+    /// trying to replace itself.
+    RunInstaller,
+}
 
 /// True for the portable exe (`CS_PORTABLE_EXE`), an AppImage (`APPIMAGE`) or a copy with
 /// `portable.txt` beside it; these update to the portable file instead of the installer.
@@ -40,9 +52,9 @@ fn existing_path_from_env(name: &str) -> Option<PathBuf> {
         .filter(|path| path.exists())
 }
 
-/// The file the update replaces: the portable exe or the AppImage the app was started from, else the
-/// running program. Fails when its folder cannot be written to.
-pub(crate) fn target_executable_path() -> Result<PathBuf, UpdateError> {
+/// The file a portable update replaces: the portable exe or the AppImage the app was started from,
+/// else the running program. Fails when its folder cannot be written to.
+fn target_executable_path() -> Result<PathBuf, UpdateError> {
     let wrapper = existing_path_from_env("CS_PORTABLE_EXE").or_else(|| {
         cfg!(target_os = "linux")
             .then(|| existing_path_from_env("APPIMAGE"))
@@ -56,38 +68,26 @@ pub(crate) fn target_executable_path() -> Result<PathBuf, UpdateError> {
     Ok(target)
 }
 
-/// The Windows helper: waits for process `pid` to end, moves the file into place, starts it.
-#[cfg(any(windows, test))]
-fn windows_script(pid: u32, downloaded: &Path, target: &Path) -> String {
-    format!(
-        "@echo off\r\n\
-         :wait\r\n\
-         timeout /t 1 /nobreak >nul\r\n\
-         tasklist /fi \"PID eq {pid}\" | find \"{pid}\" >nul\r\n\
-         if not errorlevel 1 goto wait\r\n\
-         move /y \"{downloaded}\" \"{target}\"\r\n\
-         start \"\" \"{target}\"\r\n\
-         del \"%~f0\"\r\n",
-        downloaded = downloaded.display(),
-        target = target.display()
-    )
+/// The method for a system: the installed Windows app runs the installer (and never needs its own
+/// folder to be writable: the installer handles that); everything else replaces `target()`.
+fn choose_install_method(
+    is_windows: bool,
+    is_portable: bool,
+    target: impl FnOnce() -> Result<PathBuf, UpdateError>,
+) -> Result<InstallMethod, UpdateError> {
+    if is_windows && !is_portable {
+        return Ok(InstallMethod::RunInstaller);
+    }
+    target().map(InstallMethod::ReplaceFile)
 }
 
-/// The Linux/macOS helper: the same steps as `windows_script` in `sh`.
-#[cfg(any(not(windows), test))]
-fn unix_script(pid: u32, downloaded: &Path, target: &Path) -> String {
-    format!(
-        "#!/bin/sh\n\
-         while kill -0 {pid} 2>/dev/null; do sleep 0.5; done\n\
-         sleep 0.5\n\
-         chmod +x \"{downloaded}\" 2>/dev/null || true\n\
-         mv -f \"{downloaded}\" \"{target}\" || cp -f \"{downloaded}\" \"{target}\"\n\
-         chmod +x \"{target}\" 2>/dev/null || true\n\
-         unset APPDIR\n\
-         nohup \"{target}\" >/dev/null 2>&1 &\n\
-         rm -f \"$0\"\n",
-        downloaded = downloaded.display(),
-        target = target.display()
+/// How this copy of the app updates. Matches the file `update_assets::select_platform_asset` picks:
+/// the installer for an installed Windows app, the portable file otherwise.
+pub(crate) fn install_method() -> Result<InstallMethod, UpdateError> {
+    choose_install_method(
+        cfg!(windows),
+        is_portable_environment(),
+        target_executable_path,
     )
 }
 
@@ -96,20 +96,24 @@ fn unix_script(pid: u32, downloaded: &Path, target: &Path) -> String {
 #[cfg(windows)]
 pub(crate) fn start_install_helper(
     downloaded: &Path,
-    target: &Path,
+    method: &InstallMethod,
     folder: &Path,
 ) -> Result<(), UpdateError> {
+    use crate::update_helper_script::{
+        bat_command, windows_installer_script, windows_replace_script, BAT_SCRIPT_NAME,
+    };
     use std::os::windows::process::CommandExt;
     /// Windows process flag: run the console helper without showing a console window.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let pid = std::process::id();
-    let script = folder.join("install.bat");
-    std::fs::write(&script, windows_script(pid, downloaded, target))
-        .map_err(|error| UpdateError::disk("write", &script, error))?;
-    std::process::Command::new("cmd.exe")
-        .arg("/c")
-        .arg(&script)
+    let text = match method {
+        InstallMethod::ReplaceFile(target) => windows_replace_script(pid, downloaded, target)?,
+        InstallMethod::RunInstaller => windows_installer_script(pid, downloaded)?,
+    };
+    let script = folder.join(BAT_SCRIPT_NAME);
+    std::fs::write(&script, text).map_err(|error| UpdateError::disk("write", &script, error))?;
+    bat_command(folder)
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(UpdateError::Spawn)?;
@@ -121,18 +125,20 @@ pub(crate) fn start_install_helper(
 #[cfg(not(windows))]
 pub(crate) fn start_install_helper(
     downloaded: &Path,
-    target: &Path,
+    method: &InstallMethod,
     folder: &Path,
 ) -> Result<(), UpdateError> {
-    let pid = std::process::id();
-    let script = folder.join("install.sh");
-    std::fs::write(&script, unix_script(pid, downloaded, target))
-        .map_err(|error| UpdateError::disk("write", &script, error))?;
+    use crate::update_helper_script::{sh_command, unix_replace_script, SH_SCRIPT_NAME};
+
+    // An installer is chosen only on Windows; here there is no file this system can install.
+    let InstallMethod::ReplaceFile(target) = method else {
+        return Err(UpdateError::NoAsset);
+    };
+    let text = unix_replace_script(std::process::id(), downloaded, target)?;
+    let script = folder.join(SH_SCRIPT_NAME);
+    std::fs::write(&script, text).map_err(|error| UpdateError::disk("write", &script, error))?;
     // No permission change needed: the script is run as `sh <script>`, not executed directly.
-    std::process::Command::new("sh")
-        .arg(&script)
-        .spawn()
-        .map_err(UpdateError::Spawn)?;
+    sh_command(folder).spawn().map_err(UpdateError::Spawn)?;
     Ok(())
 }
 
@@ -140,25 +146,41 @@ pub(crate) fn start_install_helper(
 mod tests {
     use super::*;
 
-    #[test]
-    fn windows_script_for_pid_waits_then_moves_then_starts() {
-        let script = windows_script(42, Path::new(r"C:\t\new.exe"), Path::new(r"C:\app\cs.exe"));
-        let wait = script.find("PID eq 42").unwrap();
-        let swap = script
-            .find(r#"move /y "C:\t\new.exe" "C:\app\cs.exe""#)
-            .unwrap();
-        let start = script.find(r#"start "" "C:\app\cs.exe""#).unwrap();
-        assert!(wait < swap && swap < start);
+    fn app_exe() -> Result<PathBuf, UpdateError> {
+        Ok(PathBuf::from(
+            r"C:\Users\x\AppData\Local\CloudStream\CloudStream.exe",
+        ))
+    }
+
+    fn unwritable() -> Result<PathBuf, UpdateError> {
+        Err(UpdateError::ReadOnlyTarget(PathBuf::from(
+            r"C:\Program Files",
+        )))
     }
 
     #[test]
-    fn unix_script_for_pid_waits_then_moves_then_starts() {
-        let script = unix_script(42, Path::new("/tmp/new"), Path::new("/opt/cs.AppImage"));
-        let wait = script.find("kill -0 42").unwrap();
-        let swap = script
-            .find(r#"mv -f "/tmp/new" "/opt/cs.AppImage""#)
-            .unwrap();
-        let start = script.find(r#"nohup "/opt/cs.AppImage""#).unwrap();
-        assert!(wait < swap && swap < start);
+    fn choose_install_method_installed_windows_app_runs_the_installer() {
+        let method = choose_install_method(true, false, app_exe).unwrap();
+        assert_eq!(method, InstallMethod::RunInstaller);
+    }
+
+    #[test]
+    fn choose_install_method_installed_windows_app_does_not_need_a_writable_folder() {
+        let method = choose_install_method(true, false, unwritable).unwrap();
+        assert_eq!(method, InstallMethod::RunInstaller);
+    }
+
+    #[test]
+    fn choose_install_method_portable_windows_app_replaces_its_exe() {
+        let method = choose_install_method(true, true, app_exe).unwrap();
+        assert_eq!(method, InstallMethod::ReplaceFile(app_exe().unwrap()));
+    }
+
+    #[test]
+    fn choose_install_method_linux_replaces_the_file_and_reports_a_read_only_folder() {
+        let method = choose_install_method(false, true, app_exe).unwrap();
+        assert_eq!(method, InstallMethod::ReplaceFile(app_exe().unwrap()));
+        let result = choose_install_method(false, false, unwritable);
+        assert!(matches!(result, Err(UpdateError::ReadOnlyTarget(_))));
     }
 }

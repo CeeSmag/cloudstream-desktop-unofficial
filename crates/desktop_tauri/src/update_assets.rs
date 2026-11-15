@@ -45,14 +45,14 @@ pub(crate) fn find_release_file<'a>(
     assets.iter().find(|asset| asset.name == name)
 }
 
-/// The Windows file:the portable exe (or zip) for a portable copy, else the installer.
+/// The Windows file: the portable exe for a portable copy, else the installer. Only an `.exe`: the
+/// helper moves the portable file over the running exe as it is.
 pub(crate) fn select_windows_asset(
     assets: &[GitHubAsset],
     is_portable: bool,
 ) -> Option<&GitHubAsset> {
     if is_portable {
         find_named(assets, |name| name.ends_with("portable.exe"))
-            .or_else(|| find_named(assets, |name| name.ends_with("portable.zip")))
     } else {
         find_named(assets, |name| name.ends_with("setup.exe"))
     }
@@ -157,6 +157,13 @@ mod tests {
             Some("SHA256SUMS.minisig")
         );
         assert!(find_release_file(&assets, "sha256sums").is_none());
+    }
+
+    #[test]
+    fn select_windows_asset_portable_with_only_a_zip_returns_none() {
+        // A zip moved over the portable exe would leave a program that cannot start.
+        let assets = vec![asset("CloudStream_0.5.0_x64_portable.zip")];
+        assert!(select_windows_asset(&assets, true).is_none());
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::update_download::{
 };
 use crate::update_error::UpdateError;
 use crate::update_folder::{create_update_folder, discard_update_folder};
-use crate::update_install::{is_portable_environment, target_executable_path};
+use crate::update_install::{install_method, is_portable_environment, InstallMethod};
 use crate::update_verify::{
     check_download, verify_checksums, ReleaseChecksums, UPDATE_SIGNING_KEY,
 };
@@ -26,8 +26,8 @@ use crate::update_version::is_version_newer;
 pub(crate) struct PreparedUpdate {
     /// The downloaded file.
     pub(crate) file: PathBuf,
-    /// The file it replaces (the running program, the portable exe or the AppImage).
-    pub(crate) target: PathBuf,
+    /// How it replaces the app (move over a file, or run it as the installer).
+    pub(crate) method: InstallMethod,
     /// The attempt's own folder, where the helper script goes.
     pub(crate) folder: PathBuf,
 }
@@ -89,14 +89,14 @@ pub(crate) fn prepare_update(
     data_dir: &Path,
     on_progress: &mut dyn FnMut(DownloadProgress),
 ) -> Result<PreparedUpdate, UpdateError> {
-    let target = target_executable_path()?;
+    let method = install_method()?;
     let release = fetch_latest_release()?;
     let (asset, expected) = choose_checked_file(&release)?;
     let folder = create_update_folder(data_dir, SystemTime::now())?;
     match download_checked(asset, &expected, &folder, on_progress) {
         Ok(file) => Ok(PreparedUpdate {
             file,
-            target,
+            method,
             folder,
         }),
         Err(error) => {

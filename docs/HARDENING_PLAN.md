@@ -97,6 +97,8 @@ Done when: `cargo clippy -p desktop_tauri --all-targets -- -D warnings` and the 
 
 ### U6. Unix helper script
 
+**Status: done**, plus the installer bug found on the way: the installed Windows app moved `*-setup.exe` over its own exe and started it, so the installer ran under the app's name and tried to replace itself. It now runs the installer (`/P /R /UPDATE`) after the app exits; the portable exe and the AppImage still have the file moved over them, and a portable copy no longer falls back to a `.zip`. Paths are quoted (`.bat`: `%` doubled, `"` refused; `sh`: single quotes), the helper is started by plain name from its folder (cmd re-parses its command line, and the data folder holds the user's name), and the `.bat` names `tasklist`/`find`/`ping` by full path (Git's `find` on PATH ended the wait early). Real runs: `sh` and both `.bat` scripts in a folder named with `& % ^ ' $` and a backtick, waiting on a live process (ignored tests, run here; the `sh` ones run by default on Linux). Not verified: a real CloudStream installer run through the helper.
+
 Quote paths with a proper shell-quoting function (a path with `"` or `$` currently breaks the script), and the same for the `.bat` (`%`, `^`, `&`). Unit-test the generated text for both. Covered by CI on Linux after C2.
 
 ---

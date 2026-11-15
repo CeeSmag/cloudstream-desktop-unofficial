@@ -94,6 +94,13 @@ pub(crate) enum UpdateError {
     /// The helper that swaps the files after the app closes could not be started.
     #[error("Could not start the update helper: {0}")]
     Spawn(#[source] io::Error),
+    /// A path cannot be written safely into the helper script (not Unicode, or holds `"` or a
+    /// control character), so the helper is not started.
+    #[error(
+        "Cannot update: the path '{}' cannot be used by the update helper. Move the program to a plain folder.",
+        .0.display()
+    )]
+    UnsafePath(PathBuf),
 }
 
 impl UpdateError {

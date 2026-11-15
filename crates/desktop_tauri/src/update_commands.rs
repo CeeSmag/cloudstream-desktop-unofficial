@@ -113,10 +113,10 @@ fn progress_reporter(app: &AppHandle) -> impl FnMut(DownloadProgress) + '_ {
 
 fn install_update(app: &AppHandle, data_dir: &Path) -> Result<(), UpdateError> {
     let prepared = prepare_update(data_dir, &mut progress_reporter(app))?;
-    start_install_helper(&prepared.file, &prepared.target, &prepared.folder)?;
+    start_install_helper(&prepared.file, &prepared.method, &prepared.folder)?;
     tracing::info!(
         downloaded = %prepared.file.display(),
-        target = %prepared.target.display(),
+        method = ?prepared.method,
         "checked update downloaded; closing so the helper can install it"
     );
     app.exit(0);

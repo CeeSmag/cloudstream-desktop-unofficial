@@ -78,6 +78,7 @@ mod update_commands;
 mod update_download;
 mod update_error;
 mod update_folder;
+mod update_helper_script;
 mod update_install;
 mod update_prepare;
 mod update_verify;
