@@ -1,81 +1,18 @@
 //! Tauri commands for browsing catalog by media type, year, rating/popularity, and genres.
 
 use std::collections::HashSet;
-use std::io::Read;
 use std::sync::Arc;
-use std::time::Duration;
 
+use crate::browse_fetcher::{BrowseFetcher, UreqBrowseFetcher};
 use crate::browse_genres::{
-    convert_raw_item, resolve_genre_param, BrowseFilterRequest, BrowseItemDto, BrowsePageDto,
-    TmdbPageResponse, TmdbRawItem, TMDB_API_KEY, TMDB_BASE_URL,
+    convert_raw_item, BrowseFilterRequest, BrowseItemDto, BrowsePageDto, TmdbRawItem, TMDB_BASE_URL,
 };
+use crate::browse_query::build_params;
 
+/// TMDB pages put together into one page of the Browse screen (20 items each).
 const TMDB_PAGES_PER_BROWSE_PAGE: u32 = 3;
 /// TMDB Discover API returns HTTP 400 for any `page > 500`.
 const MAX_TMDB_PAGES: u32 = 500;
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const MAX_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
-const USER_AGENT: &str = "CloudStream-rs";
-
-/// Fetches a single TMDB Discover page.
-pub trait BrowseFetcher: Send + Sync {
-    /// Sends a GET request to `endpoint` with `params` and parses the JSON page response.
-    fn fetch_page(
-        &self,
-        endpoint: &str,
-        params: &[(String, String)],
-    ) -> Result<TmdbPageResponse, String>;
-}
-
-/// Connection-pooled `ureq` implementation of [`BrowseFetcher`].
-pub struct UreqBrowseFetcher {
-    agent: ureq::Agent,
-}
-
-impl Default for UreqBrowseFetcher {
-    fn default() -> Self {
-        let config = ureq::Agent::config_builder()
-            .timeout_global(Some(REQUEST_TIMEOUT))
-            .timeout_connect(Some(CONNECT_TIMEOUT))
-            .http_status_as_error(false)
-            .build();
-        Self {
-            agent: config.into(),
-        }
-    }
-}
-
-fn redact_key(message: &str) -> String {
-    message.replace(TMDB_API_KEY, "[REDACTED]")
-}
-
-impl BrowseFetcher for UreqBrowseFetcher {
-    fn fetch_page(
-        &self,
-        endpoint: &str,
-        params: &[(String, String)],
-    ) -> Result<TmdbPageResponse, String> {
-        let mut req = self.agent.get(endpoint).header("User-Agent", USER_AGENT);
-        for (k, v) in params {
-            req = req.query(k, v);
-        }
-        let res = req
-            .call()
-            .map_err(|e| format!("HTTP request failed: {}", redact_key(&e.to_string())))?;
-        let status = res.status().as_u16();
-        if !(200..300).contains(&status) {
-            return Err(format!("TMDB returned HTTP {status}"));
-        }
-        let mut body = String::new();
-        res.into_body()
-            .into_reader()
-            .take(MAX_RESPONSE_BYTES)
-            .read_to_string(&mut body)
-            .map_err(|e| format!("Reading response body failed: {e}"))?;
-        serde_json::from_str(&body).map_err(|e| format!("JSON decode failed: {e}"))
-    }
-}
 
 /// Coordinates multi-page TMDB discovery aggregation for the Browse screen.
 pub struct BrowseClient {
@@ -132,20 +69,15 @@ impl BrowseClient {
             }
             let params = build_params(request, page_num);
             match self.fetcher.fetch_page(&endpoint, &params) {
-                Ok(page_res) => {
-                    total_tmdb_pages = page_res
+                Ok(page) => {
+                    total_tmdb_pages = page
                         .total_pages
-                        .map_or(total_tmdb_pages, |tp| tp.min(MAX_TMDB_PAGES));
-                    append_unique_items(
-                        &mut all_items,
-                        &mut seen_ids,
-                        page_res.results,
-                        media_label,
-                    );
+                        .map_or(total_tmdb_pages, |pages| pages.min(MAX_TMDB_PAGES));
+                    append_unique_items(&mut all_items, &mut seen_ids, page.results, media_label);
                 }
-                Err(err) if offset == 0 => return Err(err),
-                Err(err) => {
-                    tracing::warn!(page_num, %err, "secondary browse page fetch failed; returning partial items");
+                Err(error) if offset == 0 => return Err(error),
+                Err(error) => {
+                    tracing::warn!(page_num, %error, "secondary browse page fetch failed; returning partial items");
                     break;
                 }
             }
@@ -171,47 +103,6 @@ fn append_unique_items(
     }
 }
 
-fn build_params(req: &BrowseFilterRequest, tmdb_page: u32) -> Vec<(String, String)> {
-    let is_tv = req.media_type.eq_ignore_ascii_case("tv");
-    let mut params = vec![
-        ("api_key".to_owned(), TMDB_API_KEY.to_owned()),
-        ("language".to_owned(), "en-US".to_owned()),
-        ("include_adult".to_owned(), "false".to_owned()),
-        ("page".to_owned(), tmdb_page.to_string()),
-    ];
-
-    if req.sort_by == "rating" {
-        params.push(("sort_by".to_owned(), "vote_average.desc".to_owned()));
-        params.push(("vote_count.gte".to_owned(), "20".to_owned()));
-        if let Some(r) = req.rating.filter(|&r| r > 0.0) {
-            params.push(("vote_average.gte".to_owned(), r.to_string()));
-        }
-    } else {
-        params.push(("sort_by".to_owned(), "popularity.desc".to_owned()));
-    }
-
-    append_year_and_genres(&mut params, req, is_tv);
-    params
-}
-
-fn append_year_and_genres(
-    params: &mut Vec<(String, String)>,
-    req: &BrowseFilterRequest,
-    is_tv: bool,
-) {
-    if let Some(y) = req.year {
-        let key = if is_tv {
-            "first_air_date_year"
-        } else {
-            "primary_release_year"
-        };
-        params.push((key.to_owned(), y.to_string()));
-    }
-    if let Some(genres_csv) = resolve_genre_param(&req.effective_genres(), is_tv) {
-        params.push(("with_genres".to_owned(), genres_csv));
-    }
-}
-
 /// Tauri command that queries TMDB Discover API to return up to 60 items per browse page.
 #[tauri::command]
 #[tracing::instrument(
@@ -233,7 +124,7 @@ pub async fn browse_catalog(
     let client = Arc::clone(&client);
     tauri::async_runtime::spawn_blocking(move || client.fetch_browse_page(&request))
         .await
-        .map_err(|e| format!("Worker thread error: {e}"))?
+        .map_err(|error| format!("Worker thread error: {error}"))?
 }
 
 #[cfg(test)]
@@ -241,6 +132,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::browse_genres::TmdbPageResponse;
 
     struct FakeBrowseFetcher {
         calls: Mutex<Vec<u32>>,
@@ -277,41 +169,6 @@ mod tests {
             r#"{{"id":{id},"title":"{title}","release_date":"2026-01-01","vote_average":7.5}}"#
         ))
         .expect("valid item json")
-    }
-
-    #[test]
-    fn query_params_build_for_movie_multi_genres() {
-        let req = BrowseFilterRequest {
-            media_type: "movie".to_owned(),
-            year: Some(2026),
-            sort_by: "popular".to_owned(),
-            rating: None,
-            genres: vec!["Action".to_owned(), "Science Fiction".to_owned()],
-            genre: None,
-            page: 1,
-        };
-        let params = build_params(&req, 1);
-        assert!(params.contains(&("sort_by".to_owned(), "popularity.desc".to_owned())));
-        assert!(params.contains(&("primary_release_year".to_owned(), "2026".to_owned())));
-        assert!(params.contains(&("with_genres".to_owned(), "28,878".to_owned())));
-    }
-
-    #[test]
-    fn query_params_build_for_tv_rating_and_omit_zero_min_rating() {
-        let req = BrowseFilterRequest {
-            media_type: "tv".to_owned(),
-            year: Some(2024),
-            sort_by: "rating".to_owned(),
-            rating: Some(8.0),
-            genres: vec!["Horror".to_owned(), "Comedy".to_owned()],
-            genre: None,
-            page: 2,
-        };
-        let params = build_params(&req, 4);
-        assert!(params.contains(&("sort_by".to_owned(), "vote_average.desc".to_owned())));
-        assert!(params.contains(&("vote_average.gte".to_owned(), "8".to_owned())));
-        assert!(params.contains(&("first_air_date_year".to_owned(), "2024".to_owned())));
-        assert!(params.contains(&("with_genres".to_owned(), "9648,35".to_owned())));
     }
 
     #[test]
@@ -364,6 +221,5 @@ mod tests {
         let res = client.fetch_browse_page(&req).expect("partial success");
         assert_eq!(res.items.len(), 1);
         assert_eq!(res.total_pages, 167);
-        assert!(redact_key(&format!("key={TMDB_API_KEY}")).contains("[REDACTED]"));
     }
 }

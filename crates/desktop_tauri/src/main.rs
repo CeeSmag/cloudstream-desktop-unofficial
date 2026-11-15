@@ -5,7 +5,9 @@
 
 mod app_state;
 mod browse_commands;
+mod browse_fetcher;
 mod browse_genres;
+mod browse_query;
 mod catalog_commands;
 mod check_gate;
 mod check_gate_state;
