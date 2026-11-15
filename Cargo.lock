@@ -1242,6 +1242,7 @@ dependencies = [
  "extension_runtime",
  "player_api",
  "player_mpv",
+ "semver",
  "serde",
  "serde_json",
  "skip_times",

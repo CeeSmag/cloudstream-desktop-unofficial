@@ -33,6 +33,15 @@ pub(crate) enum UpdateError {
         #[source]
         source: io::Error,
     },
+    /// The release's tag is not a version number, so it cannot be compared and is not offered.
+    #[error("The release tag '{tag}' is not a version number: {source}")]
+    UnreadableVersion {
+        /// The tag as GitHub gave it.
+        tag: String,
+        /// Why it could not be read.
+        #[source]
+        source: semver::Error,
+    },
     /// The system could not say where the running program is, so there is nothing to replace.
     #[error("Could not find the running program: {0}")]
     RunningProgramUnknown(#[source] io::Error),

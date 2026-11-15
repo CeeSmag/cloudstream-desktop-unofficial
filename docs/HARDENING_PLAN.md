@@ -69,6 +69,8 @@ Done when: `cargo clippy -p desktop_tauri --all-targets -- -D warnings` and the 
 
 ### U3. Fix version comparison (downgrade risk)
 
+**Status: done.** Tags are read with the `semver` crate; build metadata (`+...`) does not count; an incomplete tag such as `v0.5` is now unreadable too (all release tags are `x.y.z`). An unreadable tag is logged (`warn`) and not offered; the page then says the running version is the latest, which is wrong in that case but safe.
+
 - `is_version_newer` returns `false` when either side does not parse (log a `warn` with the tag). Never "different = newer".
 - Treat a pre-release suffix (`0.5.0-rc1`) as older than the plain version and do not offer it unless the current version is also a pre-release.
 - Tests: unparseable tag, `v0.4.1` while on `0.4.2` (no), `0.4.2-rc1` while on `0.4.2` (no), `0.4.10` vs `0.4.9` (yes).

@@ -51,6 +51,15 @@ pub struct UpdateProgressPayload {
     pub percent: u32,
 }
 
+/// Whether the release tagged `tag` is an update. A tag that is not a version is not offered, because
+/// guessing could offer an older release; the page then says this version is the latest.
+fn is_update(tag: &str) -> bool {
+    is_version_newer(tag, CURRENT_VERSION).unwrap_or_else(|error| {
+        tracing::warn!(%error, current = CURRENT_VERSION, "not offering the latest release");
+        false
+    })
+}
+
 fn check_latest_release() -> Result<UpdateCheckResult, UpdateError> {
     let release = fetch_latest_release()?;
     let is_portable = is_portable_environment();
@@ -58,7 +67,7 @@ fn check_latest_release() -> Result<UpdateCheckResult, UpdateError> {
     Ok(UpdateCheckResult {
         current_version: CURRENT_VERSION.to_string(),
         latest_version: clean_version(&release.tag_name).to_string(),
-        has_update: is_version_newer(&release.tag_name, CURRENT_VERSION),
+        has_update: is_update(&release.tag_name),
         download_url: asset.map(|asset| asset.browser_download_url.clone()),
         asset_name: asset.map(|asset| asset.name.clone()),
         asset_size: asset.map(|asset| asset.size),
