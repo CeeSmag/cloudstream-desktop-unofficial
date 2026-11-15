@@ -73,7 +73,12 @@ mod test_subtitles;
 #[cfg(test)]
 mod test_titles;
 mod transport_commands;
+mod update_assets;
 mod update_commands;
+mod update_download;
+mod update_error;
+mod update_install;
+mod update_version;
 mod video_commands;
 mod video_opening;
 mod window_commands;

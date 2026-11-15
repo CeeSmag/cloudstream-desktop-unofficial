@@ -1249,6 +1249,7 @@ dependencies = [
  "subtitle_store",
  "tauri",
  "tauri-build",
+ "thiserror 2.0.21",
  "title_cache",
  "tracing",
  "tracing-subscriber",
