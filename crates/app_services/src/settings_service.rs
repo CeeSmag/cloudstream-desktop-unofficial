@@ -1,27 +1,14 @@
-use player_api::{find_language, Language, ENGLISH};
 use storage::SettingsStore;
 
 use crate::ServiceError;
 
 const DISABLED_PROVIDERS_KEY: &str = "disabled_providers";
 const DEBUG_LOGGING_KEY: &str = "debug_logging";
-const PREFERRED_AUDIO_KEY: &str = "preferred_audio";
-/// Stored when the viewer wants the stream's own default audio track.
-const NO_AUDIO_PREFERENCE: &str = "none";
-const PREFERRED_SUBTITLES_KEY: &str = "preferred_subtitles";
-const AUTO_SUBTITLES_KEY: &str = "auto_subtitles";
 const AUTOPLAY_NEXT_KEY: &str = "autoplay_next";
 const SOURCES_VALID_FROM_KEY: &str = "sources_valid_from";
 const SKIP_LOOKUP_KEY: &str = "skip_lookup";
-const STORAGE_CAP_KEY: &str = "storage_cap_gb";
 const ENABLED: &str = "yes";
 const DISABLED: &str = "no";
-/// The least, the most and the usual size (in GB) the app's data folder may grow to.
-pub const MIN_STORAGE_CAP_GB: u32 = 1;
-pub const MAX_STORAGE_CAP_GB: u32 = 10;
-pub const DEFAULT_STORAGE_CAP_GB: u32 = 2;
-/// Most subtitle languages the viewer can prefer; the player shows one flag for each.
-pub const MAX_PREFERRED_SUBTITLES: usize = 3;
 const LIST_SEPARATOR: char = '\n';
 
 /// Typed access to the app's settings.
@@ -61,60 +48,6 @@ impl SettingsService {
         Ok(())
     }
 
-    /// The language whose audio track plays when a stream offers it. English until the viewer
-    /// chooses otherwise; `None` means the stream's own default track.
-    pub fn preferred_audio(&self) -> Result<Option<Language>, ServiceError> {
-        Ok(match self.store.get(PREFERRED_AUDIO_KEY)?.as_deref() {
-            None => Some(ENGLISH),
-            Some(NO_AUDIO_PREFERENCE) => None,
-            Some(code) => Some(find_language(code).unwrap_or(ENGLISH)),
-        })
-    }
-
-    /// Remembers the preferred audio language (`None` for the stream's default).
-    pub fn set_preferred_audio(&self, language: Option<Language>) -> Result<(), ServiceError> {
-        let value = language.map_or(NO_AUDIO_PREFERENCE, |language| language.code());
-        self.store.set(PREFERRED_AUDIO_KEY, value)?;
-        Ok(())
-    }
-
-    /// The languages whose subtitles get a flag in the player (at most
-    /// [`MAX_PREFERRED_SUBTITLES`]), in the order the viewer chose them. English until changed.
-    pub fn preferred_subtitles(&self) -> Result<Vec<Language>, ServiceError> {
-        Ok(match self.store.get(PREFERRED_SUBTITLES_KEY)? {
-            None => vec![ENGLISH],
-            Some(raw) => raw
-                .split(',')
-                .filter_map(find_language)
-                .take(MAX_PREFERRED_SUBTITLES)
-                .collect(),
-        })
-    }
-
-    /// Remembers the preferred subtitle languages; only the first [`MAX_PREFERRED_SUBTITLES`] count.
-    pub fn set_preferred_subtitles(&self, languages: &[Language]) -> Result<(), ServiceError> {
-        let codes: Vec<&str> = languages
-            .iter()
-            .take(MAX_PREFERRED_SUBTITLES)
-            .map(Language::code)
-            .collect();
-        self.store.set(PREFERRED_SUBTITLES_KEY, &codes.join(","))?;
-        Ok(())
-    }
-
-    /// Whether the subtitle in a preferred language turns on by itself when a video has one.
-    /// On until the viewer switches it off.
-    pub fn auto_select_subtitles(&self) -> Result<bool, ServiceError> {
-        Ok(self.store.get(AUTO_SUBTITLES_KEY)?.as_deref() != Some(DISABLED))
-    }
-
-    /// Remembers whether a preferred-language subtitle turns on by itself.
-    pub fn set_auto_select_subtitles(&self, enabled: bool) -> Result<(), ServiceError> {
-        self.store
-            .set(AUTO_SUBTITLES_KEY, if enabled { ENABLED } else { DISABLED })?;
-        Ok(())
-    }
-
     /// Whether the next episode starts by itself when one ends. On until the viewer switches it off.
     pub fn autoplay_next(&self) -> Result<bool, ServiceError> {
         self.flag(AUTOPLAY_NEXT_KEY)
@@ -136,27 +69,6 @@ impl SettingsService {
         self.set_flag(SKIP_LOOKUP_KEY, enabled)
     }
 
-    /// How many GB the app's data folder may use before old cache is deleted: 2 until the viewer
-    /// chooses 1 to 10. A stored value out of range (edited by hand) counts as the default.
-    pub fn storage_cap_gb(&self) -> Result<u32, ServiceError> {
-        let stored = self.store.get(STORAGE_CAP_KEY)?;
-        Ok(stored
-            .and_then(|text| text.parse::<u32>().ok())
-            .filter(|gb| (MIN_STORAGE_CAP_GB..=MAX_STORAGE_CAP_GB).contains(gb))
-            .unwrap_or(DEFAULT_STORAGE_CAP_GB))
-    }
-
-    /// Remembers the data folder's size limit; only 1 to 10 GB are accepted.
-    pub fn set_storage_cap_gb(&self, gb: u32) -> Result<(), ServiceError> {
-        if !(MIN_STORAGE_CAP_GB..=MAX_STORAGE_CAP_GB).contains(&gb) {
-            return Err(ServiceError::NotFound(format!(
-                "the storage limit must be {MIN_STORAGE_CAP_GB} to {MAX_STORAGE_CAP_GB} GB, not {gb}"
-            )));
-        }
-        self.store.set(STORAGE_CAP_KEY, &gb.to_string())?;
-        Ok(())
-    }
-
     /// The time (seconds since 1970) of the last provider switch: saved stream links from before it
     /// are not used. 0 when the viewer never switched.
     pub fn sources_valid_from(&self) -> Result<u64, ServiceError> {
@@ -174,10 +86,23 @@ impl SettingsService {
         Ok(())
     }
 
+    /// The stored text of `key`, for the setting files beside this one (`language_settings.rs`, ...).
+    pub(crate) fn stored(&self, key: &str) -> Result<Option<String>, ServiceError> {
+        Ok(self.store.get(key)?)
+    }
+
+    /// Stores `value` under `key`, for the setting files beside this one.
+    pub(crate) fn store_value(&self, key: &str, value: &str) -> Result<(), ServiceError> {
+        self.store.set(key, value)?;
+        Ok(())
+    }
+
+    /// An on/off setting that is on until the viewer switches it off.
     pub(crate) fn flag(&self, key: &str) -> Result<bool, ServiceError> {
         Ok(self.store.get(key)?.as_deref() != Some(DISABLED))
     }
 
+    /// Remembers an on/off setting read by [`SettingsService::flag`].
     pub(crate) fn set_flag(&self, key: &str, enabled: bool) -> Result<(), ServiceError> {
         self.store
             .set(key, if enabled { ENABLED } else { DISABLED })?;
@@ -224,45 +149,6 @@ mod tests {
     }
 
     #[test]
-    fn the_preferred_audio_is_english_until_changed_and_the_choice_is_kept() {
-        let service = service();
-        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
-        let hindi = find_language("hin");
-        service.set_preferred_audio(hindi).expect("set");
-        assert_eq!(service.preferred_audio().expect("read"), hindi);
-        service.set_preferred_audio(None).expect("clear");
-        assert_eq!(service.preferred_audio().expect("read"), None);
-        service.set_preferred_audio(Some(ENGLISH)).expect("set");
-        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
-    }
-
-    #[test]
-    fn the_preferred_subtitles_are_english_until_changed_and_keep_their_order_and_limit() {
-        let service = service();
-        assert_eq!(service.preferred_subtitles().expect("read"), vec![ENGLISH]);
-        let chosen: Vec<Language> = ["spa", "fre", "ger", "ita"]
-            .iter()
-            .filter_map(|code| find_language(code))
-            .collect();
-        service.set_preferred_subtitles(&chosen).expect("set");
-        let saved = service.preferred_subtitles().expect("read");
-        let names: Vec<&str> = saved.iter().map(|language| language.name).collect();
-        assert_eq!(names, ["Spanish", "French", "German"], "three at most");
-        service.set_preferred_subtitles(&[]).expect("clear");
-        assert!(service.preferred_subtitles().expect("read").is_empty());
-    }
-
-    #[test]
-    fn subtitles_turn_on_by_themselves_until_the_viewer_switches_that_off() {
-        let service = service();
-        assert!(service.auto_select_subtitles().expect("read"));
-        service.set_auto_select_subtitles(false).expect("set");
-        assert!(!service.auto_select_subtitles().expect("read"));
-        service.set_auto_select_subtitles(true).expect("set");
-        assert!(service.auto_select_subtitles().expect("read"));
-    }
-
-    #[test]
     fn autoplay_and_skip_lookup_are_on_until_switched_off_and_independent() {
         let service = service();
         assert!(service.autoplay_next().expect("read"));
@@ -274,16 +160,6 @@ mod tests {
         service.set_autoplay_next(true).expect("set");
         assert!(service.autoplay_next().expect("read"));
         assert!(!service.skip_lookup().expect("read"));
-    }
-
-    #[test]
-    fn an_unknown_stored_language_falls_back_to_english() {
-        let service = service();
-        service
-            .store
-            .set(PREFERRED_AUDIO_KEY, "zzz")
-            .expect("write");
-        assert_eq!(service.preferred_audio().expect("read"), Some(ENGLISH));
     }
 
     #[test]
@@ -322,19 +198,5 @@ mod tests {
             .set_provider_enabled("A", false)
             .expect("disable again");
         assert_eq!(service.disabled_providers().expect("read"), ["A"]);
-    }
-
-    #[test]
-    fn the_storage_limit_is_two_gb_until_chosen_and_only_one_to_ten_are_accepted() {
-        let service = service();
-        assert_eq!(
-            service.storage_cap_gb().expect("default"),
-            DEFAULT_STORAGE_CAP_GB
-        );
-        service.set_storage_cap_gb(7).expect("seven");
-        assert_eq!(service.storage_cap_gb().expect("read"), 7);
-        assert!(service.set_storage_cap_gb(0).is_err());
-        assert!(service.set_storage_cap_gb(11).is_err());
-        assert_eq!(service.storage_cap_gb().expect("unchanged"), 7);
     }
 }
