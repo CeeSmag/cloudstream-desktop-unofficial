@@ -5503,6 +5503,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stream_proxy"
+version = "0.4.1"
+dependencies = [
+ "thiserror 2.0.21",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
