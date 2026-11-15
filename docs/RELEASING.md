@@ -21,8 +21,16 @@ SHA-256 is the one in the list. Otherwise it shows why and installs nothing.
 The key is the owner's minisign key `D09F1A068C469C6B`. Its secret half is kept offline by the owner
 and in the GitHub secrets `MINISIGN_SECRET_KEY` and `MINISIGN_PASSWORD`; it is never in the repository.
 Changing the key in the file means every copy already installed rejects releases signed with the new
-key: users would have to download one version by hand. Until the release workflow signs (U5 in
-`docs/HARDENING_PLAN.md`), **do not publish a release**: installed copies would refuse it.
+key: users would have to download one version by hand.
+
+Signing is done by `scripts/sign_release.sh`: it writes `SHA256SUMS` for the `*-setup.exe`,
+`*_portable.exe` and `*.AppImage` files in a folder, signs it, and checks the signature against the
+app's key, so a wrong key or password fails there instead of on users' PCs. The release workflow runs
+it on every tagged build and makes no draft when a secret is missing.
+
+Before pressing **Publish**, check the draft lists `SHA256SUMS` and `SHA256SUMS.minisig` next to the
+three files. To check by hand: download all of them into one folder and run
+`minisign -Vm SHA256SUMS -p crates/desktop_tauri/update_signing_key.pub` and `sha256sum -c SHA256SUMS`.
 
 ## The normal way: let GitHub build it
 
@@ -38,13 +46,14 @@ key: users would have to download one version by hand. Until the release workflo
 4. The **Release build** workflow (`.github/workflows/release.yml`) builds everything and creates a **draft**
    release with all the files: Windows x64 on `windows-latest`, the AppImages on native x86_64 and ARM
    runners inside Debian 12 (so they run on most distros).
-5. Open the draft, check the files, edit the notes and press **Publish**.
+5. Open the draft, check the files (including `SHA256SUMS` and `SHA256SUMS.minisig`), edit the notes and
+   press **Publish**.
 
 The tag must match the version in `tauri.conf.json`: the workflow does not check it, and the files are
 named after the version in `tauri.conf.json`.
 
 To try the build without releasing, run the workflow by hand (Actions > Release build > Run workflow). The files
-are then downloadable artifacts of the run and no release is made.
+are then downloadable artifacts of the run, unsigned, and no release is made.
 
 ## Building by hand
 
@@ -63,6 +72,14 @@ Close a running portable exe first: Windows will not overwrite a running file.
 scripts/build_release.sh --install-deps
 scripts/build_release.sh        # AppImage for this PC's CPU
 ```
+
+**Signing hand-built files** (Linux, or Git Bash on Windows with `winget install jedisct1.minisign`): put
+only this version's files in one folder, then
+```bash
+MINISIGN_SECRET_KEY_FILE=/path/to/cloudstream.key scripts/sign_release.sh dist
+```
+minisign asks for the password (or set `MINISIGN_PASSWORD`). Upload `SHA256SUMS` and `SHA256SUMS.minisig`
+with the files. Without a key the script writes only `SHA256SUMS`, and the app refuses the release.
 
 ## What every package carries
 

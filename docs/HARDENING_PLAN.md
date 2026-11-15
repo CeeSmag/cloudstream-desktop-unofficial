@@ -88,6 +88,8 @@ Done when: `cargo clippy -p desktop_tauri --all-targets -- -D warnings` and the 
 
 ### U5. Release workflow and docs
 
+**Status: done.** `scripts/sign_release.sh` (sums, sign, check against the app's key) runs in `release.yml` `draft-release`; the hand-run build scripts print how to sign. Tested locally with minisign 0.12 and a throwaway key: unsigned, signed (CRLF key text), wrong key, wrong password, empty folder, and the app's verifier on the result (`verify_checksums_sign_release_script_output_is_accepted`, ignored test). Not verified: the workflow on GitHub (needs a tag; minisign comes from Ubuntu's package). Asset tests for both platforms were done in U1.
+
 - `release.yml` `draft-release` job: after download, `sha256sum * > SHA256SUMS`, sign with minisign from the secrets, upload both with the other files. Fail the job if the secret is missing.
 - Same for `scripts/build_release.ps1` / `.sh` when run by hand: write `SHA256SUMS`, sign only if a key path is given, otherwise print that the release is unsigned.
 - `docs/RELEASING.md`: the key, the two secrets, "the app refuses unsigned releases", and the lost-key procedure.

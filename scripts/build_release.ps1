@@ -275,3 +275,4 @@ foreach ($file in $results) {
     '{0,-52} {1,8:N1} MB  sha256 {2}' -f $item.Name, ($item.Length / 1MB), (Get-FileHash $file).Hash.Substring(0, 16) | Write-Host
 }
 Write-Host "Output folder: $OutDir"
+Write-Host "Unsigned: the in-app updater refuses these. To sign: bash scripts/sign_release.sh <folder> (docs/RELEASING.md)."

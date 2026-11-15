@@ -246,3 +246,4 @@ ARCH="$IMAGE_ARCH" VERSION="$VERSION" "$TOOL" --appimage-extract-and-run "$APPDI
 
 step "Done in $(( $(date +%s) - STARTED )) s"
 ls -lh "$OUT"
+echo "Unsigned: the in-app updater refuses it. To sign: scripts/sign_release.sh <folder> (docs/RELEASING.md)."

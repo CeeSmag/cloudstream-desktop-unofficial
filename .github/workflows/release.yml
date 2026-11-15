@@ -7,7 +7,9 @@ name: Release build
 #
 # Run it by hand (Actions tab > Release build > Run workflow) to get the files as downloadable artifacts,
 # or push a tag like v0.3.4 to also collect them into a DRAFT release. Nothing is published until
-# you press "Publish" on the draft.
+# you press "Publish" on the draft. The draft also carries SHA256SUMS and SHA256SUMS.minisig, signed
+# with the secrets MINISIGN_SECRET_KEY and MINISIGN_PASSWORD; without them no draft is made. Files
+# from a manual run are not signed (the app refuses them as updates; fine for trying a build).
 
 on:
   workflow_dispatch:
@@ -95,10 +97,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      # For scripts/sign_release.sh and the app's public key it checks the signature against.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: files
           merge-multiple: true
+
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      # The app installs an update only when SHA256SUMS is signed with the owner's key
+      # (crates/desktop_tauri/src/update_verify.rs). The script fails when a secret is missing or
+      # does not match crates/desktop_tauri/update_signing_key.pub, so no unsigned draft is made.
+      - name: Write and sign SHA256SUMS
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: bash scripts/sign_release.sh --require-signature files
 
       - name: Create the draft release
         env:

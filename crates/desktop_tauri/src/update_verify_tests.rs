@@ -138,3 +138,28 @@ fn update_signing_key_built_in_file_is_a_minisign_public_key() {
         "update_signing_key.pub must hold the owner's minisign public key"
     );
 }
+
+/// End-to-end check of `scripts/sign_release.sh` against the app's own verifier:
+/// `CS_TEST_SIGNED_RELEASE=<signed folder> [CS_TEST_RELEASE_PUBLIC_KEY=<.pub>]
+/// cargo test -p desktop_tauri -- --ignored sign_release_script`. Without the key variable the key
+/// built into the app is used, as for a real release.
+#[test]
+#[ignore = "needs a folder signed by scripts/sign_release.sh"]
+fn verify_checksums_sign_release_script_output_is_accepted() {
+    use sha2::{Digest, Sha256};
+
+    let folder = std::path::PathBuf::from(std::env::var("CS_TEST_SIGNED_RELEASE").unwrap());
+    let public_key = match std::env::var("CS_TEST_RELEASE_PUBLIC_KEY") {
+        Ok(path) => std::fs::read_to_string(path).unwrap(),
+        Err(_) => UPDATE_SIGNING_KEY.to_string(),
+    };
+    let sums = std::fs::read_to_string(folder.join("SHA256SUMS")).unwrap();
+    let signature = std::fs::read_to_string(folder.join("SHA256SUMS.minisig")).unwrap();
+
+    let checksums = verify_checksums(&sums, &signature, &public_key).unwrap();
+    assert!(!checksums.entries.is_empty());
+    for (name, expected) in &checksums.entries {
+        let digest = Sha256::digest(std::fs::read(folder.join(name)).unwrap());
+        check_download(expected, &digest, name).unwrap();
+    }
+}
