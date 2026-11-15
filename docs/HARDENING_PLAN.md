@@ -141,6 +141,8 @@ Comment at the top of `ci.yml` and `justfile`: each lists the other; `RULES.md` 
 ## Phase 3: Rule breaks
 
 ### R1. Split the five other oversize files
+**Status: done.** `playback_service.rs` 268 (resume rule to `playback_resume.rs`), `settings_service.rs` 202 (`language_settings.rs`, `storage_cap_setting.rs`), `browse_commands.rs` 225 (`browse_fetcher.rs`, `browse_query.rs`), `cloudflare_fetch.rs` 197 (`cloudflare_fetch_request.rs`), `cleanup_queue.rs` 181 (tests to `cleanup_queue_tests.rs`; the queue's code is untouched, so its threading is too). `scripts/file_length_baseline.txt` is empty.
+
 One file per responsibility, no behaviour change, tests unchanged:
 - `browse_commands.rs` (369): TMDB request building / response mapping / the command.
 - `cloudflare_fetch.rs` (366): the exchange-file loop / the page `fetch` call and result parsing.
@@ -149,9 +151,13 @@ One file per responsibility, no behaviour change, tests unchanged:
 - `playback_service.rs` (305): drops under 300 with R2; if not, move progress saving into its own file.
 
 ### R2. Remove the stray re-export
+**Status: done** (with the `playback_service.rs` split).
+
 Delete `#[allow(unused_imports)] pub use crate::playback_types::{...}` from `playback_service.rs:10-11`; import only what the file uses (`StreamSelection`, ...) with a plain `use`. `lib.rs:39` already exports them.
 
 ### R3. Remove `AppState::write`
+**Status: done.**
+
 No caller (`app_state.rs:43`). Delete it and its `allow`.
 
 ---
