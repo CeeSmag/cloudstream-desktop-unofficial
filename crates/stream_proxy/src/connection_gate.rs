@@ -67,6 +67,15 @@ impl ConnectionGate {
     }
 }
 
+impl Permit {
+    /// Gives the place back, and only then runs `then`. For the end of a connection: whoever sees
+    /// the connection close must already find its place free.
+    pub(crate) fn release_then(self, then: impl FnOnce()) {
+        drop(self);
+        then();
+    }
+}
+
 impl Drop for Permit {
     fn drop(&mut self) {
         let mut open = self.gate.lock();

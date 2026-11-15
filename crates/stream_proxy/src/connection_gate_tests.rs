@@ -33,6 +33,19 @@ fn try_enter_admits_up_to_the_limit_and_a_dropped_permit_frees_a_place() {
 }
 
 #[test]
+fn release_then_gives_the_place_back_before_it_runs_the_closing_step() {
+    let gate = ConnectionGate::new(1);
+    let permit = gate.try_enter().expect("a place");
+    let mut open_when_closing = None;
+    permit.release_then(|| open_when_closing = Some(gate.open_count()));
+    assert_eq!(
+        open_when_closing,
+        Some(0),
+        "the place was still taken while closing"
+    );
+}
+
+#[test]
 fn wait_idle_returns_at_once_when_nothing_is_open_and_gives_up_when_something_stays() {
     let gate = ConnectionGate::new(2);
     assert!(gate.wait_idle(Duration::ZERO));

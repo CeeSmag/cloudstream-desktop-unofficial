@@ -47,6 +47,7 @@ impl UrlTable {
     }
 
     /// How many addresses are registered.
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }

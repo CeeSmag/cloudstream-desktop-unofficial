@@ -6,11 +6,11 @@
 //! back at itself. Nothing here knows about the player, the UI or the extensions.
 
 #![forbid(unsafe_code)]
-// The pieces are built and tested one at a time; the server that uses them all comes last.
-#![allow(dead_code)]
 
 mod connection_gate;
 mod entry_kind;
+#[cfg(test)]
+mod fake_origin;
 #[cfg(test)]
 mod fake_upstream;
 mod header_policy;
@@ -18,11 +18,19 @@ mod hls_rewrite;
 mod http_request;
 mod http_response;
 mod origin_fetch;
+mod playlist_response;
+mod proxy_config;
 mod proxy_error;
+mod proxy_server;
+#[cfg(test)]
+mod proxy_test_support;
 mod proxy_url;
+mod relay_body;
+mod request_handler;
 mod resolve_reference;
 mod session_registry;
 mod session_token;
+mod stream_proxy;
 mod stream_session;
 mod stream_spec;
 mod upstream;
@@ -30,4 +38,7 @@ mod ureq_upstream;
 mod url_parts;
 mod url_table;
 
+pub use proxy_config::ProxyConfig;
+pub use proxy_error::ProxyError;
+pub use stream_proxy::StreamProxy;
 pub use stream_spec::StreamSpec;
