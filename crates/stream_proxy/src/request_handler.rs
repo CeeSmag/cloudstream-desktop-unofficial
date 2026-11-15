@@ -6,8 +6,8 @@ use std::sync::Arc;
 use crate::entry_kind::EntryKind;
 use crate::http_request::HttpRequest;
 use crate::http_response::write_message;
-use crate::origin_fetch::fetch;
-use crate::playlist_response::{answer_playlist, PlaylistJob};
+use crate::origin_fetch::{fetch, OriginResponse};
+use crate::playlist_response::{answer_playlist, looks_like_playlist, sniff, PlaylistJob};
 use crate::proxy_url::parse_path;
 use crate::relay_body::{relay, RelayJob};
 use crate::session_registry::SessionRegistry;
@@ -52,9 +52,18 @@ impl Handler {
 
     /// Writes the answer to `request`.
     pub(crate) fn serve(&self, request: &HttpRequest, out: &mut impl Write) -> std::io::Result<()> {
+        tracing::debug!(
+            method = %request.method,
+            target = %request.target,
+            range = ?request.header("range"),
+            "a request to the stream proxy"
+        );
         match self.target_of(request) {
             Ok(target) => self.answer(&target, out),
-            Err(refusal) => write_message(out, refusal.status, refusal.message),
+            Err(refusal) => {
+                tracing::debug!(status = refusal.status, "the request is refused");
+                write_message(out, refusal.status, refusal.message)
+            }
         }
     }
 
@@ -91,40 +100,89 @@ impl Handler {
         })
     }
 
-    fn answer(&self, target: &Target, out: &mut impl Write) -> std::io::Result<()> {
+    /// Asks the stream's host; a failure is logged (host only, never the whole address).
+    fn fetch_logged(&self, target: &Target, range: Option<&str>) -> Option<OriginResponse> {
         let fetched = fetch(
             &*self.upstream,
             target.session.headers(),
             &target.entry.url,
-            target.range.as_deref(),
+            range,
         );
-        let response = match fetched {
-            Ok(response) => response,
+        match fetched {
+            Ok(response) => {
+                tracing::debug!(
+                    status = response.status,
+                    kind = ?target.entry.kind,
+                    "the stream's host answered"
+                );
+                Some(response)
+            }
             Err(error) => {
                 let host = host_of(&target.entry.url).unwrap_or_default();
                 tracing::warn!(%error, %host, "the stream's host did not answer");
-                return write_message(out, 502, "The stream's host did not answer.");
+                None
             }
+        }
+    }
+
+    fn answer(&self, target: &Target, out: &mut impl Write) -> std::io::Result<()> {
+        let playlist = target.entry.kind == EntryKind::Playlist;
+        // A playlist is always read whole, whatever the player asks: the player asks for
+        // `bytes=0-` on every request, playlists included, and what it needs is that range of the
+        // *rewritten* text, not of the host's.
+        let range = if playlist {
+            None
+        } else {
+            target.range.as_deref()
+        };
+        let Some(response) = self.fetch_logged(target, range) else {
+            return write_message(out, 502, "The stream's host did not answer.");
         };
         if target.session.is_revoked() {
             return write_message(out, 410, "This stream is no longer open.");
         }
-        let playlist = target.entry.kind == EntryKind::Playlist
-            && target.range.is_none()
-            && (200..300).contains(&response.status);
-        if playlist {
+        if playlist && (200..300).contains(&response.status) {
+            return self.answer_playlist_entry(target, response, out);
+        }
+        relay(out, &relay_job(target), response, &[])
+    }
+
+    /// An address that should be a playlist. One that turns out to be something else (a link
+    /// labelled HLS that is a plain file) is passed on as it is, ranges included.
+    fn answer_playlist_entry(
+        &self,
+        target: &Target,
+        mut response: OriginResponse,
+        out: &mut impl Write,
+    ) -> std::io::Result<()> {
+        let Ok(first) = sniff(&mut response) else {
+            return write_message(out, 502, "The stream's host stopped answering.");
+        };
+        if looks_like_playlist(&first) {
             let job = PlaylistJob {
                 session: &target.session,
                 port: self.port,
                 head_only: target.head_only,
+                range: target.range.as_deref(),
             };
-            return answer_playlist(out, &job, response);
+            return answer_playlist(out, &job, response, first);
         }
-        let job = RelayJob {
-            session: &target.session,
-            kind: target.entry.kind,
-            head_only: target.head_only,
+        tracing::debug!("the address is not an HLS playlist; passing it on as it is");
+        let Some(range) = target.range.as_deref() else {
+            return relay(out, &relay_job(target), response, &first);
         };
-        relay(out, &job, response, &[])
+        drop(response);
+        match self.fetch_logged(target, Some(range)) {
+            Some(ranged) => relay(out, &relay_job(target), ranged, &[]),
+            None => write_message(out, 502, "The stream's host did not answer."),
+        }
+    }
+}
+
+fn relay_job(target: &Target) -> RelayJob<'_> {
+    RelayJob {
+        session: &target.session,
+        kind: target.entry.kind,
+        head_only: target.head_only,
     }
 }

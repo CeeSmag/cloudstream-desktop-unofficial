@@ -141,3 +141,79 @@ fn head_gets_the_head_of_the_rewritten_playlist_and_no_body() {
         .expect("a number");
     assert_eq!(length, get(&url).body.len());
 }
+
+#[test]
+fn a_player_that_asks_for_a_range_of_everything_still_gets_the_rewritten_playlist() {
+    // libmpv sends `Range: bytes=0-` on every request, the first playlist included.
+    let origin = FakeOrigin::start(show);
+    let proxy = proxy();
+    let url = proxy
+        .open(&spec(origin.url("/show/master.m3u8")))
+        .expect("opens");
+    let whole = get(&url);
+    let total = whole.body.len();
+
+    let from_start = request("GET", &url, &[("Range", "bytes=0-")]).expect("answers");
+    assert_eq!(from_start.status, 206);
+    assert_eq!(
+        from_start.header("content-range"),
+        Some(format!("bytes 0-{}/{total}", total - 1).as_str())
+    );
+    assert_eq!(from_start.body, whole.body, "the whole rewritten playlist");
+    let prefix = format!("http://127.0.0.1:{}/s/", proxy.port());
+    assert!(media_lines(&from_start.text())
+        .iter()
+        .all(|line| line.starts_with(&prefix)));
+
+    let part = request("GET", &url, &[("Range", "bytes=0-6")]).expect("answers");
+    assert_eq!(
+        (part.status, part.body.as_slice()),
+        (206, b"#EXTM3U".as_slice())
+    );
+    let beyond = request("GET", &url, &[("Range", "bytes=99999-")]).expect("answers");
+    assert_eq!(beyond.status, 416);
+    assert_eq!(
+        beyond.header("content-range"),
+        Some(format!("bytes */{total}").as_str())
+    );
+    assert!(
+        origin
+            .requests()
+            .iter()
+            .all(|seen| seen.header("range").is_none()),
+        "a playlist is always read whole from its host"
+    );
+}
+
+#[test]
+fn a_host_that_refuses_every_range_still_plays_a_stream_whose_player_asks_for_ranges_everywhere() {
+    let origin = FakeOrigin::start(|request| {
+        if request.header("range").is_some() {
+            return Answer::status(403);
+        }
+        match request.target.as_str() {
+            "/p.m3u8" => Answer::ok(
+                "#EXTM3U
+#EXTINF:4,
+f.ts
+",
+            ),
+            _ => Answer::ok("0123456789"),
+        }
+    });
+    let proxy = proxy();
+    let url = proxy
+        .open(&StreamSpec {
+            url: origin.url("/p.m3u8"),
+            ..StreamSpec::default()
+        })
+        .expect("opens");
+    let playlist = request("GET", &url, &[("Range", "bytes=0-")]).expect("answers");
+    assert_eq!(playlist.status, 206);
+    let piece = media_lines(&playlist.text()).remove(0);
+    let reply = request("GET", &piece, &[("Range", "bytes=0-")]).expect("answers");
+    assert_eq!(
+        (reply.status, reply.body.as_slice()),
+        (200, b"0123456789".as_slice())
+    );
+}

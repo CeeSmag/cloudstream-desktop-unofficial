@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod byte_range;
 mod connection_gate;
 mod entry_kind;
 #[cfg(test)]
