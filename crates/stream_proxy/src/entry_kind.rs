@@ -3,7 +3,7 @@
 use crate::url_parts::split_url;
 
 /// What the player will do with an address the proxy handed out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum EntryKind {
     /// A master or media playlist: fetched whole and rewritten.
     Playlist,

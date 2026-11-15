@@ -11,9 +11,11 @@
 
 mod entry_kind;
 mod header_policy;
+mod hls_rewrite;
 mod proxy_url;
 mod resolve_reference;
 mod stream_spec;
 mod url_parts;
+mod url_table;
 
 pub use stream_spec::StreamSpec;
