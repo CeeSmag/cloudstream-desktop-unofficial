@@ -9,9 +9,15 @@
 // The pieces are built and tested one at a time; the server that uses them all comes last.
 #![allow(dead_code)]
 
+mod connection_gate;
 mod entry_kind;
+#[cfg(test)]
+mod fake_upstream;
 mod header_policy;
 mod hls_rewrite;
+mod http_request;
+mod http_response;
+mod origin_fetch;
 mod proxy_error;
 mod proxy_url;
 mod resolve_reference;
@@ -19,6 +25,8 @@ mod session_registry;
 mod session_token;
 mod stream_session;
 mod stream_spec;
+mod upstream;
+mod ureq_upstream;
 mod url_parts;
 mod url_table;
 
