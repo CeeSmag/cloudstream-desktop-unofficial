@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use app_services::{
     CatalogService, Clock, ExtensionService, LibraryService, PlaybackService, RepositoryService,
-    SettingsService, StreamResolver, SystemClock,
+    RoutedPlayer, SettingsService, StreamResolver, SystemClock,
 };
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
@@ -19,6 +19,7 @@ use ui_app::UiServices;
 
 use crate::app_paths::AppPaths;
 use crate::sidecar_discovery;
+use crate::stream_proxy_router::StreamProxyRouter;
 use crate::unavailable_gateway::UnavailableGateway;
 
 /// Choices that differ between the app and tests.
@@ -83,6 +84,17 @@ fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
     }
 }
 
+/// Wraps the player so that HLS streams go through the local stream proxy while the viewer's
+/// setting allows it; the setting is read again before every stream.
+fn route_through_proxy(
+    player: Arc<dyn VideoPlayer>,
+    database: &Arc<Database>,
+) -> Arc<dyn VideoPlayer> {
+    let settings = SettingsService::new(SettingsStore::new(Arc::clone(database)));
+    let router = StreamProxyRouter::new(move || settings.stream_proxy().unwrap_or(true));
+    Arc::new(RoutedPlayer::new(player, Arc::new(router)))
+}
+
 fn build_playback(
     database: &Arc<Database>,
     clock: &Arc<dyn Clock>,
@@ -97,7 +109,7 @@ fn build_playback(
         MpvPlayer::auto_detect(&player_options).map_err(|error| error.to_string());
     match player {
         Ok(player) => {
-            let player: Arc<dyn VideoPlayer> = Arc::new(player);
+            let player = route_through_proxy(Arc::new(player), database);
             let progress = WatchProgressStore::new(Arc::clone(database));
             let resume = ResumeStore::new(Arc::clone(database));
             (

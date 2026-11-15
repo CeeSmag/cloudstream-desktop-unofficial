@@ -10,6 +10,7 @@ mod log_file;
 mod logging_setup;
 mod service_wiring;
 mod sidecar_discovery;
+mod stream_proxy_router;
 mod unavailable_gateway;
 
 pub use app_paths::AppPaths;

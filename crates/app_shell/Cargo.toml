@@ -19,6 +19,7 @@ extension_runtime = { path = "../extension_runtime" }
 player_api = { path = "../player_api" }
 player_mpv = { path = "../player_mpv" }
 storage = { path = "../storage" }
+stream_proxy = { path = "../stream_proxy" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ui_app = { path = "../ui_app" }

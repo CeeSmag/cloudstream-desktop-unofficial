@@ -241,6 +241,7 @@ dependencies = [
  "player_api",
  "player_mpv",
  "storage",
+ "stream_proxy",
  "tracing",
  "tracing-subscriber",
  "ui_app",
