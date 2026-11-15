@@ -6,6 +6,9 @@ use crate::{
 };
 
 /// A video player the app can drive.
+///
+/// A player that wraps another one (`RoutedPlayer` in `app_services`) must forward every method
+/// below, the ones with a default body too: a forgotten one silently answers with its default.
 pub trait VideoPlayer: Send + Sync {
     /// Starts playing a stream, replacing whatever was playing.
     fn play(&self, request: &PlaybackRequest) -> Result<(), PlayerError>;

@@ -13,6 +13,8 @@ mod playback_service;
 mod playback_types;
 mod plugin_index;
 mod repository_service;
+mod request_router;
+mod routed_player;
 mod service_error;
 mod settings_service;
 mod stream_checker;
@@ -36,6 +38,8 @@ pub use playback_service::{
 pub use playback_types::{NextEpisode, PlaybackItem, StreamSelection};
 pub use plugin_index::{IndexedRepository, PluginHit, PluginIndex};
 pub use repository_service::RepositoryService;
+pub use request_router::RequestRouter;
+pub use routed_player::RoutedPlayer;
 pub use service_error::ServiceError;
 pub use settings_service::{SettingsService, MAX_PREFERRED_SUBTITLES};
 pub use stream_checker::{LinkHealth, StreamChecker};
