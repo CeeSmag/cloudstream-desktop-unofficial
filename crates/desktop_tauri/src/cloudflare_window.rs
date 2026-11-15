@@ -15,7 +15,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, Url, Webview};
 
 use crate::cloudflare_exchange::{Outcome, VerifyRequest};
-use crate::cloudflare_fetch::{run_fetch, FetchOutcome, FetchRequest};
+use crate::cloudflare_fetch::run_fetch;
+use crate::cloudflare_fetch_request::{FetchOutcome, FetchRequest};
 use crate::cloudflare_open::{open, reuse};
 use crate::cloudflare_panel::{announce, PanelControl, Rect};
 use crate::cloudflare_share::share_cookies;

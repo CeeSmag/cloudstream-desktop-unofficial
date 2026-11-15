@@ -18,6 +18,7 @@ mod cleanup_tasks;
 mod cloudflare_commands;
 mod cloudflare_exchange;
 mod cloudflare_fetch;
+mod cloudflare_fetch_request;
 mod cloudflare_gate;
 mod cloudflare_open;
 mod cloudflare_panel;

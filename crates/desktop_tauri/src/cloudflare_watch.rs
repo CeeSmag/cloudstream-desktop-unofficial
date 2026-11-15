@@ -16,8 +16,9 @@ use tauri::{AppHandle, Emitter};
 use crate::cloudflare_exchange::{
     clear_folder, fresh_files, pending_requests, write_named, write_result, Outcome, VerifyRequest,
 };
-use crate::cloudflare_fetch::{
-    format_fetch_result, parse_fetch_request, run_fetch, FetchOutcome, FetchRequest,
+use crate::cloudflare_fetch::run_fetch;
+use crate::cloudflare_fetch_request::{
+    format_fetch_result, parse_fetch_request, FetchOutcome, FetchRequest,
 };
 use crate::cloudflare_gate::{provider_of_host, Gate};
 use crate::cloudflare_open::{close_kept, find};
