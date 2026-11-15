@@ -21,6 +21,7 @@ pub const OWN_TARGETS: &[&str] = &[
     "player_mpv",
     "sidecar",
     "storage",
+    "stream_proxy",
     "ui_app",
     "webapp",
 ];
@@ -67,6 +68,7 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ),
     ("desktop_tauri::startup", LogCategory::Extensions),
     ("app_services::stream_checker", LogCategory::Streams),
+    ("stream_proxy", LogCategory::Streams),
     ("desktop_tauri::source", LogCategory::Streams),
     ("desktop_tauri::check_gate", LogCategory::Streams),
     ("storage", LogCategory::Storage),
@@ -155,6 +157,15 @@ mod tests {
             LogCategory::for_target("storage::database"),
             LogCategory::Storage
         );
+    }
+
+    #[test]
+    fn the_stream_proxy_is_logged_with_the_streams_and_its_debug_output_is_kept() {
+        assert_eq!(
+            LogCategory::for_target("stream_proxy::request_handler"),
+            LogCategory::Streams
+        );
+        assert!(OWN_TARGETS.contains(&"stream_proxy"));
     }
 
     #[test]
