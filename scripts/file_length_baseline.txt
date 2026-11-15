@@ -1,4 +1,3 @@
 # Rust files that were over the 300-line limit (RULES.md section 4) when scripts/check_file_lengths.py
 # came in. Each may shrink but not grow; delete its line once it is split (R1 in docs/HARDENING_PLAN.md).
 # The check fails while a line here is no longer needed, so this list only gets shorter.
-333 crates/desktop_tauri/src/cleanup_queue.rs
