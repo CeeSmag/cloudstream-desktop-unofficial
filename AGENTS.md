@@ -126,7 +126,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Verified Types**:
   - `TrackKind`: Enum with `Audio`, `Subtitle`.
   - `SubtitleSource`: Local file path/URL and label for external subtitle attachment.
-  - `PlaybackRequest`: Title, URL, referer, custom HTTP headers, start position in ms, and initial subtitles.
+  - `PlaybackRequest`: Title, URL, `kind` (`StreamKind`: `Unknown`, `Video`, `Hls`, `Dash`, from the provider's link type by `build_request`), referer, custom HTTP headers, start position in ms, and initial subtitles.
   - `PlaybackStatus`: State (`PlaybackState`: `Idle`, `Loading`, `Playing`, `Paused`, `Ended`, `Failed`), duration, position, volume.
   - `Language`: ISO 639-1 / 639-2 codes, with helpers `all_languages()`, `find_language()`, and `ENGLISH`.
   - `VideoFrame`: Width, height, monotonically increasing `serial: u64`, and RGBA byte buffer.
@@ -243,6 +243,16 @@ This document is the verified architectural index, navigation map, and modificat
   - `sidecar/LinkSearchesTest.kt`: Multi-threaded race tests verifying streaming link search concurrency.
 - **Build Script**: `scripts/setup_sidecar.ps1` clones the pinned reference client into `C:\cs3d\repo` and compiles the distribution.
 
+#### `crates/stream_proxy`
+- **Location**: `crates/stream_proxy/`
+- **Dependencies**: `thiserror`, `tracing`, `ureq = "3"` (nothing internal; std sockets and threads for the server).
+- **Responsibility**: A local HTTP proxy (`http://127.0.0.1:<port>/s/<token>/<id>.<ext>`) that the player opens instead of an HLS stream's own address. It fetches every playlist, segment and key with the provider's headers and referer, follows redirects, asks again without `Range` where a host refuses it (400/403/405/416), resolves relative addresses like the player would (RFC 3986, `resolve_reference.rs`) and rewrites playlists (`hls_rewrite.rs`) so that every address in them is its own. The addresses carry no part of the real URL (a signed link never reaches the player's log).
+- **Why it exists (verified with the real libmpv)**: libmpv sends `Range: bytes=0-` on **every** request, playlists included. A host that refuses ranges cannot be played directly; through the proxy it plays (`app_shell/src/stream_proxy_live_tests.rs`). It is *not* needed for headers on every piece (mpv already sends them) or for disguised segment names (libmpv accepts them): measure before assuming a benefit.
+- **API**: `StreamProxy::start(ProxyConfig)`, `open(&StreamSpec) -> proxied address`, `close()`, `shutdown()`, `port()`.
+- **Behaviour worth knowing**: a playlist is always read whole from its host and the player's range is answered over the *rewritten* text (`playlist_response.rs`, `byte_range.rs`); an address labelled HLS that is a plain file is passed on as it is, ranges included; at most two streams are served (the newest and the one it replaced, `session_registry.rs`, so a source switch never cuts the stream the player is still reading); `http`/`https` upstream only, other schemes in a playlist fail it; cookies and credentials go only to the host the stream started on (`header_policy.rs`); loopback only, random per-stream token, `Host` check, at most 64 connections (`connection_gate.rs`).
+- **Not here**: DASH to HLS and CENC decryption (HLS AES-128 needs nothing: the player decrypts, the proxy only carries the key request).
+- **Tests**: `cargo test -p stream_proxy` (T1 rules, T2 with a fake origin on real sockets, race tests for sessions, the gate and shutdown). Real libmpv: `CS_LIBMPV_PATH=... CS_TEST_TS_SEGMENT=<any .ts> cargo test -p app_shell --lib -- --ignored hls`.
+
 #### `spikes/wasmtime_host`
 - **Location**: `spikes/wasmtime_host/`
 - **Status**: Feasibility spike testing Kotlin/Wasm GC compilation running in Wasmtime 50.0.1. Retained as reference for future pure-native WASM extension runtime.
@@ -299,6 +309,8 @@ This document is the verified architectural index, navigation map, and modificat
   - `LibraryService`: Bookmarks, continue-watching, and resume pointers. `continue_watching()` returns one card per show, newest first, carrying season/episode and progress from `ResumeStore`. `resume_pointer(provider, detail_url)` finds resume position for details page. `remove_continue_watching(provider, detail_url)` and `clear_continue_watching()` remove resume pointers and episode progress rows. Max 20 items in continue-watching.
   - `SettingsService`: Typed getters/setters for disabled providers, audio language, subtitle language list (up to 3: `MAX_PREFERRED_SUBTITLES = 3`), auto-subtitles, and debug logging.
   - `Clock` Trait: `SystemClock` for production, mockable clock for deterministic tests.
+  - `RequestRouter` / `RoutedPlayer`: `RoutedPlayer` wraps any `VideoPlayer` and lets a `RequestRouter` change the request before every `play` (the stream proxy, wired in `app_shell`); `stop` stops the player first and then lets the router go. It forwards **every** method of `VideoPlayer`, defaults included: add new trait methods there too (`routed_player_tests.rs` lists them).
+  - `SettingsService::stream_proxy()` / `set_stream_proxy()` (`stream_proxy_setting.rs`): the "Play HLS streams through a local helper" switch, on by default, option name `stream_proxy`.
   - `ServiceError`: Transparent error envelope wrapping `GatewayError`, `RepoError`, `StorageError`, `PlayerError`, and `NotFound(String)`.
 
 ---
@@ -314,7 +326,8 @@ This document is the verified architectural index, navigation map, and modificat
   - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME` or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`.
   - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the running program's own `runtime-*` folder (`running_folder_name`; older `runtime-*` folders go too), retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
-  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing.
+  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` (both shells).
+  - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS streams (provider says `Hls`, or the address ends in `.m3u8`; never DASH) through `stream_proxy` when the setting is on; the proxy starts on the first HLS stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly.
 
 #### `crates/ui_app`
 - **Location**: `crates/ui_app/`
@@ -527,7 +540,7 @@ All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `list_all_plugins` | Returns indexed plugins with repository metadata. |
 | **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |
 | | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
-| | `set_playback_option` | Switches `autoplay_next` or `skip_lookup`. |
+| | `set_playback_option` | Switches `autoplay_next`, `skip_lookup` or `stream_proxy`. |
 | | `provider_switched` | The viewer picked another provider: saved stream links from before are not used. |
 | **Video/Window** | `get_video_mode` | True when mpv draws into the main window itself (native video), so the page needs no canvas. |
 | | `set_video_surface` | Informs player of viewport dimensions. |
@@ -558,6 +571,7 @@ All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
 | **Service Construction Root** | `crates/app_shell/src/service_wiring.rs` |
 | **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs` |
 | **Sidecar Process Transport** | `crates/extension_runtime/src/sidecar_process_transport.rs` |
+| **Local stream proxy** | `crates/stream_proxy/src/stream_proxy.rs`, `request_handler.rs`, `hls_rewrite.rs`; wiring in `crates/app_shell/src/stream_proxy_router.rs` |
 | **Sidecar JSON-Lines RPC Gateway** | `crates/extension_runtime/src/rpc_provider_gateway.rs` |
 | **libmpv FFI & Loaders** | `crates/player_mpv/src/mpv_api.rs`, `libmpv_locator.rs` |
 | **SQLite Schema Migrations** | `crates/storage/src/schema_migrations.rs` |

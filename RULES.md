@@ -33,6 +33,7 @@ crates/
   subtitle_store/    # subtitle download, cleaning and disk cache
   title_cache/       # saved stream links per title
   skip_times/        # intro/recap/credits times from online databases
+  stream_proxy/      # local HTTP proxy that lets the player open HLS streams (headers, ranges, redirects)
   app_services/      # use cases behind the screens
   desktop_tauri/     # Tauri v2 app + React frontend (the main app)
   ui_app/ app_shell/ # the native egui shell: screens, and main() wiring only, no logic

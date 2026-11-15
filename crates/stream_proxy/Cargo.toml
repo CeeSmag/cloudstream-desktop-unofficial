@@ -1,6 +1,6 @@
 [package]
 name = "stream_proxy"
-description = "A small local HTTP proxy that lets the player open HLS streams whose playlists, segments and keys need the provider's headers."
+description = "A small local HTTP proxy that lets the player open HLS streams from hosts it cannot play from directly (they refuse Range requests), with the provider's headers on every request."
 edition.workspace = true
 version.workspace = true
 license.workspace = true

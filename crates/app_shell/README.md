@@ -10,5 +10,9 @@ Everything it needs is discovered, and a missing piece degrades instead of crash
 | Sidecar (`CS_SIDECAR_HOME`) | App starts; extension calls report "runtime not available" |
 | libmpv (`CS_LIBMPV_PATH`) | App starts; Play shows why playback is unavailable |
 
+HLS streams are played through the local `stream_proxy` while the Settings switch allows it
+(`stream_proxy_router.rs`, wrapped around the player in `service_wiring.rs`); the proxy starts on the first
+HLS stream and a stream it cannot open plays directly.
+
 Environment variables: `CS_DATA_DIR`, `CS_SIDECAR_HOME`, `CS_SIDECAR_JAVA_HOME`, `CS_LIBMPV_PATH`,
 `RUST_LOG`.
