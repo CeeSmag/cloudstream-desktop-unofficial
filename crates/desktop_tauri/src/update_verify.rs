@@ -9,8 +9,8 @@ use minisign_verify::{PublicKey, Signature};
 
 use crate::update_error::UpdateError;
 
-/// The release-signing public key built into the app (a minisign `.pub` file). Until the owner
-/// puts the real key there (`docs/RELEASING.md`) it holds no key, and updates are refused.
+/// The owner's release-signing public key (minisign key ID `D09F1A068C469C6B`). Only releases whose
+/// `SHA256SUMS` is signed with the matching secret key are installed (`docs/RELEASING.md`).
 pub(crate) const UPDATE_SIGNING_KEY: &str = include_str!("../update_signing_key.pub");
 
 /// Length of a SHA-256 written as hex.

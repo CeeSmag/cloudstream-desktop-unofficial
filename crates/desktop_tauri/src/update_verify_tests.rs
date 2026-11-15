@@ -129,3 +129,12 @@ fn check_download_other_digest_returns_checksum_mismatch() {
         Err(UpdateError::ChecksumMismatch { ref file }) if file == INSTALLER
     ));
 }
+
+#[test]
+fn update_signing_key_built_in_file_is_a_minisign_public_key() {
+    let key = minisign_verify::PublicKey::decode(UPDATE_SIGNING_KEY);
+    assert!(
+        key.is_ok(),
+        "update_signing_key.pub must hold the owner's minisign public key"
+    );
+}

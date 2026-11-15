@@ -18,9 +18,11 @@ From the version after 0.4.2 the app installs an update only when the release ca
 is valid for the public key in `crates/desktop_tauri/update_signing_key.pub`, and the downloaded file's
 SHA-256 is the one in the list. Otherwise it shows why and installs nothing.
 
-Until the owner's public key is in that file (it holds only a comment now), every build refuses all
-updates: **do not release before the key is set up.** Signing in the release workflow is the next step
-(U5 in `docs/HARDENING_PLAN.md`).
+The key is the owner's minisign key `D09F1A068C469C6B`. Its secret half is kept offline by the owner
+and in the GitHub secrets `MINISIGN_SECRET_KEY` and `MINISIGN_PASSWORD`; it is never in the repository.
+Changing the key in the file means every copy already installed rejects releases signed with the new
+key: users would have to download one version by hand. Until the release workflow signs (U5 in
+`docs/HARDENING_PLAN.md`), **do not publish a release**: installed copies would refuse it.
 
 ## The normal way: let GitHub build it
 
