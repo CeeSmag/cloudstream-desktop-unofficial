@@ -93,6 +93,22 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3 text-sm text-zinc-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={preferences?.stream_proxy ?? true}
+            disabled={busy || preferences === null}
+            onChange={(event) => void choosePlaybackOption('stream_proxy', event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Play HLS streams through a local helper
+            <span className="block text-xs text-zinc-400">
+              Many sites only serve a stream when every piece of it is asked for with the site&apos;s own headers. The
+              helper runs on this PC only and adds them. Switch it off if a stream plays better without it.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">

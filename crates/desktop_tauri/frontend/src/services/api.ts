@@ -7,6 +7,7 @@ import {
   InstalledExtension,
   MediaDetails,
   NextEpisode,
+  PlaybackOption,
   PlaybackStatus,
   StorageInfo,
   VideoMode,
@@ -85,8 +86,8 @@ export const api = {
   /** Switches on or off turning on a preferred-language subtitle by itself. */
   setAutoSubtitles: (enabled: boolean) => invokeTauri<Preferences>('set_auto_subtitles', { enabled }),
 
-  /** Switches `autoplay_next` or `skip_lookup` on or off. */
-  setPlaybackOption: (option: 'autoplay_next' | 'skip_lookup', enabled: boolean) =>
+  /** Switches a playback option (`autoplay_next`, `skip_lookup` or `stream_proxy`) on or off. */
+  setPlaybackOption: (option: PlaybackOption, enabled: boolean) =>
     invokeTauri<Preferences>('set_playback_option', { option, enabled }),
 
   getDebugLogging: () => invokeTauri<DebugLoggingInfo>('get_debug_logging'),

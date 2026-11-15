@@ -273,6 +273,9 @@ export interface LanguageOption {
 }
 
 /** The viewer's preferences and the choices on offer. */
+/** The playback options that can be switched on or off by name. */
+export type PlaybackOption = 'autoplay_next' | 'skip_lookup' | 'stream_proxy';
+
 export interface Preferences {
   /** Code of the preferred audio language; null when the stream's own default track is wanted. */
   preferred_audio: string | null;
@@ -284,6 +287,8 @@ export interface Preferences {
   autoplay_next: boolean;
   /** Whether skip times are looked up online by the title's id. */
   skip_lookup: boolean;
+  /** Whether HLS streams go through the local stream proxy. */
+  stream_proxy: boolean;
   languages: LanguageOption[];
 }
 

@@ -19,6 +19,7 @@ mod service_error;
 mod settings_service;
 mod stream_checker;
 mod stream_label;
+mod stream_proxy_setting;
 mod stream_resolver;
 mod subtitle_scan;
 #[cfg(test)]

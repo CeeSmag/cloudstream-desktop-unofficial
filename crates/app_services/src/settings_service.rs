@@ -174,11 +174,11 @@ impl SettingsService {
         Ok(())
     }
 
-    fn flag(&self, key: &str) -> Result<bool, ServiceError> {
+    pub(crate) fn flag(&self, key: &str) -> Result<bool, ServiceError> {
         Ok(self.store.get(key)?.as_deref() != Some(DISABLED))
     }
 
-    fn set_flag(&self, key: &str, enabled: bool) -> Result<(), ServiceError> {
+    pub(crate) fn set_flag(&self, key: &str, enabled: bool) -> Result<(), ServiceError> {
         self.store
             .set(key, if enabled { ENABLED } else { DISABLED })?;
         Ok(())

@@ -1,6 +1,6 @@
 import React from 'react';
 import { api } from '../services/api';
-import { Preferences } from '../types';
+import { PlaybackOption, Preferences } from '../types';
 
 /** How long the "Saved" note stays after a change. */
 const SAVED_NOTE_MS = 2000;
@@ -43,8 +43,8 @@ export function usePreferences(report: (error: unknown) => void) {
   /** Switches the automatic turning on of a preferred-language subtitle on or off. */
   const chooseAutoSubtitles = (enabled: boolean) => save(() => api.setAutoSubtitles(enabled));
 
-  /** Switches the automatic next episode or the online skip-time lookup on or off. */
-  const choosePlaybackOption = (option: 'autoplay_next' | 'skip_lookup', enabled: boolean) =>
+  /** Switches the automatic next episode, the online skip-time lookup or the stream proxy on or off. */
+  const choosePlaybackOption = (option: PlaybackOption, enabled: boolean) =>
     save(() => api.setPlaybackOption(option, enabled));
 
   return { preferences, busy, saved, chooseAudio, chooseSubtitles, chooseAutoSubtitles, choosePlaybackOption };
