@@ -44,6 +44,7 @@ impl EventWorker {
             self.tracker.apply(event);
             let generation = self.stream_generation.load(Ordering::SeqCst);
             loads.apply(event, generation);
+            Self::report_hardware_problem(event, generation);
             if event == MpvEvent::FileLoaded {
                 tracing::info!(
                     generation,
@@ -67,6 +68,18 @@ impl EventWorker {
                 self.refresh_tracks();
                 self.refresh_chapters();
             }
+        }
+    }
+
+    /// Says what mpv's own log line means for the stream. The stream keeps playing: mpv decides
+    /// by itself whether to fall back to software decoding, so this only makes the cause visible.
+    fn report_hardware_problem(event: MpvEvent, generation: u64) {
+        if let MpvEvent::HardwareProblem(problem) = event {
+            tracing::warn!(
+                generation,
+                problem = problem.describe(),
+                "hardware video decoding problem reported by mpv"
+            );
         }
     }
 

@@ -7,6 +7,7 @@ use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use libloading::Library;
 use player_api::PlayerError;
 
+use crate::hwdec_problem::{classify_log, HwdecProblem};
 use crate::mpv_api::symbol;
 
 type RequestLogFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
@@ -63,11 +64,12 @@ fn text_of(pointer: *const c_char) -> String {
         .to_owned()
 }
 
-/// Writes one mpv log event into the app's log at the matching level.
+/// Writes one mpv log event into the app's log at the matching level, and says whether the line
+/// reports a hardware-decoder problem (the event thread then logs what it means for the stream).
 ///
 /// # Safety
 /// `data` must be the payload of an `MPV_EVENT_LOG_MESSAGE` event, valid for this call.
-pub(crate) unsafe fn forward(data: *mut c_void) {
+pub(crate) unsafe fn forward(data: *mut c_void) -> Option<HwdecProblem> {
     // SAFETY: guaranteed by the caller (see above).
     let message = unsafe { &*data.cast::<RawLogMessage>() };
     let (prefix, level, text) = (
@@ -79,5 +81,41 @@ pub(crate) unsafe fn forward(data: *mut c_void) {
         "fatal" | "error" => tracing::error!(source = %prefix, "mpv: {text}"),
         "warn" => tracing::warn!(source = %prefix, "mpv: {text}"),
         _ => tracing::debug!(source = %prefix, %level, "mpv: {text}"),
+    }
+    classify_log(&text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs `forward` on a message built the way mpv builds one.
+    fn forwarded(level: &str, text: &str) -> Option<HwdecProblem> {
+        let (prefix, level, text) = (
+            CString::new("vo/gpu").expect("no NUL"),
+            CString::new(level).expect("no NUL"),
+            CString::new(text).expect("no NUL"),
+        );
+        let mut message = RawLogMessage {
+            prefix: prefix.as_ptr(),
+            level: level.as_ptr(),
+            text: text.as_ptr(),
+            log_level: 0,
+        };
+        // SAFETY: `message` is a valid `mpv_event_log_message` and the strings outlive the call.
+        unsafe { forward((&raw mut message).cast()) }
+    }
+
+    #[test]
+    fn forward_device_lost_line_returns_device_lost() {
+        assert_eq!(
+            forwarded("error", "Direct3D device lost! Resetting.\n"),
+            Some(HwdecProblem::DeviceLost)
+        );
+    }
+
+    #[test]
+    fn forward_ordinary_line_returns_none() {
+        assert_eq!(forwarded("warn", "Using software decoding."), None);
     }
 }

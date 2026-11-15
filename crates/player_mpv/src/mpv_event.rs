@@ -1,3 +1,5 @@
+use crate::hwdec_problem::HwdecProblem;
+
 /// Why mpv stopped a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EndReason {
@@ -22,6 +24,8 @@ pub(crate) enum MpvEvent {
     FileLoaded,
     /// A file ended.
     EndFile(EndReason),
+    /// mpv's log said hardware decoding or the graphics device broke.
+    HardwareProblem(HwdecProblem),
     /// An event the app does not use.
     Other,
 }

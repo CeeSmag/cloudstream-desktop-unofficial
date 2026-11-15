@@ -4,6 +4,7 @@
 mod chapter_reader;
 mod event_worker;
 mod frame_renderer;
+mod hwdec_problem;
 mod libmpv_locator;
 mod load_tracker;
 mod mpv_api;

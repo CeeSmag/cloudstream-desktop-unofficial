@@ -125,7 +125,8 @@ impl StatusTracker {
                 status.state = PlaybackState::Failed(format!("mpv error {code}"));
             }
             MpvEvent::Shutdown => status.state = PlaybackState::Idle,
-            MpvEvent::Nothing | MpvEvent::Other => return,
+            // The event thread logs a hardware problem itself; the stream keeps playing.
+            MpvEvent::Nothing | MpvEvent::Other | MpvEvent::HardwareProblem(_) => return,
         }
         if !matches!(status.state, PlaybackState::Playing | PlaybackState::Paused) {
             // Nothing is being fetched any more; do not leave "buffering" on screen.

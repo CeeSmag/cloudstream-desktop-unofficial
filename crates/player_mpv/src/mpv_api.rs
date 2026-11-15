@@ -239,11 +239,12 @@ impl MpvHandle {
         // SAFETY: non-null event pointer returned by mpv (see above).
         let (event_id, data) = unsafe { ((*event).event_id, (*event).data) };
         if event_id == EVENT_LOG_MESSAGE {
-            if !data.is_null() {
-                // SAFETY: for LOG_MESSAGE events `data` points to an `mpv_event_log_message`.
-                unsafe { forward(data) };
+            if data.is_null() {
+                return MpvEvent::Other;
             }
-            return MpvEvent::Other;
+            // SAFETY: for LOG_MESSAGE events `data` points to an `mpv_event_log_message`.
+            let problem = unsafe { forward(data) };
+            return problem.map_or(MpvEvent::Other, MpvEvent::HardwareProblem);
         }
         let end_file = (event_id == EVENT_END_FILE && !data.is_null()).then(|| {
             // SAFETY: for END_FILE events `data` points to an `mpv_event_end_file`.
