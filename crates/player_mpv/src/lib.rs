@@ -2,6 +2,7 @@
 #![deny(unsafe_code)]
 
 mod chapter_reader;
+mod diagnostics_timer;
 mod event_worker;
 mod frame_renderer;
 mod hwdec_problem;
@@ -14,6 +15,7 @@ mod mpv_option_format;
 mod mpv_player;
 mod mpv_render_api;
 mod pending_subtitles;
+mod playback_diagnostics;
 mod player_configuration;
 mod preferred_audio;
 mod preferred_subtitles;

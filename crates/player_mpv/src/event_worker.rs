@@ -1,14 +1,16 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use player_api::{MediaTrack, TrackKind};
 
 use crate::chapter_reader::read_chapters;
+use crate::diagnostics_timer::{DiagnosticsTimer, DIAGNOSTICS_DELAY};
 use crate::load_tracker::LoadTracker;
 use crate::mpv_api::MpvHandle;
 use crate::mpv_event::MpvEvent;
 use crate::pending_subtitles::{take_when_loaded, PendingSubtitles};
+use crate::playback_diagnostics::read_diagnostics;
 use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
 use crate::preferred_subtitles::{preferred_subtitle_choice, SubtitleChoice, SubtitlePreference};
 use crate::status_tracker::{Reading, StatusTracker};
@@ -39,12 +41,14 @@ impl EventWorker {
     pub(crate) fn run(self) {
         let mut ticks: u32 = 0;
         let mut loads = LoadTracker::default();
+        let mut diagnostics = DiagnosticsTimer::new(DIAGNOSTICS_DELAY);
         while !self.stop_flag.load(Ordering::Relaxed) {
             let event = self.handle.wait_event(EVENT_WAIT);
             self.tracker.apply(event);
             let generation = self.stream_generation.load(Ordering::SeqCst);
             loads.apply(event, generation);
             Self::report_hardware_problem(event, generation);
+            self.log_diagnostics_when_due(&mut diagnostics, loads.loaded(), generation);
             if event == MpvEvent::FileLoaded {
                 tracing::info!(
                     generation,
@@ -80,6 +84,20 @@ impl EventWorker {
                 problem = problem.describe(),
                 "hardware video decoding problem reported by mpv"
             );
+        }
+    }
+
+    /// Writes the playback diagnostics once per stream, [`DIAGNOSTICS_DELAY`] after it loaded.
+    fn log_diagnostics_when_due(
+        &self,
+        timer: &mut DiagnosticsTimer,
+        loaded: Option<u64>,
+        generation: u64,
+    ) {
+        // A file of a stream that has been replaced is not the one mpv reports on any more.
+        let loaded = loaded.filter(|loaded| *loaded == generation);
+        if timer.is_due(Instant::now(), loaded) {
+            read_diagnostics(|name| self.handle.get_string(name)).log(generation);
         }
     }
 
