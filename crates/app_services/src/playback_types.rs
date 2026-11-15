@@ -1,5 +1,5 @@
 use core_model::{PlayableLink, SubtitleTrack};
-use player_api::{PlaybackRequest, SubtitleSource};
+use player_api::{PlaybackRequest, StreamKind, SubtitleSource};
 
 use crate::clear_key::{normalize_clear_key, normalize_pipe_link};
 
@@ -66,6 +66,7 @@ pub fn build_request(
     headers.sort();
     let clear_key = normalize_clear_key(link.kid.as_deref(), link.key.as_deref());
     PlaybackRequest {
+        kind: stream_kind_of(&link.link_type),
         url: link.url,
         title: title.to_owned(),
         headers,
@@ -73,6 +74,16 @@ pub fn build_request(
         subtitles: subtitle_sources(subtitles),
         start_position_ms: start_ms,
         clear_key,
+    }
+}
+
+/// What a provider's link type (`VIDEO`, `M3U8`, `DASH`) says about the stream.
+fn stream_kind_of(link_type: &str) -> StreamKind {
+    match link_type {
+        "M3U8" => StreamKind::Hls,
+        "DASH" => StreamKind::Dash,
+        "VIDEO" => StreamKind::Video,
+        _ => StreamKind::Unknown,
     }
 }
 
@@ -85,4 +96,31 @@ pub fn subtitle_sources(subtitles: &[SubtitleTrack]) -> Vec<SubtitleSource> {
             language: track.lang.clone(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kind_of(link_type: &str) -> StreamKind {
+        let link = PlayableLink {
+            url: "https://h.test/stream".to_owned(),
+            link_type: link_type.to_owned(),
+            ..PlayableLink::default()
+        };
+        build_request("title", &link, &[], 0).kind
+    }
+
+    #[test]
+    fn build_request_takes_the_stream_kind_from_the_link_type() {
+        assert_eq!(kind_of("M3U8"), StreamKind::Hls);
+        assert_eq!(kind_of("DASH"), StreamKind::Dash);
+        assert_eq!(kind_of("VIDEO"), StreamKind::Video);
+    }
+
+    #[test]
+    fn build_request_does_not_guess_the_kind_of_an_unlabelled_link() {
+        assert_eq!(kind_of(""), StreamKind::Unknown);
+        assert_eq!(kind_of("TORRENT"), StreamKind::Unknown);
+    }
 }

@@ -25,11 +25,27 @@ pub fn describe_languages(subtitles: &[SubtitleSource]) -> String {
         .join(", ")
 }
 
+/// What kind of stream an address is, as far as the provider said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StreamKind {
+    /// Not said.
+    #[default]
+    Unknown,
+    /// A plain video or audio file.
+    Video,
+    /// An HLS playlist (`.m3u8`).
+    Hls,
+    /// A DASH manifest (`.mpd`).
+    Dash,
+}
+
 /// Everything a player needs to start one stream.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlaybackRequest {
     /// Stream URL.
     pub url: String,
+    /// What the provider says the stream is.
+    pub kind: StreamKind,
     /// Title shown in the player window.
     pub title: String,
     /// Extra HTTP headers the stream host requires, as (name, value) pairs.
