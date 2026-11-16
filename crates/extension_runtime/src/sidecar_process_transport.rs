@@ -210,12 +210,25 @@ fn discard(slot: &mut Option<RunningSidecar>) {
 #[cfg(windows)]
 fn kill_process_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
-    let outcome = Command::new("taskkill")
+    let mut command = Command::new("taskkill");
+    command
         .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
+        .creation_flags(CREATE_NO_WINDOW);
+    end_by_pid(command, pid);
+}
+
+/// Elsewhere the sidecar's script `exec`s the JVM, so the process is the JVM itself. It is still
+/// ended by its id: `shutdown` cannot take the lock while a call waits on a reply, and only the
+/// sidecar's end (its output closing) releases that call.
+#[cfg(not(windows))]
+fn kill_process_tree(pid: u32) {
+    let mut command = Command::new("kill");
+    command.args(["-KILL", &pid.to_string()]);
+    end_by_pid(command, pid);
+}
+
+fn end_by_pid(mut command: Command, pid: u32) {
+    let outcome = command.stdout(Stdio::null()).stderr(Stdio::null()).status();
     match outcome {
         Ok(status) => tracing::info!(
             pid,
@@ -227,10 +240,6 @@ fn kill_process_tree(pid: u32) {
         }
     }
 }
-
-/// Elsewhere the sidecar's script `exec`s the JVM, so there is no wrapper to leave it behind.
-#[cfg(not(windows))]
-fn kill_process_tree(_pid: u32) {}
 
 #[tracing::instrument(level = "debug", skip_all, err)]
 fn start_sidecar(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
