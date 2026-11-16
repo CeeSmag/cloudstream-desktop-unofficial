@@ -10,8 +10,15 @@ gates: fmt clippy test deny audit lengths
 fmt:
     cargo fmt --all -- --check
 
+[windows]
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings
+
+# Without cognitive_complexity, as in CI's Linux job: `tracing/log` (on through calloop) makes clippy
+# count each tracing macro's `log` branch as complexity; the Windows check covers the lint.
+[unix]
+clippy:
+    cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
 # Unit and integration tests; uses nextest when installed.
 test:

@@ -115,7 +115,9 @@ python scripts/check_file_lengths.py   # the 300-line file limit of section 4 (c
 ```
 
 `just gates` runs all of them. CI (`.github/workflows/ci.yml`) runs the same on every push and pull request, clippy and
-tests on both Windows and Linux; keep the three lists the same.
+tests on both Windows and Linux; keep the three lists the same. On Linux clippy runs with `-A clippy::cognitive_complexity`:
+a Wayland dependency (calloop) turns on `tracing/log` there, and clippy then counts the `log` branch every tracing macro
+expands to as complexity of the function. Windows enforces the lint.
 
 Required `clippy.toml` at the workspace root (limits mirror §4):
 

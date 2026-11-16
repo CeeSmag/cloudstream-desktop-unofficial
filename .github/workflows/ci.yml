@@ -74,8 +74,11 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
 
+      # Without cognitive_complexity: on Linux a Wayland dependency (calloop) turns on `tracing/log`,
+      # every tracing macro then expands to an extra `log` branch, and clippy counts those as the
+      # function's own complexity. The Windows job above checks the lint on the code as written.
       - name: Clippy Warnings
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
       - name: Workspace Tests
         run: cargo test --workspace
