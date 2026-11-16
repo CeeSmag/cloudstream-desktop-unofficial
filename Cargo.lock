@@ -1819,13 +1819,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "extractors"
-version = "0.4.2"
-dependencies = [
- "extension_api",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2634,10 +2627,6 @@ dependencies = [
  "log",
  "markup5ever",
 ]
-
-[[package]]
-name = "html_parsing"
-version = "0.4.2"
 
 [[package]]
 name = "http"
@@ -3554,10 +3543,6 @@ checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
 ]
-
-[[package]]
-name = "network_client"
-version = "0.4.2"
 
 [[package]]
 name = "new_debug_unreachable"

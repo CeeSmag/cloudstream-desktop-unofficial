@@ -38,7 +38,7 @@ crates/
   desktop_tauri/     # Tauri v2 app + React frontend (the main app)
   ui_app/ app_shell/ # the native egui shell: screens, and main() wiring only, no logic
   portable_launcher/ # the single-file Windows portable exe
-  network_client/ html_parsing/ extractors/   # reserved stubs for native Rust extractors
+# native Rust extractors (no JVM): planned, not started; add their crates when there is code
 ```
 
 Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`, frontend `*.test.ts`), grouped by the tiers in §9.

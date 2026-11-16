@@ -11,11 +11,10 @@ This document is the verified architectural index, navigation map, and modificat
    - [Chunk 1: Foundational Models & Trait Contracts](#chunk-1-foundational-models--trait-contracts)
    - [Chunk 2: Persistence & Cache Infrastructure](#chunk-2-persistence--cache-infrastructure)
    - [Chunk 3: Extension Subsystem & Sidecar Protocol](#chunk-3-extension-subsystem--sidecar-protocol)
-   - [Chunk 4: Parsing & Extractor Stubs](#chunk-4-parsing--extractor-stubs)
-   - [Chunk 5: Video Player Engine (libmpv)](#chunk-5-video-player-engine-libmpv)
-   - [Chunk 6: Application Services Layer](#chunk-6-application-services-layer)
-   - [Chunk 7: Shells & UI Frontends](#chunk-7-shells--ui-frontends)
-   - [Chunk 8: Scripts, Tooling & External Repositories](#chunk-8-scripts-tooling--external-repositories)
+   - [Chunk 4: Video Player Engine (libmpv)](#chunk-4-video-player-engine-libmpv)
+   - [Chunk 5: Application Services Layer](#chunk-5-application-services-layer)
+   - [Chunk 6: Shells & UI Frontends](#chunk-6-shells--ui-frontends)
+   - [Chunk 7: Scripts, Tooling & External Repositories](#chunk-7-scripts-tooling--external-repositories)
 3. [Subsystem Lifecycles & Data Flow Diagrams](#3-subsystem-lifecycles--data-flow-diagrams)
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
@@ -260,16 +259,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 ---
 
-### Chunk 4: Parsing & Extractor Stubs
-
-#### `crates/network_client`, `crates/html_parsing`, `crates/extractors`
-- **Locations**: `crates/network_client/`, `crates/html_parsing/`, `crates/extractors/`
-- **Status**: Minimal stub crates configured with `#![forbid(unsafe_code)]`.
-- **Purpose**: Architectural placeholders reserved for native Rust extractors and direct web resolvers when moving extractors out of the JVM sidecar.
-
----
-
-### Chunk 5: Video Player Engine (libmpv)
+### Chunk 4: Video Player Engine (libmpv)
 
 #### `crates/player_mpv`
 - **Location**: `crates/player_mpv/`
@@ -293,7 +283,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 ---
 
-### Chunk 6: Application Services Layer
+### Chunk 5: Application Services Layer
 
 #### `crates/app_services`
 - **Location**: `crates/app_services/`
@@ -316,7 +306,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 ---
 
-### Chunk 7: Shells & UI Frontends
+### Chunk 6: Shells & UI Frontends
 
 #### `crates/app_shell`
 - **Location**: `crates/app_shell/`
@@ -384,7 +374,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 ---
 
-### Chunk 8: Scripts, Tooling & External Repositories
+### Chunk 7: Scripts, Tooling & External Repositories
 
 #### Automation Scripts (`scripts/`)
 - `scripts/setup_sidecar.ps1`:
