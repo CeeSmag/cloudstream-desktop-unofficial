@@ -165,13 +165,19 @@ No caller (`app_state.rs:43`). Delete it and its `allow`.
 ## Phase 4: Workspace and docs
 
 ### D1. Placeholder crates
+**Status: done.** The three crates and their workspace entries are gone; so are their names in `app_shell`'s debug-log target list and AGENTS.md's chunk 4. `RULES.md`'s layout keeps one line (spike_findings.md says nothing about native extractors, so the line does not point there).
+
 **Recommended:** delete `network_client`, `html_parsing`, `extractors` and their workspace entries; keep one line in `RULES.md`'s layout ("native extractors: planned, see spike_findings.md"). Re-create when there is real code. Alternative: keep them and accept the noise.
 
 ### D2. Make `AGENTS.md` honest
+**Status: done.** The intro says it is kept by hand, the code wins, and only the command table is tested; the 15 "Verified ..." labels are plain labels now. Dated real-world checks (the stream proxy's) keep their wording. Section 7 now names the file-length script and `cargo audit` (it said clippy checks the file limit). The real count was **63**, not 64.
+
 - Drop "verified" from the intro and the section labels; say instead "kept up to date by hand; the code wins when they differ".
 - Fix the command count and table (64, not 57).
 
 ### D3. Drift guard for the part that drifts most
+**Status: done.** `docs_drift_tests.rs` checks the names and the heading's count; seen failing against the old table (57 in the heading, five commands missing: `get_resume_pointer` and four Cloudflare commands), then the table was fixed.
+
 A test in `desktop_tauri` (`docs_drift_tests.rs`): reads `main.rs`'s `generate_handler!` list and the command table in `AGENTS.md`, fails when a command is missing from either. Cheap, catches the most common drift. (Paths and symbols elsewhere stay unchecked; D2 says so.)
 
 ---
