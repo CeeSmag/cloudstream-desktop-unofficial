@@ -11,7 +11,6 @@ and ignored.
 | `CachedTitle`, `CachedLink`, `LinkHealth` | the content and the order links are tried in (last good, working, unchecked, broken) |
 | `CacheLimits` | fresh under 20 min, stale up to 24 h, 50 titles, 200 links, 1 MB per file |
 | `TitleCache::prune` / `size_bytes` / `clear` | cleanup of expired, broken, surplus and leftover files |
-| `redact_url` | `host#fingerprint` for logs; stream links carry tokens |
 
 Files: `<folder>/<hash of provider+title>.json`, written aside and renamed.
 

@@ -11,8 +11,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError, TryLockError};
 use std::time::{Duration, Instant};
 
 use app_services::PlaybackService;
+use core_model::redact_url;
 use player_api::{PlaybackState, PlaybackStatus};
-use title_cache::redact_url;
 
 use crate::source_fallback_steps::{
     next_candidate, none_left_message, sources_word, start_source, switched,

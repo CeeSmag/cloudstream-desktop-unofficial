@@ -2,7 +2,7 @@
 //! query, so only the host and a short fingerprint are kept. The fingerprint tells two different
 //! links of one host apart.
 
-use core_model::stable_key;
+use crate::stable_key;
 
 const FINGERPRINT_CHARS: usize = 8;
 

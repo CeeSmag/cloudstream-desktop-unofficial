@@ -79,6 +79,7 @@ This document is the architectural index, navigation map, and modification handb
   - `WatchProgress`: `provider`, `media_key`, `title`, `detail_url`, `poster_url`, `position_ms: i64`, `duration_ms: i64`, `updated_at_ms: i64`, `season: Option<i32>`, `episode: Option<i32>`, `fraction_watched() -> f32`.
   - `ResumePointer`: `provider: String`, `detail_url: String`, `media_key: String`, `title: String`, `poster_url: Option<String>`, `season: Option<i32>`, `episode: Option<i32>`, `updated_at_ms: i64`.
   - `stable_key(text: &str) -> String`: Deterministic 16-character hex hash based on FNV constants for safe file/cache keys.
+  - `redact_url(url: &str) -> String`: `host#fingerprint` of a stream address for logs (no path, query, credentials or port). Used by `desktop_tauri` and `player_mpv` wherever an address is logged.
 
 #### `crates/extension_api`
 - **Location**: `crates/extension_api/`
@@ -192,7 +193,6 @@ This document is the architectural index, navigation map, and modification handb
   - `Lookup`: `Hit(CacheHit)` or `Miss(Miss)`. `CacheHit` carries `CachedTitle`, `Freshness` (`Fresh`, `Stale`), and `age`.
   - `CachedTitle`: `complete: bool`, `links: Vec<CachedLink>`, `last_good: Option<String>`. `playing_order() -> Vec<&CachedLink>`.
   - `CachedLink`: `link: PlayableLink`, `health: LinkHealth` (`Working`, `Broken`, `Unchecked`).
-  - `redact_url(url) -> String`: Sanitizes tokens into `host#fingerprint` for safe logging.
 
 #### `crates/skip_times`
 - **Location**: `crates/skip_times/`
@@ -683,7 +683,7 @@ All code must pass these quality gates before commit:
 | **Panics / Unwraps**| Clippy restrictions | Deny `unwrap_used`, `expect_used`, `panic`, `unreachable`, `todo`. |
 | **Indexing** | Clippy `indexing_slicing` | Denied. Must use `.get()` or pattern matching. |
 | **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except `player_mpv/src/mpv_api.rs`. |
-| **Token Safety** | `title_cache::redact_url` | Never log sensitive tokens or complete signed stream links. |
+| **Token Safety** | `core_model::redact_url` | Never log sensitive tokens or complete signed stream links. |
 | **License Check** | `cargo deny check` | Validates GPL-3.0 compatibility and dependency advisories. |
 | **Vulnerabilities** | `cargo audit` | Known security advisories for the locked dependencies. |
 

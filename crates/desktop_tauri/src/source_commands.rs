@@ -140,7 +140,7 @@ fn start_source(
         subtitles: &active.subtitles,
         start_position_ms: start.position_ms,
     };
-    tracing::info!(index = start.index, stream = %title_cache::redact_url(&link.url), "starting a source");
+    tracing::info!(index = start.index, stream = %core_model::redact_url(&link.url), "starting a source");
     sources.fallback().reset();
     playback
         .start_at(active.item.clone(), &stream)

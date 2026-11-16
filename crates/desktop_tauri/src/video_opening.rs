@@ -6,10 +6,10 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use app_services::{LinkSearch, PlaybackItem, PlaybackService, SettingsService, StreamResolver};
+use core_model::redact_url;
 use player_api::find_language;
 use subtitle_store::LanguageRank;
 use tauri::State;
-use title_cache::redact_url;
 
 use crate::app_state::AppState;
 use crate::check_gate::{CheckGate, StartDecision};

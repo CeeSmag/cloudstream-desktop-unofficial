@@ -5,7 +5,6 @@
 
 mod cache_limits;
 mod cached_title;
-mod redact_url;
 mod stored_file;
 mod title_cache;
 mod title_cache_error;
@@ -18,7 +17,6 @@ mod title_cache_race_tests;
 
 pub use cache_limits::CacheLimits;
 pub use cached_title::{CachedLink, CachedTitle, Freshness, LinkHealth};
-pub use redact_url::redact_url;
 pub use stored_file::Miss;
 pub use title_cache::{CacheHit, Clock, Lookup, SaveReport, TitleCache};
 pub use title_cache_error::TitleCacheError;
