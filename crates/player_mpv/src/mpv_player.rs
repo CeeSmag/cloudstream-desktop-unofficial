@@ -10,6 +10,7 @@ use player_api::{
 
 use crate::event_worker::EventWorker;
 use crate::frame_renderer::{FrameRenderer, FrameShared};
+use crate::loadfile_log::log_loadfile;
 use crate::mpv_api::{MpvApi, MpvHandle};
 use crate::mpv_log::log_level;
 use crate::mpv_option_format::apply_request_options;
@@ -162,12 +163,7 @@ impl VideoPlayer for MpvPlayer {
         );
         self.unpause_before_new_stream();
         self.tracker.begin_loading();
-        tracing::info!(
-            url = %request.url,
-            subtitle_files = request.subtitles.len(),
-            subtitle_languages = %describe_languages(&request.subtitles),
-            "mpv loadfile"
-        );
+        log_loadfile(request);
         let outcome = self.handle.command(&["loadfile", &request.url, "replace"]);
         if let Err(error) = &outcome {
             self.tracker.fail(error.to_string());

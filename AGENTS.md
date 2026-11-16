@@ -263,7 +263,7 @@ This document is the architectural index, navigation map, and modification handb
 
 #### `crates/player_mpv`
 - **Location**: `crates/player_mpv/`
-- **Dependencies**: `player_api`, `libloading = "0.8"`, `tracing`
+- **Dependencies**: `core_model` (`redact_url` for the log), `player_api`, `libloading = "0.8"`, `tracing`
 - **Unsafe Scope**: Confined strictly to `src/mpv_api.rs` with `// SAFETY:` justifications.
 - **Dynamic Locator (`libmpv_locator.rs`)**: Candidates in order: `CS_LIBMPV_PATH` (if the file exists), the directory of `current_exe()`, `current_dir()`, then (Linux/macOS) the bare names for the system loader. `MpvPlayer::auto_detect` tries each until one loads; `locate_libmpv()` returns the first. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows. When nothing is found the error lists every path searched.
 - **Player Configuration (`player_configuration.rs`)**:

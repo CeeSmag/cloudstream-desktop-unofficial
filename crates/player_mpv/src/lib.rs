@@ -8,6 +8,7 @@ mod frame_renderer;
 mod hwdec_problem;
 mod libmpv_locator;
 mod load_tracker;
+mod loadfile_log;
 mod mpv_api;
 mod mpv_event;
 mod mpv_log;

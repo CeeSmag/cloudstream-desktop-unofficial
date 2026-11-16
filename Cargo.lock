@@ -4386,6 +4386,7 @@ dependencies = [
 name = "player_mpv"
 version = "0.4.2"
 dependencies = [
+ "core_model",
  "libloading 0.8.9",
  "player_api",
  "tracing",
