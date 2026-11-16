@@ -199,12 +199,19 @@ fn leaving_stops_the_subtitle_downloads_that_have_not_started() {
         rig.subtitles.host.calls.load(Ordering::SeqCst) > 0
     });
 
+    // How many had started is up to the machine's speed; what counts is that leaving starts no
+    // more, except at most one a worker had already taken (8 download at once).
+    let before = rig.subtitles.host.calls.load(Ordering::SeqCst);
     rig.sources.close();
 
     join_within(background, TIME_LIMIT);
     let started = rig.subtitles.host.calls.load(Ordering::SeqCst);
     assert!(
-        started <= 16,
-        "{started} of 40 downloads were started although the viewer had left"
+        before + 8 < 40,
+        "{before} of 40 had started before the viewer left: too few were left to check"
+    );
+    assert!(
+        started <= before + 8,
+        "{started} of 40 downloads were started, {before} of them before the viewer left"
     );
 }
