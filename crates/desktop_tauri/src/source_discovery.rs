@@ -109,6 +109,9 @@ impl Discovery {
             );
             return;
         }
+        // The workers send their progress after leaving the gate's lock, so the last one to arrive
+        // can be an older figure. All of them are done now: this one is the final count.
+        (self.tell)(CheckUpdate::Progress(progress));
         (self.tell)(CheckUpdate::SourcesChanged);
         tracing::info!(
             checked = progress.checked,
