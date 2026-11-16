@@ -1,13 +1,13 @@
 # AGENTS.md — Developer & AI Agent Codebase Guide
 
-This document is the verified architectural index, navigation map, and modification handbook for the **CloudStream Rust rewrite (`cloudstream-rs`)**. Every symbol, file path, trait method, DTO, IPC command, and table schema documented here has been verified against the active source code.
+This document is the architectural index, navigation map, and modification handbook for the **CloudStream Rust rewrite (`cloudstream-rs`)**. It is kept up to date by hand, so it can lag behind: **when it and the code differ, the code wins**, and fixing this file is part of the change. Only the command table in section 4 is checked by a test (`crates/desktop_tauri/src/docs_drift_tests.rs`); file paths, symbols, limits and schemas elsewhere are not.
 
 ---
 
 ## Table of Contents
 
 1. [Architecture & Workspace Overview](#1-architecture--workspace-overview)
-2. [Crate Verification & Package Map](#2-crate-verification--package-map)
+2. [Crate & Package Map](#2-crate--package-map)
    - [Chunk 1: Foundational Models & Trait Contracts](#chunk-1-foundational-models--trait-contracts)
    - [Chunk 2: Persistence & Cache Infrastructure](#chunk-2-persistence--cache-infrastructure)
    - [Chunk 3: Extension Subsystem & Sidecar Protocol](#chunk-3-extension-subsystem--sidecar-protocol)
@@ -48,7 +48,7 @@ This document is the verified architectural index, navigation map, and modificat
 
 ---
 
-## 2. Crate Verification & Package Map
+## 2. Crate & Package Map
 
 ### Chunk 1: Foundational Models & Trait Contracts
 
@@ -56,7 +56,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/core_model/`
 - **Dependencies**: `serde`
 - **Responsibility**: Pure domain types shared across the workspace. Zero I/O, zero network, fast compilation.
-- **Verified Public Types**:
+- **Public Types**:
   - `Bookmark`: `provider`, `url`, `title: name`, `poster_url`, `media_type`, `added_at: i64`.
   - `DiscoveredRepository`: `name`, `url`.
   - `HomePage`: `items: Vec<HomePageSection>`.
@@ -84,7 +84,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/extension_api/`
 - **Dependencies**: `core_model`, `thiserror`
 - **Responsibility**: Trait definitions and error types between the app core and extension runtimes.
-- **Verified Trait `ProviderGateway: Send + Sync`**:
+- **Trait `ProviderGateway: Send + Sync`**:
   - `load_extension(path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, GatewayError>`
   - `search(provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>`
   - `main_page(provider: &str, page: u32, entry: &MainPageEntry) -> Result<Option<HomePage>, GatewayError>`
@@ -96,7 +96,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `extract(url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError>`
   - `take_added_repositories() -> Result<Vec<DiscoveredRepository>, GatewayError>`
   - `set_debug_logging(enabled: bool) -> Result<(), GatewayError>`
-- **Verified Error `GatewayError`**:
+- **Error `GatewayError`**:
   - `Unavailable(String)`: Runtime not started or missing.
   - `Timeout { method: String, seconds: u64 }`: Call deadline exceeded.
   - `Transport(String)`: Process crash, closed pipe, or I/O failure.
@@ -107,7 +107,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/player_api/`
 - **Dependencies**: `thiserror`
 - **Responsibility**: Decoupled player contract between application services and video player engines.
-- **Verified Trait `VideoPlayer: Send + Sync`**:
+- **Trait `VideoPlayer: Send + Sync`**:
   - `play(request: &PlaybackRequest) -> Result<(), PlayerError>`
   - `set_paused(paused: bool) -> Result<(), PlayerError>`
   - `seek_to(position_ms: i64) -> Result<(), PlayerError>`
@@ -122,7 +122,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `is_embedded() -> bool`
   - `set_surface_size(width: u32, height: u32)`
   - `latest_frame(last_seen_serial: u64) -> Option<Arc<VideoFrame>>`
-- **Verified Types**:
+- **Types**:
   - `TrackKind`: Enum with `Audio`, `Subtitle`.
   - `SubtitleSource`: Local file path/URL and label for external subtitle attachment.
   - `PlaybackRequest`: Title, URL, `kind` (`StreamKind`: `Unknown`, `Video`, `Hls`, `Dash`, from the provider's link type by `build_request`), referer, custom HTTP headers, start position in ms, and initial subtitles.
@@ -139,7 +139,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/storage/`
 - **Dependencies**: `core_model`, `rusqlite = "0.41"`, `thiserror`, `tracing`
 - **Database Path**: `<data_dir>/cloudstream.db` (enables SQLite WAL mode).
-- **Verified Schema Migrations (`schema_migrations.rs`)**:
+- **Schema Migrations (`schema_migrations.rs`)**:
   - *Version 1*:
     - `settings`: `(key TEXT PRIMARY KEY, value TEXT NOT NULL)`
     - `repositories`: `(url TEXT PRIMARY KEY, name TEXT NOT NULL, added_at INTEGER NOT NULL)`
@@ -167,7 +167,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/subtitle_store/`
 - **Dependencies**: `core_model`, `flate2 = "1"`, `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
 - **Storage Location**: `<data_dir>/subtitles/<url_hash>.vtt` (default retention: 7 days).
-- **Verified Modules & Types**:
+- **Modules & Types**:
   - `normalize_subtitle.rs`: `normalize_subtitle(bytes) -> Result<NormalizedSubtitle, NormalizeError>`. Unpacks `.zip` archives, decompresses `.gz` streams, strips UTF-8 BOM, decodes UTF-16 LE/BE and Windows-1252 to UTF-8, rejects HTML error/challenge responses, parses SRT/VTT.
   - `hls_subtitles.rs`: `flatten_playlist(text, base_url, fetcher)` flattens segmented M3U8 subtitle playlists into a unified WebVTT stream.
   - `subtitle_cache.rs`: `SubtitleCache::new(dir, ttl)` manages on-disk storage with LRU and TTL pruning (`prune() -> usize`). Stores files as `<dir>/<sha256>.vtt`.
@@ -179,7 +179,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/title_cache/`
 - **Dependencies**: `core_model`, `serde`, `serde_json`, `thiserror`, `tracing`
 - **Storage Location**: `<data_dir>/sources/<hash of provider+media_key>.json`
-- **Verified Limits (`cache_limits.rs`)**:
+- **Limits (`cache_limits.rs`)**:
   - `fresh_duration`: 20 minutes (links tried immediately without re-searching).
   - `stale_duration`: 24 hours (best 3 links tested with 3s probe timeout).
   - `max_titles`: 50 entries (LRU eviction).
@@ -187,7 +187,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `max_file_size`: 1 MB.
 - **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`); notes (`mark_broken`, ...) never revive such a file. `desktop_tauri::provider_switch::apply_switch` (command `provider_switched`) calls it when the viewer picks a different provider, and stores the time in the `sources_valid_from` setting, which `sources_cleanup::open_title_cache` restores at start. The cleanup queue (`cleanup_start.rs`) prunes it hourly once the app has started.
 - **Atomic File Operations**: Writes to temporary `.tmp` files and renames into place, preventing corruption on app crash.
-- **Verified Types & Methods**:
+- **Types & Methods**:
   - `TitleCache`: `load(key) -> Lookup`, `save(key, title) -> Result<SaveReport, TitleCacheError>`, `update(key, fn)`, `mark_broken(key, url)`, `forget(key)`, `clear()`, `prune() -> PruneReport`.
   - `Lookup`: `Hit(CacheHit)` or `Miss(Miss)`. `CacheHit` carries `CachedTitle`, `Freshness` (`Fresh`, `Stale`), and `age`.
   - `CachedTitle`: `complete: bool`, `links: Vec<CachedLink>`, `last_good: Option<String>`. `playing_order() -> Vec<&CachedLink>`.
@@ -209,7 +209,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `crates/extension_runtime/`
 - **Dependencies**: `core_model`, `extension_api`, `serde`, `serde_json`, `tracing`
 - **Binary**: `fake_sidecar` (`src/bin/fake_sidecar.rs`, enabled via `test-support` feature).
-- **Verified Modules & Constants**:
+- **Modules & Constants**:
   - `call_timeouts.rs`: `PROVIDER_CALL_TIMEOUT` (60s), `LINK_RESOLVE_TIMEOUT` (150s), `EXTENSION_LOAD_TIMEOUT` (180s for DEX bytecode conversion).
   - `sidecar_launch_config.rs`: `SidecarLaunchConfig` configures `CS_SIDECAR_HOME`, `CS_SIDECAR_JAVA_HOME`, data dir (`-Dcloudstream.data.dir=...`), UTF-8 I/O encoding, and Windows root certificates (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`).
   - `sidecar_process_transport.rs`: `SidecarProcessTransport` manages child process over stdin/stdout JSON-lines RPC (`CREATE_NO_WINDOW` on Windows). On crash or timeout, kills process and restarts on next call, replaying `startup_calls` (`remember_for_restart`).
@@ -220,7 +220,7 @@ This document is the verified architectural index, navigation map, and modificat
 #### `crates/extension_repo`
 - **Location**: `crates/extension_repo/`
 - **Dependencies**: `core_model`, `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
-- **Verified Modules & Types**:
+- **Modules & Types**:
   - `repository_client.rs`: `RepositoryClient<F: HttpFetcher>` fetches manifests (`repo.json`) and plugin listings (`plugins.json`).
   - `extension_installer.rs`: `ExtensionInstaller<F: HttpFetcher>` downloads `.cs3` plugins to `<data_dir>/extensions/` using atomic `.cs3.part` writes and path sanitization (`safe_file_name.rs`).
   - `http_probe.rs`: Trait `HttpProbe` and `UreqProbe` (8s timeout, probes first 32 KB via HTTP `Range: bytes=0-32767` to verify video/playlist streams). Returns `ProbeResponse` (`status`, `content_type`, `head`, `total_bytes`).
@@ -230,7 +230,7 @@ This document is the verified architectural index, navigation map, and modificat
 - **Location**: `sidecar/cs-sidecar/`
 - **Build System**: Gradle 8.x + Kotlin 2.1 (JVM Target 21).
 - **Compatibility Bridge**: Converts Android DEX bytecode to JVM bytecode via `dex2jar` / `plugin-runtime` and provides fake Android environment classes (`android-stubs`).
-- **Verified Kotlin Modules (`src/main/kotlin/`)**:
+- **Kotlin Modules (`src/main/kotlin/`)**:
   - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (see "Cloudflare verification" under `desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
   - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
@@ -238,7 +238,7 @@ This document is the verified architectural index, navigation map, and modificat
   - `sidecar/AddedRepositories.kt`: Buffers repositories discovered/added dynamically by extensions.
   - `network/CloudflareKiller.kt`: Intercepts and resolves Cloudflare challenges.
   - `syncproviders/`: Stubs for CloudStream account and sync providers (`AccountManager`, `SyncStubs`, `SimklApi`).
-- **Verified Tests (`src/test/kotlin/`)**:
+- **Tests (`src/test/kotlin/`)**:
   - `sidecar/LinkSearchesTest.kt`: Multi-threaded race tests verifying streaming link search concurrency.
 - **Build Script**: `scripts/setup_sidecar.ps1` clones the pinned reference client into `C:\cs3d\repo` and compiles the distribution.
 
@@ -288,7 +288,7 @@ This document is the verified architectural index, navigation map, and modificat
 #### `crates/app_services`
 - **Location**: `crates/app_services/`
 - **Dependencies**: `core_model`, `extension_api`, `extension_repo`, `player_api`, `storage`, `thiserror`, `tracing`
-- **Verified Public Services**:
+- **Public Services**:
   - `CatalogService`: `search(providers, query) -> Vec<ProviderSearchOutcome>`, `home(provider, entry) -> Result<Option<HomePage>>`, `details(provider, url) -> Result<LoadDetails>`.
   - `ExtensionService`: `install(listing, repo_url)`, `uninstall(file_name)`, `set_trusted(file_name, trusted)`, `load_installed(progress_cb)`, `providers()`, `installed()`, `set_debug_logging(enabled)`.
   - `RepositoryService`: `repositories()`, `add(url)`, `remove(url)`, `plugins(url)`, `import_discovered()`, `refresh_icons()`.
@@ -676,7 +676,7 @@ All code must pass these quality gates before commit:
 |---|---|---|
 | **Formatting** | `cargo fmt --all -- --check` | Standard Rust formatting (`rustfmt.toml`). |
 | **Lints** | `cargo clippy --workspace --all-targets -- -D warnings` | Zero warnings permitted across workspace. |
-| **File Limit** | Clippy `too_many_lines` | ≤ 300 lines per file. |
+| **File Limit** | `python scripts/check_file_lengths.py` | ≤ 300 lines per non-test Rust file (clippy counts functions only). |
 | **Function Limit**| Clippy `too_many_lines` | ≤ 40 lines per function. |
 | **Parameter Limit**| Clippy `too_many_arguments` | ≤ 4 parameters per function (use structs for more). |
 | **Complexity** | Clippy `cognitive_complexity` | ≤ 10 per function. |
@@ -685,6 +685,7 @@ All code must pass these quality gates before commit:
 | **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except `player_mpv/src/mpv_api.rs`. |
 | **Token Safety** | `title_cache::redact_url` | Never log sensitive tokens or complete signed stream links. |
 | **License Check** | `cargo deny check` | Validates GPL-3.0 compatibility and dependency advisories. |
+| **Vulnerabilities** | `cargo audit` | Known security advisories for the locked dependencies. |
 
 ---
 
@@ -692,7 +693,7 @@ All code must pass these quality gates before commit:
 
 ### Daily Developer Commands
 ```powershell
-# Run complete verification gates (fmt, clippy, tests, deny, audit)
+# Run every quality gate (fmt, clippy, tests, deny, audit, file lengths)
 just gates
 
 # Run all unit and integration tests across workspace
