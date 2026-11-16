@@ -119,7 +119,9 @@ pub fn announce(app: &AppHandle, host: &str, open: bool) {
 pub struct Options<'a> {
     /// Its own browser profile folder, or the app's profile when `None`.
     pub profile: Option<&'a std::path::Path>,
-    /// Browser arguments (they must match the app's when the profile is shared).
+    /// Browser arguments (they must match the app's when the profile is shared). Only WebView2
+    /// takes them.
+    #[cfg(windows)]
     pub browser_args: Option<String>,
 }
 

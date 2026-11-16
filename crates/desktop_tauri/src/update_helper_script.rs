@@ -9,7 +9,7 @@ use std::process::Command;
 use crate::update_error::UpdateError;
 
 /// File name of the Windows helper inside the update attempt's folder.
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 pub(crate) const BAT_SCRIPT_NAME: &str = "install.bat";
 
 /// File name of the Linux/macOS helper inside the update attempt's folder.
@@ -19,7 +19,7 @@ pub(crate) const SH_SCRIPT_NAME: &str = "install.sh";
 /// The command that runs the `.bat` helper in `folder`. cmd parses its own command line again (`&`
 /// ends a command, `%NAME%` expands), and the folder holds the user's name, so the script is started
 /// by its plain name from inside the folder and its full path never reaches that line.
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 pub(crate) fn bat_command(folder: &Path) -> Command {
     let mut command = Command::new("cmd.exe");
     // `.\` because cmd does not look in the current folder when NoDefaultCurrentDirectoryInExePath

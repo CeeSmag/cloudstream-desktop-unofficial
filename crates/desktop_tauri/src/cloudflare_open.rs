@@ -144,10 +144,12 @@ fn build(
     let options = match way {
         Way::PanelOwn => Options {
             profile: Some(browser_profile),
+            #[cfg(windows)]
             browser_args: None,
         },
         Way::PanelApp => Options {
             profile: None,
+            #[cfg(windows)]
             browser_args: main_window_options(app),
         },
         Way::WindowOwn | Way::WindowApp => return build_window(app, target, browser_profile, way),
@@ -178,6 +180,7 @@ fn build_window(
 }
 
 /// The browser options of the app's own window (none when the config has none).
+#[cfg(windows)]
 fn main_window_options(app: &AppHandle) -> Option<String> {
     app.config()
         .app
