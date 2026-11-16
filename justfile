@@ -21,8 +21,13 @@ clippy:
     cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
 # Unit and integration tests; uses nextest when installed.
+[windows]
 test:
     cargo nextest run --workspace; if ($LASTEXITCODE -ne 0) { cargo test --workspace }
+
+[unix]
+test:
+    if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace; else cargo test --workspace; fi
 
 deny:
     cargo deny check
