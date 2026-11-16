@@ -31,6 +31,8 @@ mod data_helper;
 #[cfg(test)]
 mod deadlock_tests;
 mod debug_log_commands;
+#[cfg(test)]
+mod docs_drift_tests;
 mod dto;
 mod extension_commands;
 mod failure_tally;

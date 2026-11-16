@@ -19,7 +19,7 @@ This document is the verified architectural index, navigation map, and modificat
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (57 Commands Reference)](#4-tauri-ipc-interface-57-commands-reference)
+4. [Tauri IPC Interface (63 Commands Reference)](#4-tauri-ipc-interface-63-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -481,9 +481,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (57 Commands Reference)
+## 4. Tauri IPC Interface (63 Commands Reference)
 
-All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
+All 63 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -517,6 +517,7 @@ All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `remove_bookmark` | Removes item from library. |
 | | `is_bookmarked` | Checks bookmark status. |
 | | `get_continue_watching` | Returns in-progress watch history items. |
+| | `get_resume_pointer` | Where a show or movie was left off (the title page's Resume button and highlighted episode). |
 | | `remove_continue_watching`| Forgets progress and deletes cached sources for item. |
 | | `clear_continue_watching` | Clears all continue-watching records. |
 | **Settings** | `get_repositories` | Lists configured extension repositories. |
@@ -536,6 +537,10 @@ All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
 | | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
 | | `set_playback_option` | Switches `autoplay_next`, `skip_lookup` or `stream_proxy`. |
 | | `provider_switched` | The viewer picked another provider: saved stream links from before are not used. |
+| **Cloudflare** | `allow_cloudflare_host` | The viewer allowed the verification check for a site (and its subdomains) from now on. |
+| | `place_cloudflare_panel` | The page says where the `CloudflarePanel.tsx` frame is; the check view moves over it. |
+| | `cancel_cloudflare_panel` | The viewer pressed Cancel on the check frame. |
+| | `report_image` | How an image from a site fared; the first few per site are logged with the cookies the app's browser holds for it. |
 | **Video/Window** | `get_video_mode` | True when mpv draws into the main window itself (native video), so the page needs no canvas. |
 | | `set_video_surface` | Informs player of viewport dimensions. |
 | | `get_video_frame` | Returns binary header + RGBA pixels for canvas rendering. |
@@ -595,6 +600,7 @@ All 57 commands registered in `crates/desktop_tauri/src/main.rs`:
    }
    ```
 3. **Register in Tauri handler**: In `crates/desktop_tauri/src/main.rs`, append `sample_commands::sample_command` to `tauri::generate_handler![...]`.
+   Add its row to the table in section 4 and raise the count in its heading; `docs_drift_tests.rs` fails until you do.
 4. **Expose in frontend API**: In `crates/desktop_tauri/frontend/src/services/api.ts`:
    ```typescript
    export const api = {
