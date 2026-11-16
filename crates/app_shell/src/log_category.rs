@@ -17,8 +17,11 @@ pub const OWN_TARGETS: &[&str] = &[
     "player_api",
     "player_mpv",
     "sidecar",
+    "skip_times",
     "storage",
     "stream_proxy",
+    "subtitle_store",
+    "title_cache",
     "ui_app",
     "webapp",
 ];
@@ -189,5 +192,20 @@ mod tests {
         names.dedup();
         assert_eq!(names.len(), LogCategory::ALL.len());
         assert!(!names.contains(&PROBLEMS_FILE));
+    }
+
+    /// Workspace crates that write no logs: the portable launcher only unpacks and starts the app.
+    const CRATES_WITHOUT_LOGS: &[&str] = &["portable_launcher"];
+
+    #[test]
+    fn own_targets_every_workspace_crate_that_logs_is_listed() {
+        let workspace = include_str!("../../../Cargo.toml");
+        let missing: Vec<&str> = workspace
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("\"crates/"))
+            .filter_map(|rest| rest.strip_suffix("\","))
+            .filter(|name| !CRATES_WITHOUT_LOGS.contains(name) && !OWN_TARGETS.contains(name))
+            .collect();
+        assert!(missing.is_empty(), "debug output of {missing:?} is dropped");
     }
 }
