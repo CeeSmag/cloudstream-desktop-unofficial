@@ -98,7 +98,7 @@ impl Discovery {
             });
         let progress = self.gate.progress();
         let closed = !self.wanted();
-        self.ledger.save(self.last_good(), closed);
+        self.save_sources(closed);
         if closed {
             tracing::info!(
                 answered = progress.checked,
@@ -119,6 +119,20 @@ impl Discovery {
             elapsed_ms = self.started.elapsed().as_millis(),
             "stream checks finished"
         );
+    }
+
+    /// Saves what the search and the checks found. The opening starts its stream when the checks
+    /// are done, so it may do that between reading what plays and the save; its own note then
+    /// found nothing saved yet, and the stream is noted here instead.
+    fn save_sources(&self, closed: bool) {
+        let saved_with = self.last_good();
+        self.ledger.save(saved_with.clone(), closed);
+        if let Some(url) = self
+            .last_good()
+            .filter(|now| saved_with.as_ref() != Some(now))
+        {
+            self.ledger.note_played(&url);
+        }
     }
 
     /// The stream that is playing, if one is: the one that played well.

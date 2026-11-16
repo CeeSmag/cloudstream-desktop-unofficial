@@ -118,6 +118,13 @@ impl LinkLedger {
         }
     }
 
+    /// Notes that the stream at `url` played well, in what was saved for the title.
+    pub fn note_played(&self, url: &str) {
+        if let Err(error) = self.cache.mark_played_well(&self.key, url) {
+            tracing::warn!(%error, "cannot note the stream that played well");
+        }
+    }
+
     /// The provider's search is over; `completed` is false when it failed.
     pub fn search_ended(&self, completed: bool) {
         self.lock().search = if completed {
