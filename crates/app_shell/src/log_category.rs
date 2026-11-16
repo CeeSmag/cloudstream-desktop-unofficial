@@ -31,13 +31,13 @@ pub const OWN_TARGETS: &[&str] = &[
 pub enum LogCategory {
     /// Start-up, commands, settings and everything not listed below.
     App,
-    /// The video player: mpv, playback state, tracks, frames.
+    /// The video player: mpv, playback state, tracks, frames, subtitle downloads.
     Player,
     /// The JVM sidecar and the plugins running in it.
     Sidecar,
     /// Loading, installing and calling extensions and repositories.
     Extensions,
-    /// Finding, checking and switching streams.
+    /// Finding, checking and switching streams, and the saved stream links.
     Streams,
     /// Cloudflare verification: the sidecar's challenge handling and the verification window.
     Cloudflare,
@@ -57,6 +57,7 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("app_services::playback", LogCategory::Player),
     ("desktop_tauri::playback_commands", LogCategory::Player),
     ("desktop_tauri::video_commands", LogCategory::Player),
+    ("subtitle_store", LogCategory::Player),
     ("extension_", LogCategory::Extensions),
     ("app_services::extension", LogCategory::Extensions),
     ("app_services::repository", LogCategory::Extensions),
@@ -71,6 +72,7 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("stream_proxy", LogCategory::Streams),
     ("desktop_tauri::source", LogCategory::Streams),
     ("desktop_tauri::check_gate", LogCategory::Streams),
+    ("title_cache", LogCategory::Streams),
     ("storage", LogCategory::Storage),
 ];
 
@@ -207,5 +209,17 @@ mod tests {
             .filter(|name| !CRATES_WITHOUT_LOGS.contains(name) && !OWN_TARGETS.contains(name))
             .collect();
         assert!(missing.is_empty(), "debug output of {missing:?} is dropped");
+    }
+
+    #[test]
+    fn for_target_saved_links_and_subtitles_go_to_the_streams_and_player_files() {
+        assert_eq!(
+            LogCategory::for_target("title_cache::title_cache"),
+            LogCategory::Streams
+        );
+        assert_eq!(
+            LogCategory::for_target("subtitle_store::subtitle_loader"),
+            LogCategory::Player
+        );
     }
 }
