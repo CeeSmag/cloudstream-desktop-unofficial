@@ -1,29 +1,21 @@
-# CloudStream RS (Desktop)
+# CloudStream RS
 
 [![CI](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?label=release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest)
 
-A high-performance desktop rewrite of **CloudStream** built with **Rust**, **Tauri v2**, **React 18**, and **libmpv**.
+A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux, with a modern interface and a fast video player.
+
+<p align="center">
+  <img src="docs/images/home-with-content.jpg" alt="CloudStream RS Home page with featured content and poster rows" width="800">
+</p>
 
 ---
 
-> **Disclaimer:**
-> This repository is an independent, unofficial community project. It is **not** officially affiliated with, endorsed by, or maintained by the official CloudStream team or upstream repository ([recloudstream/cloudstream](https://github.com/recloudstream/cloudstream)).
->
-> CloudStream RS is an open-source media player and plugin runtime engine. **It does not host, scrape, bundle, or distribute any media files, video streams, or copyrighted material.** Users configure their own plugin repositories.
-
----
-
-## Features
-
-- **Full CloudStream Plugin Compatibility**: Executes real `.cs3` plugins via an out-of-process JVM sidecar (`cs-sidecar`) with comprehensive Android stubs and DEX bytecode translation.
-- **3-Pillar Security Sandbox**: Untrusted extensions run in a restricted class loader sandbox preventing unauthorized file system, native process, and reflection abuse.
-- **libmpv Video Engine**: High-fidelity media playback powered by `libmpv` with support for hardware decoding (`d3d11va`, `nvdec`, `vaapi`), subtitles, and embedded canvas rendering.
-- **Live Stream & ClearKey DRM Support**: First-class support for live DASH (`.mpd`) and HLS (`.m3u8`) streams, including automatic ClearKey CENC decryption and stream option extraction.
-- **Smart Link Resolver & Stream Checker**: Discovers and tests video links concurrently, sorts by quality and health, and provides transparent playback failover when a host drops.
-- **Subtitle Normalization & Prefetching**: Automatically downloads, decompresses (`.zip`/`.gz`), converts encoding (UTF-16/Windows-1252 to UTF-8), and aligns subtitles to the viewer's preferred languages.
-- **Modern Desktop UI**: Smooth desktop interface crafted with React 18, TypeScript, Tailwind CSS, Lucide icons, and Tauri v2 IPC.
+> **Disclaimer**  
+> This is an independent, unofficial community project. It is **not** affiliated with, endorsed by, or maintained by the official CloudStream team.  
+>  
+> CloudStream RS does **not** host, scrape, bundle, or distribute media files or copyrighted material. You add your own plugin repositories. Plugins and repositories are made by other people — only add ones you trust.
 
 ---
 
@@ -33,105 +25,78 @@ Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudst
 
 | File | For |
 |---|---|
-| `CloudStream_<version>_x64-setup.exe` | Windows (x64), installer |
-| `CloudStream_<version>_x64_portable.exe` | Windows (x64), one file, nothing to install |
+| `CloudStream_<version>_x64-setup.exe` | Windows (x64) — installer |
+| `CloudStream_<version>_x64_portable.exe` | Windows (x64) — one file, nothing to install |
 | `CloudStream-<version>-x86_64.AppImage` / `-aarch64.AppImage` | Linux (Intel/AMD or ARM) |
 
-Everything the app needs (libmpv, the plugin runtime and Java) is inside, so it runs on a clean PC. The app checks
-for updates itself (Settings > General).
-
-**First run:** CloudStream comes with no plugins. Open Settings > Extensions, add a repository and install a plugin;
-the Home page fills up from the plugins you install (the app shows a short guide until you do).
+Everything the app needs (video player, plugin runtime, and Java) is included. After install, the app can check for updates itself under **Settings → General**.
 
 ---
 
-## Architecture Overview
+## Getting started
 
-```mermaid
-flowchart TD
-    UI[Tauri Frontend / React 18] -->|IPC Commands| Shell[desktop_tauri]
-    Shell --> Services[crates/app_services]
-    Services --> Core[crates/core_model]
-    Services --> Storage[crates/storage / SQLite WAL]
-    Services --> Cache[crates/title_cache & subtitle_store]
-    Services --> PlayerAPI[crates/player_api]
-    Services --> ExtAPI[crates/extension_api]
-    PlayerAPI --> MPV[crates/player_mpv / libmpv-2.dll]
-    ExtAPI --> Runtime[crates/extension_runtime]
-    Runtime --> Sidecar[sidecar/cs-sidecar JVM Process]
-```
+CloudStream comes with **no shows or movies of its own**. Plugins bring them in, and your Home page is built from them.
+
+<p align="center">
+  <img src="docs/images/home-add-plugins.png" alt="Home page prompt: Add a plugin to fill your Home page" width="800">
+</p>
+
+### 1. Open Extensions
+
+On first launch you will see a short guide on Home. Click **Add plugins →**, or go to **Settings → Extensions**.
+
+### 2. Add a repository
+
+Paste a repository link (a `repo.json` URL) and confirm with **+ Add**.
+
+<p align="center">
+  <img src="docs/images/settings-repositories.png" alt="Settings → Extensions → Repositories: add a repository URL" width="800">
+</p>
+
+### 3. Install plugins
+
+Open the repository, install one or more plugins, then pick a provider from the dropdown in the top bar. Home fills with shelves and a featured banner right away.
 
 ---
 
-## Building from Source
+## What you can do
 
-### Prerequisites
+- **Home** — featured titles and rows from the provider you selected  
+- **Browse** — filter and explore the catalog  
+- **Search** — look up shows and movies across providers  
+- **Library** — bookmarks and continue watching  
+- **Player** — hardware-accelerated playback, subtitles, source switching, and skip intro when available  
+- **Settings** — preferences, storage, updates, and extension management  
 
-- **Rust**: `1.80+` (stable)
-- **Node.js**: `20+` and `npm`
-- **Java**: JDK 21 (for compiling and running the JVM extension sidecar)
-- **libmpv**: `libmpv-2.dll` (Windows), `libmpv.so.2` (Linux), or `libmpv.dylib` (macOS)
+---
 
-### 1. Set up the Sidecar Bridge
+## Tips
+
+- Switch providers with the dropdown in the top-right of the window.  
+- If a stream fails, the app tries other working sources automatically.  
+- Prefer trusted repositories only; you can remove a repository or uninstall a plugin anytime under **Settings → Extensions**.  
+- **Delete all saved data** (Settings → General) wipes local settings, history, and caches and restarts the app.
+
+---
+
+## For developers
+
+Build instructions, architecture, and contribution rules live in:
+
+- [AGENTS.md](AGENTS.md) — codebase map and how-to recipes  
+- [RULES.md](RULES.md) — coding invariants and quality gates  
+- [docs/RELEASING.md](docs/RELEASING.md) — how releases are built and signed  
+
+Quick start from source (Windows):
 
 ```powershell
-# Clones reference client, applies compatibility overlays, and builds sidecar distribution
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1
-```
-
-### 2. Install Frontend Dependencies
-
-```bash
-cd crates/desktop_tauri/frontend
-npm install
-cd ../../..
-```
-
-### 3. Run Development Build
-
-```powershell
-# Point to your libmpv library
-$env:CS_LIBMPV_PATH = "C:\path\to\libmpv-2.dll"
-
-# Launch the Tauri desktop app
+cd crates\desktop_tauri\frontend; npm install; cd ..\..\..
 powershell -ExecutionPolicy Bypass -File .\scripts\run_tauri.ps1
 ```
-
-### 4. Build Release Packages
-
-```powershell
-# Windows PC: x64 installer + single-file portable exe in .\dist (-Kind installer|portable to build one)
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
-# Linux PC (run once with --install-deps): the AppImage for this PC's CPU (x86_64 or aarch64)
-scripts/build_release.sh
-```
-GitHub builds all of them: Actions > "Release build" > Run workflow, or push a `v*` tag for a draft release.
-The full release steps are in [docs/RELEASING.md](docs/RELEASING.md).
-
----
-
-## Quality & Testing Gates
-
-The repository strictly enforces safety, reliability, and code formatting invariants:
-
-```bash
-# Verify formatting
-cargo fmt --all -- --check
-
-# Strict lint checks (zero unwrap/panic allowed)
-cargo clippy --workspace --all-targets -- -D warnings
-
-# Execute test suite (Rust unit & race tests)
-cargo test --workspace
-
-# Frontend tests and type-checked build
-cd crates/desktop_tauri/frontend && npm test && npm run build
-```
-
-More for contributors: [AGENTS.md](AGENTS.md) (code map and recipes), [RULES.md](RULES.md) (coding rules), [docs/](docs/) (releasing, notices).
 
 ---
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. See the [LICENSE](LICENSE) file for the full license text.
+GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE).
