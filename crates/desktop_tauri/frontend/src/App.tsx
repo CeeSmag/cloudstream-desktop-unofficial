@@ -304,7 +304,7 @@ export const App: React.FC = () => {
   // Stop player & return
   const handleStopPlayer = guard(async () => {
     try {
-      await playback.stop();
+      await playback.leave();
     } finally {
       setContinueWatching(await api.getContinueWatching());
     }

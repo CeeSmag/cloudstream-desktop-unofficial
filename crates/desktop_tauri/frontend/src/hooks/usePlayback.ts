@@ -160,6 +160,15 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     await api.stop();
   };
 
+  /**
+   * Leaves the player screen at once; a playing video waits in the background (paused, half its cache) and
+   * opening it again plays on from there.
+   */
+  const leave = async () => {
+    close();
+    await api.leavePlayback();
+  };
+
   /** Starts now on the best stream known to work; the checks carry on in the background. */
   const skipCheck = async () => {
     setCheck((current) => (current ? { ...current, skipping: true } : current));
@@ -233,6 +242,7 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     check,
     start,
     stop,
+    leave,
     skipCheck,
     skipSegments,
     hasPrevious: previous !== null,

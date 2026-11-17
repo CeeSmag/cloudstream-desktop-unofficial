@@ -348,6 +348,14 @@ export interface UpdateProgressPayload {
 }
 
 /** The data folder's size limit and how much of it is used. */
+/** The video cache setting (`get_video_cache`) and its choices. */
+export interface VideoCacheSetting {
+  size_mb: number;
+  ahead_percent: number;
+  sizes_mb: number[];
+  ahead_percents: number[];
+}
+
 export interface StorageInfo {
   cap_gb: number;
   used_bytes: number;

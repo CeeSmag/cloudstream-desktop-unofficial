@@ -10,6 +10,7 @@ import {
   PlaybackOption,
   PlaybackStatus,
   StorageInfo,
+  VideoCacheSetting,
   VideoMode,
   PluginHit,
   Preferences,
@@ -134,6 +135,9 @@ export const api = {
 
   stop: () => invokeTauri<void>('stop_playback'),
 
+  /** Leaves the player: a playing video waits, paused with half its cache; opening it again plays on. */
+  leavePlayback: () => invokeTauri<void>('leave_playback'),
+
   setVolume: (percent: number) => invokeTauri<void>('set_volume', { percent }),
 
   getSources: () => invokeTauri<SourceInfo[]>('get_playback_sources'),
@@ -192,6 +196,12 @@ export const api = {
   getStorageCap: () => invokeTauri<StorageInfo>('get_storage_cap'),
   /** Sets the limit; what is over it and can be made again is deleted at once. */
   setStorageCap: (gb: number) => invokeTauri<StorageInfo>('set_storage_cap', { gb }),
+
+  getVideoCache: () => invokeTauri<VideoCacheSetting>('get_video_cache'),
+
+  /** Saves the video cache size and ahead share; the player follows at once. */
+  setVideoCache: (sizeMb: number, aheadPercent: number) =>
+    invokeTauri<VideoCacheSetting>('set_video_cache', { sizeMb, aheadPercent }),
   /** How an image from the web fared; the backend logs it with what its browser holds for that address. */
   reportImage: (url: string, loaded: boolean) => invokeTauri<void>('report_image', { url, loaded }),
 
