@@ -50,6 +50,18 @@ impl SubtitleCache {
             .unwrap_or_default()
     }
 
+    /// A download for `title_key` finished after its video was replaced, so no video took it: its
+    /// file is removed at once while another title is the one kept (unless that title names it
+    /// too), instead of waiting on disk for the next opening. It stays when `title_key` is still
+    /// the kept title (the same video was opened again or refreshed) and before any video was
+    /// opened. The check and the removal happen under the kept-title lock.
+    pub fn discard_unclaimed(&self, title_key: &str, subtitle: &ReadySubtitle) {
+        let kept = self.kept_lock();
+        if let Some(open) = kept.as_deref().filter(|open| *open != title_key) {
+            self.drop_for_replaced(open, subtitle);
+        }
+    }
+
     /// A download for a video that was replaced finished: its file goes, unless the title that
     /// is open (`open`) names it too. The caller holds the kept-title lock.
     pub(crate) fn drop_for_replaced(&self, open: &str, subtitle: &ReadySubtitle) {

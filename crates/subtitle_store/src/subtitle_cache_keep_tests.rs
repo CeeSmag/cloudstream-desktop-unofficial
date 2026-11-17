@@ -162,3 +162,37 @@ fn race_a_late_download_never_survives_the_next_opening() {
         assert!(!late.path.exists(), "round {round}: A's file survived");
     }
 }
+
+#[test]
+fn an_unclaimed_download_of_the_replaced_video_is_removed_at_once() {
+    let scratch = Scratch::new();
+    let cache = scratch.cache();
+    cache.keep_only_title(VIDEO_A);
+    cache.keep_only_title(VIDEO_B);
+    let late = download(&cache, "https://s.test/a.vtt");
+    cache.discard_unclaimed(VIDEO_A, &late);
+    assert!(!late.path.exists());
+    assert_eq!(scratch.files(), 0);
+}
+
+#[test]
+fn an_unclaimed_download_stays_when_the_open_video_names_it_or_is_the_same() {
+    let scratch = Scratch::new();
+    let cache = scratch.cache();
+    cache.keep_only_title(VIDEO_B);
+    let shared = download_and_remember(&cache, VIDEO_B, "https://s.test/shared.vtt");
+    cache.discard_unclaimed(VIDEO_A, &shared);
+    assert!(shared.path.exists(), "the open video names it");
+    let own = download(&cache, "https://s.test/b.vtt");
+    cache.discard_unclaimed(VIDEO_B, &own);
+    assert!(own.path.exists(), "the same video is open again");
+}
+
+#[test]
+fn an_unclaimed_download_stays_before_any_video_is_opened() {
+    let scratch = Scratch::new();
+    let cache = scratch.cache();
+    let early = download(&cache, "https://s.test/a.vtt");
+    cache.discard_unclaimed(VIDEO_A, &early);
+    assert!(early.path.exists());
+}

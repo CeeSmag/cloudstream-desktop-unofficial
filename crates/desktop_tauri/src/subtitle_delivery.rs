@@ -69,10 +69,18 @@ impl Delivery {
             url: ready.path.to_string_lossy().replace('\\', "/"),
             headers: None,
         };
-        // Nothing to do when another video is open, or when the list already has this file
-        // (the sources were refreshed and the player already has it).
-        if parts.session.add_subtitle(parts.generation, track) != Some(true) {
-            return;
+        match parts.session.add_subtitle(parts.generation, track) {
+            Some(true) => {}
+            // The list already has this file: the sources were refreshed and the player has it.
+            Some(false) => return,
+            // The video was replaced or closed while the file downloaded: nobody takes it.
+            None => {
+                parts
+                    .loader
+                    .cache()
+                    .discard_unclaimed(&parts.work.title_key, ready);
+                return;
+            }
         }
         if remember {
             let saved = parts

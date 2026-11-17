@@ -42,6 +42,11 @@ pub(crate) struct TestSubtitles {
 }
 
 impl TestSubtitles {
+    /// How many subtitle files are on disk.
+    pub(crate) fn files_on_disk(&self) -> usize {
+        std::fs::read_dir(self.folder.join("files")).map_or(0, |entries| entries.count())
+    }
+
     pub(crate) fn new() -> Self {
         let folder = std::env::temp_dir().join(format!(
             "cs_desktop_subtitles_{}_{}",

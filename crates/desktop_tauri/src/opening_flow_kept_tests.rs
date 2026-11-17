@@ -164,3 +164,45 @@ fn race_the_previous_videos_checks_ending_late_never_bring_its_sources_back() {
         );
     }
 }
+
+/// Video A's subtitle download is slow and finishes after video B (which has no subtitles) was
+/// opened: its file is removed at once instead of waiting on disk for the next opening.
+#[test]
+fn a_subtitle_of_the_previous_video_that_arrives_late_is_not_left_on_disk() {
+    let rig = crate::opening_flow_tests::rig_by_title(
+        |title| {
+            let mut script = SearchScript::steady(
+                3,
+                Duration::from_millis(20),
+                720,
+                Duration::from_millis(100),
+            );
+            if title == "episode-1" {
+                script.subtitles = vec![(Duration::from_millis(10), "slowEnglish".to_owned())];
+            }
+            script
+        },
+        limits(5_000, 20_000),
+    );
+    let (outcome, first_work) =
+        open_one_skipping(&rig, video("episode-1"), Duration::from_millis(60));
+    assert_eq!(outcome, Ok(()));
+    let (outcome, second_work) =
+        open_one_skipping(&rig, video("episode-2"), Duration::from_millis(30));
+    assert_eq!(outcome, Ok(()));
+
+    join_within(first_work, TIME_LIMIT); // includes A's slow subtitle download
+
+    assert_eq!(
+        rig.subtitles.host.calls.load(Ordering::SeqCst),
+        1,
+        "A's file was downloaded"
+    );
+    assert_eq!(
+        rig.subtitles.files_on_disk(),
+        0,
+        "A's late file was left on disk"
+    );
+    rig.sources.close();
+    join_within(second_work, TIME_LIMIT);
+}

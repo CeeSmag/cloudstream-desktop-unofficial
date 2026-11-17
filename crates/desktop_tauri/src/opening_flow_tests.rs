@@ -63,23 +63,31 @@ pub(crate) struct Rig {
 }
 
 pub(crate) fn rig(script: SearchScript, limits: WaitLimits) -> Rig {
+    rig_by_title(move |_| script.clone(), limits)
+}
+
+/// A setup whose provider answers each title (the data of its search) with a script of its own.
+pub(crate) fn rig_by_title(
+    script_for: impl Fn(&str) -> SearchScript + Send + Sync + 'static,
+    limits: WaitLimits,
+) -> Rig {
     let (subtitles, titles) = (Arc::new(TestSubtitles::new()), Arc::new(TestTitles::new()));
-    build(script, limits, (subtitles, titles))
+    build(script_for, limits, (subtitles, titles))
 }
 
 /// A second setup that shares the subtitle and saved-sources folders (and so what was saved
 /// there) with `first`, as the app does when a title is opened again.
 pub(crate) fn rig_sharing(first: &Rig, script: SearchScript, limits: WaitLimits) -> Rig {
     let shared = (Arc::clone(&first.subtitles), Arc::clone(&first.titles));
-    build(script, limits, shared)
+    build(move |_| script.clone(), limits, shared)
 }
 
 fn build(
-    script: SearchScript,
+    script_for: impl Fn(&str) -> SearchScript + Send + Sync + 'static,
     limits: WaitLimits,
     (subtitles, titles): (Arc<TestSubtitles>, Arc<TestTitles>),
 ) -> Rig {
-    let searches = Arc::new(FakeLinkSearches::new(move |_| script.clone()));
+    let searches = Arc::new(FakeLinkSearches::new(script_for));
     let gateway = RpcProviderGateway::new(FakeSearchRuntime::new(Arc::clone(&searches)));
     let player = Arc::new(RecordingPlayer::default());
     let dead = Arc::new(Mutex::new(Vec::new()));
