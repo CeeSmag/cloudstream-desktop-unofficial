@@ -69,10 +69,10 @@ mod source_session;
 mod source_session_restart;
 mod sources_cleanup;
 mod startup;
-mod stream_setup;
 mod storage_cap;
 mod storage_cap_plan;
 mod storage_cap_scan;
+mod stream_setup;
 mod subtitle_delivery;
 #[cfg(test)]
 mod subtitle_tests;
@@ -91,6 +91,8 @@ mod update_install;
 mod update_prepare;
 mod update_verify;
 mod update_version;
+mod video_away;
+mod video_cache_commands;
 mod video_commands;
 mod video_opening;
 mod window_commands;
@@ -147,6 +149,9 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             transport_commands::resume_playback,
             transport_commands::seek_to,
             playback_commands::stop_playback,
+            video_cache_commands::leave_playback,
+            video_cache_commands::get_video_cache,
+            video_cache_commands::set_video_cache,
             playback_commands::get_playback_status,
             playback_commands::select_media_track,
             playback_commands::set_volume,

@@ -39,7 +39,8 @@ pub struct PreferencesDto {
     pub languages: Vec<LanguageDto>,
 }
 
-/// Tells the player about the saved audio preference; run once at start.
+/// Tells the player about the saved audio and subtitle preferences and the video cache size; run
+/// once at start.
 pub fn apply_saved(settings: &SettingsService, playback: Option<&Arc<PlaybackService>>) {
     match settings.preferred_audio() {
         Ok(language) => {
@@ -51,6 +52,10 @@ pub fn apply_saved(settings: &SettingsService, playback: Option<&Arc<PlaybackSer
     }
     if let Some(playback) = playback {
         playback.set_preferred_subtitles(&subtitle_languages_to_turn_on(settings));
+        let cache = crate::video_cache_commands::video_cache(settings);
+        if let Err(error) = playback.set_cache_limits(cache.while_watching()) {
+            tracing::warn!(%error, "the video cache size could not be given to the player");
+        }
     }
 }
 

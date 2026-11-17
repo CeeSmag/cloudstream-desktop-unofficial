@@ -19,7 +19,7 @@ This document is the architectural index, navigation map, and modification handb
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (64 Commands Reference)](#4-tauri-ipc-interface-64-commands-reference)
+4. [Tauri IPC Interface (67 Commands Reference)](#4-tauri-ipc-interface-67-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -343,6 +343,7 @@ This document is the architectural index, navigation map, and modification handb
   - `main.rs`: Registers IPC commands (including `get_resume_pointer`) and sets up `AppState`, `SourceManager`, and `StartupTracker`.
   - `source_manager.rs`: Session-based coordinator managing stream search, checking queue, title caching, and subtitle prefetch.
   - `source_fallback.rs` & `source_fallback_steps.rs`: Monitors playback and automatically fails over to the next best source upon playback error.
+  - `video_away.rs` + `video_cache_commands.rs`: leaving the player (`leave_playback`) keeps a video that holds a stream waiting: progress saved, paused, cache halved (`VideoCache::while_away`; mpv trims the part behind, keeps what it read ahead and reads no further), sources kept, `ActiveSources.away` set. `play_media` for that same video first tries `come_back_to`: full cache, play, no search. Leave and come-back check the open list under the `Opening` lock, so a video that started opening is never paused or resumed instead. Playing another video or closing the app drops it.
   - `source_refresh.rs`: the player's "Refresh sources" (`refresh_sources`): removes the title's saved sources, restarts the list with only the playing stream (`SourceSession::restart_playing`, `source_session_restart.rs`) and runs a new search and checks while playback goes on. Refused while no stream plays, and when another video started opening (`SourceManager::restart_list` checks the `Opening`'s generation under its lock).
   - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
   - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
@@ -485,9 +486,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (64 Commands Reference)
+## 4. Tauri IPC Interface (67 Commands Reference)
 
-All 64 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
+All 67 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -511,6 +512,8 @@ All 64 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_te
 | | `resume_playback` | Resumes playback. |
 | | `seek_to` | Seeks to millisecond position. |
 | | `stop_playback` | Stops player and clears active session. |
+| | `leave_playback` | The viewer left the player: a video that holds a stream waits paused and loaded with half its cache (`video_away.rs`); anything else is stopped. Opening it again with `play_media` plays on from memory. |
+| | `get_video_cache` / `set_video_cache` | Settings > General > "Video cache": size (256 MB-4 GB) and ahead share (25-90 %); a change applies at once (half while the video waits). |
 | | `get_playback_status` | Returns state, position, duration, and track list. |
 | | `select_media_track` | Switches audio or subtitle track by ID. |
 | | `set_volume` | Adjusts output volume percentage (0-130%). |

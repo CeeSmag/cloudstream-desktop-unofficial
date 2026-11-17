@@ -4,7 +4,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use player_api::{
-    PlaybackRequest, PlaybackState, PlaybackStatus, PlayerError, SubtitleSource, VideoPlayer,
+    CacheLimits, PlaybackRequest, PlaybackState, PlaybackStatus, PlayerError, SubtitleSource,
+    VideoPlayer,
 };
 
 /// Records what the player was asked to play.
@@ -23,6 +24,8 @@ pub(crate) struct RecordingPlayer {
     pub(crate) start_takes: Mutex<Duration>,
     /// What `status` reports; the idle default when nothing is set.
     pub(crate) reported: Mutex<Option<PlaybackStatus>>,
+    /// Pauses and cache limits, in order, as `paused true` / `cache 3 1`.
+    pub(crate) calls: Mutex<Vec<String>>,
 }
 
 impl VideoPlayer for RecordingPlayer {
@@ -58,7 +61,16 @@ impl VideoPlayer for RecordingPlayer {
             .expect("lock")
             .extend_from_slice(subtitles);
     }
-    fn set_paused(&self, _: bool) -> Result<(), PlayerError> {
+    fn set_paused(&self, paused: bool) -> Result<(), PlayerError> {
+        self.calls
+            .lock()
+            .expect("lock")
+            .push(format!("paused {paused}"));
+        Ok(())
+    }
+    fn set_cache_limits(&self, limits: CacheLimits) -> Result<(), PlayerError> {
+        let call = format!("cache {} {}", limits.ahead_bytes, limits.behind_bytes);
+        self.calls.lock().expect("lock").push(call);
         Ok(())
     }
     fn seek_to(&self, _: i64) -> Result<(), PlayerError> {

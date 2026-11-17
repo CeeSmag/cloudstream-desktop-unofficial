@@ -6,11 +6,13 @@ use crate::app_state::AppState;
 use crate::dto::{ChapterDto, MediaTrackDto, PlayRequestDto, PlaybackStatusDto};
 use crate::source_fallback::FallbackOutcome;
 use crate::source_manager::{emit, CheckUpdate, SourceManager, Tell};
+use crate::video_cache_commands::{come_back_to, video_cache};
 use crate::video_opening::{item_from, open_video, services_for_playing};
 use player_api::{PlaybackState, PlaybackStatus, TrackKind};
 use tauri::{AppHandle, Manager, State};
 
-/// Opens a video: the provider's streams are checked as they are found and the best working one
+/// Opens a video. The video the viewer left and now opens again plays on from memory instead
+/// (`video_away`). Otherwise the provider's streams are checked as they are found and the best working one
 /// plays when the search and all the checks are done, or when the viewer skips. A provider that
 /// gives nothing in time, or never finishes, ends in an error. After a skip the search and the
 /// checks go on in the background until they are done or the video closes.
@@ -23,6 +25,18 @@ pub async fn play_media(
 ) -> Result<(), String> {
     let item = item_from(request);
     let services = services_for_playing(&state)?;
+    let cache = video_cache(&state.read().settings);
+    if come_back_to(
+        &app.state::<SourceManager>(),
+        &services.playback,
+        &item,
+        cache,
+    )? {
+        return Ok(());
+    }
+    if let Err(error) = services.playback.set_cache_limits(cache.while_watching()) {
+        tracing::warn!(%error, "the video cache size could not be given to the player");
+    }
     let events = app.clone();
     let tell: Tell = Arc::new(move |update| emit(&events, update));
     // The wait blocks, so it runs off the async worker threads.

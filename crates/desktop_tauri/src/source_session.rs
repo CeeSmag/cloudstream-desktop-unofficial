@@ -42,6 +42,8 @@ pub struct ActiveSources {
     pub subtitles_sent: usize,
     /// Whether a stream has started playing, so subtitles found now go straight to the player.
     pub playing: bool,
+    /// Whether the viewer left the player and the video waits for them (`video_away`).
+    pub away: bool,
 }
 
 impl ActiveSources {
@@ -63,6 +65,7 @@ impl ActiveSources {
             generation: 0,
             subtitles_sent: 0,
             playing: false,
+            away: false,
         }
     }
 }
