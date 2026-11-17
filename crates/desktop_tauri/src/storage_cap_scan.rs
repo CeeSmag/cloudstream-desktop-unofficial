@@ -10,6 +10,8 @@ use crate::storage_cap_plan::{Entry, Kind};
 
 /// A debug log changed more recently than this is still being written, so it stays.
 const LOG_IN_USE_SECS: u64 = 120;
+/// An update download younger than this may still be installing (`update_folder::STALE_AFTER`).
+const UPDATE_STALE_SECS: u64 = 60 * 60;
 /// The browser keeps its cache in folders with these names; cookies and logins are elsewhere.
 const BROWSER_CACHE_DIRS: &[&str] = &[
     "Cache",
@@ -69,6 +71,25 @@ fn children(dir: &Path) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+/// Bytes used by the folders the Settings card tracks (0 when a folder is missing).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Usage {
+    pub logs_bytes: u64,
+    pub subtitles_bytes: u64,
+    pub sources_bytes: u64,
+    pub updates_bytes: u64,
+}
+
+/// Size of each tracked folder under `data_dir`.
+pub fn usage(data_dir: &Path) -> Usage {
+    Usage {
+        logs_bytes: dir_size(&data_dir.join("logs")),
+        subtitles_bytes: dir_size(&data_dir.join("subtitles")),
+        sources_bytes: dir_size(&data_dir.join("sources")),
+        updates_bytes: dir_size(&data_dir.join("updates")),
+    }
+}
+
 /// Every entry of `data_dir` that may be deleted. `running` is the program folder in use (never listed).
 pub fn collect(data_dir: &Path, running: Option<&Path>) -> Vec<Entry> {
     let mut entries = Vec::new();
@@ -78,6 +99,7 @@ pub fn collect(data_dir: &Path, running: Option<&Path>) -> Vec<Entry> {
             entries.push(entry(path, Kind::OldRuntime));
         }
     }
+    collect_update_attempts(&data_dir.join("updates"), UPDATE_STALE_SECS, &mut entries);
     for path in children(&data_dir.join("logs").join("debug")) {
         if path.is_file() && age_secs(&path) >= LOG_IN_USE_SECS {
             entries.push(entry(path, Kind::DebugLog));
@@ -91,6 +113,14 @@ pub fn collect(data_dir: &Path, running: Option<&Path>) -> Vec<Entry> {
     }
     browser_caches(&data_dir.join("cloudflare_browser"), 0, &mut entries);
     entries
+}
+
+fn collect_update_attempts(dir: &Path, stale_secs: u64, entries: &mut Vec<Entry>) {
+    for path in children(dir).into_iter().filter(|p| p.is_dir()) {
+        if age_secs(&path) >= stale_secs {
+            entries.push(entry(path, Kind::UpdateAttempt));
+        }
+    }
 }
 
 fn browser_caches(dir: &Path, depth: usize, entries: &mut Vec<Entry>) {
@@ -185,6 +215,42 @@ mod tests {
                 "subtitles/a.vtt",
             ]
         );
+    }
+
+    #[test]
+    fn update_folders_respect_the_stale_age() {
+        let scratch = Scratch::new("updates");
+        scratch.file("updates/attempt/file.bin", 8);
+        let dir = scratch.0.join("updates");
+        let mut listed = Vec::new();
+        collect_update_attempts(&dir, 0, &mut listed);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed.first().map(|e| e.kind), Some(Kind::UpdateAttempt));
+        listed.clear();
+        collect_update_attempts(&dir, u64::MAX, &mut listed);
+        assert!(
+            listed.is_empty(),
+            "a folder younger than the stale age must stay"
+        );
+    }
+
+    #[test]
+    fn usage_adds_each_tracked_folder() {
+        let scratch = Scratch::new("usage");
+        scratch.file("logs/cloudstream.log", 10);
+        scratch.file("subtitles/a.vtt", 20);
+        scratch.file("sources/t.json", 30);
+        scratch.file("updates/1/x.bin", 40);
+        assert_eq!(
+            usage(&scratch.0),
+            Usage {
+                logs_bytes: 10,
+                subtitles_bytes: 20,
+                sources_bytes: 30,
+                updates_bytes: 40,
+            }
+        );
+        assert_eq!(usage(&scratch.0.join("missing")), Usage::default());
     }
 
     #[test]

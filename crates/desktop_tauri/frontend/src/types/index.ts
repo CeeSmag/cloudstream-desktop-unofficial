@@ -360,4 +360,8 @@ export interface StorageInfo {
   cap_gb: number;
   used_bytes: number;
   over: boolean;
+  logs_bytes: number;
+  subtitles_bytes: number;
+  sources_bytes: number;
+  updates_bytes: number;
 }

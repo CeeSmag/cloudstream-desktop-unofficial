@@ -12,6 +12,8 @@ use std::path::PathBuf;
 pub enum Kind {
     /// An unpacked program folder of an older version (`runtime-*`), not the one running.
     OldRuntime,
+    /// A leftover self-update download under `updates/` (older than an hour).
+    UpdateAttempt,
     /// A debug log file that is not being written any more.
     DebugLog,
     /// A downloaded and converted subtitle.
@@ -27,6 +29,7 @@ impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Self::OldRuntime => "old program folder",
+            Self::UpdateAttempt => "update download",
             Self::DebugLog => "debug log",
             Self::Subtitle => "subtitle",
             Self::Sources => "saved stream sources",
@@ -117,12 +120,13 @@ mod tests {
         let entries = vec![
             entry("sources", Kind::Sources, 50, 1),
             entry("old-runtime", Kind::OldRuntime, 300, 1),
+            entry("update", Kind::UpdateAttempt, 20, 1),
             entry("log", Kind::DebugLog, 40, 1),
         ];
-        let plan = plan(entries, 1000, 690);
-        // 1000 - 300 = 700 is still over 690, so the log goes too; the sources stay.
-        assert_eq!(names(&plan), vec!["old-runtime", "log"]);
-        assert_eq!(plan.total_after, 660);
+        let plan = plan(entries, 1000, 670);
+        // 1000 - 300 - 20 = 680 is still over 670, so the log goes too; the sources stay.
+        assert_eq!(names(&plan), vec!["old-runtime", "update", "log"]);
+        assert_eq!(plan.total_after, 640);
     }
 
     #[test]

@@ -2,10 +2,11 @@
 //! Settings > General (1 to 10 GB, 2 by default).
 //!
 //! When the folder is over the limit, things that can be made again are deleted, cheapest first (older
-//! program folders, finished debug logs, subtitles, saved stream sources, the check browser's cache), only
-//! as much as needed. The database, plugins and settings are never touched, so a limit below what the app
-//! itself needs cannot be reached; that is reported, not hidden. It runs as a task of the cleanup queue (after start-up, then hourly)
-//! and at once when the limit is changed. Every deletion and every failure is logged.
+//! program folders, stale update downloads, finished debug logs, subtitles, saved stream sources, the check
+//! browser's cache), only as much as needed. The database, plugins and settings are never touched, so a
+//! limit below what the app itself needs cannot be reached; that is reported, not hidden. It runs as a
+//! task of the cleanup queue (after start-up, then hourly) and at once when the limit is changed. Every
+//! deletion and every failure is logged.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, TryLockError};
@@ -16,7 +17,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::app_state::AppState;
 use crate::data_commands::DataFolder;
 use crate::storage_cap_plan::{plan, Plan};
-use crate::storage_cap_scan::{collect, delete, dir_size};
+use crate::storage_cap_scan::{collect, delete, dir_size, usage};
 
 const BYTES_PER_GB: u64 = 1024 * 1024 * 1024;
 
@@ -136,20 +137,29 @@ fn apply(data_dir: &Path, chosen: &Plan) -> (usize, usize) {
     (deleted, failed)
 }
 
-/// What the page shows: the limit, the size now, and whether it is over.
+/// What the page shows: the limit, the size now, tracked folders, and whether it is over.
 #[derive(Debug, Clone, Serialize)]
 pub struct StorageDto {
     cap_gb: u32,
     used_bytes: u64,
     over: bool,
+    logs_bytes: u64,
+    subtitles_bytes: u64,
+    sources_bytes: u64,
+    updates_bytes: u64,
 }
 
 fn describe(data_dir: &Path, cap_gb: u32) -> StorageDto {
     let used_bytes = dir_size(data_dir);
+    let tracked = usage(data_dir);
     StorageDto {
         cap_gb,
         used_bytes,
         over: used_bytes > u64::from(cap_gb) * BYTES_PER_GB,
+        logs_bytes: tracked.logs_bytes,
+        subtitles_bytes: tracked.subtitles_bytes,
+        sources_bytes: tracked.sources_bytes,
+        updates_bytes: tracked.updates_bytes,
     }
 }
 
@@ -215,86 +225,5 @@ pub(crate) fn check_once(app: &AppHandle, data_dir: &Path) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("cs-enforce-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("scratch");
-        dir
-    }
-
-    fn write(dir: &Path, relative: &str, bytes: usize) {
-        let path = dir.join(relative);
-        fs::create_dir_all(path.parent().expect("parent")).expect("dirs");
-        fs::write(path, vec![1u8; bytes]).expect("file");
-    }
-
-    #[test]
-    fn a_folder_within_its_limit_is_left_alone() {
-        let dir = scratch("within");
-        write(&dir, "runtime-old/x.bin", 1000);
-        let report = enforce(&dir, 1, None).expect("ran");
-        assert_eq!((report.deleted, report.still_over), (0, false));
-        assert!(dir.join("runtime-old/x.bin").exists());
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_saved_data_is_never_deleted_even_when_it_alone_is_over() {
-        let dir = scratch("never");
-        // 2 MB of saved data with a limit of 1 GB is within; use the plan directly for "over".
-        write(&dir, "cloudstream.db", 2_000_000);
-        write(&dir, "extensions/P.cs3", 1_000_000);
-        write(&dir, "runtime-0.3.6/old.bin", 500_000);
-        let before = dir_size(&dir);
-        let chosen = plan(collect(&dir, None), before, 1_000);
-        let tally = apply(&dir, &chosen);
-        assert_eq!(tally, (1, 0));
-        assert!(dir.join("cloudstream.db").exists());
-        assert!(dir.join("extensions/P.cs3").exists());
-        assert!(!dir.join("runtime-0.3.6").exists());
-        assert!(chosen.still_over(1_000));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn two_enforcements_at_once_do_not_fail_or_double_delete() {
-        let dir = scratch("race");
-        for n in 0..20 {
-            write(&dir, &format!("subtitles/{n}.vtt"), 100);
-        }
-        let workers: Vec<_> = (0..4)
-            .map(|_| {
-                let dir = dir.clone();
-                std::thread::spawn(move || {
-                    let chosen = {
-                        let _guard = BUSY.lock().unwrap_or_else(|p| p.into_inner());
-                        let all = collect(&dir, None);
-                        let total = dir_size(&dir);
-                        let chosen = plan(all, total, 0);
-                        apply(&dir, &chosen)
-                    };
-                    chosen
-                })
-            })
-            .collect();
-        let failed: usize = workers
-            .into_iter()
-            .map(|w| w.join().expect("worker").1)
-            .sum();
-        assert_eq!(
-            failed, 0,
-            "serialised runs must not meet already-deleted files"
-        );
-        assert_eq!(dir_size(&dir), 0);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_limit_is_in_binary_gigabytes() {
-        assert_eq!(BYTES_PER_GB, 1_073_741_824);
-    }
-}
+#[path = "storage_cap_tests.rs"]
+mod tests;
