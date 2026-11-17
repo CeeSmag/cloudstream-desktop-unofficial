@@ -9,6 +9,7 @@ the player only ever opens local files. No subtitles come from anywhere but the 
 | `normalize_subtitle` | unzip or gunzip, decode (BOM, UTF-16, Windows-1252), refuse web pages, detect the format |
 | `hls_subtitles` | flatten a subtitle playlist into one WebVTT text |
 | `SubtitleCache` | files named by a hash of their address, a time to live, a saved list per title |
+| `SubtitleCache::keep_only_title` | only the video opened last keeps subtitles: the other titles' lists and every file its own list does not name are removed, and a late download of a replaced video is not noted (same lock) and its file removed |
 | `SubtitleLoader` | cache lookup, then download with retries, then clean and store |
 | `SubtitlePrefetch` | worker threads that download many files at once, preferred languages first |
 

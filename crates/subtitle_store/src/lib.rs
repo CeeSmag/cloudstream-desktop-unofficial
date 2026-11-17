@@ -6,6 +6,7 @@
 mod hls_subtitles;
 mod normalize_subtitle;
 mod subtitle_cache;
+mod subtitle_cache_keep;
 mod subtitle_fetcher;
 mod subtitle_loader;
 mod subtitle_prefetch;

@@ -8,6 +8,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use core_model::stable_key as cache_key; // names of files kept on disk
 
 const FILES_DIR: &str = "files";
-const TITLES_DIR: &str = "titles";
+pub(crate) const TITLES_DIR: &str = "titles";
 const TITLE_LIST_EXTENSION: &str = "jsonl";
 
 /// A subtitle file that is on disk and ready to be given to the player.
@@ -31,10 +32,10 @@ pub struct ReadySubtitle {
 
 /// One line of a title's list.
 #[derive(Debug, Serialize, Deserialize)]
-struct TitleEntry {
+pub(crate) struct TitleEntry {
     language: String,
     url: String,
-    file: String,
+    pub(crate) file: String,
 }
 
 /// Why something could not be saved.
@@ -47,9 +48,13 @@ pub struct CacheError {
 
 /// The cache folder.
 pub struct SubtitleCache {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
     ttl: Duration,
     temporary: AtomicU64,
+    /// The one title whose list and files are kept (see `subtitle_cache_keep`); `None` until a
+    /// video is opened. Held while a title's list is written, so the check and the write cannot
+    /// interleave with the removal.
+    kept: Mutex<Option<String>>,
 }
 
 impl SubtitleCache {
@@ -59,10 +64,15 @@ impl SubtitleCache {
             root,
             ttl,
             temporary: AtomicU64::new(0),
+            kept: Mutex::new(None),
         }
     }
 
-    fn files(&self) -> PathBuf {
+    pub(crate) fn kept_lock(&self) -> MutexGuard<'_, Option<String>> {
+        self.kept.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn files(&self) -> PathBuf {
         self.root.join(FILES_DIR)
     }
 
@@ -110,18 +120,25 @@ impl SubtitleCache {
         Ok(target)
     }
 
-    fn title_list(&self, title_key: &str) -> PathBuf {
+    pub(crate) fn title_list(&self, title_key: &str) -> PathBuf {
         self.root
             .join(TITLES_DIR)
             .join(format!("{}.{TITLE_LIST_EXTENSION}", cache_key(title_key)))
     }
 
-    /// Notes that `subtitle` was offered for the title, so it is found again next time.
+    /// Notes that `subtitle` was offered for the title, so it is found again next time. While
+    /// another title is the one kept, nothing is noted and the file is removed (unless the kept
+    /// title names it too): the video it was downloaded for was replaced.
     pub fn remember_for_title(
         &self,
         title_key: &str,
         subtitle: &ReadySubtitle,
     ) -> Result<(), CacheError> {
+        let kept = self.kept_lock();
+        if let Some(open) = kept.as_deref().filter(|open| *open != title_key) {
+            self.drop_for_replaced(open, subtitle);
+            return Ok(());
+        }
         let failed = |reason: String| CacheError {
             what: format!("the subtitle list of a title ({title_key})"),
             reason,
