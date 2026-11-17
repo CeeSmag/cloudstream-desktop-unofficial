@@ -140,6 +140,9 @@ export const api = {
 
   switchSource: (index: number) => invokeTauri<void>('switch_source', { index }),
 
+  /** Drops the saved sources of the playing video and searches and checks them again; the video keeps playing. */
+  refreshSources: () => invokeTauri<void>('refresh_sources'),
+
   /** Puts the application window into or out of native fullscreen. */
   setWindowFullscreen: (fullscreen: boolean) => invokeTauri<void>('set_window_fullscreen', { fullscreen }),
 

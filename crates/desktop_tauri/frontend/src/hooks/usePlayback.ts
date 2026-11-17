@@ -50,6 +50,8 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
   const [sources, setSources] = React.useState<SourceInfo[]>([]);
   /** Progress of the stream check before playback; null once the video is playing. */
   const [check, setCheck] = React.useState<CheckProgress | null>(null);
+  /** True while a refresh of the sources is starting. */
+  const [refreshingSources, setRefreshingSources] = React.useState(false);
   /** Counts openings and closings, so an answer for a video the viewer already left is ignored. */
   const openingRef = React.useRef(0);
   const [playing, setPlaying] = React.useState<Playing | null>(null);
@@ -105,6 +107,7 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     setStatus(IDLE_STATUS);
     setSources([]);
     setPlaying(null);
+    setRefreshingSources(false);
   };
 
   /** Plays one episode (or the single stream of a movie) of `details`: the player opens at once and shows the check. */
@@ -210,6 +213,18 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     await refreshSources();
   };
 
+  /** Searches the sources of the playing video again; the list starts over with the stream that plays. */
+  const refreshAllSources = async () => {
+    const opening = openingRef.current;
+    setRefreshingSources(true);
+    try {
+      await api.refreshSources();
+      if (openingRef.current === opening) await refreshSources();
+    } finally {
+      if (openingRef.current === opening) setRefreshingSources(false);
+    }
+  };
+
   return {
     isOpen,
     title,
@@ -226,6 +241,8 @@ export function usePlayback(onError: (error: unknown) => void = () => undefined)
     playNext: () => playNeighbour(next),
     togglePlay,
     switchSource,
+    refreshSources: refreshAllSources,
+    refreshingSources,
     seek: (positionMs: number) => api.seekTo(positionMs),
     selectTrack: (kind: 'audio' | 'subtitle', id: number | null) => api.selectTrack(kind, id),
     setVolume: (percent: number) => api.setVolume(percent),

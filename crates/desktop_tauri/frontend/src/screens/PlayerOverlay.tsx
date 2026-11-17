@@ -22,6 +22,7 @@ import { preferredFlags } from '../utils/subtitleFlags';
 import { SourceMenuHeader } from '../components/SourceMenuHeader';
 import { useSourceFilters } from '../hooks/useSourceFilters';
 import { sourceRow } from '../utils/sourceRows';
+import { REFRESH_FEEDBACK } from '../utils/sourceRefresh';
 import { useStallWatch } from '../hooks/useStallWatch';
 import { useControlsAutoHide } from '../hooks/useControlsAutoHide';
 import { usePlayerControls } from '../hooks/usePlayerControls';
@@ -41,6 +42,10 @@ interface PlayerOverlayProps {
   onSeek: (positionMs: number) => void;
   onSelectTrack: (kind: 'audio' | 'subtitle', id: number | null) => void;
   onSelectSource: (index: number) => void;
+  /** Searches the sources again; the video keeps playing. */
+  onRefreshSources: () => void;
+  /** True while a refresh of the sources is starting. */
+  refreshingSources: boolean;
   onVolume: (percent: number) => void;
   /** Plays the episode before this one; absent for a movie or the first episode. */
   onPrevious?: () => void;
@@ -64,6 +69,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onSeek,
   onSelectTrack,
   onSelectSource,
+  onRefreshSources,
+  refreshingSources,
   onVolume,
   onPrevious,
   onNext,
@@ -98,6 +105,11 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
     const label = sources.find((source) => source.index === index)?.label ?? `#${index + 1}`;
     controls.show({ icon: 'source', text: sourceText(label) });
     onSelectSource(index);
+  };
+
+  const refreshSources = () => {
+    controls.show({ icon: 'source', text: REFRESH_FEEDBACK });
+    onRefreshSources();
   };
 
   const prompt = check
@@ -166,7 +178,14 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             label="Sources"
             icon={Layers}
             options={visibleSources.map((source) => sourceRow(source, preferences))}
-            header={<SourceMenuHeader filters={filters} languages={filterLanguages} total={sources.length} />}
+            header={
+              <SourceMenuHeader
+                filters={filters}
+                languages={filterLanguages}
+                total={sources.length}
+                refresh={{ onRefresh: refreshSources, checking: check !== null, refreshing: refreshingSources }}
+              />
+            }
             allowOff={false}
             wide
             open={trackMenu === 'sources'}

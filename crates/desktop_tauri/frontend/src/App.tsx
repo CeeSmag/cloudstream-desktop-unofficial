@@ -358,6 +358,8 @@ export const App: React.FC = () => {
           onSeek={guard(playback.seek)}
           onSelectTrack={guard(playback.selectTrack)}
           onSelectSource={guard(playback.switchSource)}
+          onRefreshSources={guard(playback.refreshSources)}
+          refreshingSources={playback.refreshingSources}
           onVolume={guard(playback.setVolume)}
           onPrevious={playback.hasPrevious ? guard(playback.playPrevious) : undefined}
           onNext={playback.hasNext ? guard(playback.playNext) : undefined}
