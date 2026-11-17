@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use player_api::{
-    Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource,
-    TrackKind, VideoFrame, VideoPlayer,
+    CacheLimits, Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
+    SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 use crate::request_router::RequestRouter;
@@ -85,6 +85,10 @@ impl VideoPlayer for RoutedPlayer {
 
     fn chapters(&self) -> Vec<Chapter> {
         self.inner.chapters()
+    }
+
+    fn set_cache_limits(&self, limits: CacheLimits) -> Result<(), PlayerError> {
+        self.inner.set_cache_limits(limits)
     }
 
     fn is_embedded(&self) -> bool {

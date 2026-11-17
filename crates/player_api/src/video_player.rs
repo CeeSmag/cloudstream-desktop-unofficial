@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError, SubtitleSource,
-    TrackKind, VideoFrame,
+    CacheLimits, Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
+    SubtitleSource, TrackKind, VideoFrame,
 };
 
 /// A video player the app can drive.
@@ -25,6 +25,15 @@ pub trait VideoPlayer: Send + Sync {
     /// Sets the output volume as a percentage (0 is silent, 100 is the stream's own level).
     fn set_volume(&self, percent: u8) -> Result<(), PlayerError> {
         let _ = percent;
+        Ok(())
+    }
+
+    /// Sets how much of the stream is kept in memory ahead of and behind the playing position.
+    /// What lies behind is trimmed to a lowered limit at once; a raised ahead limit is read up to
+    /// once playback goes on. What was already read ahead is kept when that limit is lowered
+    /// (libmpv does not drop it); the player only reads no further.
+    fn set_cache_limits(&self, limits: CacheLimits) -> Result<(), PlayerError> {
+        let _ = limits;
         Ok(())
     }
 

@@ -90,6 +90,16 @@ impl VideoPlayer for ScriptedPlayer {
             &format!("set_preferred_subtitles {}", languages.len()),
         );
     }
+    fn set_cache_limits(&self, limits: CacheLimits) -> Result<(), PlayerError> {
+        note(
+            &self.log,
+            &format!(
+                "set_cache_limits {} {}",
+                limits.ahead_bytes, limits.behind_bytes
+            ),
+        );
+        Ok(())
+    }
     fn chapters(&self) -> Vec<Chapter> {
         vec![Chapter {
             title: "Opening".to_owned(),
@@ -200,6 +210,12 @@ fn every_other_method_reaches_the_player_and_its_answer_comes_back() {
     player.set_verbose_log(true);
     player.set_preferred_subtitles(&[ENGLISH, ENGLISH]);
     player.set_surface_size(640, 360);
+    player
+        .set_cache_limits(CacheLimits {
+            ahead_bytes: 3,
+            behind_bytes: 1,
+        })
+        .expect("limits");
     assert_eq!(
         entries(&log),
         [
@@ -212,6 +228,7 @@ fn every_other_method_reaches_the_player_and_its_answer_comes_back() {
             "set_verbose_log true",
             "set_preferred_subtitles 2",
             "set_surface_size 640x360",
+            "set_cache_limits 3 1",
         ]
     );
     assert_eq!(player.status().position_ms, 1234);

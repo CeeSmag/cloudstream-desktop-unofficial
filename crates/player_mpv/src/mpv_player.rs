@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use player_api::{
-    describe_languages, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
-    SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
+    describe_languages, CacheLimits, Language, MediaTrack, PlaybackRequest, PlaybackStatus,
+    PlayerError, SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 use crate::event_worker::EventWorker;
@@ -148,6 +148,10 @@ fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Ar
 impl VideoPlayer for MpvPlayer {
     fn set_verbose_log(&self, enabled: bool) {
         self.handle.set_log_level(log_level(enabled));
+    }
+
+    fn set_cache_limits(&self, limits: CacheLimits) -> Result<(), PlayerError> {
+        crate::cache_limits::apply_cache_limits(&self.handle, limits)
     }
 
     #[tracing::instrument(level = "debug", skip_all, err)]

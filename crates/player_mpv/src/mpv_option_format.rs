@@ -58,6 +58,7 @@ pub(crate) fn apply_request_options(
     handle.set_property("referrer", &request.referer)?;
     handle.set_property("demuxer-lavf-o", &lavf_options(request))?;
     handle.set_property("force-media-title", &request.title)?;
+    crate::cache_limits::apply_read_ahead(handle, request)?;
     handle.set_property("start", &start_option(request))
 }
 
