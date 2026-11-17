@@ -11,18 +11,18 @@ use crate::{Clock, ServiceError};
 /// Progress is saved when the position moved at least this far since the last save.
 const SAVE_EVERY_MS: i64 = 5_000;
 
-struct ActivePlayback {
+pub(crate) struct ActivePlayback {
     item: PlaybackItem,
     last_saved_ms: i64,
 }
 
 /// Starts playback, resumes where the user left off and keeps their progress.
 pub struct PlaybackService {
-    player: Arc<dyn VideoPlayer>,
+    pub(crate) player: Arc<dyn VideoPlayer>,
     progress: WatchProgressStore,
     resume: ResumeStore,
     clock: Arc<dyn Clock>,
-    active: Mutex<Option<ActivePlayback>>,
+    pub(crate) active: Mutex<Option<ActivePlayback>>,
 }
 
 impl PlaybackService {
@@ -217,7 +217,7 @@ impl PlaybackService {
         self.save_progress(current, status)
     }
 
-    fn save_progress(
+    pub(crate) fn save_progress(
         &self,
         current: &mut ActivePlayback,
         status: &PlaybackStatus,

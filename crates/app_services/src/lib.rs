@@ -10,6 +10,7 @@ mod extension_service;
 mod language_settings;
 mod library_service;
 mod link_search;
+mod playback_away;
 mod playback_resume;
 mod playback_service;
 mod playback_types;
