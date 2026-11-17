@@ -27,6 +27,7 @@ mod stream_resolver;
 mod subtitle_scan;
 #[cfg(test)]
 mod test_support;
+mod video_cache_setting;
 
 pub use catalog_service::{CatalogService, ProviderSearchOutcome};
 pub use check_queue::CheckQueue;
@@ -51,3 +52,4 @@ pub use stream_label::{describe_link, full_label, source_label, stream_host, str
 pub use stream_resolver::{
     is_audio_only_url, link_rank, playable_links_best_first, StreamResolver,
 };
+pub use video_cache_setting::{VideoCache, VIDEO_CACHE_AHEAD_PERCENTS, VIDEO_CACHE_SIZES_MB};
