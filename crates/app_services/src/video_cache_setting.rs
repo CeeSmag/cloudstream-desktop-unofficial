@@ -12,7 +12,7 @@ pub const VIDEO_CACHE_SIZES_MB: [u32; 5] = [256, 512, 1024, 2048, 4096];
 /// The ahead shares (in percent) the viewer can choose.
 pub const VIDEO_CACHE_AHEAD_PERCENTS: [u8; 4] = [25, 50, 75, 90];
 /// The size until the viewer chooses one.
-const DEFAULT_SIZE_MB: u32 = 1024;
+const DEFAULT_SIZE_MB: u32 = 256;
 /// The ahead share until the viewer chooses one: viewers mostly move forward.
 const DEFAULT_AHEAD_PERCENT: u8 = 75;
 const BYTES_PER_MB: u64 = 1024 * 1024;
@@ -120,8 +120,8 @@ mod tests {
     }
 
     #[test]
-    fn the_video_cache_is_one_gb_with_three_quarters_ahead_until_chosen() {
-        assert_eq!(service().video_cache().expect("read"), cache(1024, 75));
+    fn the_video_cache_is_256_mb_with_three_quarters_ahead_until_chosen() {
+        assert_eq!(service().video_cache().expect("read"), cache(256, 75));
     }
 
     #[test]
