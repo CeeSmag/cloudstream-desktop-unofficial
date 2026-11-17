@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use core_model::PlayableLink;
-use title_cache::{CachedLink, CachedTitle, LinkHealth, TitleCache};
+use title_cache::{CachedLink, CachedTitle, KeptSave, KeptTitle, LinkHealth, TitleCache};
 
 /// How the provider's search ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,17 +58,19 @@ impl LedgerState {
 /// The streams of one video and the saved sources of its title.
 pub struct LinkLedger {
     cache: Arc<TitleCache>,
-    key: String,
+    /// The title, as the one kept when the video was opened: once another video (or this one
+    /// again) is opened, nothing this ledger saves or removes reaches the disk.
+    kept: KeptTitle,
     state: Mutex<LedgerState>,
 }
 
 impl LinkLedger {
-    /// A ledger for the title `key`; `rest` is what was saved earlier and is not planted in the
+    /// A ledger for the title `kept`; `rest` is what was saved earlier and is not planted in the
     /// session.
-    pub fn new(cache: Arc<TitleCache>, key: String, rest: CachedTitle) -> Self {
+    pub fn new(cache: Arc<TitleCache>, kept: KeptTitle, rest: CachedTitle) -> Self {
         Self {
             cache,
-            key,
+            kept,
             state: Mutex::new(LedgerState {
                 links: Vec::new(),
                 known: HashSet::new(),
@@ -148,14 +150,17 @@ impl LinkLedger {
         }
         let title = state.title(complete, last_good);
         drop(state);
-        match self.cache.save(&self.key, &title) {
-            Ok(report) => tracing::info!(
+        match self.cache.save_kept(&self.kept, &title) {
+            Ok(KeptSave::Saved(report)) => tracing::info!(
                 links = report.links,
                 bytes = report.bytes,
                 working,
                 complete,
                 "sources saved for the next time"
             ),
+            Ok(KeptSave::Replaced) => {
+                tracing::info!("another video was opened since; these sources are not saved");
+            }
             Err(error) => {
                 tracing::warn!(%error, "cannot save the sources; playing goes on without them");
             }
@@ -167,7 +172,7 @@ impl LinkLedger {
             tracing::debug!("nothing works and the search did not finish; keeping what was saved");
             return;
         }
-        match self.cache.forget(&self.key) {
+        match self.cache.forget_kept(&self.kept) {
             Ok(true) => tracing::info!("the saved sources no longer work; removed them"),
             Ok(false) => {}
             Err(error) => tracing::warn!(%error, "cannot remove dead saved sources"),

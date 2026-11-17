@@ -160,9 +160,11 @@ fn scripted_search(script: Vec<LinkSearchUpdate>) -> (LinkSearch, Arc<ScriptedSe
 
 /// A ledger over a cache nobody reads, for jobs that are not about saving.
 fn test_ledger() -> Arc<LinkLedger> {
+    let titles = crate::test_titles::unused_titles();
+    let kept = titles.keep_only("P\ndata");
     Arc::new(LinkLedger::new(
-        crate::test_titles::unused_titles(),
-        "P\ndata".to_owned(),
+        titles,
+        kept,
         title_cache::CachedTitle::default(),
     ))
 }

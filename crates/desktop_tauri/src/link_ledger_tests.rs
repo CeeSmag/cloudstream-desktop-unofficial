@@ -20,7 +20,7 @@ fn saved(url: &str, quality: i32, health: LinkHealth) -> CachedLink {
 }
 
 fn ledger(titles: &TestTitles, rest: CachedTitle) -> LinkLedger {
-    LinkLedger::new(Arc::clone(&titles.cache), KEY.to_owned(), rest)
+    LinkLedger::new(Arc::clone(&titles.cache), titles.cache.keep_only(KEY), rest)
 }
 
 fn loaded(titles: &TestTitles) -> CachedTitle {
@@ -184,7 +184,8 @@ fn a_cache_that_cannot_write_is_survived_without_a_panic() {
         b"x",
     )
     .expect("file");
-    let ledger = LinkLedger::new(broken, KEY.to_owned(), CachedTitle::default());
+    let kept = broken.keep_only(KEY);
+    let ledger = LinkLedger::new(broken, kept, CachedTitle::default());
     ledger.fresh(vec![link("a", 480)]);
     ledger.answered(0, true);
     ledger.search_ended(true);

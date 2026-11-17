@@ -257,3 +257,6 @@ mod closing;
 
 #[path = "opening_flow_saved_tests.rs"]
 mod saved;
+
+#[path = "opening_flow_kept_tests.rs"]
+mod kept;

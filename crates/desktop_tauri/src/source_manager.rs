@@ -22,7 +22,7 @@ use crate::source_fallback::FallbackController;
 use crate::source_session::{ActiveSources, SourceSession};
 use crate::subtitle_delivery::{Delivery, DeliveryParts, SubtitleWork};
 use subtitle_store::{KeepGoing, SubtitleLoader};
-use title_cache::TitleCache;
+use title_cache::{KeptTitle, TitleCache};
 
 /// Event the UI listens to so it can reload the list of streams.
 pub const SOURCES_CHANGED_EVENT: &str = "sources-changed";
@@ -172,8 +172,9 @@ impl SourceManager {
     }
 
     /// Follows the provider's search, downloads its subtitle files and checks its streams in the
-    /// background; `tell` hears about progress. Streams saved for the title by an earlier opening
-    /// are put in the list first. Returns the threads that do the work, which end when everything
+    /// background; `tell` hears about progress. The title becomes the only one with saved sources
+    /// and subtitles on disk (those of the previous video are dropped); streams saved for it by an
+    /// earlier opening are put in the list first. Returns the threads that do the work, which end when everything
     /// is done or the video is closed.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn discover_with(&self, tell: Tell, request: SearchRequest) -> Vec<JoinHandle<()>> {
@@ -185,6 +186,7 @@ impl SourceManager {
             subtitles,
             title_key,
         } = request;
+        let kept = self.keep_only(&title_key);
         let delivery = Delivery::new(DeliveryParts {
             session: Arc::clone(&self.session),
             generation,
@@ -195,7 +197,7 @@ impl SourceManager {
         });
         delivery.offer_saved();
         let (prefetch, mut threads) = delivery.start_downloads(self.keep_going(&gate, generation));
-        let (ledger, queue) = self.plant_saved(&gate, generation, title_key);
+        let (ledger, queue) = self.plant_saved(&gate, generation, kept);
         tell(CheckUpdate::Progress(gate.progress()));
         let job = Arc::new(Discovery {
             checker: self.checker.clone(),
@@ -219,12 +221,12 @@ impl SourceManager {
         &self,
         gate: &Arc<CheckGate>,
         generation: u64,
-        title_key: String,
+        kept: KeptTitle,
     ) -> (Arc<LinkLedger>, Arc<CheckQueue>) {
-        let saved = SavedStart::find(&self.titles, &title_key);
+        let saved = SavedStart::find(&self.titles, kept.key());
         let ledger = Arc::new(LinkLedger::new(
             Arc::clone(&self.titles),
-            title_key,
+            kept,
             saved.rest.clone(),
         ));
         let queue = Arc::new(CheckQueue::default());
