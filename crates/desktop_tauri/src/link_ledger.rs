@@ -122,7 +122,7 @@ impl LinkLedger {
 
     /// Notes that the stream at `url` played well, in what was saved for the title.
     pub fn note_played(&self, url: &str) {
-        if let Err(error) = self.cache.mark_played_well(&self.key, url) {
+        if let Err(error) = self.cache.mark_played_well(self.kept.key(), url) {
             tracing::warn!(%error, "cannot note the stream that played well");
         }
     }
