@@ -1,3 +1,5 @@
+import type { StorageInfo } from '../types';
+
 /** The sizes (in GB) the data folder limit can be set to, smallest first. */
 export const STORAGE_CAP_OPTIONS: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -5,6 +7,12 @@ export const STORAGE_CAP_OPTIONS: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const DEFAULT_STORAGE_CAP_GB = 2;
 
 const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+/** One row under the storage bar: a tracked folder and its size. */
+export interface StorageBreakdownRow {
+  label: string;
+  bytes: number;
+}
 
 /** The limit in bytes. */
 export function capBytes(gb: number): number {
@@ -20,4 +28,14 @@ export function usedPercent(usedBytes: number, gb: number): number {
 /** "2 GB" for a drop-down entry. */
 export function capLabel(gb: number): string {
   return `${gb} GB`;
+}
+
+/** Non-empty tracked folders for the Settings card, in a fixed order. */
+export function storageBreakdown(info: StorageInfo): StorageBreakdownRow[] {
+  return [
+    { label: 'Logs', bytes: info.logs_bytes },
+    { label: 'Subtitles', bytes: info.subtitles_bytes },
+    { label: 'Saved sources', bytes: info.sources_bytes },
+    { label: 'Update downloads', bytes: info.updates_bytes },
+  ].filter((row) => row.bytes > 0);
 }

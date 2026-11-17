@@ -19,7 +19,7 @@ import { LibraryScreen } from './screens/LibraryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { usePlayback } from './hooks/usePlayback';
 import { useStartup } from './hooks/useStartup';
-import { logEvent, setDebugLogging } from './utils/logger';
+import { describeValue, logEvent, setDebugLogging } from './utils/logger';
 import { StartupScreen } from './components/StartupScreen';
 import { ContextMenu } from './components/ContextMenu';
 import { useContextMenu } from './hooks/useContextMenu';
@@ -97,6 +97,16 @@ export const App: React.FC = () => {
   const playback = usePlayback((error) => setErrorText(describeError(error)));
   const startup = useStartup();
   const contextMenu = useContextMenu();
+
+  // Once Home is shown after start-up, tidy regenerable data in the background (does not block the page).
+  const cleanedAfterReady = React.useRef(false);
+  React.useEffect(() => {
+    if (!startup.ready || cleanedAfterReady.current) return;
+    cleanedAfterReady.current = true;
+    void api.runStorageCleanup().catch((error: unknown) => {
+      logEvent('warn', `storage cleanup after start-up failed: ${describeValue(error)}`);
+    });
+  }, [startup.ready]);
 
   // Library & settings
   const [bookmarks, setBookmarks] = React.useState<Bookmark[]>([]);

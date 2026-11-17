@@ -196,6 +196,8 @@ export const api = {
   getStorageCap: () => invokeTauri<StorageInfo>('get_storage_cap'),
   /** Sets the limit; what is over it and can be made again is deleted at once. */
   setStorageCap: (gb: number) => invokeTauri<StorageInfo>('set_storage_cap', { gb }),
+  /** Tidies regenerable data now and resets the hourly cleanup schedule. */
+  runStorageCleanup: () => invokeTauri<StorageInfo>('run_storage_cleanup'),
 
   getVideoCache: () => invokeTauri<VideoCacheSetting>('get_video_cache'),
 

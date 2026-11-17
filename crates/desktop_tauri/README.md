@@ -18,6 +18,7 @@ Hosts the React/Tailwind frontend in a transparent window. On Windows libmpv dra
 - `extension_commands.rs`, `plugin_catalog_commands.rs`: Installed extensions, repository plugin lists and install/uninstall.
 - `source_manager.rs`, `source_fallback.rs`, `check_gate.rs`: Finding, checking and failing over between stream sources.
 - `update_commands.rs`: The self-updater's two commands (reads the latest GitHub release; the file is chosen by its name). The steps are in `update_version.rs`, `update_assets.rs`, `update_download.rs`, `update_install.rs`, `update_helper_script.rs`, `update_verify.rs` (signed checksum list, key in `update_signing_key.pub`), `update_folder.rs`, `update_prepare.rs` (the order of the checks); errors are `UpdateError` (`update_error.rs`).
+- `storage_cap*.rs`, `storage_cleanup.rs`, `cleanup_*.rs`: Data-folder size limit, breakdown, Clean up now, and the hourly cleanup queue (`CleanupHandle` resets the schedule after a manual run).
 - `frontend/`: The React app (`src/screens`, `src/components`, `src/hooks`, `src/utils`; tests with `npm test`). The player screen is see-through while a native video plays (`useSeeThrough`); the Sources menu has resolution and subtitle filters (`useSourceFilters`).
 
 ## Testing

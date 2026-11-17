@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { StorageInfo } from '../types';
 import { formatFileSize } from '../utils/fileSize';
 import { describeValue, logEvent } from '../utils/logger';
-import { capLabel, STORAGE_CAP_OPTIONS, usedPercent } from '../utils/storageCap';
+import { capLabel, STORAGE_CAP_OPTIONS, storageBreakdown, usedPercent } from '../utils/storageCap';
 
 interface StorageCapCardProps {
   onError: (error: unknown) => void;
@@ -44,7 +44,21 @@ export const StorageCapCard: React.FC<StorageCapCardProps> = ({ onError }) => {
     }
   };
 
+  const cleanNow = async () => {
+    setBusy(true);
+    try {
+      logEvent('info', 'the viewer asked to clean the data folder now');
+      setInfo(await api.runStorageCleanup());
+    } catch (error) {
+      logEvent('error', `cannot clean the data folder: ${describeValue(error)}`);
+      onError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const percent = info ? usedPercent(info.used_bytes, info.cap_gb) : 0;
+  const rows = info ? storageBreakdown(info) : [];
   return (
     <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">
       <div className="flex items-start justify-between gap-4">
@@ -54,9 +68,10 @@ export const StorageCapCard: React.FC<StorageCapCardProps> = ({ onError }) => {
             <span>Storage limit</span>
           </h2>
           <p className="text-xs text-zinc-400">
-            The most disk space the app's data folder (Local\CloudStreamRs) may use. Over the limit, things that can be
-            downloaded or made again are deleted, oldest first: older program versions, finished debug logs, subtitles, saved
-            stream sources and the check browser's cache. Your library, watch progress, plugins and settings are never deleted.
+            The most disk space the app's data folder (Local\CloudStreamRs) may use. Cleanup runs when Home opens after
+            start-up, hourly, when you press Clean up now (which also restarts the hourly timer), and whenever the folder
+            is over the limit: older program versions, finished debug logs, subtitles, saved stream sources, update
+            downloads and the check browser's cache. Your library, watch progress, plugins and settings are never deleted.
           </p>
         </div>
         <select
@@ -89,6 +104,24 @@ export const StorageCapCard: React.FC<StorageCapCardProps> = ({ onError }) => {
               </span>
             )}
           </p>
+          {rows.length > 0 && (
+            <ul className="space-y-1 text-xs text-zinc-400">
+              {rows.map((row) => (
+                <li key={row.label} className="flex justify-between gap-4">
+                  <span>{row.label}</span>
+                  <span className="text-zinc-300 tabular-nums">{formatFileSize(row.bytes)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void cleanNow()}
+            className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white outline-none hover:bg-white/15 disabled:opacity-60"
+          >
+            Clean up now
+          </button>
         </div>
       )}
     </div>
