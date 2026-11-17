@@ -20,4 +20,8 @@ pub struct InstalledExtension {
     /// Address of the extension's icon, when the repository listed one.
     #[serde(default)]
     pub icon_url: Option<String>,
+    /// When the extension was first installed (milliseconds since Unix epoch). `0` means unknown
+    /// (rows created before this field existed).
+    #[serde(default)]
+    pub installed_at_ms: i64,
 }

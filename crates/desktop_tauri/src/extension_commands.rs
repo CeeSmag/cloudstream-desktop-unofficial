@@ -47,6 +47,8 @@ pub struct PluginDto {
     pub file_size: Option<u64>,
     /// Version installed here, or `None` when it is not installed.
     pub installed_version: Option<i64>,
+    /// When it was first installed here (ms since epoch), or `None` when it is not installed.
+    pub installed_at_ms: Option<i64>,
 }
 
 /// Lists the installed extensions.
@@ -221,10 +223,9 @@ pub(crate) fn describe_plugin(
     plugin: PluginListing,
     installed: &[InstalledExtension],
 ) -> PluginDto {
-    let installed_version = installed
+    let match_installed = installed
         .iter()
-        .find(|extension| extension.internal_name == plugin.internal_name)
-        .map(|extension| extension.version);
+        .find(|extension| extension.internal_name == plugin.internal_name);
     PluginDto {
         name: if plugin.name.is_empty() {
             plugin.internal_name.clone()
@@ -238,7 +239,8 @@ pub(crate) fn describe_plugin(
         language: plugin.language,
         icon_url: plugin.icon_url,
         file_size: plugin.file_size,
-        installed_version,
+        installed_version: match_installed.map(|extension| extension.version),
+        installed_at_ms: match_installed.map(|extension| extension.installed_at_ms),
     }
 }
 
@@ -259,14 +261,15 @@ mod tests {
         let installed = vec![InstalledExtension {
             internal_name: "Mega".into(),
             version: 1,
+            installed_at_ms: 4_200,
             ..InstalledExtension::default()
         }];
         let dto = describe_plugin(listing("Mega", 2), &installed);
         assert_eq!(dto.installed_version, Some(1));
+        assert_eq!(dto.installed_at_ms, Some(4_200));
         assert_eq!(dto.name, "Mega");
-        assert_eq!(
-            describe_plugin(listing("Other", 1), &installed).installed_version,
-            None
-        );
+        let other = describe_plugin(listing("Other", 1), &installed);
+        assert_eq!(other.installed_version, None);
+        assert_eq!(other.installed_at_ms, None);
     }
 }

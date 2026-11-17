@@ -20,6 +20,7 @@ const hit = (
     icon_url: null,
     file_size: null,
     installed_version: null,
+    installed_at_ms: null,
     ...over,
   },
 });
@@ -68,6 +69,14 @@ describe('languageChoices', () => {
       { code: 'en', count: 2 },
       { code: 'ar', count: 1 },
       { code: 'ja', count: 1 },
+    ]);
+  });
+
+  it('puts preferred subtitle languages first in the viewer’s order', () => {
+    expect(languageChoices(all, ['ja', 'ar'])).toEqual([
+      { code: 'ja', count: 1 },
+      { code: 'ar', count: 1 },
+      { code: 'en', count: 2 },
     ]);
   });
 });

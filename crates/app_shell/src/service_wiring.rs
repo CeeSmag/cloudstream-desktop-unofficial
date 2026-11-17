@@ -51,6 +51,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
             Arc::clone(&gateway),
             installer,
             InstalledExtensionStore::new(Arc::clone(&database)),
+            Arc::clone(&clock),
         ),
         catalog: CatalogService::new(Arc::clone(&gateway)),
         streams: Arc::new(StreamResolver::new(gateway)),

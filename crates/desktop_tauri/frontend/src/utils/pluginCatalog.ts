@@ -61,14 +61,27 @@ export function filterHits(hits: PluginHit[], filter: CatalogFilter): PluginHit[
   return ranked.sort((a, b) => a.rank - b.rank).map((entry) => entry.hit);
 }
 
-/** The languages the extensions are in, most common first, for the language filter. */
-export function languageChoices(hits: PluginHit[]): { code: string; count: number }[] {
+/**
+ * The languages the extensions are in, for the language filter. Preferred subtitle codes lead
+ * (viewer order); the rest follow most-common-first.
+ */
+export function languageChoices(
+  hits: PluginHit[],
+  preferredSubtitles: string[] = [],
+): { code: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const hit of hits) {
     const code = (hit.plugin.language ?? '').toLowerCase();
     if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
   }
-  return [...counts.entries()]
+  const preferred = preferredSubtitles
+    .map((code) => code.toLowerCase())
+    .filter((code, index, all) => code && all.indexOf(code) === index && counts.has(code))
+    .map((code) => ({ code, count: counts.get(code) ?? 0 }));
+  const preferredSet = new Set(preferred.map((entry) => entry.code));
+  const rest = [...counts.entries()]
+    .filter(([code]) => !preferredSet.has(code))
     .map(([code, count]) => ({ code, count }))
     .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+  return [...preferred, ...rest];
 }

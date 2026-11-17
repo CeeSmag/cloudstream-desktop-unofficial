@@ -3,10 +3,13 @@ import { ArrowLeft, Search } from 'lucide-react';
 import { IconTile } from '../../components/extensions/IconTile';
 import type { ExtensionsState } from '../../hooks/useExtensions';
 import { PluginEntry, PluginList } from '../../components/extensions/PluginList';
+import { api } from '../../services/api';
 import { filterPlugins, PluginView, summarizePlugins } from '../../utils/extensionText';
+import { PluginSort, sortPlugins } from '../../utils/pluginSort';
 
 interface RepositoryPageProps {
   extensions: ExtensionsState;
+  onError?: (error: unknown) => void;
 }
 
 const VIEWS: { id: PluginView; label: string }[] = [
@@ -17,16 +20,28 @@ const VIEWS: { id: PluginView; label: string }[] = [
 ];
 
 /** A full page for one repository: everything it offers, searchable, with install buttons. */
-export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions }) => {
+export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions, onError }) => {
   const [text, setText] = React.useState('');
   const [view, setView] = React.useState<PluginView>('all');
+  const [sort, setSort] = React.useState<PluginSort>('name');
+  const [preferredSubtitles, setPreferredSubtitles] = React.useState<string[]>([]);
   const repository = extensions.repositories.find((entry) => entry.url === extensions.browsing);
-  const shown = React.useMemo(() => filterPlugins(extensions.plugins, text, view), [extensions.plugins, text, view]);
+  const shown = React.useMemo(() => {
+    const filtered = filterPlugins(extensions.plugins, text, view);
+    return sortPlugins(filtered, sort, preferredSubtitles);
+  }, [extensions.plugins, text, view, sort, preferredSubtitles]);
   const filtering = text.trim() !== '' || view !== 'all';
   const entries: PluginEntry[] = React.useMemo(
     () => shown.map((plugin) => ({ key: plugin.internal_name, plugin })),
     [shown],
   );
+
+  React.useEffect(() => {
+    api
+      .getPreferences()
+      .then((preferences) => setPreferredSubtitles(preferences.preferred_subtitles))
+      .catch((error) => onError?.(error));
+  }, [onError]);
 
   return (
     <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 w-full max-w-7xl mx-auto select-none space-y-6">
@@ -60,6 +75,17 @@ export const RepositoryPage: React.FC<RepositoryPageProps> = ({ extensions }) =>
             className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-surface-elevated border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-xs focus:outline-none"
           />
         </div>
+        <select
+          value={sort}
+          onChange={(event) => setSort(event.target.value as PluginSort)}
+          aria-label="Sort plugins"
+          className="rounded-xl bg-surface-elevated border border-white/10 px-3 py-2.5 text-xs text-white"
+        >
+          <option value="name">Sort: Name</option>
+          <option value="language">Sort: Language</option>
+          <option value="size">Sort: Size</option>
+          <option value="date">Sort: Date added</option>
+        </select>
         <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-surface-elevated border border-white/5">
           {VIEWS.map((entry) => (
             <button

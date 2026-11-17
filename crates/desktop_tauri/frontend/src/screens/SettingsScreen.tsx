@@ -37,7 +37,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ providers, reque
   const [extensionsTab, setExtensionsTab] = React.useState<ExtensionsTab>('repositories');
 
   // An open repository takes the whole screen.
-  if (extensions.browsing) return <RepositoryPage extensions={extensions} />;
+  if (extensions.browsing) return <RepositoryPage extensions={extensions} onError={onError} />;
 
   return (
     <div className="flex-1 overflow-y-auto page-gutter py-6 sm:py-8 max-w-4xl 2xl:max-w-6xl mx-auto w-full select-none space-y-6 sm:space-y-8">

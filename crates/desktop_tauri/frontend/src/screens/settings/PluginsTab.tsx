@@ -3,8 +3,10 @@ import { Search } from 'lucide-react';
 import type { ExtensionsState } from '../../hooks/useExtensions';
 import { useAllPlugins } from '../../hooks/useAllPlugins';
 import { PluginEntry, PluginList } from '../../components/extensions/PluginList';
+import { api } from '../../services/api';
 import { PluginView } from '../../utils/extensionText';
 import { filterHits, languageChoices } from '../../utils/pluginCatalog';
+import { PluginSort, sortHits } from '../../utils/pluginSort';
 
 interface PluginsTabProps {
   extensions: ExtensionsState;
@@ -27,10 +29,25 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ extensions, onError }) =
   const [text, setText] = React.useState('');
   const [view, setView] = React.useState<PluginView>('all');
   const [language, setLanguage] = React.useState('');
+  const [sort, setSort] = React.useState<PluginSort>('name');
+  const [preferredSubtitles, setPreferredSubtitles] = React.useState<string[]>([]);
   const [shown, setShown] = React.useState(PAGE);
 
-  const matching = React.useMemo(() => filterHits(hits, { text, view, language }), [hits, text, view, language]);
-  const languages = React.useMemo(() => languageChoices(hits), [hits]);
+  React.useEffect(() => {
+    api
+      .getPreferences()
+      .then((preferences) => setPreferredSubtitles(preferences.preferred_subtitles))
+      .catch(onError);
+  }, [onError]);
+
+  const matching = React.useMemo(() => {
+    const filtered = filterHits(hits, { text, view, language });
+    return sortHits(filtered, sort, preferredSubtitles);
+  }, [hits, text, view, language, sort, preferredSubtitles]);
+  const languages = React.useMemo(
+    () => languageChoices(hits, preferredSubtitles),
+    [hits, preferredSubtitles],
+  );
   const entries: PluginEntry[] = React.useMemo(
     () =>
       matching.slice(0, shown).map((hit) => ({
@@ -41,8 +58,8 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ extensions, onError }) =
     [matching, shown],
   );
 
-  // A new search or filter starts again from the top of the list.
-  React.useEffect(() => setShown(PAGE), [text, view, language]);
+  // A new search, filter or sort starts again from the top of the list.
+  React.useEffect(() => setShown(PAGE), [text, view, language, sort]);
 
   const install = async (entry: PluginEntry) => {
     if (entry.repository && (await extensions.install(entry.repository.url, entry.plugin.internal_name))) await reload();
@@ -75,6 +92,17 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ extensions, onError }) =
               {entry.code.toUpperCase()} ({entry.count})
             </option>
           ))}
+        </select>
+        <select
+          value={sort}
+          onChange={(event) => setSort(event.target.value as PluginSort)}
+          aria-label="Sort plugins"
+          className="rounded-xl bg-surface-elevated border border-white/10 px-3 py-2.5 text-xs text-white"
+        >
+          <option value="name">Sort: Name</option>
+          <option value="language">Sort: Language</option>
+          <option value="size">Sort: Size</option>
+          <option value="date">Sort: Date added</option>
         </select>
         <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-surface-elevated border border-white/5">
           {VIEWS.map((entry) => (

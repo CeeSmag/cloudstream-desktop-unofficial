@@ -22,6 +22,7 @@ const plugin = (version: number, installed: number | null): RepositoryPlugin => 
   icon_url: null,
   file_size: null,
   installed_version: installed,
+  installed_at_ms: installed === null ? null : 1_000,
 });
 
 describe('formatFileSize', () => {

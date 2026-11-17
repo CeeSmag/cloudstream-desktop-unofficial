@@ -8,6 +8,7 @@ use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
 
+use crate::clock::Clock;
 use crate::extension_load_report::{ExtensionLoadReport, LoadProgress};
 use crate::ServiceError;
 
@@ -17,6 +18,7 @@ pub struct ExtensionService {
     gateway: Arc<dyn ProviderGateway>,
     installer: Arc<ExtensionInstaller<Arc<dyn HttpFetcher>>>,
     installed: InstalledExtensionStore,
+    clock: Arc<dyn Clock>,
     providers: Arc<Mutex<Vec<ProviderInfo>>>,
     /// Provider names each extension file registered, so uninstalling can hide exactly those.
     provided_by: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -28,11 +30,13 @@ impl ExtensionService {
         gateway: Arc<dyn ProviderGateway>,
         installer: ExtensionInstaller<Arc<dyn HttpFetcher>>,
         installed: InstalledExtensionStore,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             gateway,
             installer: Arc::new(installer),
             installed,
+            clock,
             providers: Arc::default(),
             provided_by: Arc::default(),
         }
@@ -70,6 +74,7 @@ impl ExtensionService {
                 .icon_url
                 .clone()
                 .filter(|icon| !icon.trim().is_empty()),
+            installed_at_ms: self.clock.now_ms(),
         };
         self.installed.upsert(&record)?;
         self.load_one(&path, record.trusted)

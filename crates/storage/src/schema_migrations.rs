@@ -42,6 +42,8 @@ const MIGRATIONS: &[&str] = &[
      ) latest ON w.provider = latest.provider
              AND w.detail_url = latest.detail_url
              AND w.updated_at = latest.max_updated;",
+    // When each extension was first installed; 0 means unknown (existing rows).
+    "ALTER TABLE installed_extensions ADD COLUMN installed_at INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// SQLite stores the schema version as a signed integer; one that does not fit is reported as
@@ -131,6 +133,33 @@ mod tests {
             })
             .expect("query");
         rows.map(|r| r.expect("row")).collect()
+    }
+
+    #[test]
+    fn migration_4_adds_installed_at_defaulting_existing_rows_to_zero() {
+        let connection = Connection::open_in_memory().expect("memory db");
+        connection.execute_batch(MIGRATIONS[0]).expect("step 0");
+        connection.execute_batch(MIGRATIONS[1]).expect("step 1");
+        connection.execute_batch(MIGRATIONS[2]).expect("step 2");
+        connection
+            .pragma_update(None, "user_version", 3)
+            .expect("version 3");
+        connection
+            .execute(
+                "INSERT INTO installed_extensions (file_name, internal_name, repository_url, version, trusted)
+                 VALUES ('a.cs3', 'A', NULL, 1, 0)",
+                [],
+            )
+            .expect("insert");
+        migrate(&connection).expect("migrate to 4");
+        let installed_at: i64 = connection
+            .query_row(
+                "SELECT installed_at FROM installed_extensions WHERE file_name = 'a.cs3'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read");
+        assert_eq!(installed_at, 0);
     }
 
     #[test]

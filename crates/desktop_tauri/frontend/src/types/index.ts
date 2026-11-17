@@ -209,6 +209,8 @@ export interface RepositoryPlugin {
   icon_url: string | null;
   file_size: number | null;
   installed_version: number | null;
+  /** When first installed here (ms since epoch), or null when not installed. */
+  installed_at_ms: number | null;
 }
 
 /** An extension that could not be loaded at start-up. */

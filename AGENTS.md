@@ -61,7 +61,7 @@ This document is the architectural index, navigation map, and modification handb
   - `DiscoveredRepository`: `name`, `url`.
   - `HomePage`: `items: Vec<HomePageSection>`.
   - `HomePageSection`: `name: String`, `items: Vec<SearchResult>`.
-  - `InstalledExtension`: `file_name`, `internal_name`, `repository_url: Option<String>`, `version: i32`, `trusted: bool`, `icon_url: Option<String>`.
+  - `InstalledExtension`: `file_name`, `internal_name`, `repository_url: Option<String>`, `version: i32`, `trusted: bool`, `icon_url: Option<String>`, `installed_at_ms: i64` (0 when unknown / pre-migration).
   - `LinkSearchCursor`: `links: usize`, `subtitles: usize`.
   - `LinkSearchUpdate`: `links: Vec<PlayableLink>`, `subtitles: Vec<SubtitleTrack>`, `is_done: bool`, `next_link: usize`, `next_subtitle: usize`, `cursor() -> LinkSearchCursor`.
   - `LoadDetails`: Title `name`, `url`, `api_name`, `media_type`, `data_url`, `poster_url`, `year`, `plot`, `tags: Option<Vec<String>>`, `episodes: Vec<EpisodeInfo>`, `background_poster_url`, `rating: Option<i32>`, `duration: Option<i32>`, `actors: Vec<CastMember>`.
@@ -154,6 +154,8 @@ This document is the architectural index, navigation map, and modification handb
   - *Version 3*:
     - `CREATE TABLE resume_pointers (provider TEXT NOT NULL, detail_url TEXT NOT NULL, media_key TEXT NOT NULL, title TEXT NOT NULL, poster_url TEXT, season INTEGER, episode INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY (provider, detail_url));`
     - Migrates latest watched episode per show from `watch_progress` into `resume_pointers`.
+  - *Version 4*:
+    - `ALTER TABLE installed_extensions ADD COLUMN installed_at INTEGER NOT NULL DEFAULT 0;`
 - **Stores**:
   - `SettingsStore`: `get(key)`, `set(key, value)`, `remove(key)`.
   - `RepositoryStore`: `add(entry, added_at)`, `remove(url)`, `list()`, `set_icon_url(url, icon_url)`.

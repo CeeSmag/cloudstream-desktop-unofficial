@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2, Search, ChevronRight } from 'lucide-react';
 import { RepositoryEntry } from '../../types';
 import { filterRepositories, repositoryHost } from '../../utils/extensionText';
+import { RepositorySort, sortRepositories } from '../../utils/repositorySort';
 import { IconTile } from './IconTile';
 
 interface RepositoryPanelProps {
@@ -21,7 +22,11 @@ export const RepositoryPanel: React.FC<RepositoryPanelProps> = ({ repositories, 
   const [filter, setFilter] = React.useState('');
   const [address, setAddress] = React.useState('');
   const [showAll, setShowAll] = React.useState(false);
-  const matching = React.useMemo(() => filterRepositories(repositories, filter), [repositories, filter]);
+  const [sort, setSort] = React.useState<RepositorySort>('date');
+  const matching = React.useMemo(
+    () => sortRepositories(filterRepositories(repositories, filter), sort),
+    [repositories, filter, sort],
+  );
   const searching = filter.trim() !== '';
   const shown = showAll || searching ? matching : matching.slice(0, SHOWN_AT_FIRST);
 
@@ -51,15 +56,26 @@ export const RepositoryPanel: React.FC<RepositoryPanelProps> = ({ repositories, 
         </button>
       </form>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-        <input
-          type="text"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder={`Search ${repositories.length} repositories`}
-          className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-xs focus:outline-none"
-        />
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type="text"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={`Search ${repositories.length} repositories`}
+            className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-elevated/80 border border-white/10 focus:border-accent text-white placeholder-zinc-500 text-xs focus:outline-none"
+          />
+        </div>
+        <select
+          value={sort}
+          onChange={(event) => setSort(event.target.value as RepositorySort)}
+          aria-label="Sort repositories"
+          className="rounded-xl bg-surface-elevated border border-white/10 px-3 py-2 text-xs text-white"
+        >
+          <option value="date">Sort: Date added</option>
+          <option value="name">Sort: Name</option>
+        </select>
       </div>
 
       {repositories.length === 0 ? (

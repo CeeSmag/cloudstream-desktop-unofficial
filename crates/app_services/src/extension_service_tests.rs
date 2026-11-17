@@ -5,7 +5,8 @@ use extension_repo::RepoError;
 use storage::Database;
 
 use super::*;
-use crate::test_support::FakeGateway;
+use crate::test_support::{FakeGateway, FixedClock};
+use crate::Clock;
 
 struct BytesFetcher;
 
@@ -26,6 +27,7 @@ fn setup(label: &str) -> (ExtensionService, Arc<FakeGateway>, PathBuf) {
         Arc::clone(&gateway) as Arc<dyn ProviderGateway>,
         ExtensionInstaller::new(fetcher, dir.clone()),
         installed,
+        Arc::new(FixedClock::at(5_000)) as Arc<dyn Clock>,
     );
     (service, gateway, dir)
 }
@@ -46,7 +48,9 @@ fn install_downloads_records_and_loads_untrusted() {
         .install(&listing("Good"), "https://r/repo.json")
         .expect("installs");
     assert_eq!(providers[0].name, "Good");
-    assert_eq!(service.installed().expect("list")[0].version, 3);
+    let recorded = &service.installed().expect("list")[0];
+    assert_eq!(recorded.version, 3);
+    assert_eq!(recorded.installed_at_ms, 5_000);
     assert!(
         !gateway.loaded_paths.lock().expect("lock")[0].1,
         "new installs start untrusted"
