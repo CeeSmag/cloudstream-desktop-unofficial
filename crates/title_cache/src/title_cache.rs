@@ -20,7 +20,7 @@ use crate::title_cache_error::TitleCacheError;
 /// Tells the cache what time it is; tests set their own.
 pub type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
 
-const FILE_EXTENSION: &str = "json";
+pub(crate) const FILE_EXTENSION: &str = "json";
 
 /// Saved links found for a title.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,7 +56,9 @@ pub struct TitleCache {
     pub(crate) folder: PathBuf,
     pub(crate) limits: CacheLimits,
     clock: Clock,
-    writing: Mutex<()>,
+    /// The one write lock; it holds the number of the latest [`TitleCache::keep_only`] call, so
+    /// a save of an opening that was replaced is refused under the same lock as the removal.
+    writing: Mutex<u64>,
     pub(crate) counter: AtomicU64,
     /// Saves made before this time (seconds since 1970) are not used; 0 lets every save count.
     valid_from: AtomicU64,
@@ -74,7 +76,7 @@ impl TitleCache {
             folder,
             limits,
             clock,
-            writing: Mutex::new(()),
+            writing: Mutex::new(0),
             counter: AtomicU64::new(0),
             valid_from: AtomicU64::new(0),
         }
@@ -82,7 +84,7 @@ impl TitleCache {
 
     /// Takes the one write lock; a thread that panicked while holding it left nothing half-done,
     /// since files are replaced whole.
-    pub(crate) fn write_lock(&self) -> MutexGuard<'_, ()> {
+    pub(crate) fn write_lock(&self) -> MutexGuard<'_, u64> {
         self.writing.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -188,6 +190,15 @@ impl TitleCache {
         title: &CachedTitle,
     ) -> Result<SaveReport, TitleCacheError> {
         let _lock = self.write_lock();
+        self.save_locked(title_key, title)
+    }
+
+    /// [`TitleCache::save`] for a caller that holds the write lock.
+    pub(crate) fn save_locked(
+        &self,
+        title_key: &str,
+        title: &CachedTitle,
+    ) -> Result<SaveReport, TitleCacheError> {
         let stored = StoredFile {
             version: FORMAT_VERSION,
             saved_at: self.now_secs(),
@@ -250,6 +261,11 @@ impl TitleCache {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn forget(&self, title_key: &str) -> Result<bool, TitleCacheError> {
         let _lock = self.write_lock();
+        self.forget_locked(title_key)
+    }
+
+    /// [`TitleCache::forget`] for a caller that holds the write lock.
+    pub(crate) fn forget_locked(&self, title_key: &str) -> Result<bool, TitleCacheError> {
         let path = self.path_of(title_key);
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(true),

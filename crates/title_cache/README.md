@@ -9,6 +9,7 @@ and ignored.
 |---|---|
 | `TitleCache` | `load` / `save` / `update` / `mark_broken` / `forget`, one file per title, atomic writes, one write lock |
 | `CachedTitle`, `CachedLink`, `LinkHealth` | the content and the order links are tried in (last good, working, unchecked, broken) |
+| `TitleCache::keep_only` / `save_kept` / `forget_kept`, `KeptTitle` | only the video opened last keeps saved sources: opening one removes every other title's file, and a late save of an opening that was replaced is refused (same lock) |
 | `CacheLimits` | fresh under 20 min, stale up to 24 h, 50 titles, 200 links, 1 MB per file |
 | `TitleCache::prune` / `size_bytes` / `clear` | cleanup of expired, broken, surplus and leftover files |
 
