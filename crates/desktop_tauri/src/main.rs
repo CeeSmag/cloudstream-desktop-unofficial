@@ -12,6 +12,7 @@ mod catalog_commands;
 mod check_gate;
 mod check_gate_state;
 mod check_progress;
+mod cleanup_handle;
 mod cleanup_queue;
 mod cleanup_start;
 mod cleanup_tasks;
@@ -72,6 +73,7 @@ mod startup;
 mod storage_cap;
 mod storage_cap_plan;
 mod storage_cap_scan;
+mod storage_cleanup;
 mod stream_setup;
 mod subtitle_delivery;
 #[cfg(test)]
@@ -193,6 +195,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             data_commands::delete_all_data,
             storage_cap::get_storage_cap,
             storage_cap::set_storage_cap,
+            storage_cleanup::run_storage_cleanup,
         ])
 }
 

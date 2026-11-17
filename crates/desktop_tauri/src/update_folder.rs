@@ -60,6 +60,16 @@ fn remove_stale_attempts(updates: &Path, now: SystemTime) {
     }
 }
 
+/// Deletes leftover update downloads under `<data>/updates/` (hourly cleanup and Clean up now).
+pub(crate) fn cleanup_stale_updates(data_dir: &Path) {
+    let updates = data_dir.join(UPDATES_FOLDER);
+    if !updates.is_dir() {
+        tracing::debug!(dir = %updates.display(), "no updates folder to tidy");
+        return;
+    }
+    remove_stale_attempts(&updates, SystemTime::now());
+}
+
 /// Removes a failed attempt's folder. A failure is only logged: the next attempt removes it later.
 pub(crate) fn discard_update_folder(folder: &Path) {
     if let Err(error) = std::fs::remove_dir_all(folder) {

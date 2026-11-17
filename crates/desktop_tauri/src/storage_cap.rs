@@ -149,7 +149,8 @@ pub struct StorageDto {
     updates_bytes: u64,
 }
 
-fn describe(data_dir: &Path, cap_gb: u32) -> StorageDto {
+/// Measures the data folder for the Settings card (and for Clean up now).
+pub(crate) fn describe(data_dir: &Path, cap_gb: u32) -> StorageDto {
     let used_bytes = dir_size(data_dir);
     let tracked = usage(data_dir);
     StorageDto {
@@ -171,17 +172,41 @@ fn read_cap(state: &AppState) -> Result<u32, String> {
         .map_err(|e| e.to_string())
 }
 
+/// When over the limit, deletes what can be remade and asks the cleanup queue to run soon.
+fn enforce_if_over(data_dir: &Path, cap_gb: u32, app: &AppHandle) {
+    let used = dir_size(data_dir);
+    let cap = u64::from(cap_gb) * BYTES_PER_GB;
+    if used <= cap {
+        return;
+    }
+    tracing::info!(
+        used_mb = used >> 20,
+        cap_gb,
+        "data folder over its limit on read; enforcing"
+    );
+    let running = running_folder(data_dir);
+    enforce(data_dir, cap_gb, running.as_deref());
+    if let Some(handle) = app.try_state::<crate::cleanup_handle::CleanupHandle>() {
+        handle.request_now();
+    }
+}
+
 /// The limit and the size of the data folder (measured off the window thread).
+/// When the folder is over the limit, deletes what can be made again before answering.
 #[tauri::command]
 pub async fn get_storage_cap(
     state: State<'_, AppState>,
     folder: State<'_, DataFolder>,
+    app: AppHandle,
 ) -> Result<StorageDto, String> {
     let cap_gb = read_cap(&state)?;
     let data_dir = folder.0.clone();
-    tauri::async_runtime::spawn_blocking(move || describe(&data_dir, cap_gb))
-        .await
-        .map_err(|error| format!("cannot measure the data folder: {error}"))
+    tauri::async_runtime::spawn_blocking(move || {
+        enforce_if_over(&data_dir, cap_gb, &app);
+        describe(&data_dir, cap_gb)
+    })
+    .await
+    .map_err(|error| format!("cannot measure the data folder: {error}"))
 }
 
 /// Saves the new limit and applies it at once.

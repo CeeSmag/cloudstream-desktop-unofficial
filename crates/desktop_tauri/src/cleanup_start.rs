@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager};
 use title_cache::TitleCache;
 
 use crate::app_state::AppState;
+use crate::cleanup_handle::CleanupHandle;
 use crate::cleanup_queue::{spawn, Queue, Task, World};
 use crate::cleanup_tasks::{
     browser_cache, old_files, old_program_folders, trim_main_log, BROWSER_CACHE_MAX_BYTES,
@@ -16,19 +17,20 @@ use crate::cleanup_tasks::{
 };
 use crate::startup::StartupTracker;
 use crate::storage_cap::{check_once, running_folder};
+use crate::update_folder::cleanup_stale_updates;
 
 const HOURLY: Duration = Duration::from_secs(60 * 60);
 const EVERY_SIX_HOURS: Duration = Duration::from_secs(6 * 60 * 60);
 
 /// Puts the cleanups of the running app into the queue: `paths` say where the app keeps its files,
-/// `caches` are the saved sources and the subtitles it tidies.
+/// `caches` are the saved sources and the subtitles it tidies. Stores a [`CleanupHandle`] on the app.
 pub fn start_for_app(
     app: &tauri::App,
     paths: &app_shell::AppPaths,
     caches: (Arc<TitleCache>, Arc<subtitle_store::SubtitleLoader>),
 ) {
     let (sources, subtitles) = caches;
-    start(
+    let handle = start(
         app.handle(),
         Cleanup {
             data_dir: paths.data_dir().to_path_buf(),
@@ -37,6 +39,7 @@ pub fn start_for_app(
             subtitles,
         },
     );
+    app.manage(handle);
 }
 
 /// What the app has to clean, and where.
@@ -72,7 +75,7 @@ impl World for AppWorld {
 }
 
 /// Fills the queue and starts it; nothing runs until the app has fully started.
-pub fn start(app: &AppHandle, cleanup: Cleanup) {
+pub fn start(app: &AppHandle, cleanup: Cleanup) -> CleanupHandle {
     let mut queue = Queue::default();
     let running = running_folder(&cleanup.data_dir);
     let data = cleanup.data_dir.clone();
@@ -82,6 +85,10 @@ pub fn start(app: &AppHandle, cleanup: Cleanup) {
     let exchange = cleanup.data_dir.join("sidecar").join("cloudflare");
     queue.add(Task::every("old exchange files", HOURLY, move || {
         old_files(&exchange, EXCHANGE_MAX_AGE, |_| true);
+    }));
+    let updates = cleanup.data_dir.clone();
+    queue.add(Task::every("old update downloads", HOURLY, move || {
+        cleanup_stale_updates(&updates);
     }));
     let sources = cleanup.sources;
     queue.add(Task::every("saved stream sources", HOURLY, move || {
@@ -104,7 +111,7 @@ pub fn start(app: &AppHandle, cleanup: Cleanup) {
         },
     ));
     add_heavy(&mut queue, app, &cleanup.data_dir);
-    spawn(queue, AppWorld(app.clone()));
+    spawn(queue, AppWorld(app.clone()))
 }
 
 /// The tasks that look through the whole data folder.

@@ -9,6 +9,8 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::{Duration, Instant};
 
+use crate::cleanup_handle::{CleanupHandle, Pending};
+
 /// How long the queue waits after start-up has finished before the first task.
 pub const SETTLE: Duration = Duration::from_secs(60);
 /// The pause between two tasks.
@@ -62,6 +64,14 @@ pub struct Queue {
     tasks: Vec<Task>,
 }
 
+/// Inputs for one [`Queue::step`].
+pub struct Step<'a> {
+    pub world: &'a dyn World,
+    pub now: Instant,
+    pub ready_at: &'a mut Option<Instant>,
+    pub handle: Option<&'a CleanupHandle>,
+}
+
 /// What the worker should do next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Next {
@@ -88,9 +98,33 @@ impl Queue {
         self.tasks.len()
     }
 
+    /// Applies a pending signal from [`CleanupHandle`] to repeating tasks.
+    pub(crate) fn apply_pending(&mut self, pending: Option<Pending>, now: Instant) {
+        let Some(pending) = pending else {
+            return;
+        };
+        for task in self.tasks.iter_mut().filter(|t| t.every.is_some()) {
+            match pending {
+                Pending::RunNow => task.due = now,
+                Pending::ResetSchedule => {
+                    if let Some(every) = task.every {
+                        task.due = now + every;
+                    }
+                }
+            }
+        }
+    }
+
     /// One step at `now`: runs the first due task if the app is ready, settled and not busy.
     /// `ready_at` remembers when the app was first seen ready.
-    pub fn step(
+    pub fn step(&mut self, input: Step<'_>) -> Next {
+        if let Some(handle) = input.handle {
+            self.apply_pending(handle.take_pending(), input.now);
+        }
+        self.step_body(input.world, input.now, input.ready_at)
+    }
+
+    fn step_body(
         &mut self,
         world: &dyn World,
         now: Instant,
@@ -145,7 +179,10 @@ impl Queue {
 }
 
 /// Runs `queue` on its own thread until it is empty (a queue with repeating tasks never is).
-pub fn spawn(mut queue: Queue, world: impl World + 'static) {
+/// Returns a handle so the rest of the app can ask for a run-now or reset the schedule.
+pub fn spawn(mut queue: Queue, world: impl World + 'static) -> CleanupHandle {
+    let handle = CleanupHandle::new();
+    let worker = handle.clone();
     tracing::info!(
         tasks = queue.len(),
         "cleanup queue created; it waits until the app has fully started"
@@ -153,27 +190,36 @@ pub fn spawn(mut queue: Queue, world: impl World + 'static) {
     let spawned = std::thread::Builder::new()
         .name("cleanup-queue".to_owned())
         .spawn(move || {
+            worker.mark_alive();
             let mut ready_at = None;
             let mut last = Next::NotReady;
             loop {
-                let next = queue.step(&world, Instant::now(), &mut ready_at);
+                let next = queue.step(Step {
+                    world: &world,
+                    now: Instant::now(),
+                    ready_at: &mut ready_at,
+                    handle: Some(&worker),
+                });
                 if next != last {
                     tracing::info!(state = ?next, "cleanup queue");
                     last = next;
                 }
                 match next {
                     Next::Done => break,
-                    Next::NotReady => std::thread::sleep(READY_POLL),
-                    Next::Settling => std::thread::sleep(PAUSE),
-                    Next::Busy => std::thread::sleep(BUSY_WAIT),
-                    Next::Ran => std::thread::sleep(PAUSE),
-                    Next::Idle => std::thread::sleep(IDLE_WAIT),
+                    Next::NotReady => worker.wait(READY_POLL),
+                    Next::Settling => worker.wait(PAUSE),
+                    Next::Busy => worker.wait(BUSY_WAIT),
+                    Next::Ran => worker.wait(PAUSE),
+                    Next::Idle => worker.wait(IDLE_WAIT),
                 }
             }
+            worker.mark_stopped();
         });
     if let Err(error) = spawned {
         tracing::error!(%error, "cannot start the cleanup queue; nothing will be cleaned automatically");
+        handle.mark_stopped();
     }
+    handle
 }
 
 #[cfg(test)]
