@@ -69,6 +69,7 @@ mod source_session;
 mod source_session_restart;
 mod sources_cleanup;
 mod startup;
+mod stream_setup;
 mod storage_cap;
 mod storage_cap_plan;
 mod storage_cap_scan;
@@ -218,7 +219,7 @@ fn init_services(
             0
         });
     app.manage(AppState::new(services));
-    let (subtitles, sources) = manage_streams(app, paths, services_valid_from);
+    let (subtitles, sources) = stream_setup::manage_streams(app, paths, services_valid_from);
     app.manage(std::sync::Arc::new(skip_times::SkipLookup::new(
         std::sync::Arc::new(skip_times::UreqSkipFetcher::default()),
     )));
@@ -231,41 +232,6 @@ fn init_services(
     cleanup_start::start_for_app(app, paths, (sources, subtitles));
     spawn_extension_loading(app.handle().clone(), extensions, repositories, debug_on);
     Ok(())
-}
-
-/// How long downloaded subtitle files and the per-title lists are kept.
-const SUBTITLE_KEEP: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
-
-/// Wires the stream sources manager; returns the subtitle loader and the saved-sources cache it
-/// uses, which the cleanup queue also tidies.
-fn manage_streams(
-    app: &mut tauri::App,
-    paths: &AppPaths,
-    valid_from: u64,
-) -> (
-    std::sync::Arc<subtitle_store::SubtitleLoader>,
-    std::sync::Arc<title_cache::TitleCache>,
-) {
-    let subtitles = subtitle_loader(paths);
-    let sources = sources_cleanup::open_title_cache(paths.data_dir(), valid_from);
-    app.manage(source_manager::SourceManager::new(
-        app_services::StreamChecker::new(std::sync::Arc::new(extension_repo::UreqProbe::default())),
-        std::sync::Arc::clone(&subtitles),
-        std::sync::Arc::clone(&sources),
-    ));
-    (subtitles, sources)
-}
-
-/// The loader that downloads, cleans and keeps subtitle files in the data folder; old ones are
-/// removed by the cleanup queue.
-fn subtitle_loader(paths: &AppPaths) -> std::sync::Arc<subtitle_store::SubtitleLoader> {
-    let cache =
-        subtitle_store::SubtitleCache::new(paths.data_dir().join("subtitles"), SUBTITLE_KEEP);
-    std::sync::Arc::new(subtitle_store::SubtitleLoader::new(
-        cache,
-        std::sync::Arc::new(subtitle_store::UreqSubtitleFetcher::default()),
-        subtitle_store::LoadOptions::default(),
-    ))
 }
 
 /// Loads installed extensions off the UI thread (the first load converts bytecode and is slow).
