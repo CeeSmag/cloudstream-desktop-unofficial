@@ -14,7 +14,7 @@ use tauri::State;
 use crate::app_state::AppState;
 use crate::check_gate::{CheckGate, StartDecision};
 use crate::dto::PlayRequestDto;
-use crate::source_manager::{SearchRequest, SourceManager, Tell};
+use crate::source_manager::{SavedLinks, SearchRequest, SourceManager, Tell};
 use crate::subtitle_delivery::SubtitleWork;
 
 /// The key of a title in the saved subtitles and saved sources: one per movie or episode.
@@ -121,7 +121,7 @@ pub(crate) fn open_video(
 }
 
 /// What the background work of the video needs: the search, where late subtitles go, and the title.
-fn search_request(
+pub(crate) fn search_request(
     services: &OpeningServices,
     item: &PlaybackItem,
     opened: (Arc<CheckGate>, u64),
@@ -138,6 +138,7 @@ fn search_request(
             rank_of: Arc::clone(&services.subtitle_rank),
         },
         title_key: title_key(item),
+        saved: SavedLinks::Use,
     }
 }
 

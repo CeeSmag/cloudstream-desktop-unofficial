@@ -2,6 +2,7 @@
 //! stream to the checkers, the other thread checks the streams as they come.
 
 use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use app_services::{
@@ -257,6 +258,34 @@ impl Discovery {
         }
         true
     }
+}
+
+/// Starts the search thread and the checks thread; if either cannot start, the work is given up.
+pub(crate) fn start_search_and_checks(
+    job: &Arc<Discovery>,
+    search: LinkSearch,
+) -> Vec<JoinHandle<()>> {
+    let searching = Arc::clone(job);
+    let searched = spawn("source-search", move || searching.run_search(search));
+    let checking = Arc::clone(job);
+    let checks = spawn("source-checks", move || checking.run_checks());
+    if searched.is_none() || checks.is_none() {
+        job.queue.stop();
+        job.prefetch.stop();
+        job.gate
+            .discovery_ended(Some("Cannot start looking for streams.".to_owned()));
+    }
+    searched.into_iter().chain(checks).collect()
+}
+
+fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> Option<JoinHandle<()>> {
+    let spawned = std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(work);
+    if let Err(error) = &spawned {
+        tracing::error!(%error, name, "cannot start a thread for the streams");
+    }
+    spawned.ok()
 }
 
 #[cfg(test)]

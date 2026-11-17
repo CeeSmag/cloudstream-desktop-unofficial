@@ -69,11 +69,9 @@ impl Delivery {
             url: ready.path.to_string_lossy().replace('\\', "/"),
             headers: None,
         };
-        if parts
-            .session
-            .append(parts.generation, Vec::new(), vec![track])
-            .is_none()
-        {
+        // Nothing to do when another video is open, or when the list already has this file
+        // (the sources were refreshed and the player already has it).
+        if parts.session.add_subtitle(parts.generation, track) != Some(true) {
             return;
         }
         if remember {

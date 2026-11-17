@@ -64,7 +64,9 @@ mod source_fallback;
 mod source_fallback_steps;
 mod source_manager;
 mod source_notes;
+mod source_refresh;
 mod source_session;
+mod source_session_restart;
 mod sources_cleanup;
 mod startup;
 mod storage_cap;
@@ -149,6 +151,7 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             playback_commands::set_volume,
             source_commands::get_playback_sources,
             source_commands::switch_source,
+            source_refresh::refresh_sources,
             library_commands::get_bookmarks,
             library_commands::add_bookmark,
             library_commands::remove_bookmark,

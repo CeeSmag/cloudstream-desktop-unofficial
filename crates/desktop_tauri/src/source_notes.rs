@@ -16,6 +16,16 @@ impl SourceManager {
         kept
     }
 
+    /// Removes the title's saved sources before it searches afresh (a refresh of its sources).
+    pub(crate) fn forget_kept(&self, kept: &KeptTitle) {
+        match self.titles.forget_kept(kept) {
+            Ok(removed) => tracing::info!(removed, "saved sources dropped for a fresh search"),
+            Err(error) => {
+                tracing::warn!(%error, "cannot drop the saved sources; the fresh search replaces them");
+            }
+        }
+    }
+
     /// Notes that the stream at `url` played well for the title, so it is tried first next time.
     pub fn note_played(&self, title_key: &str, url: &str) {
         if let Err(error) = self.titles.mark_played_well(title_key, url) {

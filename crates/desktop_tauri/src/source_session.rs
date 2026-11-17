@@ -70,8 +70,8 @@ impl ActiveSources {
 /// Holder of the current [`ActiveSources`].
 #[derive(Default)]
 pub struct SourceSession {
-    active: Mutex<Option<ActiveSources>>,
-    generations: AtomicU64,
+    pub(crate) active: Mutex<Option<ActiveSources>>,
+    pub(crate) generations: AtomicU64,
 }
 
 impl SourceSession {
@@ -126,6 +126,20 @@ impl SourceSession {
         active.links.extend(links);
         active.subtitles.extend(subtitles);
         Some(first)
+    }
+
+    /// Adds one subtitle file the open video got, unless its list already has that file (a
+    /// refreshed list keeps the subtitles the player already has). Returns whether it was added,
+    /// or `None` when `generation` is no longer the current one. The check and the change happen
+    /// under one lock.
+    pub fn add_subtitle(&self, generation: u64, track: SubtitleTrack) -> Option<bool> {
+        let mut guard = self.active.lock().unwrap_or_else(PoisonError::into_inner);
+        let active = guard.as_mut().filter(|a| a.generation == generation)?;
+        if active.subtitles.iter().any(|known| known.url == track.url) {
+            return Some(false);
+        }
+        active.subtitles.push(track);
+        Some(true)
     }
 
     /// A copy of the current streams for starting playback: the subtitles in it count as given
@@ -234,6 +248,10 @@ impl SourceSession {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "source_session_restart_tests.rs"]
+mod restart_tests;
 
 #[cfg(test)]
 #[path = "source_session_tests.rs"]

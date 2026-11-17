@@ -19,7 +19,7 @@ This document is the architectural index, navigation map, and modification handb
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (63 Commands Reference)](#4-tauri-ipc-interface-63-commands-reference)
+4. [Tauri IPC Interface (64 Commands Reference)](#4-tauri-ipc-interface-64-commands-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
@@ -341,6 +341,7 @@ This document is the architectural index, navigation map, and modification handb
   - `main.rs`: Registers IPC commands (including `get_resume_pointer`) and sets up `AppState`, `SourceManager`, and `StartupTracker`.
   - `source_manager.rs`: Session-based coordinator managing stream search, checking queue, title caching, and subtitle prefetch.
   - `source_fallback.rs` & `source_fallback_steps.rs`: Monitors playback and automatically fails over to the next best source upon playback error.
+  - `source_refresh.rs`: the player's "Refresh sources" (`refresh_sources`): removes the title's saved sources, restarts the list with only the playing stream (`SourceSession::restart_playing`, `source_session_restart.rs`) and runs a new search and checks while playback goes on. Refused while no stream plays, and when another video started opening (`SourceManager::restart_list` checks the `Opening`'s generation under its lock).
   - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
   - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
   - `native_video.rs`: native video on Windows. The main window is transparent (`tauri.conf.json`); mpv gets the window's own handle (`wid`, `vo=gpu`) and draws below the transparent web view, so the player screen (`PlayerOverlay.tsx`, see-through while `Playing`/`Paused`, `hooks/useNativeVideo.ts`) floats over the picture and no frame crosses the IPC. On Windows native is the only mode (no setting); other platforms, and a missing window handle, still use the canvas path. Plan: `docs/NATIVE_VIDEO_PLAN.md`.
@@ -482,9 +483,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (63 Commands Reference)
+## 4. Tauri IPC Interface (64 Commands Reference)
 
-All 63 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
+All 64 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -513,6 +514,7 @@ All 63 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_te
 | | `set_volume` | Adjusts output volume percentage (0-130%). |
 | **Sources** | `get_playback_sources` | Returns stream candidates and verification statuses. |
 | | `switch_source` | Manually switches playback to another stream URL. |
+| | `refresh_sources` | The Sources menu's Refresh: drops the title's saved sources and searches and checks again, the playing stream goes on (`source_refresh.rs`). |
 | **Library** | `get_bookmarks` | Lists all bookmarked items. |
 | | `add_bookmark` | Saves item to library. |
 | | `remove_bookmark` | Removes item from library. |

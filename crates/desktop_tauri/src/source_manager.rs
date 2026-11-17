@@ -17,7 +17,7 @@ use crate::check_gate::{CheckGate, CheckProgress, WaitLimits};
 use crate::failure_tally::FailureTally;
 use crate::link_ledger::LinkLedger;
 use crate::saved_start::SavedStart;
-use crate::source_discovery::{Discovery, SubtitleSink};
+use crate::source_discovery::{start_search_and_checks, Discovery, SubtitleSink};
 use crate::source_fallback::FallbackController;
 use crate::source_session::{ActiveSources, SourceSession};
 use crate::subtitle_delivery::{Delivery, DeliveryParts, SubtitleWork};
@@ -55,6 +55,25 @@ pub struct SearchRequest {
     pub subtitles: SubtitleWork,
     /// The key of the title in the saved sources.
     pub title_key: String,
+    /// Whether what was saved for the title is used, or dropped first (a refresh).
+    pub saved: SavedLinks,
+}
+
+/// What a video that is opening does with the sources saved for its title.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SavedLinks {
+    /// Put them in the list first (the normal opening).
+    Use,
+    /// Remove them and search afresh (the viewer asked for new sources).
+    Forget,
+}
+
+/// The wait of the video that is being opened or played, and which list it opened.
+#[derive(Default)]
+pub(crate) struct Opening {
+    pub(crate) gate: Option<Arc<CheckGate>>,
+    /// The generation of the list `gate` opened; `None` while that video is still starting.
+    pub(crate) generation: Option<u64>,
 }
 
 /// Tauri-managed owner of the current streams and the checks that test them.
@@ -68,9 +87,9 @@ pub struct SourceManager {
     /// Switches to the next source when the one that plays fails.
     fallback: FallbackController,
     /// How long a video waits for its provider.
-    limits: WaitLimits,
+    pub(crate) limits: WaitLimits,
     /// The wait of the video that is being opened or played.
-    current: Mutex<Option<Arc<CheckGate>>>,
+    pub(crate) current: Mutex<Opening>,
 }
 
 impl SourceManager {
@@ -87,7 +106,7 @@ impl SourceManager {
             titles,
             fallback: FallbackController::default(),
             limits: WaitLimits::default(),
-            current: Mutex::new(None),
+            current: Mutex::default(),
         }
     }
 
@@ -112,11 +131,11 @@ impl SourceManager {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn begin(&self) -> Arc<CheckGate> {
         let gate = Arc::new(CheckGate::new(self.limits));
-        let previous = self
-            .current
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .replace(Arc::clone(&gate));
+        let previous = {
+            let mut opening = self.current.lock().unwrap_or_else(PoisonError::into_inner);
+            opening.generation = None;
+            opening.gate.replace(Arc::clone(&gate))
+        };
         if let Some(previous) = previous {
             previous.cancel();
         }
@@ -128,24 +147,29 @@ impl SourceManager {
     /// in which case the list of the newer video is left alone. The check and the change happen
     /// under one lock, so they cannot interleave with [`SourceManager::begin`] or `close`.
     pub fn open(&self, gate: &Arc<CheckGate>, item: PlaybackItem) -> Option<u64> {
-        let current = self.current.lock().unwrap_or_else(PoisonError::into_inner);
-        if !current.as_ref().is_some_and(|open| Arc::ptr_eq(open, gate)) {
+        let mut opening = self.current.lock().unwrap_or_else(PoisonError::into_inner);
+        if !opening
+            .gate
+            .as_ref()
+            .is_some_and(|open| Arc::ptr_eq(open, gate))
+        {
             return None;
         }
-        Some(
-            self.session
-                .set(ActiveSources::new(item, Vec::new(), Vec::new())),
-        )
+        let generation = self
+            .session
+            .set(ActiveSources::new(item, Vec::new(), Vec::new()));
+        opening.generation = Some(generation);
+        Some(generation)
     }
 
     /// The video was closed: stops waiting, stops checking and forgets the streams.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn close(&self) {
-        let gate = self
-            .current
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
+        let gate = {
+            let mut opening = self.current.lock().unwrap_or_else(PoisonError::into_inner);
+            opening.generation = None;
+            opening.gate.take()
+        };
         if let Some(gate) = gate {
             gate.cancel();
         }
@@ -164,6 +188,7 @@ impl SourceManager {
             .current
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+            .gate
             .clone();
         match gate {
             Some(gate) => tell(CheckUpdate::Progress(gate.skip())),
@@ -185,8 +210,12 @@ impl SourceManager {
             give_subtitles,
             subtitles,
             title_key,
+            saved,
         } = request;
         let kept = self.keep_only(&title_key);
+        if saved == SavedLinks::Forget {
+            self.forget_kept(&kept);
+        }
         let delivery = Delivery::new(DeliveryParts {
             session: Arc::clone(&self.session),
             generation,
@@ -229,6 +258,7 @@ impl SourceManager {
             kept,
             saved.rest.clone(),
         ));
+        self.plant_playing(gate, generation, &ledger);
         let queue = Arc::new(CheckQueue::default());
         queue.push(saved.plant((gate, &self.session, generation), &ledger));
         (ledger, queue)
@@ -239,31 +269,6 @@ impl SourceManager {
         let (session, gate) = (Arc::clone(&self.session), Arc::clone(gate));
         Arc::new(move || session.is_current(generation) && !gate.is_cancelled())
     }
-}
-
-/// Starts the search thread and the checks thread; if either cannot start, the work is given up.
-fn start_search_and_checks(job: &Arc<Discovery>, search: LinkSearch) -> Vec<JoinHandle<()>> {
-    let searching = Arc::clone(job);
-    let searched = spawn("source-search", move || searching.run_search(search));
-    let checking = Arc::clone(job);
-    let checks = spawn("source-checks", move || checking.run_checks());
-    if searched.is_none() || checks.is_none() {
-        job.queue.stop();
-        job.prefetch.stop();
-        job.gate
-            .discovery_ended(Some("Cannot start looking for streams.".to_owned()));
-    }
-    searched.into_iter().chain(checks).collect()
-}
-
-fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> Option<JoinHandle<()>> {
-    let spawned = std::thread::Builder::new()
-        .name(name.to_owned())
-        .spawn(work);
-    if let Err(error) = &spawned {
-        tracing::error!(%error, name, "cannot start a thread for the streams");
-    }
-    spawned.ok()
 }
 
 /// Tells the UI about the search and the checks.
