@@ -21,9 +21,6 @@ use crate::track_reader::{has_video_track, read_tracks};
 /// the app shows can get.
 const EVENT_WAIT: Duration = Duration::from_millis(100);
 
-/// The track list is re-read every this many event iterations (about once a second).
-const TRACK_REFRESH_EVERY: u32 = 10;
-
 /// Background loop that turns mpv events and property polls into status updates.
 pub(crate) struct EventWorker {
     pub(crate) handle: Arc<MpvHandle>,
@@ -68,9 +65,7 @@ impl EventWorker {
             }
             self.poll_progress();
             ticks += 1;
-            if ticks.is_multiple_of(TRACK_REFRESH_EVERY)
-                && crate::track_refresh::should_refresh_tracks(&self.tracker.snapshot().state)
-            {
+            if crate::track_refresh::due(ticks, &self.tracker.snapshot().state) {
                 self.refresh_tracks();
                 self.refresh_chapters();
             }
