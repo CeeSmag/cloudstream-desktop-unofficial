@@ -1,6 +1,6 @@
 use core_model::{InstalledExtension, PluginListing};
 
-use crate::app_model::{PlayTarget, PlayerMenu};
+use crate::app_model::{ExtensionsTab, PlayTarget, PlayerMenu, SettingsPage};
 use crate::navigation::{Tab, TitleRef};
 
 /// Something the user asked for.
@@ -49,6 +49,13 @@ pub(crate) enum UiAction {
     SetSkipLookup(bool),
     SetAutoplayNext(bool),
     SetPluginWorkerLimit(u32),
+    SetSettingsPage(SettingsPage),
+    SetExtensionsTab(ExtensionsTab),
+    /// `None` = stream default audio.
+    SetPreferredAudio(Option<String>),
+    SetPreferredSubtitles(Vec<String>),
+    SetAutoSubtitles(bool),
+    PreparePluginCatalog,
     CheckForUpdate,
     OpenUpdateUrl,
     DismissNotice(usize),

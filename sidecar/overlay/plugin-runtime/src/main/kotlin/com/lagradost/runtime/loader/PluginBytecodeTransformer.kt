@@ -374,8 +374,8 @@ object PluginBytecodeTransformer {
                 // Write ShadowUi transformer marker for automatic cache invalidation
                 val versionEntry = ZipEntry("META-INF/shadowui.version")
                 zos.putNextEntry(versionEntry)
-                // Bump when sandbox rewrites change so stale -secure.jar caches are rebuilt.
-                zos.write("4".toByteArray(Charsets.UTF_8))
+                // Bump [ShadowUiTransform.VERSION] when sandbox rewrites change so stale caches rebuild.
+                zos.write(ShadowUiTransform.VERSION.toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
             }
         }

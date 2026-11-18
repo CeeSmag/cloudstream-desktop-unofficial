@@ -1,4 +1,6 @@
-//! Preference toggles (debug logging, proxy, skip, autoplay, worker limit).
+//! Preference toggles (debug, proxy, skip, autoplay, workers, languages).
+
+use player_api::{find_language, Language};
 
 use crate::app_model::AppModel;
 
@@ -12,6 +14,14 @@ pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiA
     }
     let services = &dispatcher.services;
     match action {
+        UiAction::SetSettingsPage(page) => {
+            model.settings.page = page;
+            return true;
+        }
+        UiAction::SetExtensionsTab(tab) => {
+            model.settings.extensions_tab = tab;
+            return true;
+        }
         UiAction::SetDebugLogging(enabled) => {
             report(
                 model,
@@ -42,6 +52,35 @@ pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiA
             );
         }
         UiAction::SetPluginWorkerLimit(limit) => set_worker_limit(dispatcher, model, limit),
+        UiAction::SetPreferredAudio(code) => {
+            let language = code.as_deref().and_then(find_language);
+            report(
+                model,
+                "Cannot save preferred audio",
+                services.settings.set_preferred_audio(language),
+            );
+            if let Some(playback) = &services.playback {
+                playback.set_preferred_audio(language);
+            }
+        }
+        UiAction::SetPreferredSubtitles(codes) => {
+            let languages: Vec<Language> = codes.iter().filter_map(|c| find_language(c)).collect();
+            report(
+                model,
+                "Cannot save preferred subtitles",
+                services.settings.set_preferred_subtitles(&languages),
+            );
+            if let Some(playback) = &services.playback {
+                playback.set_preferred_subtitles(&languages);
+            }
+        }
+        UiAction::SetAutoSubtitles(enabled) => {
+            report(
+                model,
+                "Cannot save auto subtitles",
+                services.settings.set_auto_select_subtitles(enabled),
+            );
+        }
         _ => return false,
     }
     refresh_local_state(dispatcher, model);

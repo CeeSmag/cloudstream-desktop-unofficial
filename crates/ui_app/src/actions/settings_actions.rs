@@ -22,6 +22,7 @@ pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiA
             repository_url,
             listing,
         } => install(dispatcher, model, repository_url, listing),
+        UiAction::PreparePluginCatalog => prepare_catalog(dispatcher, model),
         other => {
             if !preference_actions::perform(dispatcher, model, other.clone()) {
                 perform_extension_change(dispatcher, model, other);
@@ -101,8 +102,33 @@ pub(super) fn refresh_local_state(dispatcher: &Dispatcher, model: &mut AppModel)
     if let Ok(limit) = services.settings.plugin_worker_limit() {
         model.settings.plugin_worker_limit = limit.unwrap_or(0) as u32;
     }
+    if let Ok(audio) = services.settings.preferred_audio() {
+        model.settings.preferred_audio = audio.map(|language| language.code().to_owned());
+    }
+    if let Ok(subs) = services.settings.preferred_subtitles() {
+        model.settings.preferred_subtitles = subs
+            .iter()
+            .map(|language| language.code().to_owned())
+            .collect();
+    }
+    if let Ok(auto) = services.settings.auto_select_subtitles() {
+        model.settings.auto_select_subtitles = auto;
+    }
+    apply_language_prefs_to_player(services);
     model.providers = services.extensions.providers();
     browse_actions::refresh_library(dispatcher, model);
+}
+
+fn apply_language_prefs_to_player(services: &crate::ui_services::UiServices) {
+    let Some(playback) = &services.playback else {
+        return;
+    };
+    if let Ok(audio) = services.settings.preferred_audio() {
+        playback.set_preferred_audio(audio);
+    }
+    if let Ok(subs) = services.settings.preferred_subtitles() {
+        playback.set_preferred_subtitles(&subs);
+    }
 }
 
 pub(super) fn load_installed_extensions(dispatcher: &Dispatcher, model: &mut AppModel) {
@@ -156,5 +182,17 @@ fn install(
             .install(&listing, &repository_url)
             .map_err(|error| error.to_string());
         UiEvent::PluginInstalled { name, result }
+    });
+}
+
+fn prepare_catalog(dispatcher: &Dispatcher, model: &mut AppModel) {
+    model.settings.plugin_catalog = Loadable::Loading;
+    let repositories = dispatcher.services.repositories.clone();
+    dispatcher.runner.spawn("plugin-catalog", move || {
+        let result = repositories
+            .prepare_plugin_catalog()
+            .and_then(|_| repositories.all_plugins())
+            .map_err(|error| error.to_string());
+        UiEvent::PluginCatalogReady(result)
     });
 }

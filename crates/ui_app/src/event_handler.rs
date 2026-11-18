@@ -30,6 +30,9 @@ pub(crate) fn apply(model: &mut AppModel, dispatcher: &Dispatcher, event: UiEven
         UiEvent::PluginInstalled { name, result } => {
             plugin_installed(model, dispatcher, &name, result)
         }
+        UiEvent::PluginCatalogReady(result) => {
+            model.settings.plugin_catalog = result.map_or_else(Loadable::Failed, Loadable::Ready);
+        }
         UiEvent::UpdateChecked(result) => apply_update_check(model, result),
         UiEvent::Notice(notice) => model.notify(notice),
     }

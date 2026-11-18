@@ -46,6 +46,8 @@ pub(crate) enum UiEvent {
         name: String,
         result: Result<Vec<ProviderInfo>, String>,
     },
+    /// Global plugin catalog finished building.
+    PluginCatalogReady(Result<Vec<app_services::PluginHit>, String>),
     /// A message to show as-is.
     Notice(Notice),
 }

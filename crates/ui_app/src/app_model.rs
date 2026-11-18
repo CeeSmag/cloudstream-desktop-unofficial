@@ -57,9 +57,29 @@ pub(crate) struct SearchState {
     pub(crate) outcomes: Vec<ProviderSearchOutcome>,
 }
 
+/// Top-level Settings page (matches the original General / Preferences / Extensions shell).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum SettingsPage {
+    General,
+    Preferences,
+    #[default]
+    Extensions,
+}
+
+/// Sub-tab under Settings → Extensions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ExtensionsTab {
+    #[default]
+    Repositories,
+    Installed,
+    Plugins,
+}
+
 /// State of the settings tab.
 #[derive(Default)]
 pub(crate) struct SettingsState {
+    pub(crate) page: SettingsPage,
+    pub(crate) extensions_tab: ExtensionsTab,
     pub(crate) repository_input: String,
     pub(crate) repositories: Vec<RepositoryEntry>,
     pub(crate) plugin_lists: HashMap<String, Loadable<Vec<PluginListing>>>,
@@ -67,6 +87,9 @@ pub(crate) struct SettingsState {
     pub(crate) disabled_providers: Vec<String>,
     pub(crate) busy_plugins: HashSet<String>,
     pub(crate) adding_repository: bool,
+    /// Global plugin catalog (Plugins subtab).
+    pub(crate) plugin_catalog: Loadable<Vec<app_services::PluginHit>>,
+    pub(crate) plugin_catalog_filter: String,
     /// Debug logging preference (mirrors SettingsService).
     pub(crate) debug_logging: bool,
     /// Play HLS through the local stream proxy.
@@ -77,6 +100,12 @@ pub(crate) struct SettingsState {
     pub(crate) autoplay_next: bool,
     /// Resident plugin JVM cap (`0` = unlimited).
     pub(crate) plugin_worker_limit: u32,
+    /// Preferred audio ISO code, or empty for stream default.
+    pub(crate) preferred_audio: Option<String>,
+    /// Preferred subtitle ISO codes (at most three).
+    pub(crate) preferred_subtitles: Vec<String>,
+    /// Turn on a preferred-language subtitle automatically.
+    pub(crate) auto_select_subtitles: bool,
     /// Latest update check result text for the Settings card.
     pub(crate) update_status: Option<String>,
     /// Download URL from the last successful update check.
