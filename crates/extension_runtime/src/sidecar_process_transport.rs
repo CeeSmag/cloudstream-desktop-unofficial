@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
 use crate::rpc_message::encode_request;
-use crate::sidecar_process_kill::discard_child;
+use crate::sidecar_process_kill::discard_running;
 use crate::sidecar_process_start::{start_sidecar, RunningSidecar};
 use crate::{RpcTransport, SidecarLaunchConfig};
 
@@ -91,7 +91,7 @@ impl RpcTransport for SidecarProcessTransport {
         let mut slot = self.lock_running();
         if slot.is_none() {
             let mut fresh = start_sidecar(&self.config)?;
-            self.pid.store(fresh.child.id(), Ordering::SeqCst);
+            self.pid.store(fresh.pid, Ordering::SeqCst);
             self.replay_startup_calls(&mut fresh);
             *slot = Some(fresh);
         }
@@ -204,7 +204,7 @@ impl Drop for SidecarProcessTransport {
 #[tracing::instrument(level = "debug", skip_all)]
 fn discard(slot: &mut Option<RunningSidecar>) {
     if let Some(mut running) = slot.take() {
-        discard_child(&mut running.child);
+        discard_running(&mut running);
     }
 }
 

@@ -29,10 +29,18 @@ unsafe impl Send for SidecarJobObject {}
 impl SidecarJobObject {
     /// Creates a job with memory / process caps and assigns `child` to it.
     /// Fails closed: if the OS refuses, the caller must not keep an unconstrained sidecar.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn constrain(child: &Child) -> Result<Self, GatewayError> {
+        Self::constrain_raw_handle(child.as_raw_handle())
+    }
+
+    /// Same as [`Self::constrain`], but for a raw process handle (AppContainer launch).
+    pub(crate) fn constrain_raw_handle(
+        process: *mut std::ffi::c_void,
+    ) -> Result<Self, GatewayError> {
         let job = create_job()?;
         set_limits(job)?;
-        assign_process(job, child)?;
+        assign_raw_process(job, process)?;
         tracing::info!(
             memory_mb = JOB_MEMORY_LIMIT_BYTES / (1024 * 1024),
             active_process_limit = ACTIVE_PROCESS_LIMIT,
@@ -106,9 +114,11 @@ fn set_limits(job: *mut std::ffi::c_void) -> Result<(), GatewayError> {
     Ok(())
 }
 
-fn assign_process(job: *mut std::ffi::c_void, child: &Child) -> Result<(), GatewayError> {
-    let process = child.as_raw_handle();
-    // SAFETY: process is the live Child's handle; job is a valid job object.
+fn assign_raw_process(
+    job: *mut std::ffi::c_void,
+    process: *mut std::ffi::c_void,
+) -> Result<(), GatewayError> {
+    // SAFETY: process is a live process handle; job is a valid job object.
     let ok = unsafe { AssignProcessToJobObject(job, process) };
     if ok == 0 {
         return Err(job_error("AssignProcessToJobObject"));

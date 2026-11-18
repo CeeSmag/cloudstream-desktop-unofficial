@@ -1,25 +1,29 @@
 //! Ends a sidecar process tree (Windows: `taskkill /T`; elsewhere: `kill -KILL`).
 
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
+
+use crate::sidecar_process_start::RunningSidecar;
 
 /// Windows flag that stops a console window from flashing up for the helper command.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Kills the process tree, then the child handle, then waits for reaping.
+/// Kills the process tree for a running sidecar and drops its handles.
 #[tracing::instrument(level = "debug", skip_all)]
-pub(crate) fn discard_child(child: &mut Child) {
-    kill_process_tree(child.id());
-    if let Err(error) = child.kill() {
-        tracing::debug!(%error, "sidecar already exited");
-    }
-    if let Err(error) = child.wait() {
-        tracing::debug!(%error, "could not reap sidecar");
+pub(crate) fn discard_running(running: &mut RunningSidecar) {
+    kill_process_tree(running.pid);
+    #[cfg(not(windows))]
+    {
+        if let Err(error) = running.child.kill() {
+            tracing::debug!(%error, "sidecar already exited");
+        }
+        if let Err(error) = running.child.wait() {
+            tracing::debug!(%error, "could not reap sidecar");
+        }
     }
 }
 
-/// On Windows the sidecar starts through `cs-sidecar.bat` (cmd.exe), which starts `java.exe`; ending
-/// only the wrapper leaves the JVM running, holding the plugin files. `taskkill /T` ends the whole tree.
+/// On Windows the sidecar may still leave helper processes; `taskkill /T` ends the whole tree.
 #[cfg(windows)]
 pub(crate) fn kill_process_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
