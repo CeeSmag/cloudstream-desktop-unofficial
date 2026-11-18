@@ -1,5 +1,7 @@
 //! Results of background work, handed to the Slint event loop.
 
+use crate::request_tickets::Ticket;
+
 /// One finished piece of background work for the UI thread to show.
 #[derive(Debug)]
 pub(crate) enum UiEvent {
@@ -12,17 +14,15 @@ pub(crate) enum UiEvent {
         providers: Vec<String>,
         error: Option<String>,
     },
-    HomeLoaded(Vec<(String, Vec<core_model::SearchResult>)>),
-    SearchLoaded(Vec<core_model::SearchResult>),
-    BrowseLoaded(Vec<BrowseRow>),
-    DetailsLoaded(Box<DetailsPage>),
-    DetailsFailed(String),
-    OpenProgress(playback_session::OpenProgress),
-    OpenReady {
-        index: usize,
-    },
-    OpenUpdate(playback_session::CheckedOpen),
-    OpenFailed(String),
+    HomeLoaded(Ticket, Vec<(String, Vec<core_model::SearchResult>)>),
+    SearchLoaded(Ticket, Vec<core_model::SearchResult>),
+    BrowseLoaded(Ticket, Vec<BrowseRow>),
+    DetailsLoaded(Ticket, Box<DetailsPage>),
+    DetailsFailed(Ticket, String),
+    OpenProgress(Ticket, playback_session::OpenProgress),
+    OpenReady(Ticket, usize),
+    OpenUpdate(Ticket, playback_session::CheckedOpen),
+    OpenFailed(Ticket, String),
     Notice(String),
     CloudflareNeeded {
         host: String,
@@ -30,6 +30,24 @@ pub(crate) enum UiEvent {
         id: String,
     },
     UpdateLabel(String),
+}
+
+impl UiEvent {
+    /// The request this answers, for answers that a newer request can make stale.
+    pub(crate) fn ticket(&self) -> Option<Ticket> {
+        match self {
+            Self::HomeLoaded(ticket, _)
+            | Self::SearchLoaded(ticket, _)
+            | Self::BrowseLoaded(ticket, _)
+            | Self::DetailsLoaded(ticket, _)
+            | Self::DetailsFailed(ticket, _)
+            | Self::OpenProgress(ticket, _)
+            | Self::OpenReady(ticket, _)
+            | Self::OpenUpdate(ticket, _)
+            | Self::OpenFailed(ticket, _) => Some(*ticket),
+            _ => None,
+        }
+    }
 }
 
 /// A loaded title page.

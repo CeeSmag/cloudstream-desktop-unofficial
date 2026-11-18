@@ -4,6 +4,7 @@ use app_services::PlaybackItem;
 use slint::Model;
 
 use crate::posters::empty_episodes;
+use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -22,13 +23,8 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     });
     let c = ctx.clone();
     ui.on_play_episode(move |index| play_episode(&c, index));
-    let weak = ctx.ui.clone();
-    ui.on_close_details(move || {
-        if let Some(ui) = weak.upgrade() {
-            ui.set_details_title("".into());
-            ui.set_episodes(empty_episodes());
-        }
-    });
+    let c = ctx.clone();
+    ui.on_close_details(move || close_details(&c));
     let c = ctx.clone();
     ui.on_skip_checks(move || c.session.borrow().control.skip_checks());
     let weak = ctx.ui.clone();
@@ -37,6 +33,25 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
             ui.set_season_filter(parse_season_label(&label));
         }
     });
+}
+
+/// Closes the title page; its late answer and a video still opening from it are dropped.
+fn close_details(ctx: &BridgeContext) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.tickets.cancel(RequestKind::Details);
+        if ui.get_open_busy() {
+            session.control.cancel_open();
+            session.tickets.cancel(RequestKind::Open);
+        }
+    }
+    ui.set_open_busy(false);
+    ui.set_open_status("".into());
+    ui.set_details_title("".into());
+    ui.set_episodes(empty_episodes());
 }
 
 fn play_details(ctx: &BridgeContext) {

@@ -6,6 +6,7 @@ use std::rc::Rc;
 use app_services::UiServices;
 
 use crate::background_work::{EventPump, UiSender};
+use crate::request_tickets::{RequestKind, Ticket};
 use crate::CloudStream;
 
 use super::session::{AppExtras, Session};
@@ -34,6 +35,11 @@ impl BridgeContext {
     /// Services a worker thread can own.
     pub(crate) fn owned_services(&self) -> UiServices {
         (*self.services).clone()
+    }
+
+    /// A ticket for a new request of `kind`; earlier answers of that kind are dropped from now on.
+    pub(crate) fn issue_ticket(&self, kind: RequestKind) -> Ticket {
+        self.session.borrow_mut().tickets.issue(kind)
     }
 
     /// The exchange folder shared with the sidecar's Cloudflare solver.

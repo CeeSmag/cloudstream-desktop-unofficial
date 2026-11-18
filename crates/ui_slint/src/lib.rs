@@ -8,6 +8,7 @@
 mod background_work;
 mod bridge;
 mod posters;
+mod request_tickets;
 mod startup_progress;
 mod ui_events;
 mod update;

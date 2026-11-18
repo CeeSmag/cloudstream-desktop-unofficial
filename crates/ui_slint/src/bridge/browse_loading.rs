@@ -3,18 +3,20 @@
 use app_services::{BrowseFilterRequest, BrowseService};
 
 use crate::background_work::spawn_work;
+use crate::request_tickets::RequestKind;
 use crate::ui_events::{BrowseRow, UiEvent};
 
 use super::bridge_context::BridgeContext;
 
 /// Loads the most popular titles of `kind` ("movie" or "tv").
 pub(crate) fn load_browse(ctx: &BridgeContext, kind: String) {
+    let ticket = ctx.issue_ticket(RequestKind::Browse);
     let sender = ctx.sender();
     spawn_work("browse", move || match fetch_popular(&kind) {
-        Ok(rows) => sender.send(UiEvent::BrowseLoaded(rows)),
+        Ok(rows) => sender.send(UiEvent::BrowseLoaded(ticket, rows)),
         Err(error) => {
             tracing::warn!(%kind, %error, "Browse could not load");
-            sender.send(UiEvent::BrowseLoaded(Vec::new()));
+            sender.send(UiEvent::BrowseLoaded(ticket, Vec::new()));
         }
     });
 }

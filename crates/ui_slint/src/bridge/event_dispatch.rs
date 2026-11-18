@@ -17,6 +17,12 @@ pub(crate) fn drain_events(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
+    if let Some(ticket) = event.ticket() {
+        if !ctx.session.borrow().tickets.is_current(ticket) {
+            tracing::debug!(kind = ?ticket.kind(), "dropping the answer to a replaced request");
+            return;
+        }
+    }
     match event {
         UiEvent::StartupProgress {
             finished,
@@ -26,18 +32,18 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         UiEvent::StartupDone { providers, error } => {
             show_startup_done(ctx, ui, &providers, error);
         }
-        UiEvent::HomeLoaded(sections) => show_home(ctx, ui, &sections),
-        UiEvent::SearchLoaded(items) => show_search(ctx, ui, &items),
-        UiEvent::BrowseLoaded(rows) => show_browse(ctx, ui, rows),
-        UiEvent::DetailsLoaded(page) => show_details(ctx, ui, *page),
-        UiEvent::OpenProgress(progress) => show_open_progress(ui, progress),
-        UiEvent::OpenReady { index } => start_ready_stream(ctx, ui, index),
-        UiEvent::OpenUpdate(open) => show_open_update(ctx, ui, open),
-        UiEvent::OpenFailed(error) => {
+        UiEvent::HomeLoaded(_, sections) => show_home(ctx, ui, &sections),
+        UiEvent::SearchLoaded(_, items) => show_search(ctx, ui, &items),
+        UiEvent::BrowseLoaded(_, rows) => show_browse(ctx, ui, rows),
+        UiEvent::DetailsLoaded(_, page) => show_details(ctx, ui, *page),
+        UiEvent::OpenProgress(_, progress) => show_open_progress(ui, progress),
+        UiEvent::OpenReady(_, index) => start_ready_stream(ctx, ui, index),
+        UiEvent::OpenUpdate(_, open) => show_open_update(ctx, ui, open),
+        UiEvent::OpenFailed(_, error) => {
             ui.set_open_busy(false);
             ui.set_notice(error.into());
         }
-        UiEvent::DetailsFailed(text) | UiEvent::Notice(text) => ui.set_notice(text.into()),
+        UiEvent::DetailsFailed(_, text) | UiEvent::Notice(text) => ui.set_notice(text.into()),
         UiEvent::CloudflareNeeded { host, url, id } => {
             {
                 let mut session = ctx.session.borrow_mut();

@@ -2,6 +2,7 @@
 
 use player_api::PlaybackState;
 
+use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -73,6 +74,11 @@ fn toggle_pause(ctx: &BridgeContext) {
 }
 
 fn close_player(ctx: &BridgeContext) {
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.control.cancel_open();
+        session.tickets.cancel(RequestKind::Open);
+    }
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
     }

@@ -3,6 +3,7 @@
 use slint::Model;
 
 use crate::background_work::spawn_work;
+use crate::request_tickets::RequestKind;
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
@@ -37,6 +38,7 @@ pub(crate) fn wire_catalog(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn search_titles(ctx: &BridgeContext, query: String) {
+    let ticket = ctx.issue_ticket(RequestKind::Search);
     let services = ctx.owned_services();
     let sender = ctx.sender();
     spawn_work("search", move || {
@@ -48,6 +50,6 @@ fn search_titles(ctx: &BridgeContext, query: String) {
                 Err(error) => tracing::warn!(%error, "a provider's search failed"),
             }
         }
-        sender.send(UiEvent::SearchLoaded(items));
+        sender.send(UiEvent::SearchLoaded(ticket, items));
     });
 }

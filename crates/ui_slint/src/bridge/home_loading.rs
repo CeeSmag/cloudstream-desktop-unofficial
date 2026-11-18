@@ -4,6 +4,7 @@ use app_services::UiServices;
 use core_model::{MainPageEntry, ProviderInfo, SearchResult};
 
 use crate::background_work::spawn_work;
+use crate::request_tickets::RequestKind;
 use crate::ui_events::UiEvent;
 
 use super::bridge_context::BridgeContext;
@@ -13,6 +14,7 @@ pub(crate) type HomeShelf = (String, Vec<SearchResult>);
 
 /// Loads every main-page shelf of the selected provider (or the first one).
 pub(crate) fn load_home(ctx: &BridgeContext) {
+    let ticket = ctx.issue_ticket(RequestKind::Home);
     let services = ctx.owned_services();
     let sender = ctx.sender();
     let provider = ctx
@@ -31,7 +33,7 @@ pub(crate) fn load_home(ctx: &BridgeContext) {
         let sections = chosen
             .map(|info| provider_shelves(&services, info))
             .unwrap_or_default();
-        sender.send(UiEvent::HomeLoaded(sections));
+        sender.send(UiEvent::HomeLoaded(ticket, sections));
     });
 }
 

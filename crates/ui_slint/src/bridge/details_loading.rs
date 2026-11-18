@@ -4,6 +4,7 @@ use app_services::UiServices;
 use core_model::{LoadDetails, WatchProgress};
 
 use crate::background_work::spawn_work;
+use crate::request_tickets::RequestKind;
 use crate::ui_events::{DetailsPage, EpisodeRow, UiEvent};
 use crate::PosterItem;
 
@@ -19,6 +20,7 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
         media_key: item.media_key.to_string(),
     };
     ctx.session.borrow_mut().details = target.clone();
+    let ticket = ctx.issue_ticket(RequestKind::Details);
     let fallback_title = item.title.to_string();
     let services = ctx.owned_services();
     let sender = ctx.sender();
@@ -26,11 +28,11 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
         match services.catalog.details(&target.provider, &target.url) {
             Ok(details) => {
                 let page = details_page(&services, target, details, fallback_title);
-                sender.send(UiEvent::DetailsLoaded(Box::new(page)));
+                sender.send(UiEvent::DetailsLoaded(ticket, Box::new(page)));
             }
             Err(error) => {
                 tracing::warn!(provider = %target.provider, %error, "title page failed to load");
-                sender.send(UiEvent::DetailsFailed(error.to_string()));
+                sender.send(UiEvent::DetailsFailed(ticket, error.to_string()));
             }
         }
     });

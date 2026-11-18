@@ -9,6 +9,7 @@ use playback_session::{
 
 use crate::background_work::{spawn_work, UiSender};
 use crate::posters::source_rows;
+use crate::request_tickets::{RequestKind, Ticket};
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
@@ -16,6 +17,7 @@ use super::bridge_context::BridgeContext;
 
 /// What a worker needs to open one video.
 struct OpenJob {
+    ticket: Ticket,
     services: UiServices,
     item: PlaybackItem,
     data: String,
@@ -31,15 +33,18 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String) 
             .notice(problem.unwrap_or_else(|| "no player".into()));
         return;
     }
-    let (control, live) = {
+    let (control, live, ticket) = {
         let mut session = ctx.session.borrow_mut();
+        // The video opened before stops searching and checking; its answers are dropped.
+        session.control.cancel_open();
+        let ticket = session.tickets.issue(RequestKind::Open);
         session.control = OpenControl::default();
         session.live = LiveSources::new();
         session.target = Some(item.clone());
         session.episode_data.clone_from(&data);
         session.links.clear();
         session.selected = 0;
-        (session.control.clone(), session.live.clone())
+        (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {
         ui.set_open_busy(true);
@@ -47,6 +52,7 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String) 
         ui.set_player_title(item.title.clone().into());
     }
     let job = OpenJob {
+        ticket,
         services: ctx.owned_services(),
         item,
         data,
@@ -58,15 +64,16 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String) 
 }
 
 fn run_open_job(job: &OpenJob, sender: &UiSender) {
+    let ticket = job.ticket;
     let ready_sent = AtomicBool::new(false);
-    let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(progress));
+    let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
     let on_update = |open: &CheckedOpen| {
         job.live.publish(open.clone());
-        sender.send(UiEvent::OpenUpdate(open.clone()));
+        sender.send(UiEvent::OpenUpdate(ticket, open.clone()));
     };
     let on_ready = |index: usize| {
         if !ready_sent.swap(true, Ordering::SeqCst) {
-            sender.send(UiEvent::OpenReady { index });
+            sender.send(UiEvent::OpenReady(ticket, index));
         }
     };
     let request = OpenRequest {
@@ -82,16 +89,16 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
     };
     match run_open(request) {
         Ok(opened) => {
-            sender.send(UiEvent::OpenUpdate(opened.clone()));
+            sender.send(UiEvent::OpenUpdate(ticket, opened.clone()));
             match opened.play_index {
                 Some(index) => on_ready(index),
                 None if !ready_sent.load(Ordering::SeqCst) => {
-                    sender.send(UiEvent::OpenFailed("no working streams".into()));
+                    sender.send(UiEvent::OpenFailed(ticket, "no working streams".into()));
                 }
                 None => {}
             }
         }
-        Err(error) => sender.send(UiEvent::OpenFailed(error.to_string())),
+        Err(error) => sender.send(UiEvent::OpenFailed(ticket, error.to_string())),
     }
 }
 
@@ -99,6 +106,7 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
 pub(crate) fn refresh_playing(ctx: &BridgeContext) {
     let session = ctx.session.borrow();
     let job = OpenJob {
+        ticket: session.tickets.current(RequestKind::Open),
         services: ctx.owned_services(),
         item: session
             .target
@@ -115,7 +123,9 @@ pub(crate) fn refresh_playing(ctx: &BridgeContext) {
     drop(session);
     let sender = ctx.sender();
     spawn_work("refresh-sources", move || {
-        let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(progress));
+        let ticket = job.ticket;
+        let on_progress =
+            |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
         let request = RefreshRequest {
             streams: &job.services.streams,
             provider: &job.item.provider,
@@ -128,7 +138,7 @@ pub(crate) fn refresh_playing(ctx: &BridgeContext) {
             on_progress: &on_progress,
         };
         match playback_session::refresh_sources(request) {
-            Ok(opened) => sender.send(UiEvent::OpenUpdate(opened)),
+            Ok(opened) => sender.send(UiEvent::OpenUpdate(ticket, opened)),
             Err(error) => sender.notice(format!("Refresh failed: {error}")),
         }
     });

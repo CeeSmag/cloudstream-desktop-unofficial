@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
+use crate::request_tickets::RequestTickets;
 use crate::update::UpdateInfo;
 
 /// Optional runtime extras that are not part of [`app_services::UiServices`].
@@ -31,6 +32,7 @@ pub(crate) struct Session {
     pub(crate) cf_id: Option<String>,
     pub(crate) cf_host: Option<String>,
     pub(crate) allowed_cf: HashSet<String>,
+    pub(crate) tickets: RequestTickets,
 }
 
 /// Which title the details page shows.
@@ -58,6 +60,7 @@ impl Default for Session {
             cf_id: None,
             cf_host: None,
             allowed_cf: HashSet::new(),
+            tickets: RequestTickets::default(),
         }
     }
 }
