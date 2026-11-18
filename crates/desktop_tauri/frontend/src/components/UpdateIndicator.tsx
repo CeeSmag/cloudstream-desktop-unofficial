@@ -2,28 +2,34 @@ import React from 'react';
 import { ArrowUpCircle, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 import { UpdateCheckResult } from '../types';
+import { POST_READY_STAGGER_MS } from '../utils/homeFetchGate';
 
 interface UpdateIndicatorProps {
   onOpenSettings: () => void;
 }
 
 type State =
+  | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'failed' }
   | { kind: 'done'; result: UpdateCheckResult };
 
-/** Checks GitHub once per app launch and shows the result next to the provider pill. */
+/** Checks GitHub once per app launch (after a short settle) and shows the result next to the provider pill. */
 export const UpdateIndicator: React.FC<UpdateIndicatorProps> = ({ onOpenSettings }) => {
-  const [state, setState] = React.useState<State>({ kind: 'checking' });
+  const [state, setState] = React.useState<State>({ kind: 'idle' });
 
   React.useEffect(() => {
     let cancelled = false;
-    api
-      .checkForUpdates()
-      .then((result) => !cancelled && setState({ kind: 'done', result }))
-      .catch(() => !cancelled && setState({ kind: 'failed' }));
+    const timer = window.setTimeout(() => {
+      setState({ kind: 'checking' });
+      api
+        .checkForUpdates()
+        .then((result) => !cancelled && setState({ kind: 'done', result }))
+        .catch(() => !cancelled && setState({ kind: 'failed' }));
+    }, POST_READY_STAGGER_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, []);
 
@@ -32,7 +38,10 @@ export const UpdateIndicator: React.FC<UpdateIndicatorProps> = ({ onOpenSettings
   let cls = 'text-zinc-400 border-white/10 bg-white/5 hover:bg-white/10';
   let label: string | null = null;
 
-  if (state.kind === 'checking') {
+  if (state.kind === 'idle') {
+    icon = <ArrowUpCircle className="w-3.5 h-3.5 opacity-40" />;
+    title = 'Update check starts after Home settles';
+  } else if (state.kind === 'checking') {
     icon = <Loader2 className="w-3.5 h-3.5 animate-spin" />;
     title = 'Checking for updates...';
   } else if (state.kind === 'failed') {

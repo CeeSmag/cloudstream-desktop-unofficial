@@ -102,8 +102,15 @@ export const api = {
 
   getProviders: () => invokeTauri<ProviderInfo[]>('get_available_providers'),
 
-  getHomeSections: (providerId?: string) =>
-    invokeTauri<HomeSection[]>('get_home_sections', { providerId }),
+  getHomeSections: (
+    providerId?: string,
+    options?: { offset?: number; limit?: number },
+  ) =>
+    invokeTauri<HomeSection[]>('get_home_sections', {
+      providerId,
+      offset: options?.offset,
+      limit: options?.limit,
+    }),
 
   search: (query: string, providerId?: string) =>
     invokeTauri<SearchItem[]>('search_media', { query, providerId }),

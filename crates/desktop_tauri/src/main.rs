@@ -9,6 +9,7 @@ mod browse_fetcher;
 mod browse_genres;
 mod browse_query;
 mod catalog_commands;
+mod catalog_home;
 mod check_gate;
 mod check_gate_state;
 mod check_progress;

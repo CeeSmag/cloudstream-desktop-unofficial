@@ -515,7 +515,7 @@ All commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests
 | | `open_logs_folder` | Opens OS file explorer at `<data_dir>/logs/`. |
 | | `log_from_webapp` | Writes frontend console log messages into the backend trace. |
 | **Catalog** | `get_available_providers` | Lists active providers and capabilities. |
-| | `get_home_sections` | Fetches homepage shelves and banners. |
+| | `get_home_sections` | Fetches homepage shelves (`offset`/`limit` over `main_page` entries so the first shelf can paint before the rest). |
 | | `search_media` | Queries multiple providers simultaneously. |
 | | `get_media_details` | Loads metadata, cast, and episode list for a title. |
 | | `browse_catalog` | Queries TMDB Discover API (60 items/page) filtered by media type, year, sort/rating, and genre. |

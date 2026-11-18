@@ -1,8 +1,9 @@
 //! Tauri commands for browsing catalog, home shelves, and searching media.
 
 use crate::app_state::AppState;
-use crate::dto::{EpisodeDto, HomeItemDto, HomeSectionDto, MediaDetailsDto, SearchItemDto};
-use core_model::{HomePageSection, LoadDetails, ProviderInfo, SearchResult};
+use crate::catalog_home::{self, entry_window};
+use crate::dto::{EpisodeDto, HomeSectionDto, MediaDetailsDto, SearchItemDto};
+use core_model::{LoadDetails, ProviderInfo, SearchResult};
 use tauri::State;
 
 /// Returns the list of installed providers.
@@ -15,13 +16,23 @@ pub async fn get_available_providers(
     Ok(services.extensions.providers())
 }
 
-/// Retrieves home page sections for the specified provider.
+/// Home shelves for a provider. Optional `offset` / `limit` cover a window of `main_page`
+/// entries so the first paint can load one shelf and the rest follow (`limit` omitted = to end).
 #[tauri::command]
-#[tracing::instrument(level = "debug", skip_all, fields(provider_id = ?provider_id), err)]
+#[tracing::instrument(
+    level = "debug",
+    skip_all,
+    fields(provider_id = ?provider_id, offset, limit),
+    err
+)]
 pub async fn get_home_sections(
     provider_id: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<HomeSectionDto>, String> {
+    let start = offset.unwrap_or(0) as usize;
+    let cap = limit.map(|n| n as usize);
     state
         .run_blocking(move |services| {
             let providers = services.extensions.providers();
@@ -32,27 +43,9 @@ pub async fn get_home_sections(
             let Some(provider_info) = provider else {
                 return Ok(Vec::new());
             };
-            let mut sections = Vec::new();
-            let mut first_error: Option<String> = None;
-            for entry in &provider_info.main_page {
-                match services.catalog.home(&provider_info.name, entry) {
-                    Ok(Some(page)) => {
-                        for section in page.items {
-                            sections.push(map_home_section(section, &provider_info.name));
-                        }
-                    }
-                    Ok(None) => tracing::debug!(provider = %provider_info.name, category = %entry.name, "the provider has nothing for this Home category"),
-                    Err(error) => {
-                        tracing::warn!(provider = %provider_info.name, category = %entry.name, %error, "a Home category failed to load");
-                        first_error.get_or_insert_with(|| error.to_string());
-                    }
-                }
-            }
-            // Nothing to show and something went wrong: say so, instead of an empty page.
-            match (sections.is_empty(), first_error) {
-                (true, Some(error)) => Err(format!("{} could not load its Home page: {error}", provider_info.name)),
-                _ => Ok(sections),
-            }
+            let range = entry_window(provider_info.main_page.len(), start, cap);
+            let entries = provider_info.main_page.get(range).unwrap_or(&[]);
+            catalog_home::load_sections(&services.catalog, &provider_info, entries)
         })
         .await
 }
@@ -109,30 +102,6 @@ pub async fn get_media_details(
             Ok(map_media_details(details, &provider_id))
         })
         .await
-}
-
-fn map_home_section(section: HomePageSection, provider: &str) -> HomeSectionDto {
-    HomeSectionDto {
-        title: section.name,
-        is_horizontal: section.is_horizontal_images,
-        items: section
-            .list
-            .into_iter()
-            .map(|item| HomeItemDto {
-                id: item.url.clone(),
-                name: item.name,
-                url: item.url,
-                poster_url: item.poster_url,
-                provider: if item.api_name.is_empty() {
-                    provider.to_owned()
-                } else {
-                    item.api_name
-                },
-                media_type: item.media_type,
-                year: item.year,
-            })
-            .collect(),
-    }
 }
 
 fn map_search_item(item: SearchResult, provider: &str) -> SearchItemDto {

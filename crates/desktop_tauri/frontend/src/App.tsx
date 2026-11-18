@@ -26,6 +26,7 @@ import { useContextMenu } from './hooks/useContextMenu';
 import { resumeTarget } from './playback/resumeTarget';
 import { canOpenTitlePage, missingPageMessage, titlePageItem } from './utils/continueWatching';
 import { defaultBrowseFilters, pickBestSearchMatch } from './utils/browseFilters';
+import { mayFetchHome, POST_READY_STAGGER_MS } from './utils/homeFetchGate';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState('home');
@@ -98,14 +99,17 @@ export const App: React.FC = () => {
   const startup = useStartup();
   const contextMenu = useContextMenu();
 
-  // Once Home is shown after start-up, tidy regenerable data in the background (does not block the page).
+  // After the first Home paint settles, tidy regenerable data (staggered so it does not fight the shelves).
   const cleanedAfterReady = React.useRef(false);
   React.useEffect(() => {
     if (!startup.ready || cleanedAfterReady.current) return;
     cleanedAfterReady.current = true;
-    void api.runStorageCleanup().catch((error: unknown) => {
-      logEvent('warn', `storage cleanup after start-up failed: ${describeValue(error)}`);
-    });
+    const timer = window.setTimeout(() => {
+      void api.runStorageCleanup().catch((error: unknown) => {
+        logEvent('warn', `storage cleanup after start-up failed: ${describeValue(error)}`);
+      });
+    }, POST_READY_STAGGER_MS);
+    return () => window.clearTimeout(timer);
   }, [startup.ready]);
 
   // Library & settings
@@ -113,7 +117,7 @@ export const App: React.FC = () => {
   const [continueWatching, setContinueWatching] = React.useState<WatchProgress[]>([]);
   const [isCurrentBookmarked, setIsCurrentBookmarked] = React.useState(false);
 
-  // Loads providers and the first provider's home page.
+  // Loads providers, paints the first Home shelf, then fills in the rest.
   const refreshProviders = React.useCallback(async () => {
     const provs = await api.getProviders();
     setProviders(provs);
@@ -123,10 +127,18 @@ export const App: React.FC = () => {
     setSelectedProvider(target);
     const isCurrent = homeRequests.begin();
     try {
-      const sections = target ? await api.getHomeSections(target) : [];
-      if (isCurrent()) {
-        setHomeSections(sections);
-        if (sections.length > 0) setCloudflareNeeded(null);
+      if (!target) {
+        if (isCurrent()) setHomeSections([]);
+      } else {
+        const first = await api.getHomeSections(target, { offset: 0, limit: 1 });
+        if (!isCurrent()) return;
+        setHomeSections(first);
+        if (first.length > 0) setCloudflareNeeded(null);
+        setHomeLoading(false);
+        const rest = await api.getHomeSections(target, { offset: 1 });
+        if (isCurrent() && rest.length > 0) {
+          setHomeSections((current) => [...current, ...rest]);
+        }
       }
     } catch (error) {
       // The reason is shown, not an empty page that looks like nothing happened; a Cloudflare check
@@ -147,8 +159,11 @@ export const App: React.FC = () => {
       .catch(() => undefined);
   }, []);
 
-  // Initial load
+  // First Home load waits until start-up is ready (avoids fetching under StartupScreen and again after).
+  const readyRef = React.useRef(startup.ready);
+  readyRef.current = startup.ready;
   React.useEffect(() => {
+    if (!mayFetchHome(startup.ready)) return;
     async function init() {
       try {
         await refreshProviders();
@@ -159,13 +174,14 @@ export const App: React.FC = () => {
         setHomeLoading(false);
       }
     }
-    init();
-  }, [refreshProviders]);
+    void init();
+  }, [startup.ready, refreshProviders]);
 
-  // Extensions finish loading in the background; reload providers when the backend says so.
+  // Extensions finish loading / change later; reload only once start-up already finished.
   React.useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen('providers-changed', () => {
+      if (!readyRef.current) return;
       setHomeLoading(true);
       refreshProviders().finally(() => setHomeLoading(false));
     })
