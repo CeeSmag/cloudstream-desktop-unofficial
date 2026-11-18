@@ -20,18 +20,17 @@ export component PosterTile inherits Rectangle {
     border-width: root.focused || touch.has-hover ? 2px : 0px;
     border-color: Theme.accent;
 
-    states [
-        hover when touch.has-hover || root.focused: {
-            card.transform-scale: 1.06;
-            in-out {
-                animate card.transform-scale { duration: 140ms; easing: ease-out; }
-            }
-        }
-    ]
+    // Hover / focus zoom by growing the card's geometry. Not `transform-scale`: FemtoVG (the
+    // default renderer) drew nothing for a card whose `transform-scale` a state sets, so every
+    // tile on Home was invisible while the software renderer showed them.
+    property <length> grow: touch.has-hover || root.focused ? 6px : 0px;
+    animate grow { duration: 140ms; easing: ease-out; }
 
     card := Rectangle {
-        width: 100%;
-        height: 100%;
+        x: -root.grow;
+        y: -root.grow;
+        width: parent.width + 2 * root.grow;
+        height: parent.height + 2 * root.grow;
         background: Theme.card;
         border-radius: Theme.radius;
         drop-shadow-blur: touch.has-hover || root.focused ? 18px : 0px;
@@ -119,7 +118,6 @@ export component PosterRow inherits Flickable {
     callback remove-at(int);
 
     height: 260px;
-    mouse-drag-pan-enabled: true;
 
     HorizontalLayout {
         padding: 4px;
