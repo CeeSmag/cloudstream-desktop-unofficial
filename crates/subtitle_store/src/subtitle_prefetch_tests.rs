@@ -92,21 +92,23 @@ fn rank(language: &str) -> usize {
 }
 
 fn start(fetcher: Arc<Behavior>, workers: usize) -> Run {
+    start_ranked(fetcher, workers, Arc::new(rank))
+}
+
+fn start_ranked(fetcher: Arc<Behavior>, workers: usize, rank_of: LanguageRank) -> Run {
     let scratch = Scratch::new();
     let cache = SubtitleCache::new(scratch.0.clone(), Duration::from_secs(3600));
     let options = LoadOptions {
         attempts: 2,
         backoff: Duration::from_millis(1),
     };
-    let loader = Arc::new(SubtitleLoader::new(cache, fetcher, options));
+    let as_fetcher: Arc<dyn SubtitleFetcher> = fetcher;
+    let loader = Arc::new(SubtitleLoader::new(cache, as_fetcher, options));
     let ready = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&ready);
     let wanted = Arc::new(AtomicBool::new(true));
     let asked = Arc::clone(&wanted);
-    let config = PrefetchConfig {
-        workers,
-        rank_of: Arc::new(rank),
-    };
+    let config = PrefetchConfig { workers, rank_of };
     let (prefetch, handles) = SubtitlePrefetch::start(
         loader,
         &config,
@@ -180,6 +182,32 @@ fn the_preferred_languages_are_downloaded_first() {
     run.prefetch.finish();
     join(std::mem::take(&mut run.handles));
     assert_eq!(languages(&run), ["Arabic", "English", "Spanish", "German"]);
+}
+
+#[test]
+fn languages_ranked_skip_download_are_not_queued() {
+    let behavior = Arc::new(Behavior::instant());
+    let mut run = start_ranked(
+        Arc::clone(&behavior),
+        2,
+        Arc::new(|label| {
+            if label == "English" {
+                0
+            } else {
+                SKIP_DOWNLOAD_RANK
+            }
+        }),
+    );
+    run.prefetch.submit(vec![
+        track("Spanish", "https://s.test/es"),
+        track("English", "https://s.test/en"),
+        track("German", "https://s.test/de"),
+    ]);
+    run.prefetch.finish();
+    join(std::mem::take(&mut run.handles));
+    assert_eq!(languages(&run), ["English"]);
+    assert_eq!(behavior.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(run.prefetch.summary().submitted, 1);
 }
 
 #[test]

@@ -19,6 +19,9 @@ pub type KeepGoing = Arc<dyn Fn() -> bool + Send + Sync>;
 /// Ranks a language label: lower is more wanted.
 pub type LanguageRank = Arc<dyn Fn(&str) -> usize + Send + Sync>;
 
+/// [`LanguageRank`] values at this rank are not downloaded (non-preferred languages).
+pub const SKIP_DOWNLOAD_RANK: usize = usize::MAX;
+
 /// How the downloads run.
 #[derive(Clone)]
 pub struct PrefetchConfig {
@@ -113,6 +116,7 @@ impl SubtitlePrefetch {
     }
 
     /// Queues files; an address that was queued before is ignored.
+    /// Languages ranked [`SKIP_DOWNLOAD_RANK`] are not queued.
     pub fn submit(&self, tracks: Vec<SubtitleTrack>) {
         let mut state = self.shared.lock();
         for track in tracks {
@@ -120,6 +124,9 @@ impl SubtitlePrefetch {
                 continue;
             }
             let rank = (self.shared.rank_of)(&track.lang);
+            if rank == SKIP_DOWNLOAD_RANK {
+                continue;
+            }
             let order = state.submitted;
             state.submitted += 1;
             state.waiting.push(Job { track, rank, order });

@@ -15,6 +15,7 @@ use subtitle_store::{
 use crate::source_discovery::SubtitleSink;
 use crate::source_manager::{CheckUpdate, Tell};
 use crate::source_session::SourceSession;
+use crate::subtitle_attach_limits::may_attach_subtitle;
 
 /// How many subtitle files are downloaded at the same time; the time goes to waiting on the host.
 const DOWNLOADS_AT_ONCE: usize = 8;
@@ -52,16 +53,22 @@ impl Delivery {
         })
     }
 
-    /// Hands one ready file to the video; a file that was handed over before is ignored.
-    /// `remember` saves it in the title's list for next time.
-    pub(crate) fn deliver(&self, ready: &ReadySubtitle, remember: bool) {
-        let parts = &self.parts;
-        let new = self
+    /// True when this URL is new and still within the preferred-language attach cap.
+    fn claim_delivery_slot(&self, ready: &ReadySubtitle) -> bool {
+        let rank = (self.parts.work.rank_of)(&ready.language);
+        let mut delivered = self
             .delivered
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(ready.url.clone());
-        if !new {
+            .unwrap_or_else(PoisonError::into_inner);
+        may_attach_subtitle(delivered.len(), rank) && delivered.insert(ready.url.clone())
+    }
+
+    /// Hands one ready file to the video; a file that was handed over before is ignored.
+    /// `remember` saves it in the title's list for next time.
+    /// Non-preferred languages and files past the per-stream cap are skipped.
+    pub(crate) fn deliver(&self, ready: &ReadySubtitle, remember: bool) {
+        let parts = &self.parts;
+        if !self.claim_delivery_slot(ready) {
             return;
         }
         let track = SubtitleTrack {

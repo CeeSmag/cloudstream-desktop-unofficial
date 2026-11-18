@@ -17,4 +17,5 @@ pub use subtitle_fetcher::{FetchError, SubtitleFetcher, UreqSubtitleFetcher};
 pub use subtitle_loader::{LoadError, LoadOptions, LoadedSubtitle, SubtitleLoader};
 pub use subtitle_prefetch::{
     KeepGoing, LanguageRank, PrefetchConfig, PrefetchSummary, ReadyCallback, SubtitlePrefetch,
+    SKIP_DOWNLOAD_RANK,
 };

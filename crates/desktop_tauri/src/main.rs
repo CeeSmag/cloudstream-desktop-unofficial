@@ -75,6 +75,7 @@ mod storage_cap_plan;
 mod storage_cap_scan;
 mod storage_cleanup;
 mod stream_setup;
+mod subtitle_attach_limits;
 mod subtitle_delivery;
 #[cfg(test)]
 mod subtitle_tests;

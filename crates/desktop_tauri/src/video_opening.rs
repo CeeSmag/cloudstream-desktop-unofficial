@@ -68,7 +68,8 @@ pub(crate) fn services_for_playing(state: &State<'_, AppState>) -> Result<Openin
     })
 }
 
-/// Ranks a subtitle language by its place among the viewer's preferred ones; others come last.
+/// Ranks a subtitle language by its place among the viewer's preferred ones.
+/// Non-preferred languages get [`subtitle_store::SKIP_DOWNLOAD_RANK`] so they are not downloaded.
 fn subtitle_rank(settings: &SettingsService) -> LanguageRank {
     let preferred = settings.preferred_subtitles().unwrap_or_else(|error| {
         tracing::warn!(%error, "cannot read the preferred subtitle languages");
@@ -77,7 +78,7 @@ fn subtitle_rank(settings: &SettingsService) -> LanguageRank {
     Arc::new(move |label| {
         find_language(label)
             .and_then(|language| preferred.iter().position(|wanted| *wanted == language))
-            .unwrap_or(preferred.len())
+            .unwrap_or(subtitle_store::SKIP_DOWNLOAD_RANK)
     })
 }
 
