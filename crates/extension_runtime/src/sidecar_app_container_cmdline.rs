@@ -30,6 +30,16 @@ pub(crate) fn java_exe(config: &SidecarLaunchConfig) -> Result<PathBuf, GatewayE
     Ok(exe)
 }
 
+/// `JAVA_HOME` folder that contains `bin/java.exe`.
+pub(crate) fn java_home_dir(java: &Path) -> Result<PathBuf, GatewayError> {
+    let bin = java.parent().ok_or_else(|| {
+        GatewayError::Unavailable(format!("java.exe has no parent folder: {}", java.display()))
+    })?;
+    bin.parent().map(Path::to_path_buf).ok_or_else(|| {
+        GatewayError::Unavailable(format!("java bin has no JAVA_HOME: {}", bin.display()))
+    })
+}
+
 /// Install home (`.../cs-sidecar`) from `bin/cs-sidecar.bat`.
 pub(crate) fn sidecar_home(config: &SidecarLaunchConfig) -> Result<PathBuf, GatewayError> {
     let bin = config
@@ -124,6 +134,15 @@ fn classpath_for(app_home: &Path) -> Result<String, GatewayError> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn java_home_dir_walks_up_from_java_exe() {
+        let java = PathBuf::from(r"C:\jre\bin\java.exe");
+        assert_eq!(
+            java_home_dir(&java).expect("home"),
+            PathBuf::from(r"C:\jre")
+        );
+    }
 
     #[test]
     fn data_dir_from_config_reads_quoted_path() {

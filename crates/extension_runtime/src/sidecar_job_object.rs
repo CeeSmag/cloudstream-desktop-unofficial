@@ -7,8 +7,8 @@ use std::ptr;
 
 use extension_api::GatewayError;
 
-/// Soft match for the sidecar heap (`-Xmx512m`) plus JVM / native overhead.
-const JOB_MEMORY_LIMIT_BYTES: u64 = 768 * 1024 * 1024;
+/// Cap for `-Xmx512m` plus JVM/native peaks (dex2jar C2 compile of large plugins needs >768 MB).
+const JOB_MEMORY_LIMIT_BYTES: u64 = 1536 * 1024 * 1024;
 
 /// Enough for `cs-sidecar.bat` → `cmd.exe` → `java.exe` and a few helpers.
 const ACTIVE_PROCESS_LIMIT: u32 = 16;
@@ -29,7 +29,6 @@ unsafe impl Send for SidecarJobObject {}
 impl SidecarJobObject {
     /// Creates a job with memory / process caps and assigns `child` to it.
     /// Fails closed: if the OS refuses, the caller must not keep an unconstrained sidecar.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn constrain(child: &Child) -> Result<Self, GatewayError> {
         Self::constrain_raw_handle(child.as_raw_handle())
     }

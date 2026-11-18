@@ -236,17 +236,18 @@ class ExtensionCompatibilityTest {
 
     @Test
     fun `loadExtension refuses paths outside the extensions folder`() {
-        val data = createTempDirectory(prefix = "cs-path-jail-data").toFile()
+        val appData = createTempDirectory(prefix = "cs-path-jail-app").toFile()
+        val sidecar = File(appData, "sidecar").apply { mkdirs() }
+        File(appData, "extensions").mkdirs()
         val outside = createTempDirectory(prefix = "cs-path-jail-outside").toFile()
         try {
-            System.setProperty("cloudstream.data.dir", data.absolutePath)
-            File(data, "extensions").mkdirs()
+            System.setProperty("cloudstream.data.dir", sidecar.absolutePath)
             val decoy = File(outside, "Evil.cs3").apply { writeText("PK") }
             assertFailsWith<IllegalArgumentException> {
                 ProviderService().loadExtension(decoy.absolutePath, trusted = false)
             }
         } finally {
-            data.deleteRecursively()
+            appData.deleteRecursively()
             outside.deleteRecursively()
             System.clearProperty("cloudstream.data.dir")
         }
@@ -259,7 +260,7 @@ class ExtensionCompatibilityTest {
             // Dev machine without the plugin: policy/stub tests above still cover the sandbox.
             return
         }
-        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2""")
+        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2\sidecar""")
         try {
             val providers = ProviderService().loadExtension(cs3.absolutePath, trusted = false)
             assertTrue(providers.isNotEmpty(), "StreamPlay must register at least one provider")
@@ -272,7 +273,7 @@ class ExtensionCompatibilityTest {
     fun `unload then load registers StreamPlay providers again`() {
         val cs3 = File("""C:\cs3d\appdata2\extensions\StreamPlay.cs3""")
         if (!cs3.isFile) return
-        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2""")
+        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2\sidecar""")
         val service = ProviderService()
         service.unloadExtension(cs3.absolutePath)
         val first = service.loadExtension(cs3.absolutePath, trusted = false)

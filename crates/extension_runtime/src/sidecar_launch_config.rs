@@ -48,6 +48,8 @@ impl SidecarLaunchConfig {
         self.add_java_option(
             "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dfile.encoding=UTF-8",
         );
+        // AppContainer cannot open HKCU\Software\JavaSoft\Prefs; keep prefs in memory.
+        self.add_java_option("-Djava.util.prefs.PreferencesFactory=sidecar.NoOpPreferencesFactory");
         self
     }
 
@@ -112,6 +114,10 @@ mod tests {
         assert_eq!(name, "JAVA_OPTS");
         assert!(value.starts_with("-Dcloudstream.data.dir=\"") && value.contains("my data"));
         assert!(value.contains("-Xmx512m"), "heap cap must be present");
+        assert!(
+            value.contains("PreferencesFactory=sidecar.NoOpPreferencesFactory"),
+            "AppContainer-safe prefs factory must be set"
+        );
     }
 
     #[test]

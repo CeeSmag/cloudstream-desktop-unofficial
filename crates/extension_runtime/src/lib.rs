@@ -14,11 +14,17 @@ mod rpc_transport;
 #[cfg(windows)]
 mod sidecar_app_container_acl;
 #[cfg(windows)]
+mod sidecar_app_container_attrs;
+#[cfg(windows)]
 mod sidecar_app_container_cmdline;
 #[cfg(windows)]
 mod sidecar_app_container_ffi;
 #[cfg(windows)]
 mod sidecar_app_container_launch;
+#[cfg(all(windows, test))]
+mod sidecar_app_container_launch_tests;
+#[cfg(windows)]
+mod sidecar_app_container_mirror;
 #[cfg(windows)]
 mod sidecar_app_container_profile;
 #[cfg(windows)]

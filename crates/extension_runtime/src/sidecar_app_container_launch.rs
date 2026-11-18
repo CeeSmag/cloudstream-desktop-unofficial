@@ -9,16 +9,17 @@ use std::ptr;
 
 use extension_api::GatewayError;
 
-use crate::sidecar_app_container_acl::{grant_modify, grant_read_execute};
+use crate::sidecar_app_container_acl::grant_modify;
+use crate::sidecar_app_container_attrs::LaunchAttributes;
 use crate::sidecar_app_container_cmdline::{
-    data_dir_from_config, java_command_line, java_exe, sidecar_home,
+    data_dir_from_config, java_command_line, java_exe, java_home_dir, sidecar_home,
 };
 use crate::sidecar_app_container_ffi::{
-    CloseHandle, ConvertStringSidToSidW, CreatePipe, CreateProcessW, DeleteProcThreadAttributeList,
-    GetLastError, InitializeProcThreadAttributeList, LocalFree, ProcessInformation, ResumeThread,
-    SecurityAttributes, SecurityCapabilities, SetHandleInformation, SidAndAttributes,
-    StartupInfoExW, StartupInfoW, TerminateProcess, UpdateProcThreadAttribute,
+    CloseHandle, ConvertStringSidToSidW, CreatePipe, CreateProcessW, GetLastError, LocalFree,
+    ProcessInformation, ResumeThread, SecurityAttributes, SetHandleInformation, StartupInfoExW,
+    StartupInfoW, TerminateProcess,
 };
+use crate::sidecar_app_container_mirror::ensure_readable;
 use crate::sidecar_app_container_profile::{get_or_create_sidecar_container, AppContainerSid};
 use crate::sidecar_job_object::SidecarJobObject;
 use crate::SidecarLaunchConfig;
@@ -30,8 +31,6 @@ const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const STARTF_USESTDHANDLES: u32 = 0x0000_0100;
 const STARTF_USESHOWWINDOW: u32 = 0x0000_0001;
 const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
-const PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES: usize = 0x0002_0009;
-const SE_GROUP_ENABLED: u32 = 0x0000_0004;
 const CAPABILITY_INTERNET_CLIENT: &str = "S-1-15-3-1";
 
 /// A process started inside the AppContainer, with inherited stdio pipes.
@@ -49,15 +48,58 @@ pub(crate) fn start_in_app_container(
     config: &SidecarLaunchConfig,
 ) -> Result<AppContainerProcess, GatewayError> {
     let sid = get_or_create_sidecar_container()?;
-    let java = java_exe(config)?;
-    let app_home = sidecar_home(config)?;
     let data_dir = data_dir_from_config(config)?;
-    let java_bin = java.parent().unwrap_or(java.as_path());
-    grant_read_execute(java_bin, &sid)?;
-    grant_read_execute(&app_home, &sid)?;
-    grant_modify(&data_dir, &sid)?;
-    let command_line = java_command_line(&java, &app_home, config)?;
-    launch_command_line(&command_line, &sid, Some(java_bin))
+    grant_sidecar_paths(&data_dir, &sid)?;
+    let paths = prepare_readable_paths(config, &sid, &data_dir)?;
+    let command_line = java_command_line(&paths.java, &paths.app_home, config)?;
+    launch_command_line(&command_line, &sid, paths.java.parent())
+}
+
+/// Sidecar sandbox (`…/sidecar`) needs modify; host `.cs3` files live in sibling `…/extensions`.
+fn grant_sidecar_paths(
+    data_dir: &std::path::Path,
+    sid: &AppContainerSid,
+) -> Result<(), GatewayError> {
+    use crate::sidecar_app_container_acl::grant_read_execute;
+    grant_modify(data_dir, sid)?;
+    let Some(app_data) = data_dir.parent() else {
+        return Ok(());
+    };
+    let extensions = app_data.join("extensions");
+    std::fs::create_dir_all(&extensions).map_err(|error| {
+        GatewayError::Unavailable(format!(
+            "cannot create extensions dir {}: {error}",
+            extensions.display()
+        ))
+    })?;
+    grant_read_execute(&extensions, sid)
+}
+
+struct ReadablePaths {
+    java: std::path::PathBuf,
+    app_home: std::path::PathBuf,
+}
+
+/// Grants RX on JDK / sidecar home, or mirrors them under `<data>/appcontainer` when DAC is denied.
+fn prepare_readable_paths(
+    config: &SidecarLaunchConfig,
+    sid: &AppContainerSid,
+    data_dir: &std::path::Path,
+) -> Result<ReadablePaths, GatewayError> {
+    let java = java_exe(config)?;
+    let java_home = java_home_dir(&java)?;
+    let app_home = sidecar_home(config)?;
+    let stage = data_dir.join("appcontainer");
+    let java_home = ensure_readable(&java_home, sid, &stage.join("jre"))?;
+    let app_home = ensure_readable(&app_home, sid, &stage.join("sidecar"))?;
+    let java = java_home.join("bin").join("java.exe");
+    if !java.is_file() {
+        return Err(GatewayError::Unavailable(format!(
+            "java.exe missing after AppContainer path prep: {}",
+            java.display()
+        )));
+    }
+    Ok(ReadablePaths { java, app_home })
 }
 
 fn launch_command_line(
@@ -95,62 +137,25 @@ unsafe fn launch_with_sids(
     let (stdin_read, stdin_write) = create_pipe(true)?;
     let (stdout_read, stdout_write) = create_pipe(false)?;
     let (stderr_read, stderr_write) = create_pipe(false)?;
-    let mut attr_buf = attribute_list_for(app_sid, cap_sid)?;
-    let desktop = wide("winsta0\\default");
+    let mut attrs =
+        LaunchAttributes::new(app_sid, cap_sid, [stdin_read, stdout_write, stderr_write])?;
     let mut startup = startup_info(StartupHandles {
-        attribute_list: attr_buf.as_mut_ptr().cast(),
-        desktop: desktop.as_ptr() as *mut u16,
+        attribute_list: attrs.list_ptr(),
         stdin_read,
         stdout_write,
         stderr_write,
     });
-    let info = create_suspended(command_line, working_dir, &mut startup, &mut attr_buf)?;
+    let info = create_suspended(command_line, working_dir, &mut startup);
+    drop(attrs);
+    let info = info?;
     CloseHandle(stdin_read);
     CloseHandle(stdout_write);
     CloseHandle(stderr_write);
-    drop(desktop);
     finish_launch(info, stdin_write, stdout_read, stderr_read)
-}
-
-unsafe fn attribute_list_for(
-    app_sid: *mut std::ffi::c_void,
-    cap_sid: *mut std::ffi::c_void,
-) -> Result<Vec<u8>, GatewayError> {
-    let mut cap = SidAndAttributes {
-        sid: cap_sid,
-        attributes: SE_GROUP_ENABLED,
-    };
-    let mut security = SecurityCapabilities {
-        app_container_sid: app_sid,
-        capabilities: &mut cap,
-        capability_count: 1,
-        reserved: 0,
-    };
-    let mut attr_size = 0usize;
-    InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut attr_size);
-    let mut attr_buf = vec![0u8; attr_size];
-    if InitializeProcThreadAttributeList(attr_buf.as_mut_ptr().cast(), 1, 0, &mut attr_size) == 0 {
-        return Err(launch_error("InitializeProcThreadAttributeList"));
-    }
-    if UpdateProcThreadAttribute(
-        attr_buf.as_mut_ptr().cast(),
-        0,
-        PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-        std::ptr::addr_of_mut!(security).cast(),
-        std::mem::size_of_val(&security),
-        ptr::null_mut(),
-        ptr::null_mut(),
-    ) == 0
-    {
-        DeleteProcThreadAttributeList(attr_buf.as_mut_ptr().cast());
-        return Err(launch_error("UpdateProcThreadAttribute"));
-    }
-    Ok(attr_buf)
 }
 
 struct StartupHandles {
     attribute_list: *mut std::ffi::c_void,
-    desktop: *mut u16,
     stdin_read: *mut std::ffi::c_void,
     stdout_write: *mut std::ffi::c_void,
     stderr_write: *mut std::ffi::c_void,
@@ -161,7 +166,7 @@ fn startup_info(handles: StartupHandles) -> StartupInfoExW {
         startup_info: StartupInfoW {
             cb: std::mem::size_of::<StartupInfoExW>() as u32,
             reserved: ptr::null_mut(),
-            desktop: handles.desktop,
+            desktop: ptr::null_mut(),
             title: ptr::null_mut(),
             dw_x: 0,
             dw_y: 0,
@@ -186,7 +191,6 @@ unsafe fn create_suspended(
     command_line: &str,
     working_dir: Option<&std::path::Path>,
     startup: &mut StartupInfoExW,
-    attr_buf: &mut [u8],
 ) -> Result<ProcessInformation, GatewayError> {
     let mut cmdline = wide(command_line);
     let cwd = working_dir.map(|path| wide(&path.to_string_lossy()));
@@ -206,9 +210,11 @@ unsafe fn create_suspended(
         std::ptr::addr_of_mut!(*startup).cast(),
         &mut info,
     );
-    DeleteProcThreadAttributeList(attr_buf.as_mut_ptr().cast());
     if created == 0 {
-        return Err(launch_error("CreateProcessW(AppContainer)"));
+        let code = GetLastError();
+        return Err(GatewayError::Unavailable(format!(
+            "cannot start the sidecar inside an AppContainer (CreateProcessW(AppContainer) failed, Win32 {code})"
+        )));
     }
     Ok(info)
 }
