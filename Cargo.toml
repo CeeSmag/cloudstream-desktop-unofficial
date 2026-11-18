@@ -14,13 +14,15 @@ members = [
     "crates/title_cache",
     "crates/app_services",
     "crates/playback_session",
-    "crates/ui_app",
     "crates/ui_slint",
     "crates/app_shell",
     "crates/portable_launcher",
     "crates/cloudflare_bridge",
 ]
 # `archive/desktop_tauri` is the former WebView shell — kept for reference, not a workspace member.
+# `crates/ui_app` (egui) is reference-only too: its font provider turns on fontconfig `dlopen`,
+# which breaks Slint's `fontique` when both are built in one workspace run.
+exclude = ["crates/ui_app"]
 
 [workspace.package]
 edition = "2021"

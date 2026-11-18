@@ -1,6 +1,5 @@
 //! Map domain types into Slint poster / list models.
 
-use app_services::PlaybackItem;
 use core_model::{Bookmark, SearchResult, WatchProgress};
 use slint::{Image, ModelRc, VecModel};
 
@@ -87,22 +86,6 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
     ModelRc::new(VecModel::from(rows))
 }
 
-pub(crate) fn playback_from_poster(item: &PosterItem) -> PlaybackItem {
-    PlaybackItem {
-        provider: item.provider.to_string(),
-        title: item.title.to_string(),
-        media_key: item.media_key.to_string(),
-        detail_url: item.url.to_string(),
-        poster_url: {
-            let poster = item.poster.to_string();
-            (!poster.is_empty()).then_some(poster)
-        },
-        season: None,
-        episode: None,
-        next_episode: None,
-    }
-}
-
 pub(crate) fn source_rows(
     links: &[(core_model::PlayableLink, Option<app_services::LinkHealth>)],
     selected: Option<usize>,
@@ -111,7 +94,9 @@ pub(crate) fn source_rows(
         .iter()
         .enumerate()
         .map(|(index, (link, health))| {
-            let working = health.as_ref().is_some_and(app_services::LinkHealth::is_working);
+            let working = health
+                .as_ref()
+                .is_some_and(app_services::LinkHealth::is_working);
             let detail = match health {
                 Some(h) if h.is_working() => "Working".to_owned(),
                 Some(_) => "Broken".to_owned(),
@@ -128,9 +113,7 @@ pub(crate) fn source_rows(
     ModelRc::new(VecModel::from(rows))
 }
 
-pub(crate) fn plugin_rows(
-    installed: &[core_model::InstalledExtension],
-) -> ModelRc<PluginItem> {
+pub(crate) fn plugin_rows(installed: &[core_model::InstalledExtension]) -> ModelRc<PluginItem> {
     let rows: Vec<PluginItem> = installed
         .iter()
         .map(|ext| PluginItem {
@@ -154,7 +137,9 @@ pub(crate) fn cache_choices() -> ModelRc<SettingChoice> {
     ModelRc::new(VecModel::from(rows))
 }
 
-pub(crate) fn string_model(labels: impl IntoIterator<Item = String>) -> ModelRc<slint::SharedString> {
+pub(crate) fn string_model(
+    labels: impl IntoIterator<Item = String>,
+) -> ModelRc<slint::SharedString> {
     ModelRc::new(VecModel::from(
         labels
             .into_iter()

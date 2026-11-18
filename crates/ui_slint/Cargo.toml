@@ -18,7 +18,16 @@ player_api = { path = "../player_api" }
 semver = "1"
 serde.workspace = true
 serde_json.workspace = true
-slint = { version = "1.19", default-features = true }
+# Slint's defaults minus `system-tray`: the app has no tray icon, and the tray pulls in `ksni`
+# (Unlicense, not on the license list).
+slint = { version = "1.19", default-features = false, features = [
+    "std",
+    "backend-default",
+    "renderer-femtovg",
+    "renderer-software",
+    "accessibility",
+    "compat-1-2",
+] }
 thiserror.workspace = true
 title_cache = { path = "../title_cache" }
 tracing.workspace = true

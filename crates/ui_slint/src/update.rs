@@ -14,7 +14,6 @@ const RELEASES_URL: &str =
 struct Release {
     tag_name: String,
     assets: Vec<Asset>,
-    html_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,9 +26,7 @@ struct Asset {
 #[derive(Debug, Clone)]
 pub(crate) struct UpdateInfo {
     pub label: String,
-    pub tag: String,
     pub download_url: Option<String>,
-    pub page_url: String,
 }
 
 /// Checks GitHub for a newer release than `current`.
@@ -49,9 +46,7 @@ pub(crate) fn check_for_updates(current: &str) -> Result<UpdateInfo, String> {
     };
     Ok(UpdateInfo {
         label,
-        tag: release.tag_name,
         download_url: asset.map(|a| a.browser_download_url.clone()),
-        page_url: release.html_url,
     })
 }
 

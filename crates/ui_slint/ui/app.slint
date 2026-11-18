@@ -54,7 +54,6 @@ export component CloudStream inherits Window {
     in-out property <bool> player-chrome-visible: true;
     in-out property <int> season-filter: -1;
 
-    in property <[PosterItem]> home-items: [];
     in property <[ShelfSection]> home-shelves: [];
     in property <[PosterItem]> search-items: [];
     in property <[PosterItem]> browse-items: [];
@@ -98,7 +97,6 @@ export component CloudStream inherits Window {
 
     callback select-tab(int);
     callback search(string);
-    callback open-poster(int);
     callback open-shelf-item(int, int);
     callback open-search-hit(int);
     callback open-browse-hit(int);

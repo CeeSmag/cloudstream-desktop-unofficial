@@ -1,120 +1,89 @@
-//! Background poster artwork hydration for Slint models.
+//! Fills poster models with their artwork in the background.
 
-use slint::{ComponentHandle, Model, ModelRc};
+use slint::{Model, ModelRc};
 
-use crate::poster_images::{fetch_poster_buffer, image_from_buffer, PosterImageCache};
-use crate::runner::{spawn_work, PosterKind};
+use crate::background_work::spawn_work;
+use crate::poster_images::{fetch_poster_buffer, image_from_buffer};
+use crate::ui_events::PosterKind;
 use crate::{CloudStream, PosterItem};
 
-pub(crate) fn hydrate_poster_images(
-    ui: &slint::Weak<CloudStream>,
-    cache: &PosterImageCache,
+use super::bridge_context::BridgeContext;
+
+/// Where one poster sits: the shelf (0 outside Home) and its row.
+#[derive(Debug, Clone, Copy)]
+struct PosterSlot {
     kind: PosterKind,
-) {
-    let Some(ui_h) = ui.upgrade() else {
+    shelf: usize,
+    index: usize,
+}
+
+/// Starts loading the artwork of every poster in the `kind` model.
+pub(crate) fn hydrate_poster_images(ctx: &BridgeContext, kind: PosterKind) {
+    let Some(ui) = ctx.window() else {
         return;
     };
-    let urls: Vec<(usize, usize, String)> = match kind {
-        PosterKind::Continue => collect_urls(&ui_h.get_continue_items()),
-        PosterKind::Search => collect_urls(&ui_h.get_search_items()),
-        PosterKind::Browse => collect_urls(&ui_h.get_browse_items()),
-        PosterKind::Library => collect_urls(&ui_h.get_library_items()),
-        PosterKind::Home => collect_urls(&ui_h.get_home_items()),
-        PosterKind::Shelf => {
-            let mut out = Vec::new();
-            let shelves = ui_h.get_home_shelves();
-            for shelf in 0..shelves.row_count() {
-                if let Some(section) = shelves.row_data(shelf) {
-                    for (index, _, url) in collect_urls(&section.items) {
-                        out.push((shelf, index, url));
-                    }
-                }
-            }
-            out
-        }
-    };
-    for (shelf_or_zero, index, url) in urls {
-        if url.is_empty() {
+    for (shelf, index, url) in poster_urls(&ui, kind) {
+        let slot = PosterSlot { kind, shelf, index };
+        if let Some(buffer) = ctx.posters.get(&url) {
+            apply_image(&ui, slot, image_from_buffer(buffer));
             continue;
         }
-        if let Some(buffer) = cache.get(&url) {
-            if let Some(ui_h) = ui.upgrade() {
-                apply_image_on(&ui_h, kind, shelf_or_zero, index, image_from_buffer(buffer));
-            }
-            continue;
-        }
-        let ui = ui.clone();
-        let cache = cache.clone();
+        let weak = ctx.ui.clone();
+        let cache = ctx.posters.clone();
         spawn_work("poster-image", move || {
             if let Some(buffer) = fetch_poster_buffer(&url) {
                 cache.insert(url, buffer.clone());
-                let _ = ui.upgrade_in_event_loop(move |ui| {
-                    apply_image_on(&ui, kind, shelf_or_zero, index, image_from_buffer(buffer));
+                let shown = weak.upgrade_in_event_loop(move |ui| {
+                    apply_image(&ui, slot, image_from_buffer(buffer));
                 });
+                if let Err(error) = shown {
+                    tracing::debug!(%error, "window closed before a poster arrived");
+                }
             }
         });
     }
 }
 
-fn collect_urls(model: &ModelRc<PosterItem>) -> Vec<(usize, usize, String)> {
-    let mut out = Vec::new();
-    for index in 0..model.row_count() {
-        if let Some(item) = model.row_data(index) {
-            let url = item.poster.to_string();
-            if !url.is_empty() {
-                out.push((0, index, url));
-            }
-        }
-    }
-    out
-}
-
-fn apply_image_on(
-    ui: &CloudStream,
-    kind: PosterKind,
-    shelf: usize,
-    index: usize,
-    image: slint::Image,
-) {
+fn poster_urls(ui: &CloudStream, kind: PosterKind) -> Vec<(usize, usize, String)> {
     match kind {
-        PosterKind::Continue => {
-            set_row_image(&ui.get_continue_items(), ui, "continue", index, image)
-        }
-        PosterKind::Search => set_row_image(&ui.get_search_items(), ui, "search", index, image),
-        PosterKind::Browse => set_row_image(&ui.get_browse_items(), ui, "browse", index, image),
-        PosterKind::Library => set_row_image(&ui.get_library_items(), ui, "library", index, image),
-        PosterKind::Home => set_row_image(&ui.get_home_items(), ui, "home", index, image),
+        PosterKind::Continue => row_urls(0, &ui.get_continue_items()),
+        PosterKind::Search => row_urls(0, &ui.get_search_items()),
+        PosterKind::Browse => row_urls(0, &ui.get_browse_items()),
+        PosterKind::Library => row_urls(0, &ui.get_library_items()),
         PosterKind::Shelf => {
             let shelves = ui.get_home_shelves();
-            if let Some(section) = shelves.row_data(shelf) {
-                if let Some(mut item) = section.items.row_data(index) {
-                    item.image = image;
-                    section.items.set_row_data(index, item);
-                    shelves.set_row_data(shelf, section);
-                    ui.set_home_shelves(shelves);
-                }
-            }
+            (0..shelves.row_count())
+                .filter_map(|shelf| shelves.row_data(shelf).map(|section| (shelf, section)))
+                .flat_map(|(shelf, section)| row_urls(shelf, &section.items))
+                .collect()
         }
     }
 }
 
-fn set_row_image(
-    model: &ModelRc<PosterItem>,
-    ui: &CloudStream,
-    which: &str,
-    index: usize,
-    image: slint::Image,
-) {
-    if let Some(mut item) = model.row_data(index) {
-        item.image = image;
-        model.set_row_data(index, item);
-        match which {
-            "continue" => ui.set_continue_items(model.clone()),
-            "search" => ui.set_search_items(model.clone()),
-            "browse" => ui.set_browse_items(model.clone()),
-            "library" => ui.set_library_items(model.clone()),
-            "home" => ui.set_home_items(model.clone()),
-            _ => {}
+fn row_urls(shelf: usize, model: &ModelRc<PosterItem>) -> Vec<(usize, usize, String)> {
+    model
+        .iter()
+        .enumerate()
+        .map(|(index, item)| (shelf, index, item.poster.to_string()))
+        .filter(|(_, _, url)| !url.is_empty())
+        .collect()
+}
+
+fn apply_image(ui: &CloudStream, slot: PosterSlot, image: slint::Image) {
+    let model = match slot.kind {
+        PosterKind::Continue => ui.get_continue_items(),
+        PosterKind::Search => ui.get_search_items(),
+        PosterKind::Browse => ui.get_browse_items(),
+        PosterKind::Library => ui.get_library_items(),
+        PosterKind::Shelf => {
+            let Some(section) = ui.get_home_shelves().row_data(slot.shelf) else {
+                return;
+            };
+            section.items
         }
+    };
+    if let Some(mut item) = model.row_data(slot.index) {
+        item.image = image;
+        model.set_row_data(slot.index, item);
     }
 }

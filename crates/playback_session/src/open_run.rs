@@ -30,7 +30,6 @@ pub(crate) struct OpenState {
     started: Instant,
     search_done: bool,
     ready_announced: bool,
-    trusted_played: bool,
 }
 
 impl OpenState {
@@ -45,7 +44,6 @@ impl OpenState {
             started: Instant::now(),
             search_done: false,
             ready_announced: false,
-            trusted_played: false,
         }
     }
 
@@ -95,8 +93,32 @@ pub(crate) fn plant_saved(
     checker: &StreamChecker,
     hooks: &OpenHooks<'_>,
 ) {
-    let Lookup::Hit(hit) = open_cache.cache.load(&open_cache.title_key) else {
+    let Some((freshness, seeds)) = saved_seeds(open_cache) else {
         return;
+    };
+    tracing::info!(
+        ?freshness,
+        seeds = seeds.len(),
+        "planting saved sources for open"
+    );
+    for link in seeds {
+        state.ordered.push((link, None));
+    }
+    (hooks.on_progress)(state.progress());
+    (hooks.on_update)(&state.snapshot());
+    match freshness {
+        Freshness::Fresh => {
+            check_trusted_seed(state, checker, hooks);
+            check_pending(state, checker, hooks);
+        }
+        Freshness::Stale => check_stale_seeds(state, checker, hooks),
+    }
+}
+
+/// The saved streams worth trying again, best first; None when nothing usable is saved.
+fn saved_seeds(open_cache: &OpenCache) -> Option<(Freshness, Vec<PlayableLink>)> {
+    let Lookup::Hit(hit) = open_cache.cache.load(&open_cache.title_key) else {
+        return None;
     };
     let take = match hit.freshness {
         Freshness::Fresh => TRUSTED_RECHECK,
@@ -110,46 +132,44 @@ pub(crate) fn plant_saved(
         .take(take)
         .map(|cached| cached.link.clone())
         .collect();
-    if seeds.is_empty() {
+    (!seeds.is_empty()).then_some((hit.freshness, seeds))
+}
+
+/// A fresh save: the first stream played a moment ago, so it is checked and played at once.
+fn check_trusted_seed(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
+    let Some((link, slot)) = state.ordered.first_mut() else {
         return;
+    };
+    let health = checker.check(link);
+    let is_ok = health.is_working();
+    *slot = Some(health);
+    state.checked = 1;
+    state.next_to_check = 1;
+    if is_ok {
+        state.working = 1;
+        state.play_index = Some(0);
+        state.announce_ready(hooks);
     }
-    tracing::info!(
-        ?hit.freshness,
-        seeds = seeds.len(),
-        "planting saved sources for open"
-    );
-    for link in seeds {
-        state.ordered.push((link, None));
-    }
-    (hooks.on_progress)(state.progress());
-    (hooks.on_update)(&state.snapshot());
-    match hit.freshness {
-        Freshness::Fresh => {
-            if let Some((link, slot)) = state.ordered.first_mut() {
-                let health = checker.check(link);
-                let ok = health.is_working();
-                *slot = Some(health);
-                state.checked = 1;
-                state.next_to_check = 1;
-                if ok {
-                    state.working = 1;
-                    state.play_index = Some(0);
-                    state.trusted_played = true;
-                    state.announce_ready(hooks);
-                }
-            }
-            check_pending(state, checker, hooks);
+}
+
+/// A stale save: try the best few for a short while before the live search.
+fn check_stale_seeds(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
+    let deadline = Instant::now() + Duration::from_secs(STALE_TEST_SECS);
+    while state.next_to_check < state.ordered.len() && Instant::now() < deadline {
+        if state.play_index.is_some() {
+            break;
         }
-        Freshness::Stale => {
-            let deadline = Instant::now() + Duration::from_secs(STALE_TEST_SECS);
-            while state.next_to_check < state.ordered.len() && Instant::now() < deadline {
-                if state.play_index.is_some() {
-                    break;
-                }
-                check_one(state, checker, hooks);
-            }
-        }
+        check_one(state, checker, hooks);
     }
+}
+
+/// True when the open should stop polling the search: cancelled, over time, or skipped with a stream.
+fn should_stop_search(state: &OpenState, hooks: &OpenHooks<'_>) -> bool {
+    let skipped = hooks.skip.load(Ordering::SeqCst);
+    hooks.cancel.load(Ordering::SeqCst)
+        || state.timed_out()
+        || (skipped && state.play_index.is_some())
+        || (skipped && state.first_working_wait_done())
 }
 
 pub(crate) fn run_search(
@@ -158,19 +178,7 @@ pub(crate) fn run_search(
     checker: &StreamChecker,
     hooks: &OpenHooks<'_>,
 ) -> Result<CheckedOpen, OpenError> {
-    loop {
-        if hooks.cancel.load(Ordering::SeqCst) {
-            break;
-        }
-        if state.timed_out() {
-            break;
-        }
-        if hooks.skip.load(Ordering::SeqCst) && state.play_index.is_some() {
-            break;
-        }
-        if state.first_working_wait_done() && hooks.skip.load(Ordering::SeqCst) {
-            break;
-        }
+    while !should_stop_search(&state, hooks) {
         let batch = search
             .poll(Duration::from_millis(200))
             .map_err(|error| OpenError::Search(error.to_string()))?;
@@ -185,15 +193,7 @@ pub(crate) fn run_search(
         if batch.done {
             state.search_done = true;
             (hooks.on_progress)(state.progress());
-            while state.next_to_check < state.ordered.len() {
-                if state.timed_out() || hooks.cancel.load(Ordering::SeqCst) {
-                    break;
-                }
-                if hooks.skip.load(Ordering::SeqCst) && state.play_index.is_some() {
-                    break;
-                }
-                check_one(&mut state, checker, hooks);
-            }
+            check_pending(&mut state, checker, hooks);
             break;
         }
     }
@@ -265,10 +265,4 @@ pub(crate) fn finish(state: OpenState) -> Result<CheckedOpen, OpenError> {
         return Err(OpenError::Empty);
     }
     Ok(state.snapshot())
-}
-
-// Silence unused until open_with reads it.
-#[allow(dead_code)]
-fn _trusted(state: &OpenState) -> bool {
-    state.trusted_played
 }

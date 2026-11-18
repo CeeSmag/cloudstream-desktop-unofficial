@@ -8,6 +8,7 @@ pub const PROBLEMS_FILE: &str = "warnings-and-errors.txt";
 pub const OWN_TARGETS: &[&str] = &[
     "app_services",
     "app_shell",
+    "cloudflare_bridge",
     "cloudstream",
     "core_model",
     "desktop_tauri",
@@ -16,6 +17,7 @@ pub const OWN_TARGETS: &[&str] = &[
     "extension_runtime",
     "player_api",
     "player_mpv",
+    "playback_session",
     "sidecar",
     "skip_times",
     "storage",
@@ -23,6 +25,7 @@ pub const OWN_TARGETS: &[&str] = &[
     "subtitle_store",
     "title_cache",
     "ui_app",
+    "ui_slint",
     "webapp",
 ];
 
@@ -52,6 +55,8 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("sidecar", LogCategory::Sidecar),
     ("desktop_tauri::cloudflare", LogCategory::Cloudflare),
     ("extension_runtime::cloudflare", LogCategory::Cloudflare),
+    ("cloudflare_", LogCategory::Cloudflare),
+    ("ui_slint::bridge::cloudflare", LogCategory::Cloudflare),
     ("webapp", LogCategory::Webapp),
     ("player_", LogCategory::Player),
     ("app_services::playback", LogCategory::Player),
@@ -73,6 +78,7 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("desktop_tauri::source", LogCategory::Streams),
     ("desktop_tauri::check_gate", LogCategory::Streams),
     ("title_cache", LogCategory::Streams),
+    ("playback_session", LogCategory::Streams),
     ("storage", LogCategory::Storage),
 ];
 

@@ -1,4 +1,4 @@
-//! Shared UI session state for the Slint shell.
+//! State the UI thread keeps between callbacks.
 
 use std::collections::HashSet;
 
@@ -7,7 +7,7 @@ use playback_session::{LiveSources, OpenControl};
 
 use crate::update::UpdateInfo;
 
-/// Optional runtime extras that are not part of [`UiServices`].
+/// Optional runtime extras that are not part of [`app_services::UiServices`].
 #[derive(Default)]
 pub struct AppExtras {
     /// Sidecar Cloudflare challenge watcher.
@@ -16,6 +16,7 @@ pub struct AppExtras {
     pub data_dir: Option<std::path::PathBuf>,
 }
 
+/// The title page, the opening video and the Cloudflare question on screen right now.
 pub(crate) struct Session {
     pub(crate) control: OpenControl,
     pub(crate) live: LiveSources,
@@ -24,15 +25,21 @@ pub(crate) struct Session {
     pub(crate) selected: usize,
     pub(crate) target: Option<PlaybackItem>,
     pub(crate) episode_data: String,
-    pub(crate) details_provider: String,
-    pub(crate) details_url: String,
-    pub(crate) details_data: String,
-    pub(crate) details_media_key: String,
+    pub(crate) details: DetailsTarget,
     pub(crate) last_frame: u64,
     pub(crate) update: Option<UpdateInfo>,
     pub(crate) cf_id: Option<String>,
     pub(crate) cf_host: Option<String>,
     pub(crate) allowed_cf: HashSet<String>,
+}
+
+/// Which title the details page shows.
+#[derive(Default, Clone)]
+pub(crate) struct DetailsTarget {
+    pub(crate) provider: String,
+    pub(crate) url: String,
+    pub(crate) data: String,
+    pub(crate) media_key: String,
 }
 
 impl Default for Session {
@@ -45,10 +52,7 @@ impl Default for Session {
             selected: 0,
             target: None,
             episode_data: String::new(),
-            details_provider: String::new(),
-            details_url: String::new(),
-            details_data: String::new(),
-            details_media_key: String::new(),
+            details: DetailsTarget::default(),
             last_frame: 0,
             update: None,
             cf_id: None,

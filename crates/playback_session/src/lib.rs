@@ -9,7 +9,7 @@ mod open_run;
 mod open_types;
 mod session;
 
-pub use checked_open::{check_and_pick, open_with};
+pub use checked_open::{check_and_pick, open_with, OpenTarget};
 pub use open_types::{
     save_open, title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
 };

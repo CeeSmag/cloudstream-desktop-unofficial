@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use app_services::StreamResolver;
 use core_model::{PlayableLink, SubtitleTrack};
 
-use crate::checked_open::open_with;
+use crate::checked_open::{open_with, OpenTarget};
 use crate::open_types::{
     save_open, title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
 };
@@ -117,13 +117,12 @@ pub fn run_open(request: OpenRequest<'_>) -> Result<CheckedOpen, OpenError> {
         skip: &request.control.skip,
         cancel: &request.control.cancel,
     };
-    let opened = open_with(
-        request.streams,
-        request.provider,
-        request.data,
-        open_cache.as_ref(),
-        &hooks,
-    )?;
+    let target = OpenTarget {
+        streams: request.streams,
+        provider: request.provider,
+        data: request.data,
+    };
+    let opened = open_with(&target, open_cache.as_ref(), &hooks)?;
     if let Some(cache) = request.cache {
         let key = title_key(request.provider, request.media_key);
         save_open(cache, &key, &opened);

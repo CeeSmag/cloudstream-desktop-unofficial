@@ -11,10 +11,10 @@
 use std::time::{Duration, Instant};
 
 use app_services::PlaybackItem;
+use app_services::UiServices;
 use app_shell::{build_services, AppPaths, ServiceOptions};
 use core_model::PlayableLink;
 use player_api::PlaybackState;
-use ui_app::UiServices;
 
 const OFFICIAL_REPOSITORY: &str =
     "https://raw.githubusercontent.com/recloudstream/extensions/master/repo.json";

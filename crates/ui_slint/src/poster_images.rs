@@ -8,24 +8,15 @@ use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
 pub(crate) type RgbaBuffer = SharedPixelBuffer<Rgba8Pixel>;
 
-/// Shared in-memory poster URL → decoded RGBA buffer cache for this process.
+/// Poster URL → decoded RGBA buffer, shared by the UI thread and the download threads.
 #[derive(Clone, Default)]
 pub(crate) struct PosterImageCache {
     inner: Arc<Mutex<HashMap<String, RgbaBuffer>>>,
 }
 
-/// Process-wide cache used by the Slint bridge.
-pub(crate) fn global_cache() -> PosterImageCache {
-    static CACHE: std::sync::OnceLock<PosterImageCache> = std::sync::OnceLock::new();
-    CACHE.get_or_init(PosterImageCache::default).clone()
-}
-
 impl PosterImageCache {
     pub(crate) fn get(&self, url: &str) -> Option<RgbaBuffer> {
-        self.inner
-            .lock()
-            .ok()
-            .and_then(|map| map.get(url).cloned())
+        self.inner.lock().ok().and_then(|map| map.get(url).cloned())
     }
 
     pub(crate) fn insert(&self, url: String, buffer: RgbaBuffer) {

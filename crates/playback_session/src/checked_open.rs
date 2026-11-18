@@ -31,14 +31,27 @@ pub fn check_and_pick(
         skip: &skip,
         cancel: &cancel,
     };
-    open_with(streams, provider, data, None, &hooks)
+    let target = OpenTarget {
+        streams,
+        provider,
+        data,
+    };
+    open_with(&target, None, &hooks)
+}
+
+/// Which title's streams to open: the resolver, the provider and its episode / movie payload.
+pub struct OpenTarget<'a> {
+    /// Stream resolver.
+    pub streams: &'a StreamResolver,
+    /// Provider internal name.
+    pub provider: &'a str,
+    /// Episode / movie data payload for the link search.
+    pub data: &'a str,
 }
 
 /// Full open: optional cache seeds, early `on_ready`, live `on_update`, skip / cancel.
 pub fn open_with(
-    streams: &StreamResolver,
-    provider: &str,
-    data: &str,
+    target: &OpenTarget<'_>,
     cache: Option<&OpenCache>,
     hooks: &OpenHooks<'_>,
 ) -> Result<CheckedOpen, OpenError> {
@@ -50,8 +63,9 @@ pub fn open_with(
     if hooks.cancel.load(Ordering::SeqCst) {
         return finish(state);
     }
-    let search = streams
-        .open_search(provider, data)
+    let search = target
+        .streams
+        .open_search(target.provider, target.data)
         .map_err(|error| OpenError::Search(error.to_string()))?;
     run_search(search, state, &checker, hooks)
 }
