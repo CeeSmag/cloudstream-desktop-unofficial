@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.actions.VideoClickAction
 import com.lagradost.cloudstream3.plugins.Plugin
 import com.lagradost.cloudstream3.syncproviders.AccountManager
 import com.lagradost.cloudstream3.utils.txt
+import com.lagradost.runtime.loader.CompatPluginClassLoader
 import com.lagradost.runtime.loader.stubs.ExecutorsStub
 import com.lagradost.runtime.loader.stubs.ServerSocketStub
 import com.lagradost.runtime.loader.stubs.ThreadStub
@@ -216,6 +217,20 @@ class ExtensionCompatibilityTest {
         } finally {
             server.close()
         }
+    }
+
+    @Test
+    fun `CompatPluginClassLoader refuses unpatchable bytecode instead of loading it raw`() {
+        val failure = assertFailsWith<SecurityException> {
+            CompatPluginClassLoader.patchClassBytes(
+                byteArrayOf(0x00, 0x01, 0x02, 0x03),
+                CompatPluginClassLoader::class.java.classLoader,
+            )
+        }
+        assertTrue(
+            failure.message?.contains("unpatched") == true,
+            "message was ${failure.message}",
+        )
     }
 
     @Test

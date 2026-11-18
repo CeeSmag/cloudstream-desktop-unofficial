@@ -38,12 +38,6 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
         super.close()
     }
 
-    companion object {
-        init {
-            registerAsParallelCapable()
-        }
-    }
-
     override fun findClass(name: String): Class<*> {
         synchronized(getClassLoadingLock(name)) {
             val loaded = findLoadedClass(name)
@@ -51,7 +45,7 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
 
             return try {
                 val bytes = readClassBytes(name)
-                val patched = applyCompatPatches(bytes)
+                val patched = patchClassBytes(bytes, parent)
                 defineClass(name, patched, 0, patched.size)
             } catch (e: LinkageError) {
                 findLoadedClass(name) ?: try {
@@ -77,19 +71,32 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
         }
     }
 
-    private fun applyCompatPatches(bytes: ByteArray): ByteArray {
-        return try {
-            val remapped = RawSocketRemapper.remap(bytes)
-            val reader = ClassReader(remapped)
-            val writer = SafeComputeClassWriter(
-                reader = null,
-                flags = ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS,
-                classLoader = parent,
-            )
-            reader.accept(CompatPatchVisitor(writer, parent), ClassReader.SKIP_FRAMES)
-            writer.toByteArray()
-        } catch (_: Exception) {
-            bytes
+    companion object {
+        init {
+            registerAsParallelCapable()
+        }
+
+        /**
+         * Remaps sockets/threads and applies sandbox call rewrites. Failures refuse the class
+         * instead of loading the original unpatched bytes.
+         */
+        fun patchClassBytes(bytes: ByteArray, runtimeLoader: ClassLoader): ByteArray {
+            try {
+                val remapped = RawSocketRemapper.remap(bytes)
+                val reader = ClassReader(remapped)
+                val writer = SafeComputeClassWriter(
+                    reader = null,
+                    flags = ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS,
+                    classLoader = runtimeLoader,
+                )
+                reader.accept(CompatPatchVisitor(writer, runtimeLoader), ClassReader.SKIP_FRAMES)
+                return writer.toByteArray()
+            } catch (error: Exception) {
+                throw SecurityException(
+                    "refusing to load unpatched plugin class bytecode: ${error.message}",
+                    error,
+                )
+            }
         }
     }
 
