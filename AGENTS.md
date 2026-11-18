@@ -325,7 +325,11 @@ This document is the architectural index, navigation map, and modification handb
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
   - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` (both shells).
   - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS (provider says `Hls`, or the address ends in `.m3u8`) and progressive/unknown streams that carry custom headers or a referer through `stream_proxy` when the setting is on (never DASH). The proxy starts on the first such stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly. This replaces plugin-local FlixProxy-style servers for header injection.
-  - Plugin sandbox (sidecar overlay): untrusted plugins cannot load real `java.net.ServerSocket` / `Socket` / `DatagramSocket`, `javax.net.ssl.SSLSocket*`, or `java.lang.Thread`. Bytecode remaps those types to sandboxed stubs (`RawSocketRemapper` → `ServerSocketStub` loopback-only, `SocketStub` outbound-deny, capped daemon `ThreadStub`) so StreamPlay/FlixProxy can load without granting unrestricted Network Sockets or Trust. `ProcessBuilder`, NIO `Files`, and ClassLoader stay denied even for Trusted plugins. Trust skips static verify and widens the classloader — use sparingly.
+  - Plugin sandbox (defense in depth):
+    - **Install:** `ExtensionInstaller` requires HTTPS, download host bound to the repository (or GitHub family / subdomain), ZIP magic (`PK`), and a matching published `file_size` when present (`plugin_download_guard`).
+    - **Load path jail:** stored `file_name` must be `<safe>.cs3`; Rust `plugin_path_in` and sidecar `ExtensionPathJail` keep load/unload under `<data>/extensions`.
+    - **Bytecode (untrusted):** cannot load real `java.net.ServerSocket` / `Socket` / `DatagramSocket`, `javax.net.ssl.SSLSocket*`, or `java.lang.Thread`. Remaps via `RawSocketRemapper` → loopback `ServerSocketStub`, deny-outbound `SocketStub`, capped `ThreadStub`. `CompatPluginClassLoader` **fails closed** if patches fail (no raw unpatched bytes). `ProcessBuilder`, NIO `Files`, and `ClassLoader` stay denied even for Trusted. Trusted skips static verify and widens the classloader — confirm in UI; reload applies immediately.
+    - **Threat model:** plugins are untrusted community code with intentional public HTTPS egress. Isolation aims to block process spawn, host filesystem escape, and raw sockets — not to make arbitrary `.cs3` “perfectly safe.” OS AppContainer isolation is planned; today all plugins share one JVM sidecar.
 
 #### `crates/ui_app`
 - **Location**: `crates/ui_app/`
@@ -542,7 +546,7 @@ All 67 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_te
 | | `refresh_repository_icons`| Background worker downloading repository icons. |
 | | `install_plugin` | Downloads `.cs3` and registers extension. |
 | | `uninstall_extension` | Deletes `.cs3` and removes providers. |
-| | `set_extension_trusted` | Flags plugin as trusted (skips static bytecode verify and most classloader denies; hard denies like ProcessBuilder remain). Applies on the next load/start. |
+| | `set_extension_trusted` | Flags plugin as trusted (skips static bytecode verify and most classloader denies; hard denies like ProcessBuilder remain). Unloads and reloads the plugin immediately under the new mode. |
 | **Plugin Catalog**| `prepare_plugin_catalog` | Pre-indexes all repository plugins. |
 | | `list_all_plugins` | Returns indexed plugins with repository metadata. |
 | **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |
