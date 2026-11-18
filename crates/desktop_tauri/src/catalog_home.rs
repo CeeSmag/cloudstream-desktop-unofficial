@@ -5,10 +5,8 @@ use core_model::{HomePageSection, MainPageEntry, ProviderInfo};
 
 use crate::dto::HomeSectionDto;
 
-/// How many `main_page` entries the first Home paint loads before the rest.
-pub const HOME_FIRST_ENTRIES: usize = 1;
-
 /// Slice of `main_page` entries for this request (`limit = None` means the rest of the list).
+/// The UI's first paint uses `limit = Some(1)` then loads the remainder with `offset = 1`.
 pub fn entry_window(total: usize, offset: usize, limit: Option<usize>) -> std::ops::Range<usize> {
     let start = offset.min(total);
     let end = match limit {
@@ -88,7 +86,7 @@ mod tests {
 
     #[test]
     fn first_paint_takes_one_entry_then_the_remainder() {
-        assert_eq!(entry_window(5, 0, Some(HOME_FIRST_ENTRIES)), 0..1);
+        assert_eq!(entry_window(5, 0, Some(1)), 0..1);
         assert_eq!(entry_window(5, 1, None), 1..5);
         assert_eq!(entry_window(1, 0, Some(1)), 0..1);
         assert_eq!(entry_window(1, 1, None), 1..1);

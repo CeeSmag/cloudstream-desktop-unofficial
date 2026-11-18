@@ -104,12 +104,32 @@ impl PluginWorkerPool {
         }
     }
 
-    fn limit(&self) -> Option<usize> {
+    pub(crate) fn limit(&self) -> Option<usize> {
         let value = self.resident_limit.load(Ordering::SeqCst);
         if value == 0 {
             None
         } else {
             Some(value)
+        }
+    }
+
+    /// Stores `limit` and parks excess live workers (oldest first).
+    pub(crate) fn apply_resident_worker_limit(&self, limit: Option<usize>) {
+        let value = limit.unwrap_or(0);
+        self.resident_limit.store(value, Ordering::SeqCst);
+        tracing::info!(?limit, "plugin resident worker limit set");
+        let Some(cap) = limit else {
+            return;
+        };
+        let keep = Path::new("");
+        while self.lock_maps().live_count() > cap {
+            let Some(path) = self.lock_maps().oldest_live_except(keep) else {
+                break;
+            };
+            match self.lock_maps().park(&path) {
+                Some(worker) => worker.shutdown(),
+                None => break,
+            }
         }
     }
 }

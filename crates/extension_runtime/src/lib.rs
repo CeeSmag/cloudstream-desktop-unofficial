@@ -2,6 +2,7 @@
 //! Unsafe FFI is confined to the Windows Job/AppContainer and Linux Landlock/rlimit modules.
 #![deny(unsafe_code)]
 
+mod acl_session_cache;
 mod call_timeouts;
 #[cfg(feature = "test-support")]
 pub mod fake_link_search;

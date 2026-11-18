@@ -27,6 +27,16 @@ fn grant(path: &Path, sid: &AppContainerSid, rights: &str) -> Result<(), Gateway
             path.display()
         )));
     }
+    let key =
+        crate::acl_session_cache::grant_key(&path.display().to_string(), sid.as_str(), rights);
+    if crate::acl_session_cache::already_granted(&key) {
+        tracing::debug!(
+            path = %path.display(),
+            rights,
+            "AppContainer ACL already granted this session"
+        );
+        return Ok(());
+    }
     let grant_spec = format!("*{}:{rights}", sid.as_str());
     let mut command = Command::new("icacls");
     command
@@ -46,6 +56,7 @@ fn grant(path: &Path, sid: &AppContainerSid, rights: &str) -> Result<(), Gateway
             path.display()
         )));
     }
+    crate::acl_session_cache::note_granted(key);
     tracing::info!(path = %path.display(), rights, "granted AppContainer ACL");
     Ok(())
 }

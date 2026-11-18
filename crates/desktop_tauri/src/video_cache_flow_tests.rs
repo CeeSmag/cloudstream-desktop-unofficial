@@ -112,7 +112,7 @@ fn a_video_that_ended_is_stopped_on_leaving_and_opened_again_afterwards() {
         rig.sources.session().snapshot().is_none(),
         "stopped as before"
     );
-    assert!(calls(&rig).is_empty(), "nothing to pause or shrink");
+    assert_eq!(calls(&rig), ["stop"], "ended stream is stopped, not paused");
     assert_eq!(
         come_back_to(&rig.sources, &rig.services.playback, &the_video(), two_gb()),
         Ok(false)

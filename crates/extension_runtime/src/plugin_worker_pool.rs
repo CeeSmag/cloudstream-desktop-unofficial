@@ -243,31 +243,11 @@ impl ProviderGateway for PluginWorkerPool {
     }
 
     fn set_resident_worker_limit(&self, limit: Option<usize>) {
-        let value = limit.unwrap_or(0);
-        self.resident_limit.store(value, Ordering::SeqCst);
-        tracing::info!(?limit, "plugin resident worker limit set");
-        if let Some(cap) = limit {
-            // Park extras using an empty keep path so the oldest are removed first.
-            let keep = Path::new("");
-            while self.lock_maps().live_count() > cap {
-                let Some(path) = self.lock_maps().oldest_live_except(keep) else {
-                    break;
-                };
-                match self.lock_maps().park(&path) {
-                    Some(worker) => worker.shutdown(),
-                    None => break,
-                }
-            }
-        }
+        self.apply_resident_worker_limit(limit);
     }
 
     fn resident_worker_limit(&self) -> Option<usize> {
-        let value = self.resident_limit.load(Ordering::SeqCst);
-        if value == 0 {
-            None
-        } else {
-            Some(value)
-        }
+        self.limit()
     }
 }
 
