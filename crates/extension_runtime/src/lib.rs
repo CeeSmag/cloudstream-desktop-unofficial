@@ -7,6 +7,8 @@ mod call_timeouts;
 pub mod fake_link_search;
 #[cfg(feature = "test-support")]
 pub mod fake_search_runtime;
+mod plugin_worker_maps;
+mod plugin_worker_pool;
 mod reply_wait;
 mod rpc_message;
 mod rpc_provider_gateway;
@@ -35,6 +37,7 @@ mod sidecar_process_kill;
 mod sidecar_process_start;
 mod sidecar_process_transport;
 
+pub use plugin_worker_pool::PluginWorkerPool;
 pub use reply_wait::DeadlineHold;
 pub use rpc_provider_gateway::RpcProviderGateway;
 pub use rpc_transport::RpcTransport;

@@ -8,7 +8,7 @@ use app_services::{
 };
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
-use extension_runtime::{RpcProviderGateway, SidecarProcessTransport};
+use extension_runtime::PluginWorkerPool;
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
 use storage::{
@@ -73,10 +73,11 @@ fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
             let config = config
                 .with_data_dir(sidecar_data_dir)
                 .with_system_trust_store();
-            tracing::info!(program = %config.program.display(), "using JVM sidecar");
-            Arc::new(RpcProviderGateway::new(SidecarProcessTransport::new(
-                config,
-            )))
+            tracing::info!(
+                program = %config.program.display(),
+                "using JVM sidecar (one process per plugin)"
+            );
+            Arc::new(PluginWorkerPool::new(config))
         }
         Err(error) => {
             tracing::warn!(%error, "extension runtime not available");
