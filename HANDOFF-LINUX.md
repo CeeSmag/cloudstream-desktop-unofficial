@@ -198,11 +198,11 @@ Plugins are **untrusted community code** with intentional public HTTPS egress. I
 
 ## 9. Done when
 
-- [ ] Production Linux sidecars (with `cloudstream.data.dir`) get memory + kill-on-drop tree limits (fail closed).
-- [ ] Production Linux sidecars get an FS allow-list (Landlock and/or bwrap), fail closed or explicitly documented.
-- [ ] `fake_sidecar` / no-`data.dir` path unchanged for tests.
-- [ ] Race/unit tests + Linux compile in CI green.
-- [ ] `AGENTS.md` Linux sandbox bullet updated to match reality.
+- [x] Production Linux sidecars (with `cloudstream.data.dir`) get memory + kill-on-drop tree limits (fail closed).
+- [x] Production Linux sidecars get an FS allow-list (Landlock), fail closed if unsupported.
+- [x] `fake_sidecar` / no-`data.dir` path unchanged for tests.
+- [x] Race/unit tests + Linux compile in CI green.
+- [x] `AGENTS.md` Linux sandbox bullet updated to match reality.
 - [ ] Manual: two plugins, uninstall one, Cloudflare exchange still works, StreamPlay still loads.
 
 ---

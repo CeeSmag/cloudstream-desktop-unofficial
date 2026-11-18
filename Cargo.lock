@@ -1812,6 +1812,7 @@ dependencies = [
  "core_model",
  "extension_api",
  "extension_runtime",
+ "libc",
  "serde",
  "serde_json",
  "tracing",

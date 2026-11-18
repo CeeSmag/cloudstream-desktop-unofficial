@@ -1,5 +1,5 @@
 //! Runs extensions out-of-process and exposes them through the `ProviderGateway` trait.
-//! Unsafe FFI is confined to the Windows Job Object and AppContainer modules.
+//! Unsafe FFI is confined to the Windows Job/AppContainer and Linux Landlock/rlimit modules.
 #![deny(unsafe_code)]
 
 mod call_timeouts;
@@ -32,6 +32,14 @@ mod sidecar_app_container_profile;
 #[cfg(windows)]
 mod sidecar_job_object;
 mod sidecar_launch_config;
+#[cfg(target_os = "linux")]
+mod sidecar_linux_landlock;
+#[cfg(all(target_os = "linux", test))]
+mod sidecar_linux_landlock_tests;
+#[cfg(target_os = "linux")]
+mod sidecar_linux_limits;
+#[cfg(target_os = "linux")]
+mod sidecar_linux_paths;
 mod sidecar_output;
 mod sidecar_process_kill;
 mod sidecar_process_start;

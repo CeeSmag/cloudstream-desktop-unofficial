@@ -12,6 +12,10 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 
+# Linux sidecar sandbox: setrlimit / prctl / Landlock syscalls (Windows uses Win32 FFI instead).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true
 
