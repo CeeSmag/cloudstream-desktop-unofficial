@@ -63,101 +63,140 @@ pub fn check_and_pick(
     run_search(search, on_progress)
 }
 
+struct OpenState {
+    ordered: Vec<(PlayableLink, Option<LinkHealth>)>,
+    subtitles: Vec<SubtitleTrack>,
+    checked: usize,
+    working: usize,
+    play_index: Option<usize>,
+    next_to_check: usize,
+    extras_after_first: usize,
+    started: Instant,
+}
+
+impl OpenState {
+    fn new() -> Self {
+        Self {
+            ordered: Vec::new(),
+            subtitles: Vec::new(),
+            checked: 0,
+            working: 0,
+            play_index: None,
+            next_to_check: 0,
+            extras_after_first: 0,
+            started: Instant::now(),
+        }
+    }
+
+    fn progress(&self) -> OpenProgress {
+        OpenProgress {
+            found: self.ordered.len(),
+            checked: self.checked,
+            working: self.working,
+        }
+    }
+
+    fn timed_out(&self) -> bool {
+        self.started.elapsed() >= Duration::from_secs(TOTAL_SECS)
+    }
+
+    fn first_working_cap(&self) -> bool {
+        self.play_index.is_some()
+            && self.started.elapsed() >= Duration::from_secs(FIRST_WORKING_SECS)
+    }
+
+    fn enough_extras(&self) -> bool {
+        self.play_index.is_some() && self.extras_after_first >= EXTRA_AFTER_FIRST
+    }
+}
+
 fn run_search(
     mut search: LinkSearch,
     on_progress: &(dyn Fn(OpenProgress) + Sync),
 ) -> Result<CheckedOpen, OpenError> {
     let checker = StreamChecker::new(Arc::new(UreqProbe::default()));
-    let started = Instant::now();
-    let mut ordered: Vec<(PlayableLink, Option<LinkHealth>)> = Vec::new();
-    let mut subtitles: Vec<SubtitleTrack> = Vec::new();
-    let mut checked = 0usize;
-    let mut working = 0usize;
-    let mut play_index = None;
-    let mut next_to_check = 0usize;
-    let mut extras_after_first = 0usize;
-
+    let mut state = OpenState::new();
     loop {
-        if started.elapsed() >= Duration::from_secs(TOTAL_SECS) {
+        if state.timed_out() || state.first_working_cap() {
             break;
         }
-        if play_index.is_some() && started.elapsed() >= Duration::from_secs(FIRST_WORKING_SECS) {
-            break;
-        }
-
         let batch = search
             .poll(Duration::from_millis(200))
             .map_err(|error| OpenError::Search(error.to_string()))?;
         if let Some(failure) = &batch.failure {
-            if ordered.is_empty() {
+            if state.ordered.is_empty() {
                 search.cancel();
                 return Err(OpenError::Search(failure.clone()));
             }
         }
-        for link in batch.links {
-            ordered.push((link, None));
-        }
-        for track in batch.subtitles {
-            if !subtitles.iter().any(|known| known.url == track.url) {
-                subtitles.push(track);
-            }
-        }
-        on_progress(OpenProgress {
-            found: ordered.len(),
-            checked,
-            working,
-        });
-
-        while next_to_check < ordered.len() {
-            if started.elapsed() >= Duration::from_secs(TOTAL_SECS) {
-                break;
-            }
-            if play_index.is_some() && extras_after_first >= EXTRA_AFTER_FIRST {
-                break;
-            }
-            let Some((link, slot)) = ordered.get_mut(next_to_check) else {
-                break;
-            };
-            let health = checker.check(link);
-            let is_ok = health.is_working();
-            *slot = Some(health);
-            checked += 1;
-            if is_ok {
-                working += 1;
-                if play_index.is_none() {
-                    play_index = Some(next_to_check);
-                } else {
-                    extras_after_first += 1;
-                }
-            }
-            next_to_check += 1;
-            on_progress(OpenProgress {
-                found: ordered.len(),
-                checked,
-                working,
-            });
-            if play_index.is_some() && started.elapsed() >= Duration::from_secs(FIRST_WORKING_SECS)
-            {
-                break;
-            }
-        }
-
-        if batch.done {
-            break;
-        }
-        if play_index.is_some() && extras_after_first >= EXTRA_AFTER_FIRST {
+        absorb_batch(&mut state, batch.links, batch.subtitles, on_progress);
+        check_pending(&mut state, &checker, on_progress);
+        if batch.done || state.enough_extras() {
             break;
         }
     }
-
     search.cancel();
-    if ordered.is_empty() {
+    finish(state)
+}
+
+fn absorb_batch(
+    state: &mut OpenState,
+    links: Vec<PlayableLink>,
+    tracks: Vec<SubtitleTrack>,
+    on_progress: &(dyn Fn(OpenProgress) + Sync),
+) {
+    for link in links {
+        state.ordered.push((link, None));
+    }
+    for track in tracks {
+        if !state.subtitles.iter().any(|known| known.url == track.url) {
+            state.subtitles.push(track);
+        }
+    }
+    on_progress(state.progress());
+}
+
+fn check_pending(
+    state: &mut OpenState,
+    checker: &StreamChecker,
+    on_progress: &(dyn Fn(OpenProgress) + Sync),
+) {
+    while state.next_to_check < state.ordered.len() {
+        if state.timed_out() || state.enough_extras() {
+            break;
+        }
+        let index = state.next_to_check;
+        let Some((link, slot)) = state.ordered.get_mut(index) else {
+            break;
+        };
+        let health = checker.check(link);
+        let is_ok = health.is_working();
+        *slot = Some(health);
+        state.checked += 1;
+        if is_ok {
+            state.working += 1;
+            if state.play_index.is_none() {
+                state.play_index = Some(index);
+            } else {
+                state.extras_after_first += 1;
+            }
+        }
+        state.next_to_check += 1;
+        on_progress(state.progress());
+        if state.first_working_cap() {
+            break;
+        }
+    }
+}
+
+fn finish(state: OpenState) -> Result<CheckedOpen, OpenError> {
+    if state.ordered.is_empty() {
         return Err(OpenError::Empty);
     }
     Ok(CheckedOpen {
-        links: ordered,
-        play_index,
-        subtitles,
+        links: state.ordered,
+        play_index: state.play_index,
+        subtitles: state.subtitles,
     })
 }
 

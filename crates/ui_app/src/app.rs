@@ -244,28 +244,9 @@ impl CloudStreamApp {
         });
     }
 
-    /// Closes the video screen once playback is over, and tells the user when it failed.
-    /// On failure, tries the next checked source a few times before giving up.
+    /// Closes the video screen once playback is over (with source fallback on failure).
     fn close_player_when_finished(&mut self) {
-        if !self.model.player.open {
-            return;
-        }
-        match &self.model.playback.state {
-            player_api::PlaybackState::Failed(reason) => {
-                let reason = reason.clone();
-                if crate::actions::try_fallback(&self.dispatcher, &mut self.model, &reason) {
-                    return;
-                }
-                self.model.notify(crate::notice::Notice::error(format!(
-                    "Playback failed: {reason}"
-                )));
-            }
-            player_api::PlaybackState::Ended => {}
-            _ => return,
-        }
-        if self.model.playback.state != player_api::PlaybackState::Loading {
-            self.model.player.open = false;
-            self.model.player.fullscreen = false;
+        if crate::actions::close_when_finished(&self.dispatcher, &mut self.model) {
             self.presenter.reset();
         }
     }

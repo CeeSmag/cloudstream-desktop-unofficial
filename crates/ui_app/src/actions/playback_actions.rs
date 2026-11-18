@@ -192,24 +192,6 @@ pub(crate) fn handle_resolved(
     }
 }
 
-/// Tries the next source after a playback failure (check-gate style fallback).
-pub(crate) fn try_fallback(dispatcher: &Dispatcher, model: &mut AppModel, reason: &str) -> bool {
-    const MAX_ATTEMPTS: u32 = 3;
-    if model.fallback_attempts >= MAX_ATTEMPTS {
-        return false;
-    }
-    let next = model.sources.selected.saturating_add(1);
-    if next >= model.sources.links.len() {
-        return false;
-    }
-    model.fallback_attempts += 1;
-    model.notify(Notice::info(format!(
-        "Source failed ({reason}); trying the next stream…"
-    )));
-    switch_source(dispatcher, model, next);
-    true
-}
-
 fn open_player(dispatcher: &Dispatcher, model: &mut AppModel) {
     let embedded = dispatcher
         .services
@@ -247,7 +229,7 @@ fn select_track(dispatcher: &Dispatcher, model: &mut AppModel, kind: TrackKind, 
     );
 }
 
-fn switch_source(dispatcher: &Dispatcher, model: &mut AppModel, index: usize) {
+pub(super) fn switch_source(dispatcher: &Dispatcher, model: &mut AppModel, index: usize) {
     model.player.menu = None;
     let Some(playback) = &dispatcher.services.playback else {
         return;

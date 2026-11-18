@@ -4,7 +4,7 @@ use crate::app_model::{AppModel, Loadable};
 use crate::notice::Notice;
 use crate::ui_event::UiEvent;
 
-use super::{browse_actions, Dispatcher, UiAction};
+use super::{browse_actions, preference_actions, Dispatcher, UiAction};
 
 pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiAction) {
     match action {
@@ -22,7 +22,11 @@ pub(super) fn perform(dispatcher: &Dispatcher, model: &mut AppModel, action: UiA
             repository_url,
             listing,
         } => install(dispatcher, model, repository_url, listing),
-        other => perform_extension_change(dispatcher, model, other),
+        other => {
+            if !preference_actions::perform(dispatcher, model, other.clone()) {
+                perform_extension_change(dispatcher, model, other);
+            }
+        }
     }
 }
 
@@ -50,71 +54,16 @@ fn perform_extension_change(dispatcher: &Dispatcher, model: &mut AppModel, actio
             let outcome = services.settings.set_provider_enabled(&provider, enabled);
             report(model, "Cannot save the setting", outcome);
         }
-        UiAction::SetDebugLogging(enabled) => {
-            report(
-                model,
-                "Cannot save debug logging",
-                services.settings.set_debug_logging_enabled(enabled),
-            );
-            let _ = services.extensions.set_debug_logging(enabled);
-        }
-        UiAction::SetStreamProxy(enabled) => {
-            report(
-                model,
-                "Cannot save stream proxy",
-                services.settings.set_stream_proxy(enabled),
-            );
-        }
-        UiAction::SetSkipLookup(enabled) => {
-            report(
-                model,
-                "Cannot save skip lookup",
-                services.settings.set_skip_lookup(enabled),
-            );
-        }
-        UiAction::SetAutoplayNext(enabled) => {
-            report(
-                model,
-                "Cannot save autoplay",
-                services.settings.set_autoplay_next(enabled),
-            );
-        }
-        UiAction::SetPluginWorkerLimit(limit) => {
-            let value = if limit == 0 {
-                None
-            } else {
-                Some(limit as usize)
-            };
-            report(
-                model,
-                "Cannot save plugin worker limit",
-                services.settings.set_plugin_worker_limit(value),
-            );
-            services.extensions.set_resident_worker_limit(value);
-        }
-        UiAction::CheckForUpdate => {
-            model.settings.checking_update = true;
-            model.settings.update_status = Some("Checking…".to_owned());
-            let current = env!("CARGO_PKG_VERSION").to_owned();
-            dispatcher.runner.spawn("check-update", move || {
-                UiEvent::UpdateChecked(crate::update_check::check_for_update(&current))
-            });
-            return;
-        }
-        UiAction::OpenUpdateUrl => {
-            if let Some(url) = &model.settings.update_url {
-                if let Err(error) = open::that(url) {
-                    model.notify(Notice::error(format!("Cannot open update URL: {error}")));
-                }
-            }
-            return;
-        }
         _ => return,
     }
     refresh_local_state(dispatcher, model);
 }
 
-fn report<T>(model: &mut AppModel, context: &str, outcome: Result<T, app_services::ServiceError>) {
+pub(super) fn report<T>(
+    model: &mut AppModel,
+    context: &str,
+    outcome: Result<T, app_services::ServiceError>,
+) {
     if let Err(error) = outcome {
         model.notify(Notice::error(format!("{context}: {error}")));
     }
