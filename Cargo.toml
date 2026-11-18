@@ -19,6 +19,7 @@ members = [
     "crates/app_shell",
     "crates/portable_launcher",
     "crates/cloudflare_bridge",
+    "crates/cloudflare_window",
 ]
 # `archive/desktop_tauri` is the former WebView shell — kept for reference, not a workspace member.
 # `crates/ui_app` (egui) is reference-only too: its font provider turns on fontconfig `dlopen`,

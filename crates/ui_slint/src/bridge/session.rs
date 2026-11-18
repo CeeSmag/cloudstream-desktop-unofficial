@@ -1,7 +1,5 @@
 //! State the UI thread keeps between callbacks.
 
-use std::collections::HashSet;
-
 use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
@@ -17,7 +15,7 @@ pub struct AppExtras {
     pub data_dir: Option<std::path::PathBuf>,
 }
 
-/// The title page, the opening video and the Cloudflare question on screen right now.
+/// The title page and the opening video on screen right now.
 pub(crate) struct Session {
     pub(crate) control: OpenControl,
     pub(crate) live: LiveSources,
@@ -29,9 +27,6 @@ pub(crate) struct Session {
     pub(crate) details: DetailsTarget,
     pub(crate) last_frame: u64,
     pub(crate) update: Option<UpdateInfo>,
-    pub(crate) cf_id: Option<String>,
-    pub(crate) cf_host: Option<String>,
-    pub(crate) allowed_cf: HashSet<String>,
     pub(crate) tickets: RequestTickets,
     /// The TMDB titles Browse shows, in the grid's order.
     pub(crate) browse_items: Vec<app_services::BrowseItem>,
@@ -59,9 +54,6 @@ impl Default for Session {
             details: DetailsTarget::default(),
             last_frame: 0,
             update: None,
-            cf_id: None,
-            cf_host: None,
-            allowed_cf: HashSet::new(),
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),
         }

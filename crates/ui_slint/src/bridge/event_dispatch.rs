@@ -50,20 +50,6 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
             show_details_failed(ctx, &format!("The title could not be loaded: {error}"));
         }
         UiEvent::Notice(text) => ui.set_notice(text.into()),
-        UiEvent::CloudflareNeeded { host, url, id } => ask_cloudflare(ctx, ui, host, (url, id)),
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
     }
-}
-
-/// Shows the Cloudflare question for `host`; `request` is the page and the sidecar's request id.
-fn ask_cloudflare(ctx: &BridgeContext, ui: &CloudStream, host: String, request: (String, String)) {
-    let (url, id) = request;
-    {
-        let mut session = ctx.session.borrow_mut();
-        session.cf_host = Some(host.clone());
-        session.cf_id = Some(id);
-    }
-    ui.set_cf_host(host.into());
-    ui.set_cf_url(url.into());
-    ui.set_show_cf(true);
 }

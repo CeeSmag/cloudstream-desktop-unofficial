@@ -1,13 +1,42 @@
-//! Picks up Cloudflare verification requests from the sidecar's exchange folder watcher.
+//! Shows what the Cloudflare watcher reports, as a banner under the top bar.
 
-use cloudflare_bridge::{CloudflareEvent, Outcome, VerifyRequest};
+use std::time::Duration;
 
-use crate::ui_events::UiEvent;
+use cloudflare_bridge::CloudflareEvent;
+use slint::Model;
+
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::home_loading::load_home;
 
-/// Handles every request the watcher found since the last tick.
+/// How long "verified" stays on screen.
+const VERIFIED_SHOWN: Duration = Duration::from_secs(6);
+
+/// The banner's look: state (see `CloudflareBanner`), site and reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CloudflareBannerView {
+    pub(crate) state: i32,
+    pub(crate) host: String,
+    pub(crate) message: String,
+}
+
+/// The banner for `event`.
+pub(crate) fn banner_for(event: CloudflareEvent) -> CloudflareBannerView {
+    let (state, host, message) = match event {
+        CloudflareEvent::NeedsPermission { host } => (1, host, String::new()),
+        CloudflareEvent::Verifying { host } => (2, host, String::new()),
+        CloudflareEvent::Passed { host } => (3, host, String::new()),
+        CloudflareEvent::Failed { host, reason } => (4, host, reason),
+    };
+    CloudflareBannerView {
+        state,
+        host,
+        message,
+    }
+}
+
+/// Shows every event the watcher sent since the last tick.
 pub(crate) fn drain_cloudflare(ctx: &BridgeContext, ui: &CloudStream) {
     let pending: Vec<CloudflareEvent> = {
         let extras = ctx.extras.borrow();
@@ -16,29 +45,56 @@ pub(crate) fn drain_cloudflare(ctx: &BridgeContext, ui: &CloudStream) {
         };
         watch.events.try_iter().collect()
     };
-    for CloudflareEvent::Needed(request) in pending {
-        handle_request(ctx, ui, request);
+    for event in pending {
+        let view = banner_for(event);
+        if view.state == 3 {
+            after_verified(ctx, ui, &view.host);
+        }
+        ui.set_cf_state(view.state);
+        ui.set_cf_host(view.host.into());
+        ui.set_cf_message(view.message.into());
     }
 }
 
-fn handle_request(ctx: &BridgeContext, ui: &CloudStream, request: VerifyRequest) {
-    let allowed = ctx.session.borrow().allowed_cf.contains(&request.host);
-    if !allowed {
-        ctx.sender().send(UiEvent::CloudflareNeeded {
-            host: request.host,
-            url: request.url,
-            id: request.id,
-        });
-        return;
+/// The site passed: Home is loaded again if it came back empty, and the banner hides itself.
+fn after_verified(ctx: &BridgeContext, ui: &CloudStream, host: &str) {
+    if ui.get_home_shelves().row_count() == 0 {
+        load_home(ctx);
     }
-    if let Err(error) = open::that(&request.url) {
-        tracing::warn!(%error, host = %request.host, "could not open the system browser");
-    }
-    if let Some(dir) = ctx.cloudflare_dir() {
-        let outcome = Outcome::Waiting("complete verification in browser".into());
-        if let Err(error) = cloudflare_bridge::write_result(&dir, &request.id, &outcome) {
-            tracing::warn!(%error, id = %request.id, "could not answer the sidecar");
+    let weak = ctx.ui.clone();
+    let host = host.to_owned();
+    slint::Timer::single_shot(VERIFIED_SHOWN, move || {
+        if let Some(ui) = weak.upgrade() {
+            if ui.get_cf_state() == 3 && ui.get_cf_host() == host.as_str() {
+                ui.set_cf_state(0);
+            }
         }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn banner_for_maps_each_event_to_its_state() {
+        let host = || "site.test".to_owned();
+        assert_eq!(
+            banner_for(CloudflareEvent::NeedsPermission { host: host() }).state,
+            1
+        );
+        assert_eq!(
+            banner_for(CloudflareEvent::Verifying { host: host() }).state,
+            2
+        );
+        assert_eq!(
+            banner_for(CloudflareEvent::Passed { host: host() }).state,
+            3
+        );
+        let failed = banner_for(CloudflareEvent::Failed {
+            host: host(),
+            reason: "closed".into(),
+        });
+        assert_eq!((failed.state, failed.message.as_str()), (4, "closed"));
     }
-    ui.set_notice(format!("Cloudflare: complete check for {}", request.host).into());
 }

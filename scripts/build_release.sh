@@ -38,11 +38,11 @@ install_deps() {
     local SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
     step "Installing system packages"
     $SUDO apt-get update
-    # egui/eframe: GTK3 + common X11/Wayland bits. No WebKit / Node (Tauri frontend dropped).
+    # Slint: GTK3 + common X11/Wayland bits. WebKitGTK 4.1 for the Cloudflare verification helper.
     $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential pkg-config curl ca-certificates git rsync file xz-utils unzip python3 python3-pil \
         libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev \
-        libssl-dev libmpv-dev libmpv2
+        libssl-dev libmpv-dev libmpv2 libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
     if [ ! -x /usr/lib/jvm/temurin-21/bin/javac ]; then
         step "Installing JDK 21 (compiles the Kotlin sidecar)"
         local url
@@ -133,8 +133,8 @@ get_jre() {
 
 ensure_sidecar
 
-step "Compiling app_shell (cloudstream)"
-(cd "$REPO_ROOT" && cargo build --release -p app_shell)
+step "Compiling app_shell (cloudstream) and the Cloudflare helper (cloudstream-verify)"
+(cd "$REPO_ROOT" && cargo build --release -p app_shell -p cloudflare_window)
 
 APPDIR="$STAGE_DIR/CloudStream-$IMAGE_ARCH.AppDir"
 ICONS="$STAGE_DIR/icons"
@@ -152,6 +152,10 @@ step "Staging the AppDir"
 rm -rf "$APPDIR"; mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib"
 cp "$REPO_ROOT/target/release/cloudstream" "$APPDIR/usr/bin/cloudstream"
 strip "$APPDIR/usr/bin/cloudstream" 2>/dev/null || true
+# The Cloudflare verification window. It uses the system's WebKitGTK 4.1 (not bundled: WebKit's
+# helper processes have fixed install paths); without it, such sites show "could not be verified".
+cp "$REPO_ROOT/target/release/cloudstream-verify" "$APPDIR/usr/bin/cloudstream-verify"
+strip "$APPDIR/usr/bin/cloudstream-verify" 2>/dev/null || true
 cp -rf "$SIDECAR_DIST" "$APPDIR/usr/bin/sidecar"
 chmod +x "$APPDIR/usr/bin/sidecar/bin/cs-sidecar"
 cp -rf "$(get_jre)" "$APPDIR/usr/jre"

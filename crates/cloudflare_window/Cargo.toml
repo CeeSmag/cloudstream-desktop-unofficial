@@ -1,0 +1,22 @@
+[package]
+name = "cloudflare_window"
+description = "cloudstream-verify: the browser window in which the viewer passes a site's Cloudflare check."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cloudstream-verify"
+path = "src/main.rs"
+
+[dependencies]
+cloudflare_bridge = { path = "../cloudflare_bridge" }
+serde_json.workspace = true
+# The browser window. A separate process, so the WebView's event loop never runs inside Slint's.
+tao = "=0.37.2"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+wry = { version = "=0.57.1", default-features = false, features = ["os-webview", "x11"] }
+
+[lints]
+workspace = true

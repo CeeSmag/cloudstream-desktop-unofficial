@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod app_paths;
+mod cloudflare_wiring;
 mod data_wipe;
 mod debug_logs;
 mod log_category;
@@ -14,6 +15,7 @@ mod stream_proxy_router;
 mod unavailable_gateway;
 
 pub use app_paths::AppPaths;
+pub use cloudflare_wiring::start_cloudflare_watch;
 pub use data_wipe::{request_wipe, running_folder_name, wipe_if_requested, RetryPlan, WipeOutcome};
 pub use debug_logs::{DebugLogs, LogFileInfo};
 pub use logging_setup::start_logging;

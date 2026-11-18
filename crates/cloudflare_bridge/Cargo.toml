@@ -6,7 +6,6 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-open = "5"
 thiserror.workspace = true
 tracing.workspace = true
 

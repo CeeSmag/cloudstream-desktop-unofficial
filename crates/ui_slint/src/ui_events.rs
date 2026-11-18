@@ -26,11 +26,6 @@ pub(crate) enum UiEvent {
     OpenUpdate(Ticket, playback_session::CheckedOpen),
     OpenFailed(Ticket, String),
     Notice(String),
-    CloudflareNeeded {
-        host: String,
-        url: String,
-        id: String,
-    },
     UpdateLabel(String),
 }
 

@@ -61,13 +61,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # egui/eframe (GTK + X11/Wayland). No WebKit — product UI is not Tauri.
+      # Slint (GTK + X11/Wayland) and WebKitGTK 4.1 for the Cloudflare helper (cloudflare_window).
       - name: Install build packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config \
             libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev \
-            libssl-dev
+            libssl-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable

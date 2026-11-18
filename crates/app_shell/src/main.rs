@@ -3,7 +3,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use app_shell::{
-    build_services, start_logging, wipe_if_requested, AppPaths, RetryPlan, ServiceOptions,
+    build_services, start_cloudflare_watch, start_logging, wipe_if_requested, AppPaths, RetryPlan,
+    ServiceOptions,
 };
 use ui_slint::{run_desktop_app_with, AppExtras};
 
@@ -15,9 +16,8 @@ fn main() -> anyhow::Result<()> {
     wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream starting");
     let services = build_services(&paths, &ServiceOptions::default())?;
-    let cloudflare_dir = paths.data_dir().join("sidecar").join("cloudflare");
-    // Opens challenges only after the viewer allows the host; cookie return via UI confirm.
-    let cloudflare = Some(cloudflare_bridge::spawn_watcher(cloudflare_dir, false));
+    // Verification windows open only for sites the viewer allowed (Verify in the app).
+    let cloudflare = Some(start_cloudflare_watch(paths.data_dir(), &services.settings));
     let extras = AppExtras {
         cloudflare,
         data_dir: Some(paths.data_dir().to_path_buf()),

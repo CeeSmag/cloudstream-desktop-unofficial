@@ -41,13 +41,4 @@ impl BridgeContext {
     pub(crate) fn issue_ticket(&self, kind: RequestKind) -> Ticket {
         self.session.borrow_mut().tickets.issue(kind)
     }
-
-    /// The exchange folder shared with the sidecar's Cloudflare solver.
-    pub(crate) fn cloudflare_dir(&self) -> Option<std::path::PathBuf> {
-        self.extras
-            .borrow()
-            .data_dir
-            .as_ref()
-            .map(|dir| dir.join("sidecar").join("cloudflare"))
-    }
 }

@@ -8,6 +8,7 @@ import { BrowsePage, SearchPage, LibraryPage } from "browse.slint";
 import { SettingsPage } from "settings.slint";
 import { DetailsOverlay } from "details.slint";
 import { PlayerOverlay } from "player.slint";
+import { CloudflareBanner } from "cloudflare_banner.slint";
 
 export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice }
 
@@ -53,10 +54,11 @@ export component CloudStream inherits Window {
     in-out property <float> volume: 100;
     in-out property <image> video-frame;
     in-out property <bool> show-sources: false;
-    in-out property <bool> show-cf: false;
+    // Cloudflare banner: 0 hidden, 1 needs permission, 2 verifying, 3 verified, 4 failed.
+    in-out property <int> cf-state: 0;
     in-out property <bool> show-wipe-confirm: false;
     in-out property <string> cf-host: "";
-    in-out property <string> cf-url: "";
+    in-out property <string> cf-message: "";
     in-out property <int> settings-page-index: 0;
     in-out property <string> repo-url: "";
     in-out property <bool> player-chrome-visible: true;
@@ -147,9 +149,8 @@ export component CloudStream inherits Window {
     callback check-updates();
     callback apply-update();
     callback open-logs();
-    callback allow-cf-host();
-    callback cf-done();
-    callback cf-cancel();
+    callback cf-verify();
+    callback cf-dismiss();
     callback dismiss-notice();
     callback resume-hero();
     callback play-continue(int);
@@ -236,6 +237,14 @@ export component CloudStream inherits Window {
                     vertical-alignment: center;
                 }
             }
+        }
+
+        if cf-state != 0: CloudflareBanner {
+            state: root.cf-state;
+            host: root.cf-host;
+            message: root.cf-message;
+            verify => { cf-verify(); }
+            dismiss => { cf-dismiss(); }
         }
 
         if notice != "": Rectangle {
@@ -384,39 +393,6 @@ export component CloudStream inherits Window {
         select-audio(v) => { select-audio-track(v); }
         select-subtitle(v) => { select-subtitle-track(v); }
         reveal-chrome => { reveal-player-chrome(); }
-    }
-
-    if show-cf: Rectangle {
-        background: #000000aa;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 420px;
-                background: Theme.panel;
-                border-radius: Theme.radius;
-                VerticalLayout {
-                    padding: 20px;
-                    spacing: 12px;
-                    Text {
-                        text: "Cloudflare check";
-                        color: Theme.text;
-                        font-size: 18px;
-                        font-weight: 600;
-                    }
-                    Text {
-                        text: "Allow verification for " + cf-host + "?";
-                        color: Theme.muted;
-                        wrap: word-wrap;
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: "Allow & open"; primary: true; clicked => { allow-cf-host(); } }
-                        Button { text: "I passed"; clicked => { cf-done(); } }
-                        Button { text: "Cancel"; clicked => { cf-cancel(); } }
-                    }
-                }
-            }
-        }
     }
 
     if show-wipe-confirm: Rectangle {

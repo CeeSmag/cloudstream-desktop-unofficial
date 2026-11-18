@@ -199,6 +199,8 @@ function Build-App {
     Write-Step "Building cloudstream ($triple)"
     Invoke-Native 'Adding the Rust target' 'rustup' @('target', 'add', $triple)
     Invoke-Native 'Compiling app_shell' 'cargo' @('build', '--release', '--target', $triple, '-p', 'app_shell')
+    # The Cloudflare verification window (WebView2, part of Windows 10/11).
+    Invoke-Native 'Compiling cloudstream-verify' 'cargo' @('build', '--release', '--target', $triple, '-p', 'cloudflare_window')
 }
 
 function New-InstallPayload([string]$stage) {
@@ -208,6 +210,7 @@ function New-InstallPayload([string]$stage) {
     $exe = Join-Path $repoRoot "target\$triple\release\cloudstream.exe"
     if (-not (Test-Path $exe)) { throw "cloudstream.exe missing at $exe" }
     Copy-Item $exe (Join-Path $payload 'cloudstream.exe')
+    Copy-Item (Join-Path $repoRoot "target\$triple\release\cloudstream-verify.exe") (Join-Path $payload 'cloudstream-verify.exe')
     foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payload }
     foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payload -Recurse }
     if (Test-Path (Join-Path $iconDir 'icon.ico')) {
@@ -223,7 +226,7 @@ function Copy-Installer([string]$stage) {
         throw 'makensis not found. Install NSIS (https://nsis.sourceforge.io/) or choco install nsis.'
     }
     $payload = New-InstallPayload $stage
-    foreach ($name in 'cloudstream.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
+    foreach ($name in 'cloudstream.exe', 'cloudstream-verify.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
         if (-not (Test-Path (Join-Path $payload $name))) { throw "$name is not in the installer payload." }
     }
     $dest = Join-Path $OutDir "CloudStream_${version}_x64-setup.exe"
@@ -249,6 +252,7 @@ function New-Portable([string]$stage) {
     if (Test-Path (Split-Path $payloadFolder)) { Remove-Item (Split-Path $payloadFolder) -Recurse -Force }
     New-Item -ItemType Directory -Force $payloadFolder | Out-Null
     Copy-Item $exe (Join-Path $payloadFolder 'cloudstream.exe')
+    Copy-Item (Join-Path $repoRoot "target\$triple\release\cloudstream-verify.exe") (Join-Path $payloadFolder 'cloudstream-verify.exe')
     foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payloadFolder }
     foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payloadFolder -Recurse }
 
@@ -258,6 +262,7 @@ function New-Portable([string]$stage) {
 
     Assert-InPayload $archive 'vulkan-1.dll'
     Assert-InPayload $archive 'cloudstream.exe'
+    Assert-InPayload $archive 'cloudstream-verify.exe'
     $env:CS_PAYLOAD_ARCHIVE = $archive
     Invoke-Native 'Compiling the single-exe launcher' 'cargo' @('build', '--release', '--target', $triple, '-p', 'portable_launcher')
 

@@ -272,6 +272,10 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 
 ---
 
+#### `crates/cloudflare_bridge` and `crates/cloudflare_window`
+- **Bridge** (no GUI): file formats of the sidecar exchange (`request-`/`result-`, `fetch-`/`fetchresult-`), `AllowedHosts` (sites the viewer pressed Verify for, saved as setting `cloudflare_allowed_hosts`), the helper protocol, `VerifyHelper` (starts `cloudstream-verify` on demand) and `spawn_watcher`, which answers every request at once: not allowed → "ask again" and a `NeedsPermission` event for the UI's banner (`ui/cloudflare_banner.slint`); allowed → the helper. Started by `app_shell::start_cloudflare_watch` (helper next to the program, or `CS_VERIFY_HELPER`; browser profile `<data>/cloudflare_browser`).
+- **Window** (`cloudstream-verify`, tao + wry): one window per site on its front page, downloads refused; passes on `cf_clearance` + User-Agent + a probe from inside the page; then hidden and used for browser fetches. Linux needs the system's WebKitGTK 4.1 (not bundled in the AppImage); Windows uses WebView2.
+
 ### Chunk 4: Video Player Engine (libmpv)
 
 #### `crates/player_mpv`

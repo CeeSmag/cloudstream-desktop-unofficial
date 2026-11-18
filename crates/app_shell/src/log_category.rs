@@ -9,6 +9,7 @@ pub const OWN_TARGETS: &[&str] = &[
     "app_services",
     "app_shell",
     "cloudflare_bridge",
+    "cloudflare_window",
     "cloudstream",
     "core_model",
     "desktop_tauri",

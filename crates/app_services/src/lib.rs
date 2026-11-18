@@ -10,6 +10,7 @@ mod catalog_service;
 mod check_queue;
 mod clear_key;
 mod clock;
+mod cloudflare_setting;
 mod extension_load_report;
 mod extension_resident;
 mod extension_service;
