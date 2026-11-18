@@ -7,7 +7,7 @@ use extension_api::GatewayError;
 use serde_json::Value;
 
 use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
-use crate::rpc_message::encode_request;
+use crate::rpc_message::{encode_request, same_extension_load};
 use crate::sidecar_process_kill::{discard_running, take_if_exited};
 use crate::sidecar_process_start::{start_sidecar, RunningSidecar};
 use crate::{RpcTransport, SidecarLaunchConfig};
@@ -92,6 +92,11 @@ impl SidecarProcessTransport {
             self.pid.store(0, Ordering::SeqCst);
         }
         if slot.is_none() {
+            if request.method == "take_added_repositories" {
+                return Err(GatewayError::Unavailable(
+                    "no sidecar running for take_added".to_owned(),
+                ));
+            }
             if self.closed.load(Ordering::SeqCst) {
                 return Err(GatewayError::Unavailable("the app is closing".to_owned()));
             }
@@ -148,6 +153,37 @@ impl SidecarProcessTransport {
         }
         retry
     }
+
+    fn finish_call(
+        &self,
+        slot: &mut Option<RunningSidecar>,
+        request: &CallRequest<'_>,
+    ) -> Result<Value, GatewayError> {
+        match self.run_call(slot, request) {
+            Err(error) if matches!(error, GatewayError::Transport(_)) => {
+                if request.method == "take_added_repositories" {
+                    tracing::warn!(
+                        method = request.method,
+                        %error,
+                        "discarding sidecar after transport failure; not retrying take_added"
+                    );
+                    self.discard_slot(slot);
+                    Err(error)
+                } else {
+                    self.retry_after_transport(slot, request, error)
+                }
+            }
+            Err(error) if matches!(error, GatewayError::Timeout { .. }) => {
+                tracing::warn!(
+                    method = request.method,
+                    "discarding sidecar process after failed call"
+                );
+                self.discard_slot(slot);
+                Err(error)
+            }
+            other => other,
+        }
+    }
 }
 
 /// Method, params, and deadline for one sidecar exchange.
@@ -168,17 +204,7 @@ impl RpcTransport for SidecarProcessTransport {
             timeout,
         };
         let mut slot = self.lock_running();
-        match self.run_call(&mut slot, &request) {
-            Err(error) if matches!(error, GatewayError::Transport(_)) => {
-                self.retry_after_transport(&mut slot, &request, error)
-            }
-            Err(error) if matches!(error, GatewayError::Timeout { .. }) => {
-                tracing::warn!(method, "discarding sidecar process after failed call");
-                self.discard_slot(&mut slot);
-                Err(error)
-            }
-            other => other,
-        }
+        self.finish_call(&mut slot, &request)
     }
 
     fn shutdown(&self) {
@@ -237,19 +263,6 @@ impl RpcTransport for SidecarProcessTransport {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         calls.retain(|call| !(call.method == method && same_extension_load(&call.params, params)));
-    }
-}
-
-fn same_extension_load(left: &Value, right: &Value) -> bool {
-    let path = |value: &Value| {
-        value
-            .get("path")
-            .and_then(Value::as_str)
-            .map(|text| text.replace('\\', "/").to_ascii_lowercase())
-    };
-    match (path(left), path(right)) {
-        (Some(a), Some(b)) => a == b,
-        _ => left == right,
     }
 }
 

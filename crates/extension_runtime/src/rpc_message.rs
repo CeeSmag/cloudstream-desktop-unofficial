@@ -47,6 +47,20 @@ impl ReplyEnvelope {
     }
 }
 
+/// True when two `load_extension` params name the same plugin path (slash/case normalized).
+pub(crate) fn same_extension_load(left: &Value, right: &Value) -> bool {
+    let path = |value: &Value| {
+        value
+            .get("path")
+            .and_then(Value::as_str)
+            .map(|text| text.replace('\\', "/").to_ascii_lowercase())
+    };
+    match (path(left), path(right)) {
+        (Some(a), Some(b)) => a == b,
+        _ => left == right,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

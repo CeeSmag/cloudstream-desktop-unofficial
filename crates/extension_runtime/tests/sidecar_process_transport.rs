@@ -95,6 +95,29 @@ fn transport_retries_once_when_the_child_died_between_calls() {
 }
 
 #[test]
+fn take_added_does_not_start_a_sidecar_when_none_is_running() {
+    let transport = transport();
+    assert_eq!(
+        transport.call("reply_then_die", Value::Null, SHORT),
+        Ok(json!("bye"))
+    );
+    // Child is gone; take_added must not spawn a replacement JVM for a background poll.
+    let outcome = transport.call("take_added_repositories", Value::Null, SHORT);
+    assert!(
+        matches!(
+            outcome,
+            Err(GatewayError::Unavailable(_) | GatewayError::Transport(_))
+        ),
+        "got {outcome:?}"
+    );
+    assert_eq!(
+        transport.call("ping", Value::Null, SHORT),
+        Ok(json!("pong")),
+        "a real call still starts a fresh sidecar"
+    );
+}
+
+#[test]
 fn concurrent_calls_after_the_child_exits_all_finish_without_hanging() {
     use std::sync::{Arc, Barrier};
     let transport = Arc::new(transport());

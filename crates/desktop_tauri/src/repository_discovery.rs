@@ -65,9 +65,9 @@ impl Progress {
         self.failures += 1;
     }
 
+    /// Empty polls count even before the first discovery, so Mega-only installs do not run 5 minutes.
     fn should_stop(&self) -> bool {
-        self.failures >= MAX_CONSECUTIVE_FAILURES
-            || (self.found_any && self.quiet_polls >= QUIET_POLLS_BEFORE_STOP)
+        self.failures >= MAX_CONSECUTIVE_FAILURES || self.quiet_polls >= QUIET_POLLS_BEFORE_STOP
     }
 }
 
@@ -112,13 +112,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keeps_watching_until_something_was_found_and_then_went_quiet() {
+    fn stops_after_quiet_polls_even_when_nothing_was_ever_found() {
         let mut progress = Progress::default();
-        for _ in 0..QUIET_POLLS_BEFORE_STOP * 2 {
+        for _ in 0..(QUIET_POLLS_BEFORE_STOP - 1) {
             progress.found_nothing();
         }
-        assert!(!progress.should_stop(), "nothing found yet: keep waiting");
+        assert!(!progress.should_stop());
+        progress.found_nothing();
+        assert!(progress.should_stop());
+        assert!(!progress.found_any);
+    }
+
+    #[test]
+    fn a_discovery_resets_the_quiet_counter() {
+        let mut progress = Progress::default();
+        for _ in 0..(QUIET_POLLS_BEFORE_STOP - 1) {
+            progress.found_nothing();
+        }
         progress.found_something();
+        assert!(!progress.should_stop());
         for _ in 0..QUIET_POLLS_BEFORE_STOP {
             progress.found_nothing();
         }
