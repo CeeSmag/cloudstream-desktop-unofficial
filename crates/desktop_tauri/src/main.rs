@@ -98,6 +98,7 @@ mod video_away;
 mod video_cache_commands;
 mod video_commands;
 mod video_opening;
+mod webview_browser_args;
 mod window_commands;
 
 use app_shell::{
@@ -115,8 +116,11 @@ fn main() -> anyhow::Result<()> {
     wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream-tauri starting");
 
+    let mut context = tauri::generate_context!();
+    // Windows keeps --disable-gpu (fullscreen pointer); Linux enables GPU compositing.
+    webview_browser_args::apply_to_config(context.config_mut());
     let app = build_app(paths, debug_logs)
-        .build(tauri::generate_context!())
+        .build(context)
         .map_err(|error| anyhow::anyhow!("tauri error: {error}"))?;
     app.run(|handle, event| shutdown::handle(handle, &event));
     tracing::info!("cloudstream-tauri finished");
