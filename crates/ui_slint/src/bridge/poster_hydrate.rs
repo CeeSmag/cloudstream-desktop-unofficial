@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use poster_artwork::DecodedArtwork;
 use slint::{Model, ModelRc, Rgba8Pixel, SharedPixelBuffer};
 
+use crate::posters::decode_poster_headers;
 use crate::ui_events::PosterKind;
 use crate::{CloudStream, PosterItem};
 
@@ -38,10 +39,11 @@ pub(crate) fn hydrate_poster_images(ctx: &BridgeContext, kind: PosterKind) {
             continue;
         }
         let referer = referers.get(item.provider.as_str()).map(String::as_str);
+        let headers = poster_request_headers(&item.poster_headers, referer);
         let weak = ctx.ui.clone();
         ctx.services.artwork.request(
             &url,
-            referer,
+            headers,
             Box::new(move |result| {
                 let Ok(artwork) = result else {
                     return; // the loader logged why; the tile keeps its placeholder
@@ -54,6 +56,18 @@ pub(crate) fn hydrate_poster_images(ctx: &BridgeContext, kind: PosterKind) {
             }),
         );
     }
+}
+
+/// The provider's own poster headers, plus its site as `Referer` when it named none.
+fn poster_request_headers(encoded: &str, referer: Option<&str>) -> Vec<(String, String)> {
+    let mut headers = decode_poster_headers(encoded);
+    let has_referer = headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("referer"));
+    if let (false, Some(referer)) = (has_referer, referer) {
+        headers.push(("Referer".to_owned(), referer.to_owned()));
+    }
+    headers
 }
 
 /// Each provider's site, sent as the Referer of its posters (some hosts refuse hot-linking).
@@ -138,6 +152,21 @@ fn is_same_poster(row_poster: &str, loaded_for: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poster_request_headers_provider_referer_wins_over_site() {
+        let own = poster_request_headers("Referer: https://cdn.test/", Some("https://site.test/"));
+        assert_eq!(
+            own,
+            vec![("Referer".to_owned(), "https://cdn.test/".to_owned())]
+        );
+        let site = poster_request_headers("", Some("https://site.test/"));
+        assert_eq!(
+            site,
+            vec![("Referer".to_owned(), "https://site.test/".to_owned())]
+        );
+        assert!(poster_request_headers("", None).is_empty());
+    }
 
     #[test]
     fn is_same_poster_rejects_artwork_for_a_replaced_row() {

@@ -10,7 +10,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use crate::artwork_memory_cache::MemoryCache;
 use crate::{
-    decode_artwork, poster_address, ArtworkError, ArtworkFetcher, DecodedArtwork, DiskCache,
+    decode_artwork, poster_address, ArtworkError, ArtworkFetcher, ArtworkHeaders, DecodedArtwork,
+    DiskCache,
 };
 
 /// What a request gets back.
@@ -46,7 +47,7 @@ impl Default for ArtworkLoaderConfig {
 
 struct Job {
     url: String,
-    referer: Option<String>,
+    headers: ArtworkHeaders,
 }
 
 struct QueueState {
@@ -108,8 +109,8 @@ impl ArtworkLoader {
         self.shared.lock_memory().get(&url)
     }
 
-    /// Loads `raw_url` (sending `referer`) and calls `on_done` once with the outcome.
-    pub fn request(&self, raw_url: &str, referer: Option<&str>, on_done: ArtworkCallback) {
+    /// Loads `raw_url` (sending `headers` if it has to be downloaded) and calls `on_done` once.
+    pub fn request(&self, raw_url: &str, headers: ArtworkHeaders, on_done: ArtworkCallback) {
         let url = match poster_address(raw_url) {
             Ok(url) => url,
             Err(error) => return on_done(Err(error)),
@@ -131,8 +132,7 @@ impl ArtworkLoader {
             return;
         }
         state.waiting.insert(url.clone(), vec![on_done]);
-        let referer = referer.map(str::to_owned);
-        state.jobs.push(Job { url, referer });
+        state.jobs.push(Job { url, headers });
         drop(state);
         self.shared.work_ready.notify_one();
     }
@@ -226,7 +226,7 @@ fn load(shared: &Shared, job: &Job) -> ArtworkResult {
     }
     let loaded = shared
         .fetcher
-        .fetch(&job.url, job.referer.as_deref())
+        .fetch(&job.url, &job.headers)
         .and_then(|bytes| decode_artwork(&bytes).map(|artwork| (bytes, artwork)));
     match loaded {
         Ok((bytes, artwork)) => {

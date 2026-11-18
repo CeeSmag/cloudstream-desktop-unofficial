@@ -51,7 +51,7 @@ fn tiny_png() -> Vec<u8> {
 }
 
 impl ArtworkFetcher for ScriptedFetcher {
-    fn fetch(&self, url: &str, _referer: Option<&str>) -> Result<Vec<u8>, ArtworkError> {
+    fn fetch(&self, url: &str, _headers: &[(String, String)]) -> Result<Vec<u8>, ArtworkError> {
         self.order.lock().expect("order").push(url.to_owned());
         *self
             .calls
@@ -116,7 +116,7 @@ fn request_many_threads_overlapping_urls_each_request_answered_once_each_url_fet
                     let answered = Arc::clone(&answered);
                     loader.request(
                         &url,
-                        None,
+                        Vec::new(),
                         Box::new(move |result| {
                             assert!(result.is_ok(), "{result:?}");
                             answered.fetch_add(1, Ordering::SeqCst);
@@ -145,13 +145,13 @@ fn request_same_url_while_loading_joins_the_running_download() {
     let fetcher = Arc::new(ScriptedFetcher::holding());
     let loader = loader(&fetcher, 2);
     let (answers, received) = mpsc::channel();
-    loader.request("https://img.test/a.png", None, reporter(&answers));
+    loader.request("https://img.test/a.png", Vec::new(), reporter(&answers));
     assert!(wait_until(Duration::from_secs(2), || fetcher
         .calls_for("https://img.test/a.png")
         == 1));
     loader.request(
         "https://img.test/a.png",
-        Some("https://site.test/"),
+        vec![("Referer".to_owned(), "https://site.test/".to_owned())],
         reporter(&answers),
     );
     fetcher.release();
@@ -173,14 +173,14 @@ fn request_newest_is_served_first() {
     let fetcher = Arc::new(ScriptedFetcher::holding());
     let loader = loader(&fetcher, 1);
     let (answers, received) = mpsc::channel();
-    loader.request("https://img.test/busy.png", None, reporter(&answers));
+    loader.request("https://img.test/busy.png", Vec::new(), reporter(&answers));
     assert!(wait_until(Duration::from_secs(2), || fetcher
         .calls_for("https://img.test/busy.png")
         == 1));
     for name in ["old", "middle", "new"] {
         loader.request(
             &format!("https://img.test/{name}.png"),
-            None,
+            Vec::new(),
             reporter(&answers),
         );
     }
@@ -208,8 +208,8 @@ fn request_failed_download_answers_every_waiter_and_is_not_remembered() {
         .push("https://img.test/gone.png".into());
     let loader = loader(&fetcher, 1);
     let (answers, received) = mpsc::channel();
-    loader.request("https://img.test/gone.png", None, reporter(&answers));
-    loader.request("https://img.test/gone.png", None, reporter(&answers));
+    loader.request("https://img.test/gone.png", Vec::new(), reporter(&answers));
+    loader.request("https://img.test/gone.png", Vec::new(), reporter(&answers));
     fetcher.release();
     for _ in 0..2 {
         let result = received
@@ -218,7 +218,7 @@ fn request_failed_download_answers_every_waiter_and_is_not_remembered() {
         assert_eq!(result.map(|_| ()), Err(ArtworkError::Status(404)));
     }
     assert!(loader.cached("https://img.test/gone.png").is_none());
-    loader.request("https://img.test/gone.png", None, reporter(&answers));
+    loader.request("https://img.test/gone.png", Vec::new(), reporter(&answers));
     received
         .recv_timeout(Duration::from_secs(2))
         .expect("answer")
@@ -238,7 +238,7 @@ fn shutdown_with_queued_and_loading_requests_answers_each_once_and_workers_end()
     for index in 0..10 {
         loader.request(
             &format!("https://img.test/{index}.png"),
-            None,
+            Vec::new(),
             reporter(&answers),
         );
     }
@@ -257,7 +257,7 @@ fn shutdown_with_queued_and_loading_requests_answers_each_once_and_workers_end()
     }
     assert_eq!(count, 10, "each request answered exactly once");
     assert!(wait_until(Duration::from_secs(2), || loader.live_workers() == 0));
-    loader.request("https://img.test/late.png", None, reporter(&answers));
+    loader.request("https://img.test/late.png", Vec::new(), reporter(&answers));
     let late = received
         .recv_timeout(Duration::from_secs(1))
         .expect("late answer");
@@ -269,7 +269,7 @@ fn request_unsupported_address_is_answered_at_once_without_download() {
     let fetcher = Arc::new(ScriptedFetcher::default());
     let loader = loader(&fetcher, 1);
     let (answers, received) = mpsc::channel();
-    loader.request("data:image/png;base64,AA", None, reporter(&answers));
+    loader.request("data:image/png;base64,AA", Vec::new(), reporter(&answers));
     let result = received
         .recv_timeout(Duration::from_secs(1))
         .expect("answer");

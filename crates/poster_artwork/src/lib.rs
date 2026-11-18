@@ -15,7 +15,7 @@ pub use artwork_address::poster_address;
 pub use artwork_decode::{decode_artwork, DecodedArtwork, MAX_ARTWORK_WIDTH};
 pub use artwork_disk_cache::DiskCache;
 pub use artwork_error::ArtworkError;
-pub use artwork_fetcher::{ArtworkFetcher, UreqArtworkFetcher, MAX_IMAGE_BYTES};
+pub use artwork_fetcher::{ArtworkFetcher, ArtworkHeaders, UreqArtworkFetcher, MAX_IMAGE_BYTES};
 pub use artwork_loader::{
     ArtworkCallback, ArtworkLoader, ArtworkLoaderConfig, ArtworkResult,
     DEFAULT_MEMORY_BUDGET_BYTES, DEFAULT_WORKERS,

@@ -16,11 +16,35 @@ pub(crate) fn poster_from_search(item: &SearchResult) -> PosterItem {
         provider: item.api_name.clone().into(),
         url: item.url.clone().into(),
         poster: item.poster_url.clone().unwrap_or_default().into(),
+        poster_headers: encode_poster_headers(item.poster_headers.as_ref()).into(),
         media_key: item.url.clone().into(),
         data: item.url.clone().into(),
         image: empty_image(),
         progress: 0.0,
     }
+}
+
+/// The provider's poster headers as text the Slint model can carry, sorted, one per line.
+pub(crate) fn encode_poster_headers(
+    headers: Option<&std::collections::HashMap<String, String>>,
+) -> String {
+    let mut lines: Vec<String> = headers
+        .into_iter()
+        .flatten()
+        .filter(|(name, _)| !name.contains(['\n', ':']))
+        .map(|(name, value)| format!("{name}: {}", value.replace('\n', " ")))
+        .collect();
+    lines.sort();
+    lines.join("\n")
+}
+
+/// The headers of [`encode_poster_headers`] back as pairs.
+pub(crate) fn decode_poster_headers(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned()))
+        .filter(|(name, _)| !name.is_empty())
+        .collect()
 }
 
 pub(crate) fn posters_from_search(items: &[SearchResult]) -> ModelRc<PosterItem> {
@@ -57,6 +81,7 @@ pub(crate) fn posters_from_browse(items: &[app_services::BrowseItem]) -> ModelRc
             provider: "".into(),
             url: item.id.clone().into(),
             poster: item.poster_url.clone().unwrap_or_default().into(),
+            poster_headers: "".into(),
             media_key: item.id.clone().into(),
             data: item.id.clone().into(),
             image: empty_image(),
@@ -75,6 +100,7 @@ pub(crate) fn posters_from_bookmarks(items: &[Bookmark]) -> ModelRc<PosterItem> 
             provider: item.provider.clone().into(),
             url: item.url.clone().into(),
             poster: item.poster_url.clone().unwrap_or_default().into(),
+            poster_headers: "".into(),
             media_key: item.url.clone().into(),
             data: item.url.clone().into(),
             image: empty_image(),
@@ -99,6 +125,7 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
                 provider: item.provider.clone().into(),
                 url: item.detail_url.clone().into(),
                 poster: item.poster_url.clone().unwrap_or_default().into(),
+                poster_headers: "".into(),
                 media_key: item.media_key.clone().into(),
                 data: item.detail_url.clone().into(),
                 image: empty_image(),
@@ -181,4 +208,36 @@ pub(crate) fn empty_shelves() -> ModelRc<ShelfSection> {
 
 pub(crate) fn empty_episodes() -> ModelRc<EpisodeItem> {
     ModelRc::new(VecModel::from(Vec::<EpisodeItem>::new()))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    #[test]
+    fn poster_headers_round_trip_sorted() {
+        let headers = HashMap::from([
+            ("Referer".to_owned(), "https://site.test/".to_owned()),
+            ("Cookie".to_owned(), "a=b".to_owned()),
+        ]);
+        let text = encode_poster_headers(Some(&headers));
+        assert_eq!(text, "Cookie: a=b\nReferer: https://site.test/");
+        assert_eq!(
+            decode_poster_headers(&text),
+            vec![
+                ("Cookie".to_owned(), "a=b".to_owned()),
+                ("Referer".to_owned(), "https://site.test/".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn poster_headers_none_or_broken_names_encode_to_nothing() {
+        assert_eq!(encode_poster_headers(None), "");
+        let broken = HashMap::from([("Bad:Name".to_owned(), "x".to_owned())]);
+        assert_eq!(encode_poster_headers(Some(&broken)), "");
+        assert!(decode_poster_headers("no colon here").is_empty());
+    }
 }

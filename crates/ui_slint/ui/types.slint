@@ -4,6 +4,8 @@ export struct PosterItem {
     provider: string,
     url: string,
     poster: string,
+    /// The provider's headers for the poster download, one `Name: value` per line.
+    poster-headers: string,
     media-key: string,
     data: string,
     image: image,

@@ -17,10 +17,20 @@ const USER_AGENT: &str =
 /// Only formats this build decodes (no AVIF), so a host that negotiates sends a readable one.
 const ACCEPT: &str = "image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.5";
 
+/// Extra request headers for one image: the provider's poster headers, or its site as `Referer`
+/// (hosts that refuse hot-linking want them).
+pub type ArtworkHeaders = Vec<(String, String)>;
+
 /// Downloads the bytes of an image.
 pub trait ArtworkFetcher: Send + Sync {
-    /// Fetches `url`, sending `referer` when given (hosts that refuse hot-linking want it).
-    fn fetch(&self, url: &str, referer: Option<&str>) -> Result<Vec<u8>, ArtworkError>;
+    /// Fetches `url`, sending `headers` (they replace the default `User-Agent` and `Accept`).
+    fn fetch(&self, url: &str, headers: &[(String, String)]) -> Result<Vec<u8>, ArtworkError>;
+}
+
+fn has_header(headers: &[(String, String)], name: &str) -> bool {
+    headers
+        .iter()
+        .any(|(known, _)| known.eq_ignore_ascii_case(name))
 }
 
 /// [`ArtworkFetcher`] backed by `ureq`.
@@ -49,14 +59,16 @@ impl UreqArtworkFetcher {
 }
 
 impl ArtworkFetcher for UreqArtworkFetcher {
-    fn fetch(&self, url: &str, referer: Option<&str>) -> Result<Vec<u8>, ArtworkError> {
-        let mut request = self
-            .agent
-            .get(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", ACCEPT);
-        if let Some(referer) = referer.filter(|value| !value.is_empty()) {
-            request = request.header("Referer", referer);
+    fn fetch(&self, url: &str, headers: &[(String, String)]) -> Result<Vec<u8>, ArtworkError> {
+        let mut request = self.agent.get(url);
+        if !has_header(headers, "User-Agent") {
+            request = request.header("User-Agent", USER_AGENT);
+        }
+        if !has_header(headers, "Accept") {
+            request = request.header("Accept", ACCEPT);
+        }
+        for (name, value) in headers.iter().filter(|(_, value)| !value.is_empty()) {
+            request = request.header(name.as_str(), value.as_str());
         }
         let response = request
             .call()

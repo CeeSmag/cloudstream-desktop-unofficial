@@ -102,7 +102,7 @@ impl Server {
 fn fetch_good_poster_downloads_and_decodes_shrunk() {
     let server = Server::start();
     let bytes = UreqArtworkFetcher::default()
-        .fetch(&format!("{}/poster.png", server.address), None)
+        .fetch(&format!("{}/poster.png", server.address), &[])
         .expect("download");
     let decoded = decode_artwork(&bytes).expect("decode");
     assert_eq!((decoded.width, decoded.height), (360, 540));
@@ -111,14 +111,14 @@ fn fetch_good_poster_downloads_and_decodes_shrunk() {
 #[test]
 fn fetch_missing_poster_reports_status() {
     let server = Server::start();
-    let outcome = UreqArtworkFetcher::default().fetch(&format!("{}/missing", server.address), None);
+    let outcome = UreqArtworkFetcher::default().fetch(&format!("{}/missing", server.address), &[]);
     assert_eq!(outcome, Err(ArtworkError::Status(404)));
 }
 
 #[test]
 fn fetch_oversized_body_is_refused() {
     let server = Server::start();
-    let outcome = UreqArtworkFetcher::default().fetch(&format!("{}/huge", server.address), None);
+    let outcome = UreqArtworkFetcher::default().fetch(&format!("{}/huge", server.address), &[]);
     assert_eq!(outcome, Err(ArtworkError::TooLarge(MAX_IMAGE_BYTES)));
 }
 
@@ -126,7 +126,7 @@ fn fetch_oversized_body_is_refused() {
 fn fetch_silent_host_times_out() {
     let server = Server::start();
     let fetcher = UreqArtworkFetcher::with_timeout(Duration::from_millis(300));
-    let outcome = fetcher.fetch(&format!("{}/hang", server.address), None);
+    let outcome = fetcher.fetch(&format!("{}/hang", server.address), &[]);
     assert!(
         matches!(outcome, Err(ArtworkError::Network(_))),
         "{outcome:?}"
@@ -134,10 +134,11 @@ fn fetch_silent_host_times_out() {
 }
 
 #[test]
-fn fetch_sends_referer_when_given() {
+fn fetch_sends_given_headers() {
     let server = Server::start();
     let fetcher = UreqArtworkFetcher::default();
     let url = format!("{}/guarded", server.address);
-    assert_eq!(fetcher.fetch(&url, None), Err(ArtworkError::Status(403)));
-    assert!(fetcher.fetch(&url, Some("https://site.test/")).is_ok());
+    assert_eq!(fetcher.fetch(&url, &[]), Err(ArtworkError::Status(403)));
+    let referer = [("Referer".to_owned(), "https://site.test/".to_owned())];
+    assert!(fetcher.fetch(&url, &referer).is_ok());
 }
