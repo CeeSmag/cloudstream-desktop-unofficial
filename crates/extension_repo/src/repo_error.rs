@@ -30,4 +30,12 @@ pub enum RepoError {
     /// The plugin's internal name cannot be turned into a safe file name.
     #[error("unsafe plugin name '{0}'")]
     UnsafeName(String),
+    /// The download URL or payload failed an install security check.
+    #[error("rejected plugin download from {url}: {reason}")]
+    Rejected {
+        /// URL that was refused (download URL, or repository URL when the repo itself is invalid).
+        url: String,
+        /// Short reason.
+        reason: String,
+    },
 }

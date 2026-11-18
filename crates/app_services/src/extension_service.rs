@@ -63,7 +63,7 @@ impl ExtensionService {
         listing: &PluginListing,
         repository_url: &str,
     ) -> Result<Vec<ProviderInfo>, ServiceError> {
-        let path = self.installer.install(listing)?;
+        let path = self.installer.install(listing, repository_url)?;
         let record = InstalledExtension {
             file_name: file_name_of(&path),
             internal_name: listing.internal_name.clone(),

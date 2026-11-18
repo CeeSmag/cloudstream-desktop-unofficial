@@ -4,6 +4,7 @@
 mod extension_installer;
 mod http_fetcher;
 mod http_probe;
+mod plugin_download_guard;
 mod repo_error;
 mod repository_client;
 mod repository_manifest;

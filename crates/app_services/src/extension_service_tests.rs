@@ -32,10 +32,12 @@ fn setup(label: &str) -> (ExtensionService, Arc<FakeGateway>, PathBuf) {
     (service, gateway, dir)
 }
 
+const REPO: &str = "https://cdn.example/repo.json";
+
 fn listing(name: &str) -> PluginListing {
     PluginListing {
         internal_name: name.into(),
-        url: "https://r/x.cs3".into(),
+        url: "https://cdn.example/x.cs3".into(),
         version: 3,
         ..PluginListing::default()
     }
@@ -44,9 +46,7 @@ fn listing(name: &str) -> PluginListing {
 #[test]
 fn install_downloads_records_and_loads_untrusted() {
     let (service, gateway, dir) = setup("install");
-    let providers = service
-        .install(&listing("Good"), "https://r/repo.json")
-        .expect("installs");
+    let providers = service.install(&listing("Good"), REPO).expect("installs");
     assert_eq!(providers[0].name, "Good");
     let recorded = &service.installed().expect("list")[0];
     assert_eq!(recorded.version, 3);
@@ -61,8 +61,8 @@ fn install_downloads_records_and_loads_untrusted() {
 #[test]
 fn load_installed_reports_failures_without_blocking_other_extensions() {
     let (service, _, dir) = setup("failures");
-    service.install(&listing("Good"), "r").expect("installs");
-    let _ = service.install(&listing("BrokenOne"), "r");
+    service.install(&listing("Good"), REPO).expect("installs");
+    let _ = service.install(&listing("BrokenOne"), REPO);
     let report = service.load_installed().expect("loads");
     assert_eq!(report.providers.len(), 1);
     assert_eq!(report.failures.len(), 1);
@@ -73,8 +73,8 @@ fn load_installed_reports_failures_without_blocking_other_extensions() {
 #[test]
 fn loading_reports_each_extension_and_a_final_done() {
     let (service, _, dir) = setup("progress");
-    service.install(&listing("Good"), "r").expect("installs");
-    service.install(&listing("Other"), "r").expect("installs");
+    service.install(&listing("Good"), REPO).expect("installs");
+    service.install(&listing("Other"), REPO).expect("installs");
     let seen = Mutex::new(Vec::new());
     service
         .load_installed_reporting(&|p| seen.lock().expect("lock").push(p.clone()))
@@ -93,7 +93,7 @@ fn loading_reports_each_extension_and_a_final_done() {
 #[test]
 fn trusting_an_extension_is_used_on_the_next_load() {
     let (service, gateway, dir) = setup("trust");
-    service.install(&listing("Good"), "r").expect("installs");
+    service.install(&listing("Good"), REPO).expect("installs");
     let record = service.installed().expect("list").remove(0);
     service.set_trusted(&record, true).expect("trust");
     service.load_installed().expect("loads");
@@ -112,8 +112,8 @@ fn trusting_an_extension_is_used_on_the_next_load() {
 #[test]
 fn uninstall_stops_offering_the_providers_of_that_extension_only() {
     let (service, _, dir) = setup("hide");
-    service.install(&listing("Good"), "r").expect("installs");
-    service.install(&listing("Other"), "r").expect("installs");
+    service.install(&listing("Good"), REPO).expect("installs");
+    service.install(&listing("Other"), REPO).expect("installs");
     let record = service
         .installed()
         .expect("list")
@@ -129,7 +129,7 @@ fn uninstall_stops_offering_the_providers_of_that_extension_only() {
 #[test]
 fn uninstall_removes_file_and_record() {
     let (service, _, dir) = setup("uninstall");
-    service.install(&listing("Good"), "r").expect("installs");
+    service.install(&listing("Good"), REPO).expect("installs");
     let record = service.installed().expect("list").remove(0);
     service.uninstall(&record).expect("uninstalls");
     assert!(service.installed().expect("list").is_empty());
@@ -140,7 +140,7 @@ fn uninstall_removes_file_and_record() {
 #[test]
 fn uninstall_unloads_the_runtime_so_a_reinstall_can_load_again() {
     let (service, gateway, dir) = setup("unload");
-    service.install(&listing("Good"), "r").expect("installs");
+    service.install(&listing("Good"), REPO).expect("installs");
     let record = service.installed().expect("list").remove(0);
     service.uninstall(&record).expect("uninstalls");
     let unloaded = gateway.unloaded_paths.lock().expect("lock");
@@ -151,9 +151,7 @@ fn uninstall_unloads_the_runtime_so_a_reinstall_can_load_again() {
         unloaded[0]
     );
     drop(unloaded);
-    let providers = service
-        .install(&listing("Good"), "r")
-        .expect("reinstalls");
+    let providers = service.install(&listing("Good"), REPO).expect("reinstalls");
     assert_eq!(providers[0].name, "Good");
     assert!(service
         .providers()
