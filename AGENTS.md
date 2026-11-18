@@ -330,6 +330,7 @@ This document is the architectural index, navigation map, and modification handb
     - **Load path jail:** stored `file_name` must be `<safe>.cs3`; Rust `plugin_path_in` and sidecar `ExtensionPathJail` keep load/unload under `<data>/extensions`.
     - **Bytecode (untrusted):** cannot load real `java.net.ServerSocket` / `Socket` / `DatagramSocket`, `javax.net.ssl.SSLSocket*`, or `java.lang.Thread`. Remaps via `RawSocketRemapper` → loopback `ServerSocketStub`, deny-outbound `SocketStub`, capped `ThreadStub`. `CompatPluginClassLoader` **fails closed** if patches fail (no raw unpatched bytes). `ProcessBuilder`, NIO `Files`, and `ClassLoader` stay denied even for Trusted. Trusted skips static verify and widens the classloader — confirm in UI; reload applies immediately.
     - **OS job (Windows):** the sidecar process tree is assigned to a Job Object (768 MB memory cap, kill-on-job-close, fail-closed if assign fails) in `extension_runtime::sidecar_job_object`. AppContainer SID isolation and per-plugin workers are not wired yet.
+    - **Linux:** plugins still run in one out-of-process JVM sidecar with the bytecode sandbox; there is no AppContainer/Job Object equivalent yet — do not claim OS-level FS isolation on Linux.
     - **Threat model:** plugins are untrusted community code with intentional public HTTPS egress. Isolation aims to block process spawn, host filesystem escape, and raw sockets — not to make arbitrary `.cs3` “perfectly safe.” All plugins still share one JVM sidecar.
 
 #### `crates/ui_app`
