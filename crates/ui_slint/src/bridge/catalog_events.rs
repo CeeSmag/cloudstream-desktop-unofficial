@@ -1,11 +1,14 @@
 //! Shows start-up progress, Home, search, Browse and title pages.
 
+use std::time::Duration;
+
 use slint::{ModelRc, VecModel};
 
 use crate::posters::{
     posters_from_bookmarks, posters_from_continue, posters_from_search, shelves_from_sections,
     string_model,
 };
+use crate::startup_progress::{home_loading_view, plugin_loading_view, StartupView};
 use crate::ui_events::{BrowseRow, DetailsPage, PosterKind};
 use crate::{CloudStream, EpisodeItem, PosterItem};
 
@@ -16,19 +19,23 @@ use super::home_loading::load_home;
 use super::poster_hydrate::hydrate_poster_images;
 use super::session::DetailsTarget;
 
+/// Longest the start-up screen waits for Home after the plugins loaded; then Home shows its own
+/// loading state.
+const STARTUP_HOME_WAIT: Duration = Duration::from_secs(20);
+
 pub(crate) fn show_startup_progress(
     ui: &CloudStream,
     finished: usize,
     total: usize,
     current: &str,
 ) {
-    let progress = if total == 0 {
-        1.0
-    } else {
-        finished as f32 / total as f32
-    };
-    ui.set_startup_progress(progress);
-    ui.set_startup_status(format!("Loading {current} ({finished}/{total})").into());
+    show_startup_view(ui, &plugin_loading_view(finished, total, current));
+}
+
+fn show_startup_view(ui: &CloudStream, view: &StartupView) {
+    ui.set_startup_status(view.label.clone().into());
+    ui.set_startup_progress(view.fraction);
+    ui.set_startup_indeterminate(view.indeterminate);
 }
 
 pub(crate) fn show_startup_done(
@@ -37,10 +44,19 @@ pub(crate) fn show_startup_done(
     providers: &[String],
     error: Option<String>,
 ) {
-    ui.set_starting(false);
     ui.set_providers(string_model(providers.iter().cloned()));
-    if let Some(first) = providers.first() {
-        ui.set_selected_provider(first.into());
+    match providers.first() {
+        Some(first) => {
+            ui.set_selected_provider(first.into());
+            show_startup_view(ui, &home_loading_view(first));
+            let weak = ctx.ui.clone();
+            slint::Timer::single_shot(STARTUP_HOME_WAIT, move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_starting(false);
+                }
+            });
+        }
+        None => ui.set_starting(false),
     }
     if let Some(error) = error {
         ui.set_notice(error.into());
@@ -87,6 +103,8 @@ pub(crate) fn show_home(
     ui: &CloudStream,
     sections: &[(String, Vec<core_model::SearchResult>)],
 ) {
+    ui.set_home_loading(false);
+    ui.set_starting(false);
     ui.set_home_shelves(shelves_from_sections(sections));
     hydrate_poster_images(ctx, PosterKind::Shelf);
 }

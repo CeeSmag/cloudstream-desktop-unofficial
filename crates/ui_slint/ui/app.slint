@@ -1,4 +1,4 @@
-import { Button, Palette, ProgressIndicator, Spinner } from "std-widgets.slint";
+import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import {
     PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice
@@ -28,6 +28,8 @@ export component CloudStream inherits Window {
     in-out property <bool> starting: true;
     in-out property <string> startup-status: "Loading extensions…";
     in-out property <float> startup-progress: 0.0;
+    in-out property <bool> startup-indeterminate: true;
+    in-out property <bool> home-loading: false;
     in-out property <string> notice: "";
     in-out property <string> status-line: "";
     in-out property <bool> open-busy: false;
@@ -158,30 +160,29 @@ export component CloudStream inherits Window {
         height: 0px;
     }
 
-    // Startup overlay
+    // Startup overlay: shown until the plugins and the first Home shelves have loaded.
     if starting: Rectangle {
-        background: #0c0f17ee;
+        background: Theme.bg;
         VerticalLayout {
             alignment: center;
+            cross-axis-alignment: center;
             spacing: 16px;
             Text {
                 text: "CloudStream";
                 color: Theme.text;
                 font-size: 36px;
                 font-weight: 700;
-                horizontal-alignment: center;
             }
             Text {
                 text: startup-status;
                 color: Theme.muted;
-                horizontal-alignment: center;
             }
             ProgressIndicator {
                 width: 320px;
-                height: 8px;
+                height: 6px;
                 progress: startup-progress;
+                indeterminate: startup-indeterminate;
             }
-            Spinner { indeterminate: true; }
         }
     }
 
@@ -246,6 +247,8 @@ export component CloudStream inherits Window {
             continue-items: root.continue-items;
             shelves: root.home-shelves;
             provider-name: root.selected-provider;
+            has-providers: root.providers.length > 0;
+            loading: root.home-loading;
             hero-title: root.hero-title;
             hero-subtitle: root.hero-subtitle;
             hero-image: root.hero-image;

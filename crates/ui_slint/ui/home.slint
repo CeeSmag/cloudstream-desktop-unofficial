@@ -1,4 +1,4 @@
-import { Button, ScrollView } from "std-widgets.slint";
+import { Button, ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { PosterItem, ShelfSection } from "types.slint";
 import { PosterRow, PosterTile } from "poster.slint";
@@ -8,6 +8,8 @@ export component HomePage inherits ScrollView {
     in property <[PosterItem]> continue-items: [];
     in property <[ShelfSection]> shelves: [];
     in property <string> provider-name: "";
+    in property <bool> has-providers: false;
+    in property <bool> loading: false;
     in property <string> hero-title: "";
     in property <string> hero-subtitle: "";
     in property <image> hero-image;
@@ -92,8 +94,23 @@ export component HomePage inherits ScrollView {
         SectionTitle {
             text: root.provider-name == "" ? "Home" : root.provider-name;
         }
-        if shelves.length == 0: MutedLabel {
-            text: "Add a plugin in Settings → Extensions to fill Home.";
+        if loading && shelves.length == 0: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            Spinner {
+                width: 20px;
+                height: 20px;
+                indeterminate: true;
+            }
+            MutedLabel {
+                text: "Loading " + (root.provider-name == "" ? "Home" : root.provider-name) + "…";
+                vertical-alignment: center;
+            }
+        }
+        if !loading && shelves.length == 0: MutedLabel {
+            text: root.has-providers
+                ? "Nothing to show from " + root.provider-name + " right now."
+                : "Add a plugin in Settings → Extensions to fill Home.";
         }
 
         for shelf[s] in shelves: VerticalLayout {

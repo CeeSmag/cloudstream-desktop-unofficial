@@ -17,7 +17,10 @@ pub(crate) fn load_home(ctx: &BridgeContext) {
     let sender = ctx.sender();
     let provider = ctx
         .window()
-        .map(|ui| ui.get_selected_provider().to_string())
+        .map(|ui| {
+            ui.set_home_loading(true);
+            ui.get_selected_provider().to_string()
+        })
         .unwrap_or_default();
     spawn_work("home", move || {
         let providers = services.extensions.providers();
