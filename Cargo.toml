@@ -15,6 +15,7 @@ members = [
     "crates/app_services",
     "crates/playback_session",
     "crates/ui_app",
+    "crates/ui_slint",
     "crates/app_shell",
     "crates/portable_launcher",
     "crates/cloudflare_bridge",

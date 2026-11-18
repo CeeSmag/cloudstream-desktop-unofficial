@@ -21,9 +21,10 @@ player_api = { path = "../player_api" }
 player_mpv = { path = "../player_mpv" }
 storage = { path = "../storage" }
 stream_proxy = { path = "../stream_proxy" }
+title_cache = { path = "../title_cache" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
-ui_app = { path = "../ui_app" }
+ui_slint = { path = "../ui_slint" }
 
 [lints]
 workspace = true

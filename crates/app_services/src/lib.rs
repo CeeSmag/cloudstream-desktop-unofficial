@@ -1,6 +1,10 @@
 //! Use-case services the UI calls: extensions, catalog, playback, library, settings.
 #![forbid(unsafe_code)]
 
+mod browse_fetcher;
+mod browse_genres;
+mod browse_query;
+mod browse_service;
 mod catalog_service;
 mod check_queue;
 mod clear_key;
@@ -31,7 +35,18 @@ mod stream_resolver;
 mod subtitle_scan;
 #[cfg(test)]
 mod test_support;
+mod ui_services;
 mod video_cache_setting;
+
+pub use browse_fetcher::{BrowseFetcher, UreqBrowseFetcher};
+pub use browse_genres::{
+    movie_genre_id, tv_genre_id, BrowseFilterRequest, BrowseItem, BrowsePage, TMDB_API_KEY,
+    TMDB_BASE_URL,
+};
+pub use browse_service::BrowseClient;
+
+/// Alias for [`BrowseClient`] (TMDB catalog discovery).
+pub type BrowseService = BrowseClient;
 
 pub use catalog_service::{CatalogService, ProviderSearchOutcome};
 pub use check_queue::CheckQueue;
@@ -57,4 +72,5 @@ pub use stream_label::{describe_link, full_label, source_label, stream_host, str
 pub use stream_resolver::{
     is_audio_only_url, link_rank, playable_links_best_first, StreamResolver,
 };
+pub use ui_services::UiServices;
 pub use video_cache_setting::{VideoCache, VIDEO_CACHE_AHEAD_PERCENTS, VIDEO_CACHE_SIZES_MB};

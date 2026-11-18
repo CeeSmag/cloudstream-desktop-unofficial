@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use app_services::{
     CatalogService, Clock, ExtensionService, LibraryService, PlaybackService, RepositoryService,
-    RoutedPlayer, SettingsService, StreamResolver, SystemClock,
+    RoutedPlayer, SettingsService, StreamResolver, SystemClock, UiServices,
 };
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
@@ -15,7 +15,7 @@ use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
 };
-use ui_app::UiServices;
+use title_cache::TitleCache;
 
 use crate::app_paths::AppPaths;
 use crate::sidecar_discovery;
@@ -73,6 +73,10 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         ),
         settings,
         clock,
+        title_cache: Arc::new(TitleCache::new(
+            paths.data_dir().join("sources"),
+            title_cache::CacheLimits::default(),
+        )),
     })
 }
 

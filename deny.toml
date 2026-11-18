@@ -24,6 +24,8 @@ allow = [
     "CDLA-Permissive-2.0",
     "OFL-1.1",
     "Ubuntu-font-1.0",
+    "GPL-3.0",
+    "GPL-3.0-only",
     "GPL-3.0-or-later",
     "MPL-2.0",
 ]

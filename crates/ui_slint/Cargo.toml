@@ -1,0 +1,31 @@
+[package]
+name = "ui_slint"
+description = "CloudStream desktop UI (Slint): screens, theme, navigation, player chrome."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+app_services = { path = "../app_services" }
+cloudflare_bridge = { path = "../cloudflare_bridge" }
+core_model = { path = "../core_model" }
+extension_api = { path = "../extension_api" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+open = "5"
+playback_session = { path = "../playback_session" }
+player_api = { path = "../player_api" }
+semver = "1"
+serde.workspace = true
+serde_json.workspace = true
+slint = { version = "1.19", default-features = true }
+thiserror.workspace = true
+title_cache = { path = "../title_cache" }
+tracing.workspace = true
+ureq = "3"
+
+[build-dependencies]
+slint-build = "1.19"
+
+[lints]
+workspace = true

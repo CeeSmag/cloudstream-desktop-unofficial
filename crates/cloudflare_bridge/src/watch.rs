@@ -44,7 +44,8 @@ impl Drop for WatchHandle {
 /// Starts watching `dir` for new verification requests.
 ///
 /// When `auto_open` is true, each new request opens in the system browser and is answered as
-/// declined (cookie return needs a dedicated browser panel; the main UI stays egui-only).
+/// [`Outcome::Waiting`] so the sidecar can retry after the viewer finishes (cookie return is done
+/// by the UI via [`crate::write_result`]).
 pub fn spawn_watcher(dir: PathBuf, auto_open: bool) -> WatchHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel();
@@ -64,20 +65,20 @@ fn run_loop(dir: PathBuf, auto_open: bool, stop: Arc<AtomicBool>, tx: Sender<Clo
         for request in pending_requests(&dir, &mut seen) {
             let _ = tx.send(CloudflareEvent::Needed(request.clone()));
             if auto_open {
-                open_and_decline(&dir, &request);
+                open_and_wait(&dir, &request);
             }
         }
         thread::sleep(Duration::from_millis(400));
     }
 }
 
-fn open_and_decline(dir: &Path, request: &VerifyRequest) {
+fn open_and_wait(dir: &Path, request: &VerifyRequest) {
     tracing::info!(host = %request.host, "opening Cloudflare challenge in the system browser");
     if let Err(error) = open::that(&request.url) {
         tracing::warn!(%error, url = %request.url, "could not open the system browser");
     }
-    let reason = "egui shell opened the page in the system browser; cookie return is not wired yet";
-    if let Err(error) = write_result(dir, &request.id, &Outcome::Declined(reason.to_owned())) {
+    let reason = "opened in the system browser; confirm in the app when the check is done";
+    if let Err(error) = write_result(dir, &request.id, &Outcome::Waiting(reason.to_owned())) {
         tracing::warn!(%error, id = %request.id, "could not write Cloudflare result");
     }
 }

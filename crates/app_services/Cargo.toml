@@ -10,9 +10,13 @@ core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }
 player_api = { path = "../player_api" }
+serde.workspace = true
+serde_json.workspace = true
 storage = { path = "../storage" }
 thiserror.workspace = true
+title_cache = { path = "../title_cache" }
 tracing.workspace = true
+ureq = "3"
 
 [lints]
 workspace = true

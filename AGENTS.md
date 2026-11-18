@@ -1,6 +1,6 @@
 # AGENTS.md — Developer & AI Agent Codebase Guide
 
-This document is the architectural index for **`cloudstream-rs-egui`** (egui-only fork of the CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_app` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). Sibling repo `cloudstream-desktop-unofficial` remains the dual Tauri/egui product. When this file and the code differ, the code wins.
+This document is the architectural index for **`cloudstream-rs-egui`** (native Slint UI fork of the CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_slint` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). `crates/ui_app` (egui) remains in-tree as a reference shell only. Sibling repo `cloudstream-desktop-unofficial` remains the dual Tauri/egui product. When this file and the code differ, the code wins.
 
 ---
 
@@ -42,9 +42,9 @@ This document is the architectural index for **`cloudstream-rs-egui`** (egui-onl
 - **Player Backend**: `libmpv` is the sole video player engine, loaded dynamically at runtime (`libmpv-2.dll` on Windows, `.so.2` on Linux, `.dylib` on macOS).
 - **Decoupled One-Way Flow**: `ui -> services -> traits <- implementations`. Concrete implementations are only wired in `app_shell`.
 - **Fault-Tolerant Resilience**: No unhandled panics (`unwrap`, `expect`, `panic!`, `indexing_slicing` denied). Fallible paths have explicit fallbacks or structured errors.
-- **Application Frontend (this fork)**: `app_shell` / `ui_app` — native desktop shell with an immediate-mode `egui` GUI, blurred glass shaders and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
-- **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`check_and_pick`) for egui; wired from `ui_app` playback actions (replaces one-shot `StreamResolver::resolve` for open).
-- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare` and can open challenges in the system browser; cookie return is not fully wired yet.
+- **Application Frontend (this fork)**: `app_shell` / `ui_slint` — native desktop shell with a retained-mode Slint GUI and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
+- **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`open_with` / `run_open`), plays the first working ASAP, keeps checking the full list, and can seed from `title_cache`; wired from `ui_slint`.
+- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, opens challenges in the system browser after allow-host, and writes cookie/result files from the Slint confirm UI.
 - **Legacy reference**: `archive/desktop_tauri` (former Tauri + React shell) is kept for porting remaining features; it is **not** a workspace member.
 
 ---
@@ -337,9 +337,15 @@ This document is the architectural index for **`cloudstream-rs-egui`** (egui-onl
     - **Linux:** one out-of-process JVM **per plugin** with the bytecode sandbox. Untrusted + `cloudstream.data.dir`: Landlock FS allow-list (RO: JDK, sidecar home, `<data>/extensions`, `/bin`/`/usr`/`/lib*`/`/etc`/`/proc`; RW: `<data>/sidecar`, `/tmp`, `/dev`), `RLIMIT_AS` 4096 MB (virtual; Windows Job 1536 MB is commit charge — HotSpot needs the headroom for compressed class space), `-XX:CompressedClassSpaceSize=256m`, `-Djava.awt.headless=true` (plugins like StreamPlay use Swing dispatchers; no X11 inside Landlock), `DISPLAY` cleared, new process group + `PR_SET_PDEATHSIG`, kill-on-drop of the group (`sidecar_linux_*`). Trusted + `data.dir`: same rlimit/pgid/headless without Landlock. Fail-closed if Landlock/rlimit cannot be applied when required. Tests/`fake_sidecar` without `data.dir` stay plain spawn.
     - **Threat model:** plugins are untrusted community code with intentional public HTTPS egress. Isolation aims to block process spawn, host filesystem escape, and raw sockets — not to make arbitrary `.cs3` “perfectly safe.” Plugins no longer share one JVM (a crash or escape in one worker does not take down another plugin’s process).
 
-#### `crates/ui_app`
+#### `crates/ui_slint`
+- **Location**: `crates/ui_slint/`
+- **Dependencies**: `slint = "1.19"`, `playback_session`, `player_api`, `app_services`, `cloudflare_bridge`
+- **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks.
+
+#### `crates/ui_app` (reference only)
 - **Location**: `crates/ui_app/`
 - **Dependencies**: `egui = "0.37"`, `eframe = "0.37"`, `egui_extras`, `image`, `player_api`, `app_services`
+- **Status**: Former product UI; kept for porting reference. Product binary uses `ui_slint`.
 - **Architecture**: Unidirectional reactive pattern:
   - `screens/` and `widgets/` render state and emit `UiAction`.
   - `actions/dispatcher.rs` executes use cases asynchronously on `TaskRunner`.
@@ -586,7 +592,8 @@ All commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests
 | **Frontend Canvas Blitter** | `crates/desktop_tauri/frontend/src/components/VideoCanvas.tsx` |
 | **Frontend Tauri API Wrapper** | `crates/desktop_tauri/frontend/src/services/api.ts` |
 | **Frontend TypeScript Types** | `crates/desktop_tauri/frontend/src/types/index.ts` |
-| **Native GUI (egui)** | `crates/ui_app/src/screens/`, `crates/ui_app/src/widgets/` |
+| **Native GUI (Slint)** | `crates/ui_slint/ui/`, `crates/ui_slint/src/bridge/` |
+| **Native GUI (egui, reference)** | `crates/ui_app/src/screens/`, `crates/ui_app/src/widgets/` |
 | **Service Construction Root** | `crates/app_shell/src/service_wiring.rs` |
 | **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs` |
 | **Sidecar Process Transport** | `crates/extension_runtime/src/sidecar_process_transport.rs` |
@@ -720,7 +727,7 @@ just gates
 # Run all unit and integration tests across workspace
 cargo test --workspace
 
-# Run the egui desktop shell (product UI)
+# Run the Slint desktop shell (product UI)
 cargo run -p app_shell
 # just run
 
