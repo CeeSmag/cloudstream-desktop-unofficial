@@ -52,12 +52,12 @@ impl VideoCache {
         }
     }
 
-    /// The limits while the video waits after the viewer left the player: half of each part. The
-    /// player trims what lies behind to it; what it already read ahead it keeps, reading no more.
+    /// The limits while the video waits after the viewer left the player: no further ahead read,
+    /// half the behind budget. Already-buffered ahead is kept by the player until trimmed.
     pub fn while_away(self) -> CacheLimits {
         let watching = self.while_watching();
         CacheLimits {
-            ahead_bytes: watching.ahead_bytes / 2,
+            ahead_bytes: 0,
             behind_bytes: watching.behind_bytes / 2,
         }
     }
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn two_gb_half_ahead_is_one_gb_each_way_and_half_of_each_while_away() {
+    fn two_gb_half_ahead_is_one_gb_each_way_and_zero_ahead_while_away() {
         let choice = cache(2048, 50);
         let watching = choice.while_watching();
         assert_eq!(
@@ -151,7 +151,7 @@ mod tests {
             (1024 * MB, 1024 * MB)
         );
         let away = choice.while_away();
-        assert_eq!((away.ahead_bytes, away.behind_bytes), (512 * MB, 512 * MB));
+        assert_eq!((away.ahead_bytes, away.behind_bytes), (0, 512 * MB));
     }
 
     #[test]
