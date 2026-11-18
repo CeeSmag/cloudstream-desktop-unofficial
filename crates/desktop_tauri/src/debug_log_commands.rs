@@ -73,10 +73,8 @@ pub async fn set_debug_logging(
         .set_enabled(enabled)
         .map_err(|error| format!("Cannot write the debug logs: {error}"))?;
     state.read().extensions.set_debug_logging(enabled);
-    // The player's own (mpv) messages are part of the debug logs, at a level that needs no restart.
-    if let Some(playback) = &state.read().playback {
-        playback.set_verbose_player_log(enabled);
-    }
+    // Verbose mpv log forwarding stays behind CS_MPV_LOG only; the debug switch must not
+    // flood player-logs.txt (buffer overflows and empty attach spans on every tick).
     Ok(describe(&debug_logs))
 }
 

@@ -219,9 +219,6 @@ fn init_services(
     app.manage(debug_logs);
     app.manage(data_commands::DataFolder(paths.data_dir().to_path_buf()));
     preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
-    if let (true, Some(playback)) = (debug_on, services.playback.as_ref()) {
-        playback.set_verbose_player_log(true);
-    }
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
     let services_valid_from = services

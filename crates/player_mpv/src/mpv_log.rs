@@ -21,8 +21,8 @@ struct RawLogMessage {
     log_level: c_int,
 }
 
-/// The mpv log level to ask for: warnings and errors, or while debug logging is on everything mpv
-/// says at `verbose` and worse.
+/// The mpv log level to ask for: warnings and errors, or everything at `verbose` and worse when
+/// `CS_MPV_LOG` (or an explicit `set_verbose_log(true)`) is on.
 pub(crate) fn log_level(verbose: bool) -> &'static str {
     if verbose {
         "v"
@@ -104,6 +104,12 @@ mod tests {
         };
         // SAFETY: `message` is a valid `mpv_event_log_message` and the strings outlive the call.
         unsafe { forward((&raw mut message).cast()) }
+    }
+
+    #[test]
+    fn quiet_log_level_is_warn_and_verbose_is_v() {
+        assert_eq!(log_level(false), "warn");
+        assert_eq!(log_level(true), "v");
     }
 
     #[test]

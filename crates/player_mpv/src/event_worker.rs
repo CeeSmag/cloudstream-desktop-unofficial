@@ -106,13 +106,17 @@ impl EventWorker {
     }
 
     /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
-    #[tracing::instrument(level = "debug", skip_all)]
     fn attach_subtitles(&self, loaded: Option<u64>) {
         let Some((generation, subtitles)) =
             take_when_loaded(&self.pending_subtitles, &self.stream_generation, loaded)
         else {
             return;
         };
+        tracing::debug!(
+            generation,
+            files = subtitles.len(),
+            "attaching subtitle files"
+        );
         attach_in_background(&self.handle, &self.stream_generation, generation, subtitles);
     }
 

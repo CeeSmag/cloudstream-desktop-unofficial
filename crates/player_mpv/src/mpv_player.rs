@@ -65,7 +65,8 @@ impl MpvPlayer {
         let handle = Arc::new(MpvHandle::create(api)?);
         configure(&handle, options, embedded)?;
         handle.initialize()?;
-        handle.set_log_level(log_level(false));
+        // Verbose mpv event logs only with CS_MPV_LOG; the app debug switch does not flip this.
+        handle.set_log_level(log_level(std::env::var_os("CS_MPV_LOG").is_some()));
         let (renderer, frames) = if embedded {
             start_embedding(&handle)
         } else {
