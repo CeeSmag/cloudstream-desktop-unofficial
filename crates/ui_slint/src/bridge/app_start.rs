@@ -17,11 +17,13 @@ use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
 use super::event_dispatch::drain_events;
 use super::initial_settings::apply_settings_to_ui;
-use super::player_polling::poll_player;
+use super::player_polling::{poll_player, show_latest_frame};
 use super::session::{AppExtras, Session};
 
-/// How often the UI thread picks up background results and reads the player.
+/// How often the UI thread picks up background results and reads the player's status.
 const UI_TICK: Duration = Duration::from_millis(200);
+/// How often a new video frame is looked for (60 per second).
+const FRAME_TICK: Duration = Duration::from_millis(16);
 
 /// Runs the desktop app until its window closes.
 pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
@@ -51,7 +53,15 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
             drain_cloudflare(&tick_ctx, &ui);
         }
     });
+    let frames = slint::Timer::default();
+    let frame_ctx = ctx.clone();
+    frames.start(slint::TimerMode::Repeated, FRAME_TICK, move || {
+        if let Some(ui) = frame_ctx.window() {
+            show_latest_frame(&frame_ctx, &ui);
+        }
+    });
     ui.run().map_err(|error| error.to_string())?;
+    drop(frames);
     drop(timer);
     Ok(())
 }

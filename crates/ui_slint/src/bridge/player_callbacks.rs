@@ -2,6 +2,8 @@
 
 use player_api::PlaybackState;
 
+use slint::ComponentHandle;
+
 use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
@@ -22,11 +24,12 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     });
     let c = ctx.clone();
     ui.on_set_volume(move |volume| {
+        let volume = volume.clamp(0.0, 130.0);
         if let Some(playback) = &c.services.playback {
-            report(
-                "volume",
-                playback.set_volume(volume.clamp(0.0, 130.0) as u8),
-            );
+            report("volume", playback.set_volume(volume as u8));
+        }
+        if let Some(ui) = c.window() {
+            ui.set_volume(volume);
         }
     });
     let c = ctx.clone();
@@ -59,9 +62,11 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
         }
     });
     let weak = ctx.ui.clone();
-    ui.on_reveal_player_chrome(move || {
+    ui.on_toggle_fullscreen(move || {
         if let Some(ui) = weak.upgrade() {
-            ui.set_player_chrome_visible(true);
+            let fullscreen = !ui.window().is_fullscreen();
+            ui.window().set_fullscreen(fullscreen);
+            ui.set_fullscreen(fullscreen);
         }
     });
 }

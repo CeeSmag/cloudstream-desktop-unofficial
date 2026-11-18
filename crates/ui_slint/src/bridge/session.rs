@@ -26,6 +26,10 @@ pub(crate) struct Session {
     pub(crate) episode_data: String,
     pub(crate) details: DetailsTarget,
     pub(crate) last_frame: u64,
+    /// The track menus on screen (audio, subtitles), so they are rebuilt only when they change.
+    pub(crate) shown_tracks: (Vec<String>, Vec<String>),
+    /// The size the player renders at (physical pixels).
+    pub(crate) surface_size: (u32, u32),
     pub(crate) update: Option<UpdateInfo>,
     pub(crate) tickets: RequestTickets,
     /// The TMDB titles Browse shows, in the grid's order.
@@ -53,6 +57,8 @@ impl Default for Session {
             episode_data: String::new(),
             details: DetailsTarget::default(),
             last_frame: 0,
+            shown_tracks: (Vec::new(), Vec::new()),
+            surface_size: (0, 0),
             update: None,
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),

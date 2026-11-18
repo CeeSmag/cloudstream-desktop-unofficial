@@ -1,15 +1,131 @@
-import { Button, Slider } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { SourceItem } from "types.slint";
+
+/// A horizontal bar the viewer drags; the shown value follows `value` (0..1) until dragged, and
+/// `committed` reports the new value when the button is released. Not the std `Slider`: dragging
+/// a Slider writes its `value`, which replaces the binding, so the bar stopped following playback
+/// after the first seek.
+component DragBar inherits Rectangle {
+    in property <float> value;
+    in property <color> fill: Theme.accent;
+    out property <bool> dragging: touch.pressed;
+    out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
+    callback committed(float);
+
+    height: 20px;
+    property <float> shown: root.dragging ? root.drag-value : clamp(root.value, 0, 1);
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: touch.has-hover || root.dragging ? 6px : 4px;
+        border-radius: self.height / 2;
+        background: #ffffff33;
+        animate height { duration: 100ms; }
+        Rectangle {
+            x: 0;
+            width: parent.width * root.shown;
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: root.fill;
+        }
+    }
+    if touch.has-hover || root.dragging: Rectangle {
+        x: parent.width * root.shown - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: white;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                root.committed(root.drag-value);
+            }
+        }
+    }
+}
+
+/// A round icon-like text button for the player bar.
+component BarButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    width: max(40px, label.preferred-width + 24px);
+    height: 40px;
+    border-radius: 20px;
+    background: root.active ? Theme.accent : (touch.has-hover ? #ffffff26 : transparent);
+    animate background { duration: 120ms; }
+    label := Text {
+        text: root.text;
+        color: root.active ? #0c0f17 : Theme.text;
+        font-size: 15px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// A list of choices in a panel (audio tracks, subtitles).
+component ChoicePanel inherits Rectangle {
+    in property <string> title;
+    in property <[string]> choices;
+    in property <string> current;
+    callback picked(string);
+    width: 280px;
+    background: #141824f2;
+    border-radius: Theme.radius;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000099;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        Text {
+            text: root.title;
+            color: Theme.muted;
+            font-size: Theme.caption-size;
+        }
+        if root.choices.length == 0: Text {
+            text: "None in this stream";
+            color: Theme.muted;
+        }
+        for choice in root.choices: Rectangle {
+            height: 36px;
+            border-radius: Theme.radius-sm;
+            background: choice == root.current ? Theme.panel-hi : (row.has-hover ? #ffffff14 : transparent);
+            Text {
+                x: 10px;
+                text: (choice == root.current ? "✓  " : "    ") + choice;
+                color: Theme.text;
+                vertical-alignment: center;
+                overflow: elide;
+                width: parent.width - 20px;
+            }
+            row := TouchArea {
+                clicked => { root.picked(choice); }
+            }
+        }
+    }
+}
 
 export component PlayerOverlay inherits Rectangle {
     in property <string> title: "";
     in property <image> video-frame;
     in property <float> position-ms: 0;
     in property <float> duration-ms: 1;
+    in property <string> position-text: "0:00";
+    in property <string> duration-text: "0:00";
     in property <bool> paused: false;
+    in property <bool> buffering: false;
     in property <float> volume: 100;
-    in property <bool> show-sources: false;
+    in property <bool> fullscreen: false;
+    in-out property <bool> show-sources: false;
     in-out property <bool> chrome-visible: true;
     in property <[SourceItem]> sources: [];
     in property <[string]> audio-track-labels: [];
@@ -28,256 +144,218 @@ export component PlayerOverlay inherits Rectangle {
     callback select-source(int);
     callback select-audio(string);
     callback select-subtitle(string);
-    callback reveal-chrome();
+    callback toggle-fullscreen();
+
+    property <int> open-panel: 0; // 0 none, 1 audio, 2 subtitles
 
     background: #000000;
     accessible-role: AccessibleRole.main;
     forward-focus: keys;
 
+    /// Shows the controls and starts their 3 s hide countdown again.
+    function show-chrome() {
+        root.chrome-visible = true;
+        if hide-timer.running {
+            hide-timer.restart();
+        }
+    }
+
+    function nudge(delta-ms: float) {
+        root.show-chrome();
+        root.seek-to(clamp(root.position-ms + delta-ms, 0, root.duration-ms));
+    }
+
     keys := FocusScope {
-        KeyBinding {
-            keys: @keys(Space);
-            activated => {
-                root.reveal-chrome();
-                root.toggle-pause();
+        key-pressed(event) => {
+            if event.text == " " || event.text == "k" { root.show-chrome(); root.toggle-pause(); return accept; }
+            if event.text == Key.LeftArrow { root.nudge(-10000); return accept; }
+            if event.text == Key.RightArrow { root.nudge(10000); return accept; }
+            if event.text == Key.UpArrow { root.show-chrome(); root.set-volume(min(root.volume + 5, 130)); return accept; }
+            if event.text == Key.DownArrow { root.show-chrome(); root.set-volume(max(root.volume - 5, 0)); return accept; }
+            if event.text == "m" { root.show-chrome(); root.set-volume(root.volume > 0 ? 0 : 100); return accept; }
+            if event.text == "f" { root.toggle-fullscreen(); return accept; }
+            if event.text == Key.Escape {
+                if root.open-panel != 0 || root.show-sources { root.open-panel = 0; root.show-sources = false; return accept; }
+                if root.fullscreen { root.toggle-fullscreen(); return accept; }
+                root.leave-player();
+                return accept;
             }
+            return reject;
         }
-        KeyBinding {
-            keys: @keys(LeftArrow);
-            activated => {
-                root.reveal-chrome();
-                root.seek-to(Math.max(root.position-ms - 5000, 0));
-            }
-        }
-        KeyBinding {
-            keys: @keys(RightArrow);
-            activated => {
-                root.reveal-chrome();
-                root.seek-to(Math.min(root.position-ms + 5000, root.duration-ms));
-            }
-        }
-        KeyBinding {
-            keys: @keys(UpArrow);
-            activated => {
-                root.reveal-chrome();
-                root.set-volume(Math.min(root.volume + 5, 130));
-            }
-        }
-        KeyBinding {
-            keys: @keys(DownArrow);
-            activated => {
-                root.reveal-chrome();
-                root.set-volume(Math.max(root.volume - 5, 0));
-            }
-        }
-        KeyBinding {
-            keys: @keys(M);
-            activated => {
-                root.reveal-chrome();
-                root.set-volume(root.volume > 0 ? 0 : 100);
-            }
-        }
+    }
 
+    video-area := TouchArea {
+        mouse-cursor: root.chrome-visible ? MouseCursor.default : MouseCursor.none;
+        changed mouse-x => { root.show-chrome(); }
+        changed mouse-y => { root.show-chrome(); }
+        clicked => {
+            root.open-panel = 0;
+            keys.focus();
+            root.show-chrome();
+            root.toggle-pause();
+        }
+        double-clicked => {
+            root.toggle-pause();
+            root.toggle-fullscreen();
+        }
+        Image {
+            width: 100%;
+            height: 100%;
+            source: root.video-frame;
+            image-fit: contain;
+        }
+    }
+
+    if root.buffering: Rectangle {
+        width: 64px;
+        height: 64px;
+        border-radius: 32px;
+        background: #00000088;
+        Text {
+            text: "…";
+            color: white;
+            font-size: 28px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.chrome-visible: Rectangle {
+        y: 0;
+        height: 96px;
+        background: @linear-gradient(180deg, #000000cc 0%, #00000000 100%);
+        HorizontalLayout {
+            padding: 24px;
+            spacing: 12px;
+            alignment: start;
+            BarButton { text: "←"; clicked => { root.leave-player(); } }
+            Text {
+                text: root.title;
+                color: white;
+                font-size: 20px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
+    if root.chrome-visible: Rectangle {
+        y: parent.height - self.height;
+        height: 150px;
+        background: @linear-gradient(0deg, #000000e6 0%, #00000000 100%);
         VerticalLayout {
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => {
-                    root.reveal-chrome();
-                    root.toggle-pause();
-                }
-                Image {
-                    source: root.video-frame;
+            padding-left: 28px;
+            padding-right: 28px;
+            padding-bottom: 20px;
+            spacing: 8px;
+            alignment: end;
+            HorizontalLayout {
+                spacing: 14px;
+                Text { text: root.position-text; color: white; vertical-alignment: center; }
+                DragBar {
                     horizontal-stretch: 1;
-                    vertical-stretch: 1;
-                    image-fit: contain;
+                    value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
+                    committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
                 }
+                Text { text: root.duration-text; color: Theme.muted; vertical-alignment: center; }
             }
-
-            if root.chrome-visible: Rectangle {
-                height: 108px;
-                background: #141824ee;
-                backdrop-blur: 12px;
-                VerticalLayout {
-                    padding: 10px;
-                    spacing: 6px;
-                    Text { text: root.title; color: Theme.text; }
-                    Slider {
-                        value: root.duration-ms <= 0 ? 0 : root.position-ms / root.duration-ms;
-                        changed(v) => { root.seek-to(v * root.duration-ms); }
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button {
-                            text: root.paused ? "Play" : "Pause";
-                            clicked => { root.toggle-pause(); }
-                        }
-                        Button {
-                            text: "Sources";
-                            clicked => { root.toggle-sources(); }
-                        }
-                        Button {
-                            text: "Refresh";
-                            clicked => { root.refresh-sources(); }
-                        }
-                        Button {
-                            text: "Skip";
-                            clicked => { root.skip-segment(); }
-                        }
-                        Button {
-                            text: "Audio";
-                            clicked => { audio-popup.show(); }
-                        }
-                        Button {
-                            text: "Subs";
-                            clicked => { subs-popup.show(); }
-                        }
-                        Text {
-                            text: "Vol";
-                            color: Theme.muted;
-                            vertical-alignment: center;
-                        }
-                        Slider {
-                            width: 120px;
-                            value: root.volume / 130;
-                            changed(v) => { root.set-volume(v * 130); }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        Button {
-                            text: "Leave";
-                            clicked => { root.leave-player(); }
-                        }
-                        Button {
-                            text: "Close";
-                            clicked => { root.close-player(); }
-                        }
-                    }
+            HorizontalLayout {
+                spacing: 8px;
+                BarButton { text: root.paused ? "▶  Play" : "❚❚  Pause"; active: true; clicked => { root.toggle-pause(); } }
+                BarButton { text: "−10s"; clicked => { root.nudge(-10000); } }
+                BarButton { text: "+10s"; clicked => { root.nudge(10000); } }
+                BarButton { text: "Skip intro"; clicked => { root.skip-segment(); } }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: "Vol"; color: Theme.muted; vertical-alignment: center; }
+                DragBar {
+                    width: 110px;
+                    fill: white;
+                    value: root.volume / 130;
+                    committed(v) => { root.set-volume(v * 130); }
                 }
+                BarButton { text: "Audio"; active: root.open-panel == 1; clicked => { root.open-panel = root.open-panel == 1 ? 0 : 1; } }
+                BarButton { text: "Subtitles"; active: root.open-panel == 2; clicked => { root.open-panel = root.open-panel == 2 ? 0 : 2; } }
+                BarButton { text: "Sources"; active: root.show-sources; clicked => { root.toggle-sources(); } }
+                BarButton { text: root.fullscreen ? "Exit full" : "Full"; clicked => { root.toggle-fullscreen(); } }
             }
         }
     }
 
-    audio-popup := PopupWindow {
-        x: 24px;
-        y: parent.height - 320px;
-        width: 260px;
-        height: 240px;
-        close-policy: close-on-click-outside;
-        Rectangle {
-            background: Theme.panel;
-            border-radius: Theme.radius;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 6px;
-                Text {
-                    text: "Audio tracks";
-                    color: Theme.text;
-                    font-weight: 600;
-                }
-                for label in root.audio-track-labels: Rectangle {
-                    height: 36px;
-                    background: label == root.audio-track-value ? Theme.panel-hi : transparent;
-                    border-radius: Theme.radius-sm;
-                    Text {
-                        text: label;
-                        color: Theme.text;
-                        vertical-alignment: center;
-                        x: 8px;
-                    }
-                    TouchArea {
-                        clicked => {
-                            root.select-audio(label);
-                            audio-popup.close();
-                        }
-                    }
-                }
-            }
-        }
+    if root.open-panel == 1: ChoicePanel {
+        x: parent.width - self.width - 28px;
+        y: parent.height - self.height - 140px;
+        title: "Audio";
+        choices: root.audio-track-labels;
+        current: root.audio-track-value;
+        picked(v) => { root.select-audio(v); root.open-panel = 0; }
     }
 
-    subs-popup := PopupWindow {
-        x: 300px;
-        y: parent.height - 320px;
-        width: 260px;
-        height: 240px;
-        close-policy: close-on-click-outside;
-        Rectangle {
-            background: Theme.panel;
-            border-radius: Theme.radius;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 6px;
-                Text {
-                    text: "Subtitles";
-                    color: Theme.text;
-                    font-weight: 600;
-                }
-                for label in root.subtitle-track-labels: Rectangle {
-                    height: 36px;
-                    background: label == root.subtitle-track-value ? Theme.panel-hi : transparent;
-                    border-radius: Theme.radius-sm;
-                    Text {
-                        text: label;
-                        color: Theme.text;
-                        vertical-alignment: center;
-                        x: 8px;
-                    }
-                    TouchArea {
-                        clicked => {
-                            root.select-subtitle(label);
-                            subs-popup.close();
-                        }
-                    }
-                }
-            }
-        }
+    if root.open-panel == 2: ChoicePanel {
+        x: parent.width - self.width - 28px;
+        y: parent.height - self.height - 140px;
+        title: "Subtitles";
+        choices: root.subtitle-track-labels;
+        current: root.subtitle-track-value;
+        picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
     }
 
     if root.show-sources: Rectangle {
-        x: parent.width - 360px;
-        width: 340px;
-        height: parent.height - (root.chrome-visible ? 120px : 24px);
-        y: 12px;
-        background: Theme.panel;
+        x: parent.width - self.width - 20px;
+        y: 80px;
+        width: 360px;
+        height: parent.height - 250px;
+        background: #141824f2;
         border-radius: Theme.radius;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000099;
         VerticalLayout {
             padding: 12px;
-            spacing: 6px;
-            Text {
-                text: "Sources";
-                color: Theme.text;
-                font-size: 16px;
-                font-weight: 600;
+            spacing: 8px;
+            HorizontalLayout {
+                Text {
+                    text: "Sources (" + root.sources.length + ")";
+                    color: Theme.text;
+                    font-size: 16px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Button { text: "Refresh"; clicked => { root.refresh-sources(); } }
             }
-            for src[i] in root.sources: Rectangle {
-                height: 48px;
-                background: src.selected ? Theme.panel-hi : transparent;
-                border-radius: Theme.radius-sm;
-                HorizontalLayout {
-                    padding: 8px;
-                    VerticalLayout {
-                        Text {
-                            text: src.label;
-                            color: Theme.text;
-                            overflow: elide;
+            Flickable {
+                list := VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    for src[i] in root.sources: Rectangle {
+                        height: 52px;
+                        background: src.selected ? Theme.panel-hi : (pick.has-hover ? #ffffff14 : transparent);
+                        border-radius: Theme.radius-sm;
+                        HorizontalLayout {
+                            padding: 8px;
+                            spacing: 8px;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 4px;
+                                background: src.working ? Theme.ok : (src.detail == "Checking…" ? Theme.muted : Theme.danger);
+                            }
+                            VerticalLayout {
+                                Text { text: src.label; color: Theme.text; overflow: elide; }
+                                Text { text: src.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
+                            }
                         }
-                        Text {
-                            text: src.detail;
-                            color: src.working ? Theme.ok : Theme.muted;
-                            font-size: 11px;
-                            overflow: elide;
-                        }
+                        pick := TouchArea { clicked => { root.select-source(i); } }
                     }
                 }
-                TouchArea { clicked => { root.select-source(i); } }
             }
         }
     }
 
     hide-timer := Timer {
-        interval: 4s;
-        running: root.chrome-visible && !root.paused;
-        triggered => {
-            root.chrome-visible = false;
-        }
+        interval: 3s;
+        running: root.chrome-visible && !root.paused && root.open-panel == 0 && !root.show-sources;
+        triggered => { root.chrome-visible = false; }
     }
 }

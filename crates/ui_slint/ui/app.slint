@@ -51,6 +51,10 @@ export component CloudStream inherits Window {
     in-out property <float> position-ms: 0;
     in-out property <float> duration-ms: 1;
     in-out property <bool> paused: false;
+    in-out property <bool> buffering: false;
+    in-out property <bool> fullscreen: false;
+    in-out property <string> position-text: "0:00";
+    in-out property <string> duration-text: "0:00";
     in-out property <float> volume: 100;
     in-out property <image> video-frame;
     in-out property <bool> show-sources: false;
@@ -160,7 +164,7 @@ export component CloudStream inherits Window {
     callback select-audio-track(string);
     callback select-subtitle-track(string);
     callback bookmark-item(string, string, string);
-    callback reveal-player-chrome();
+    callback toggle-fullscreen();
 
     main-focus := FocusScope {
         width: 0px;
@@ -368,13 +372,18 @@ export component CloudStream inherits Window {
     }
 
     if player-open: PlayerOverlay {
+        init => { self.focus(); }
         title: player-title;
         video-frame: video-frame;
         position-ms: position-ms;
         duration-ms: duration-ms;
+        position-text: position-text;
+        duration-text: duration-text;
         paused: paused;
+        buffering: buffering;
         volume: volume;
-        show-sources: show-sources;
+        fullscreen: fullscreen;
+        show-sources <=> show-sources;
         chrome-visible <=> player-chrome-visible;
         sources: sources;
         audio-track-labels: audio-track-labels;
@@ -392,7 +401,7 @@ export component CloudStream inherits Window {
         select-source(i) => { select-source(i); }
         select-audio(v) => { select-audio-track(v); }
         select-subtitle(v) => { select-subtitle-track(v); }
-        reveal-chrome => { reveal-player-chrome(); }
+        toggle-fullscreen => { toggle-fullscreen(); }
     }
 
     if show-wipe-confirm: Rectangle {
