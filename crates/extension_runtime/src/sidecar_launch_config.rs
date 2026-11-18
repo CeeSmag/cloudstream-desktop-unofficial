@@ -8,6 +8,8 @@ const SIDECAR_HOME_VARIABLE: &str = "CS_SIDECAR_HOME";
 const SIDECAR_JAVA_HOME_VARIABLE: &str = "CS_SIDECAR_JAVA_HOME";
 /// Maximum JVM heap size for the sidecar process so untrusted plugins cannot exhaust host RAM.
 const SIDECAR_MAX_HEAP_OPTION: &str = "-Xmx512m";
+/// Shrinks HotSpot's default 1 GiB compressed-class reservation so Linux `RLIMIT_AS` can apply.
+const SIDECAR_COMPRESSED_CLASS_OPTION: &str = "-XX:CompressedClassSpaceSize=256m";
 
 /// How to start the sidecar process.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,8 @@ impl SidecarLaunchConfig {
         let option = format!("-Dcloudstream.data.dir=\"{}\"", data_dir.display());
         self.add_java_option(&option);
         self.add_java_option(SIDECAR_MAX_HEAP_OPTION);
+        // Linux Landlock path also sets RLIMIT_AS; without this the JVM reserves 1 GiB CCS and dies.
+        self.add_java_option(SIDECAR_COMPRESSED_CLASS_OPTION);
         // Everything the sidecar prints is read as UTF-8, whatever the Windows code page is.
         self.add_java_option(
             "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dfile.encoding=UTF-8",
@@ -114,6 +118,10 @@ mod tests {
         assert_eq!(name, "JAVA_OPTS");
         assert!(value.starts_with("-Dcloudstream.data.dir=\"") && value.contains("my data"));
         assert!(value.contains("-Xmx512m"), "heap cap must be present");
+        assert!(
+            value.contains("-XX:CompressedClassSpaceSize=256m"),
+            "compressed class space must be capped for Linux RLIMIT_AS"
+        );
         assert!(
             value.contains("PreferencesFactory=sidecar.NoOpPreferencesFactory"),
             "AppContainer-safe prefs factory must be set"

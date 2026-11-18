@@ -1,13 +1,18 @@
 //! Process-group, PDEATHSIG, and address-space cap for Linux sidecar workers.
-//! Mirrors the Windows Job Object (1536 MB + kill-on-close) without cgroup/systemd.
+//! Mirrors the Windows Job Object (kill-on-close + a hard ceiling) without cgroup/systemd.
 #![allow(unsafe_code)]
 
 use std::io;
 
 use extension_api::GatewayError;
 
-/// Same budget as the Windows Job Object: `-Xmx512m` plus native/DEX peaks.
-pub(crate) const MEMORY_LIMIT_BYTES: u64 = 1536 * 1024 * 1024;
+/// Virtual address-space ceiling via `RLIMIT_AS`.
+///
+/// Windows Job Object 1536 MB limits *commit charge*; Linux `RLIMIT_AS` limits *virtual*
+/// size. HotSpot alone reserves ~1 GiB compressed class space before heap, so 1536 MiB AS
+/// makes the JVM die at init (`Could not allocate compressed class space`). 4 GiB leaves
+/// room for that mapping while still bounding runaway plugins (heap stays `-Xmx512m`).
+pub(crate) const MEMORY_LIMIT_BYTES: u64 = 4096 * 1024 * 1024;
 
 /// Owns the worker's process-group id; dropping it sends `SIGKILL` to the whole group.
 pub(crate) struct LinuxGuards {
