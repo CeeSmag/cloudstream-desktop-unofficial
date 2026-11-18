@@ -32,7 +32,9 @@ impl PluginWorkerPool {
     /// Production pool: each worker is a new [`SidecarProcessTransport`] with `config`.
     /// Trusted plugins skip AppContainer / Landlock via [`SidecarLaunchConfig::without_os_fs_sandbox`].
     /// Starts with a resident limit of 1 (low-end); Settings can raise it.
+    /// Every worker of the pool is forked on one spawner thread that lives as long as the pool.
     pub fn new(config: SidecarLaunchConfig) -> Self {
+        let config = with_own_spawner(config);
         let pool = Self::with_spawn(Arc::new(move |trusted| {
             let launch = if trusted {
                 config.clone().without_os_fs_sandbox()
@@ -75,6 +77,21 @@ impl PluginWorkerPool {
         let old = self.lock_maps().remove(path);
         if let Some(worker) = old {
             worker.shutdown();
+        }
+    }
+}
+
+/// Gives `config` a spawner thread unless it has one; without a thread the workers are forked on
+/// the calling thread, which on Linux kills them when that thread ends (logged, still usable).
+fn with_own_spawner(config: SidecarLaunchConfig) -> SidecarLaunchConfig {
+    if config.spawner.is_some() {
+        return config;
+    }
+    match crate::SidecarSpawner::start() {
+        Ok(spawner) => config.with_spawner(Arc::new(spawner)),
+        Err(error) => {
+            tracing::warn!(%error, "no sidecar spawner thread; sidecars start on the calling thread");
+            config
         }
     }
 }

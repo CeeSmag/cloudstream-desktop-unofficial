@@ -1,6 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::sync::Arc;
 
 use extension_api::GatewayError;
+
+use crate::SidecarSpawner;
 
 /// Environment variable holding the sidecar install directory.
 const SIDECAR_HOME_VARIABLE: &str = "CS_SIDECAR_HOME";
@@ -15,7 +19,7 @@ const SIDECAR_COMPRESSED_CLASS_OPTION: &str = "-XX:CompressedClassSpaceSize=256m
 const SIDECAR_HEADLESS_OPTION: &str = "-Djava.awt.headless=true";
 
 /// How to start the sidecar process.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct SidecarLaunchConfig {
     /// Executable to start.
     pub program: PathBuf,
@@ -26,6 +30,8 @@ pub struct SidecarLaunchConfig {
     /// When true (default with `with_data_dir`), use AppContainer / Landlock.
     /// Trusted plugins clear this so they skip the FS jail while keeping heap and Job/rlimit.
     pub os_fs_sandbox: bool,
+    /// The long-lived thread that forks the sidecar; None forks on the calling thread (tests).
+    pub spawner: Option<Arc<SidecarSpawner>>,
 }
 
 impl SidecarLaunchConfig {
@@ -44,6 +50,21 @@ impl SidecarLaunchConfig {
             args: Vec::new(),
             environment,
             os_fs_sandbox: false,
+            spawner: None,
+        }
+    }
+
+    /// Forks every sidecar on `spawner`'s thread (see [`SidecarSpawner`] for why).
+    pub fn with_spawner(mut self, spawner: Arc<SidecarSpawner>) -> Self {
+        self.spawner = Some(spawner);
+        self
+    }
+
+    /// Starts `command` on the spawner thread when there is one, else on this thread.
+    pub(crate) fn spawn_child(&self, mut command: Command) -> std::io::Result<Child> {
+        match &self.spawner {
+            Some(spawner) => spawner.spawn(command),
+            None => command.spawn(),
         }
     }
 

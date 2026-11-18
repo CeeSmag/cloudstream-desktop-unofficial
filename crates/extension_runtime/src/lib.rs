@@ -48,6 +48,7 @@ mod sidecar_process_kill;
 mod sidecar_process_start;
 mod sidecar_process_transport;
 mod sidecar_spawn_mode;
+mod sidecar_spawn_thread;
 
 pub use plugin_worker_limit::{format_limit, parse_limit};
 pub use plugin_worker_pool::PluginWorkerPool;
@@ -56,3 +57,4 @@ pub use rpc_provider_gateway::RpcProviderGateway;
 pub use rpc_transport::RpcTransport;
 pub use sidecar_launch_config::SidecarLaunchConfig;
 pub use sidecar_process_transport::SidecarProcessTransport;
+pub use sidecar_spawn_thread::SidecarSpawner;

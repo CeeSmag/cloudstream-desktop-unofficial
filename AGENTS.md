@@ -222,6 +222,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `rpc_transport.rs`: Trait `RpcTransport` (`call`, `remember_for_restart`, `remember_setting_for_restart`).
   - `rpc_provider_gateway.rs`: `RpcProviderGateway<T>` implements `ProviderGateway`. Flags slow calls (>10s) and filters repetitive background polls (`main_page`, `take_added_repositories`, `poll_link_search`) to debug logs.
   - `plugin_worker_pool.rs` / `plugin_worker_maps.rs` / `plugin_worker_resident.rs`: `PluginWorkerPool` — one sidecar JVM per loaded `.cs3`, with an optional resident cap (Settings `plugin_worker_limit`, default 1 on new installs; existing installs migrate to unlimited). Parked workers keep provider routes and revive on first call; routes by provider / link-search id; `extract` fans out across live workers; wired from `app_shell` instead of a single shared transport.
+  - `sidecar_spawn_thread.rs`: `SidecarSpawner`, one long-lived thread that forks every sidecar of a `PluginWorkerPool` (`SidecarLaunchConfig::with_spawner`). Linux sends the sidecar's `PR_SET_PDEATHSIG(SIGKILL)` when the *thread* that forked it ends, so forking from short-lived UI worker threads killed the JVM after nearly every call (`exited on its own … unix_wait_status(9)` in the log).
   - `fake_link_search.rs` & `fake_search_runtime.rs`: Deterministic doubles for streaming link search protocol testing.
 
 #### `crates/extension_repo`

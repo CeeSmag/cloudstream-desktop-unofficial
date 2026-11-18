@@ -92,7 +92,7 @@ fn start_windows_plain(config: &SidecarLaunchConfig) -> Result<RunningSidecar, G
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|source| {
+    let mut child = config.spawn_child(command).map_err(|source| {
         GatewayError::Unavailable(format!(
             "cannot start {}: {source}",
             config.program.display()
@@ -184,8 +184,8 @@ fn sandboxed_command(
 fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
     use crate::sidecar_linux_limits::{sandbox_unavailable, LinuxGuards, MEMORY_LIMIT_BYTES};
 
-    let (mut command, abi) = sandboxed_command(config)?;
-    let child = command.spawn().map_err(|source| {
+    let (command, abi) = sandboxed_command(config)?;
+    let child = config.spawn_child(command).map_err(|source| {
         sandbox_unavailable(format!("spawn {}: {source}", config.program.display()))
     })?;
     let pid = child.id();
@@ -218,7 +218,7 @@ fn start_limited(config: &SidecarLaunchConfig) -> Result<RunningSidecar, Gateway
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     attach_limits_to_command(&mut command);
-    let child = command.spawn().map_err(|source| {
+    let child = config.spawn_child(command).map_err(|source| {
         sandbox_unavailable(format!("spawn {}: {source}", config.program.display()))
     })?;
     let pid = child.id();
@@ -265,7 +265,7 @@ fn start_plain(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayEr
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|source| {
+    let mut child = config.spawn_child(command).map_err(|source| {
         GatewayError::Unavailable(format!(
             "cannot start {}: {source}",
             config.program.display()

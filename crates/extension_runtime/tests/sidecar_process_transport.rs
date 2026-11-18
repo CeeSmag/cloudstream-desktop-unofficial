@@ -15,6 +15,7 @@ fn transport() -> SidecarProcessTransport {
         args: Vec::new(),
         environment: Vec::new(),
         os_fs_sandbox: false,
+        spawner: None,
     })
 }
 
@@ -150,6 +151,7 @@ fn missing_executable_is_reported_as_unavailable() {
         args: Vec::new(),
         environment: Vec::new(),
         os_fs_sandbox: false,
+        spawner: None,
     });
     assert!(matches!(
         transport.call("ping", Value::Null, SHORT),
@@ -223,5 +225,59 @@ fn shutdown_ends_the_sidecar_even_while_a_call_is_waiting_on_it() {
     assert!(
         took < Duration::from_secs(10),
         "the waiting call was not released by the shutdown (took {took:?})"
+    );
+}
+
+/// Linux: a sidecar with the production process limits (process group, parent-death signal).
+#[cfg(target_os = "linux")]
+fn limited_transport(
+    spawner: Option<std::sync::Arc<extension_runtime::SidecarSpawner>>,
+) -> SidecarProcessTransport {
+    SidecarProcessTransport::new(SidecarLaunchConfig {
+        program: env!("CARGO_BIN_EXE_fake_sidecar").into(),
+        args: Vec::new(),
+        environment: vec![(
+            "JAVA_OPTS".to_owned(),
+            "-Dcloudstream.data.dir=\"/tmp/unused\"".to_owned(),
+        )],
+        os_fs_sandbox: false,
+        spawner,
+    })
+}
+
+/// Calls `handled` (the fake's count of calls served by this process) from a thread that ends.
+#[cfg(target_os = "linux")]
+fn handled_from_short_thread(transport: &std::sync::Arc<SidecarProcessTransport>) -> Value {
+    let caller = std::sync::Arc::clone(transport);
+    std::thread::spawn(move || caller.call("handled", Value::Null, SHORT).expect("call"))
+        .join()
+        .expect("caller thread")
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn sidecar_started_by_short_lived_caller_thread_keeps_serving_with_spawner() {
+    let spawner = extension_runtime::SidecarSpawner::start().expect("spawner");
+    let transport = std::sync::Arc::new(limited_transport(Some(std::sync::Arc::new(spawner))));
+    assert_eq!(handled_from_short_thread(&transport), json!(1));
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(
+        handled_from_short_thread(&transport),
+        json!(2),
+        "the sidecar was restarted after its caller thread ended"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn sidecar_started_by_short_lived_caller_thread_dies_without_spawner() {
+    // Documents the kernel rule the spawner works around: the parent-death signal follows the thread.
+    let transport = std::sync::Arc::new(limited_transport(None));
+    assert_eq!(handled_from_short_thread(&transport), json!(1));
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(
+        handled_from_short_thread(&transport),
+        json!(1),
+        "expected a fresh process"
     );
 }

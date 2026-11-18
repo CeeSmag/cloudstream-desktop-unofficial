@@ -21,6 +21,7 @@ fn transport() -> SidecarProcessTransport {
         args: Vec::new(),
         environment: Vec::new(),
         os_fs_sandbox: false,
+        spawner: None,
     })
 }
 
