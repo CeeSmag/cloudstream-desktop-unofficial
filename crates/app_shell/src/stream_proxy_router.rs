@@ -1,4 +1,4 @@
-//! Sends HLS streams through the local stream proxy when the viewer allows it.
+//! Sends HLS and header-bearing progressive streams through the local stream proxy when allowed.
 
 use std::sync::OnceLock;
 
@@ -9,8 +9,8 @@ use stream_proxy::{ProxyConfig, StreamProxy, StreamSpec};
 /// Whether the viewer allows the proxy; asked before every stream, so the switch applies at once.
 type Switch = Box<dyn Fn() -> bool + Send + Sync>;
 
-/// The proxy is started on the first HLS stream, not before: an app that never plays HLS, or whose
-/// viewer switched the proxy off, never opens a port.
+/// The proxy is started on the first proxied stream, not before: an app that never needs it, or
+/// whose viewer switched the proxy off, never opens a port.
 pub(crate) struct StreamProxyRouter {
     enabled: Switch,
     proxy: OnceLock<Option<StreamProxy>>,
@@ -51,9 +51,21 @@ pub(crate) fn is_hls(request: &PlaybackRequest) -> bool {
     }
 }
 
+/// Whether this stream should go through the host loopback proxy (HLS, or progressive with
+/// headers/referer the player may not attach on every request). DASH never does.
+pub(crate) fn needs_proxy(request: &PlaybackRequest) -> bool {
+    if matches!(request.kind, StreamKind::Dash) {
+        return false;
+    }
+    if is_hls(request) {
+        return true;
+    }
+    !request.headers.is_empty() || !request.referer.is_empty()
+}
+
 impl RequestRouter for StreamProxyRouter {
     fn route(&self, request: &PlaybackRequest) -> PlaybackRequest {
-        if !(self.enabled)() || !is_hls(request) {
+        if !(self.enabled)() || !needs_proxy(request) {
             return request.clone();
         }
         let Some(proxy) = self.proxy() else {
@@ -102,6 +114,17 @@ mod tests {
         }
     }
 
+    fn plain(url: &str, kind: StreamKind) -> PlaybackRequest {
+        PlaybackRequest {
+            url: url.to_owned(),
+            kind,
+            title: "Episode".to_owned(),
+            headers: Vec::new(),
+            referer: String::new(),
+            ..PlaybackRequest::default()
+        }
+    }
+
     #[test]
     fn is_hls_follows_the_providers_label_and_falls_back_to_the_address() {
         assert!(is_hls(&request("https://h/x", StreamKind::Hls)));
@@ -126,6 +149,26 @@ mod tests {
     }
 
     #[test]
+    fn needs_proxy_covers_hls_and_header_bearing_progressive_not_dash() {
+        assert!(needs_proxy(&request(
+            "https://h/a/master.m3u8",
+            StreamKind::Hls
+        )));
+        assert!(needs_proxy(&request(
+            "https://h/a/movie.mp4",
+            StreamKind::Video
+        )));
+        assert!(!needs_proxy(&plain(
+            "https://h/a/movie.mp4",
+            StreamKind::Video
+        )));
+        assert!(!needs_proxy(&request(
+            "https://h/a/manifest.mpd",
+            StreamKind::Dash
+        )));
+    }
+
+    #[test]
     fn route_an_hls_stream_goes_to_the_proxy_without_headers_and_keeps_everything_else() {
         let router = StreamProxyRouter::new(|| true);
         let original = request("https://h.test/a/master.m3u8", StreamKind::Hls);
@@ -144,7 +187,21 @@ mod tests {
     }
 
     #[test]
-    fn route_leaves_the_stream_alone_when_it_is_switched_off_or_not_hls() {
+    fn route_a_progressive_stream_with_headers_goes_to_the_proxy() {
+        let router = StreamProxyRouter::new(|| true);
+        let original = request("https://h.test/a/movie.mp4", StreamKind::Video);
+        let routed = router.route(&original);
+        assert!(
+            routed.url.starts_with("http://127.0.0.1:"),
+            "{}",
+            routed.url
+        );
+        assert!(routed.headers.is_empty() && routed.referer.is_empty());
+        router.release();
+    }
+
+    #[test]
+    fn route_leaves_the_stream_alone_when_it_is_switched_off_or_plain() {
         let off = StreamProxyRouter::new(|| false);
         let hls = request("https://h.test/a/master.m3u8", StreamKind::Hls);
         assert_eq!(off.route(&hls), hls);
@@ -153,15 +210,17 @@ mod tests {
             "switched off: no port was opened"
         );
         let on = StreamProxyRouter::new(|| true);
-        for plain in [
-            request("https://h.test/a/movie.mp4", StreamKind::Video),
-            request("https://h.test/a/manifest.mpd", StreamKind::Dash),
-        ] {
-            assert_eq!(on.route(&plain), plain);
-        }
+        assert_eq!(
+            on.route(&plain("https://h.test/a/movie.mp4", StreamKind::Video)),
+            plain("https://h.test/a/movie.mp4", StreamKind::Video)
+        );
+        assert_eq!(
+            on.route(&request("https://h.test/a/manifest.mpd", StreamKind::Dash)),
+            request("https://h.test/a/manifest.mpd", StreamKind::Dash)
+        );
         assert!(
             on.proxy.get().is_none(),
-            "no HLS stream: no port was opened"
+            "no proxied stream: no port was opened"
         );
     }
 

@@ -47,6 +47,8 @@ export const SeekBar: React.FC<SeekBarProps> = ({
   const notches = React.useMemo(() => chapterNotches(chapters, durationMs), [chapters, durationMs]);
 
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    if (durationMs <= 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     onSeek(seekPositionFromClick(event.clientX, rect.left, rect.width, durationMs));
   };

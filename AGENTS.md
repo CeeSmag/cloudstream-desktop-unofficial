@@ -86,8 +86,9 @@ This document is the architectural index, navigation map, and modification handb
 - **Dependencies**: `core_model`, `thiserror`
 - **Responsibility**: Trait definitions and error types between the app core and extension runtimes.
 - **Trait `ProviderGateway: Send + Sync`**:
-  - `load_extension(path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, GatewayError>`
-  - `search(provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>`
+ - `load_extension(path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, GatewayError>`
+ - `unload_extension(path: &Path) -> Result<(), GatewayError>`: drops a loaded plugin so uninstall+reinstall registers providers again without restarting
+ - `search(provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>`
   - `main_page(provider: &str, page: u32, entry: &MainPageEntry) -> Result<Option<HomePage>, GatewayError>`
   - `load(provider: &str, url: &str) -> Result<Option<LoadDetails>, GatewayError>`
   - `load_links(provider: &str, data: &str) -> Result<PlayableLinks, GatewayError>`
@@ -272,7 +273,7 @@ This document is the architectural index, navigation map, and modification handb
 - **Dynamic Locator (`libmpv_locator.rs`)**: Candidates in order: `CS_LIBMPV_PATH` (if the file exists), the directory of `current_exe()`, `current_dir()`, then (Linux/macOS) the bare names for the system loader. `MpvPlayer::auto_detect` tries each until one loads; `locate_libmpv()` returns the first. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows. When nothing is found the error lists every path searched.
 - **Player Configuration (`player_configuration.rs`)**:
   - `PlayerOptions`: `headless: bool` (`vo=null, ao=null`), `embedded: bool` (`vo=libmpv`), `wid: Option<i64>` (`vo=gpu, hwdec=auto-safe`).
-  - Sets common options: `idle=yes`, `keep-open=no`, `osc=no`, `input-default-bindings=no`, `hwdec=auto-copy-safe`, `ytdl=no`, `alang=eng,en`.
+  - Sets common options: `idle=yes`, `keep-open=no`, `osc=no`, `input-default-bindings=no`, `hwdec=auto-copy-safe`, `ytdl=no`, `alang=eng,en`, `force-seekable=yes` (progressive HTTP streams often omit a size; without it seek-bar jumps fail while short arrow seeks still work from cache).
   - Debugging: setting `CS_MPV_LOG` passes `terminal=yes` and `msg-level=all=v` for native mpv console diagnostics.
 - **Rendering Modes**:
   1. *Embedded Software Renderer*: Uses libmpv's render API (`vo=libmpv`) to blit frames into an RGBA memory buffer (`VideoFrame`). Enables frontend canvas/glass overlay.
@@ -323,7 +324,8 @@ This document is the architectural index, navigation map, and modification handb
   - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the running program's own `runtime-*` folder (`running_folder_name`; older `runtime-*` folders go too), retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
   - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` (both shells).
-  - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS streams (provider says `Hls`, or the address ends in `.m3u8`; never DASH) through `stream_proxy` when the setting is on; the proxy starts on the first HLS stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly.
+  - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS (provider says `Hls`, or the address ends in `.m3u8`) and progressive/unknown streams that carry custom headers or a referer through `stream_proxy` when the setting is on (never DASH). The proxy starts on the first such stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly. This replaces plugin-local FlixProxy-style servers for header injection.
+  - Plugin sandbox (sidecar overlay): untrusted plugins cannot load real `java.net.ServerSocket` / `Socket` / `DatagramSocket`, `javax.net.ssl.SSLSocket*`, or `java.lang.Thread`. Bytecode remaps those types to sandboxed stubs (`RawSocketRemapper` → `ServerSocketStub` loopback-only, `SocketStub` outbound-deny, capped daemon `ThreadStub`) so StreamPlay/FlixProxy can load without granting unrestricted Network Sockets or Trust. `ProcessBuilder`, NIO `Files`, and ClassLoader stay denied even for Trusted plugins. Trust skips static verify and widens the classloader — use sparingly.
 
 #### `crates/ui_app`
 - **Location**: `crates/ui_app/`
@@ -540,7 +542,7 @@ All 67 commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_te
 | | `refresh_repository_icons`| Background worker downloading repository icons. |
 | | `install_plugin` | Downloads `.cs3` and registers extension. |
 | | `uninstall_extension` | Deletes `.cs3` and removes providers. |
-| | `set_extension_trusted` | Flags plugin as trusted (skipping sandboxing). |
+| | `set_extension_trusted` | Flags plugin as trusted (skips static bytecode verify and most classloader denies; hard denies like ProcessBuilder remain). Applies on the next load/start. |
 | **Plugin Catalog**| `prepare_plugin_catalog` | Pre-indexes all repository plugins. |
 | | `list_all_plugins` | Returns indexed plugins with repository metadata. |
 | **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |

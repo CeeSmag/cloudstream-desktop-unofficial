@@ -16,6 +16,13 @@ pub trait ProviderGateway: Send + Sync {
     fn load_extension(&self, path: &Path, trusted: bool)
         -> Result<Vec<ProviderInfo>, GatewayError>;
 
+    /// Unloads an extension that was loaded earlier so a later install of the same file can
+    /// register its providers again. Runtimes that cannot unload ignore it.
+    fn unload_extension(&self, path: &Path) -> Result<(), GatewayError> {
+        let _ = path;
+        Ok(())
+    }
+
     /// Searches one provider; pages start at 1.
     fn search(&self, provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>;
 

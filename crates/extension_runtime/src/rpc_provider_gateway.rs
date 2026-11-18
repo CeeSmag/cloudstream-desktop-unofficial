@@ -96,6 +96,15 @@ impl<T: RpcTransport> ProviderGateway for RpcProviderGateway<T> {
         Ok(providers)
     }
 
+    fn unload_extension(&self, path: &Path) -> Result<(), GatewayError> {
+        let params = json!({ "path": path.to_string_lossy() });
+        self.call_typed::<Value>("unload_extension", params.clone(), PROVIDER_CALL_TIMEOUT)
+            .map(drop)?;
+        // An uninstalled plugin must not come back if the sidecar restarts.
+        self.transport.forget_for_restart("load_extension", &params);
+        Ok(())
+    }
+
     fn search(&self, provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError> {
         let params = json!({ "provider": provider, "query": query, "page": page });
         self.call_typed("search", params, PROVIDER_CALL_TIMEOUT)

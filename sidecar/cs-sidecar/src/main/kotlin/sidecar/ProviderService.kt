@@ -53,8 +53,35 @@ class ProviderService {
         val before = APIHolder.allProviders.toSet()
         ExtensionLoader.loadAndInit(file)
         val added = APIHolder.allProviders.filter { it !in before }.map(::describe)
-        SidecarLog.info("loaded ${file.name}: providers=${added.map { it.name }}")
-        return added
+        // Reusing an already-loaded instance adds nothing; still return that plugin's providers
+        // so a reinstall after a failed unload does not look empty to the app.
+        val providers = if (added.isNotEmpty()) {
+            added
+        } else {
+            providersOwnedBy(file).map(::describe)
+        }
+        SidecarLog.info("loaded ${file.name}: providers=${providers.map { it.name }}")
+        return providers
+    }
+
+    /** Drops a loaded plugin so the same path can register providers again on the next load. */
+    fun unloadExtension(path: String) {
+        SidecarLog.info("unloadExtension path=$path")
+        ExtensionLoader.unloadPlugin(path)
+    }
+
+    private fun providersOwnedBy(file: File): List<MainAPI> {
+        val keys = buildSet {
+            add(file.absolutePath)
+            try {
+                add(file.canonicalPath)
+            } catch (_: Throwable) {
+            }
+        }
+        return APIHolder.allProviders.filter { provider ->
+            val source = provider.sourcePlugin ?: return@filter false
+            keys.any { key -> source.equals(key, ignoreCase = true) }
+        }
     }
 
     /** Paginated search (pages start at 1), preferring the newer API and falling back to the legacy one. */

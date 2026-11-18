@@ -79,7 +79,8 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
 
     private fun applyCompatPatches(bytes: ByteArray): ByteArray {
         return try {
-            val reader = ClassReader(bytes)
+            val remapped = RawSocketRemapper.remap(bytes)
+            val reader = ClassReader(remapped)
             val writer = SafeComputeClassWriter(
                 reader = null,
                 flags = ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS,

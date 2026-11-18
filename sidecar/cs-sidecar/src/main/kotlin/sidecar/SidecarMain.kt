@@ -61,6 +61,10 @@ private fun dispatch(service: ProviderService, method: String, params: JsonNode)
         null
     }
     "load_extension" -> service.loadExtension(params["path"].asText(), params["trusted"]?.asBoolean() ?: false)
+    "unload_extension" -> {
+        service.unloadExtension(params["path"].asText())
+        null
+    }
     "search" -> service.search(params["provider"].asText(), params["query"].asText(), params["page"]?.asInt() ?: 1)
     "main_page" -> service.mainPage(
         params["provider"].asText(), params["page"]?.asInt() ?: 1,

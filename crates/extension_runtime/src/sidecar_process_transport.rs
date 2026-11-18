@@ -184,6 +184,30 @@ impl RpcTransport for SidecarProcessTransport {
             });
         }
     }
+
+    fn forget_for_restart(&self, method: &str, params: &Value) {
+        let mut calls = self
+            .startup_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        calls.retain(|call| {
+            !(call.method == method && same_extension_load(&call.params, params))
+        });
+    }
+}
+
+/// True when two `load_extension` params name the same file (path separators and case ignored).
+fn same_extension_load(left: &Value, right: &Value) -> bool {
+    let path = |value: &Value| {
+        value
+            .get("path")
+            .and_then(Value::as_str)
+            .map(|text| text.replace('\\', "/").to_ascii_lowercase())
+    };
+    match (path(left), path(right)) {
+        (Some(a), Some(b)) => a == b,
+        _ => left == right,
+    }
 }
 
 impl Drop for SidecarProcessTransport {

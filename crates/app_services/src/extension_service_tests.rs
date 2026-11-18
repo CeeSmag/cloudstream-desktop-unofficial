@@ -136,3 +136,28 @@ fn uninstall_removes_file_and_record() {
     assert!(!dir.join("Good.cs3").exists());
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn uninstall_unloads_the_runtime_so_a_reinstall_can_load_again() {
+    let (service, gateway, dir) = setup("unload");
+    service.install(&listing("Good"), "r").expect("installs");
+    let record = service.installed().expect("list").remove(0);
+    service.uninstall(&record).expect("uninstalls");
+    let unloaded = gateway.unloaded_paths.lock().expect("lock");
+    assert_eq!(unloaded.len(), 1);
+    assert!(
+        unloaded[0].ends_with("Good.cs3"),
+        "unload path was {}",
+        unloaded[0]
+    );
+    drop(unloaded);
+    let providers = service
+        .install(&listing("Good"), "r")
+        .expect("reinstalls");
+    assert_eq!(providers[0].name, "Good");
+    assert!(service
+        .providers()
+        .iter()
+        .any(|provider| provider.name == "Good"));
+    let _ = fs::remove_dir_all(dir);
+}

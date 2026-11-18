@@ -16,6 +16,7 @@ pub(crate) struct FakeGateway {
     pub(crate) extract_reply: Mutex<Option<PlayableLinks>>,
     pub(crate) search_replies: Mutex<Vec<(String, Result<SearchPage, GatewayError>)>>,
     pub(crate) loaded_paths: Mutex<Vec<(String, bool)>>,
+    pub(crate) unloaded_paths: Mutex<Vec<String>>,
     pub(crate) load_links_calls: Mutex<u32>,
     pub(crate) searched: Mutex<Vec<String>>,
     pub(crate) load_reply: Mutex<Option<Result<Option<LoadDetails>, GatewayError>>>,
@@ -76,6 +77,14 @@ impl ProviderGateway for FakeGateway {
             name,
             ..ProviderInfo::default()
         }])
+    }
+
+    fn unload_extension(&self, path: &Path) -> Result<(), GatewayError> {
+        self.unloaded_paths
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(path.to_string_lossy().into_owned());
+        Ok(())
     }
 
     fn search(&self, provider: &str, _query: &str, _page: u32) -> Result<SearchPage, GatewayError> {

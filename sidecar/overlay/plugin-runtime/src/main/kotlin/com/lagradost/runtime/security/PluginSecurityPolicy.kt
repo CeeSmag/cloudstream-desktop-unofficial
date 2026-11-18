@@ -119,6 +119,9 @@ object PluginSecurityPolicy {
     private val RAW_SOCKET_CLASSES = setOf(
         "java.net.Socket", "java.net.ServerSocket", "java.net.DatagramSocket",
         "java.net.HttpURLConnection", "java.net.URLConnection", "javax.net.ssl.HttpsURLConnection",
+        // SSL sockets were reachable via LANGUAGE_CORE `javax.net.ssl.` without NETWORK_SOCKETS.
+        "javax.net.ssl.SSLSocket", "javax.net.ssl.SSLServerSocket",
+        "javax.net.ssl.SSLSocketFactory", "javax.net.ssl.SSLServerSocketFactory",
     )
 
     private val BLOCKED_PREFIXES = listOf(
@@ -136,6 +139,7 @@ object PluginSecurityPolicy {
     )
 
     fun isClassAllowed(className: String, hasSocketPermission: Boolean = false, isTrusted: Boolean = false): Boolean {
+        // Trust still unlocks real Thread / ThreadGroup; untrusted plugins get ThreadStub via remap.
         if (isTrusted && (className == "java.lang.Thread" || className == "java.lang.ThreadGroup")) return true
         if (EXPLICIT_DENY.contains(className)) return false
         if (className.startsWith("com.lagradost.runtime.loader.stubs.")) return true
@@ -159,9 +163,17 @@ object PluginSecurityPolicy {
         else -> NETWORK_SAFE_SUBSET.contains(className)
     }
 
+    /**
+     * ASM owner check for static verification. Socket and Thread types are remapped to stubs by
+     * [com.lagradost.runtime.loader.RawSocketRemapper] before verify; leftovers are treated as
+     * allowed owners so the verifier can emit a clear permission/stub path instead of a vague deny.
+     */
     fun isAsmOwnerAllowed(internalName: String, isTrusted: Boolean = false): Boolean {
         val cleanInternal = internalName.trimStart('[').removePrefix("L").removeSuffix(";")
         val dotName = cleanInternal.replace('/', '.')
+        if (RAW_SOCKET_CLASSES.contains(dotName)) return true
+        // Remapped to ThreadStub; keep real Thread denied at classload for untrusted plugins.
+        if (dotName == "java.lang.Thread") return true
         return isClassAllowed(dotName, hasSocketPermission = false, isTrusted = isTrusted)
     }
 

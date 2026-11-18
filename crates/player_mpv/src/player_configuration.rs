@@ -22,6 +22,10 @@ const COMMON: &[(&str, &str)] = &[
     ("ytdl", "no"),
     // Prefer English audio when a stream offers several languages; see `preferred_audio`.
     ("alang", "eng,en"),
+    // Progressive / proxied HTTP streams often omit a size, so mpv marks them non-seekable and
+    // refuses absolute jumps (seek-bar clicks). Short relative jumps still work from the cache;
+    // force seeking so the bar and far jumps work too.
+    ("force-seekable", "yes"),
     // Read only a little ahead of the playing position. By default mpv downloads as fast as it can
     // (up to 150 MiB), which on a stream split into many small pieces is hundreds of requests; a
     // server that limits requests then refuses them ("HTTP 429") and the player skips the pieces.
@@ -114,6 +118,17 @@ mod tests {
         };
         assert_eq!(value("force-window"), Some("yes"));
         assert_eq!(value("vo"), Some("gpu"));
+    }
+
+    #[test]
+    fn progressive_streams_are_forced_seekable_so_the_seek_bar_can_jump() {
+        let value = |name: &str| {
+            COMMON
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("force-seekable"), Some("yes"));
     }
 
     #[test]

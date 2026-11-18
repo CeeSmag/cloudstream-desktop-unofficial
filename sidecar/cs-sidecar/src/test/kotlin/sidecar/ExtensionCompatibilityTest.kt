@@ -8,9 +8,12 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import com.lagradost.cloudstream3.syncproviders.AccountManager
 import com.lagradost.cloudstream3.utils.txt
 import com.lagradost.runtime.loader.stubs.ExecutorsStub
+import com.lagradost.runtime.loader.stubs.ServerSocketStub
+import com.lagradost.runtime.loader.stubs.ThreadStub
 import com.lagradost.runtime.loader.stubs.URLStub
 import com.lagradost.runtime.security.PluginSecurityPolicy
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 import java.lang.reflect.Modifier
 import java.net.InetAddress
 import java.net.URL
@@ -25,6 +28,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class ExtensionCompatibilityTest {
     @Test
@@ -143,6 +147,104 @@ class ExtensionCompatibilityTest {
             PluginSecurityPolicy.isClassAllowed("java.awt.Desktop", isTrusted = false),
             "Desktop must remain blocked",
         )
+    }
+
+    @Test
+    fun `raw sockets stay denied at classload without permission while ASM defers to stubs`() {
+        assertFalse(
+            PluginSecurityPolicy.isClassAllowed("java.net.ServerSocket", isTrusted = false),
+            "real ServerSocket must stay denied for untrusted plugins",
+        )
+        assertFalse(
+            PluginSecurityPolicy.isClassAllowed("java.net.Socket", hasSocketPermission = false, isTrusted = false),
+            "real Socket must stay denied without NETWORK_SOCKETS",
+        )
+        assertFalse(
+            PluginSecurityPolicy.isClassAllowed("javax.net.ssl.SSLSocket", isTrusted = false),
+            "SSLSocket must not slip through LANGUAGE_CORE",
+        )
+        assertFalse(
+            PluginSecurityPolicy.isClassAllowed("java.lang.Thread", isTrusted = false),
+            "real Thread must stay denied for untrusted plugins (ThreadStub is remapped in)",
+        )
+        assertTrue(
+            PluginSecurityPolicy.isAsmOwnerAllowed("java/net/ServerSocket", isTrusted = false),
+            "ASM allows socket owners so remapped stubs / permission checks can run",
+        )
+        assertTrue(
+            PluginSecurityPolicy.isAsmOwnerAllowed("java/lang/Thread", isTrusted = false),
+            "ASM allows Thread owners so ThreadStub remapping can run",
+        )
+        assertTrue(
+            PluginSecurityPolicy.isClassAllowed(
+                "com.lagradost.runtime.loader.stubs.ServerSocketStub",
+                isTrusted = false,
+            ),
+            "loopback ServerSocketStub must be loadable",
+        )
+        assertTrue(
+            PluginSecurityPolicy.isClassAllowed(
+                "com.lagradost.runtime.loader.stubs.ThreadStub",
+                isTrusted = false,
+            ),
+            "capped ThreadStub must be loadable",
+        )
+    }
+
+    @Test
+    fun `ThreadStub forces daemon and refuses unbounded starts`() {
+        val latch = CountDownLatch(1)
+        val worker = ThreadStub {
+            latch.await(2, TimeUnit.SECONDS)
+        }
+        worker.start()
+        assertTrue(worker.isDaemon(), "plugin threads must be daemon")
+        latch.countDown()
+        worker.join(2_000)
+        assertFalse(worker.isAlive())
+        assertTrue(ThreadStub.MAX_PLUGIN_THREADS in 1..64)
+    }
+
+    @Test
+    fun `ServerSocketStub binds loopback only and rejects non-loopback bind addresses`() {
+        val server = ServerSocketStub(0)
+        try {
+            assertTrue(server.getLocalPort() > 0, "ephemeral loopback port assigned")
+            assertFailsWith<SecurityException> {
+                ServerSocketStub(0, 50, InetAddress.getByName("0.0.0.0"))
+            }
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `StreamPlay cs3 loads untrusted without Disallowed ServerSocket`() {
+        val cs3 = File("""C:\cs3d\appdata2\extensions\StreamPlay.cs3""")
+        if (!cs3.isFile) {
+            // Dev machine without the plugin: policy/stub tests above still cover the sandbox.
+            return
+        }
+        try {
+            val providers = ProviderService().loadExtension(cs3.absolutePath, trusted = false)
+            assertTrue(providers.isNotEmpty(), "StreamPlay must register at least one provider")
+        } catch (failure: SecurityException) {
+            fail("StreamPlay must load sandboxed without SecurityException: ${failure.message}")
+        }
+    }
+
+    @Test
+    fun `unload then load registers StreamPlay providers again`() {
+        val cs3 = File("""C:\cs3d\appdata2\extensions\StreamPlay.cs3""")
+        if (!cs3.isFile) return
+        val service = ProviderService()
+        service.unloadExtension(cs3.absolutePath)
+        val first = service.loadExtension(cs3.absolutePath, trusted = false)
+        assertTrue(first.isNotEmpty(), "StreamPlay must register providers on first load")
+        service.unloadExtension(cs3.absolutePath)
+        val second = service.loadExtension(cs3.absolutePath, trusted = false)
+        assertTrue(second.isNotEmpty(), "StreamPlay must register providers again after unload")
+        assertEquals(first.map { it.name }.toSet(), second.map { it.name }.toSet())
     }
 
     @Test

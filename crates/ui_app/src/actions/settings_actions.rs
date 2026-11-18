@@ -36,7 +36,7 @@ fn perform_extension_change(dispatcher: &Dispatcher, model: &mut AppModel, actio
                 services.extensions.uninstall(&extension),
             );
             model.notify(Notice::info(
-                "Restart the app to fully unload an uninstalled extension.",
+                "Extension uninstalled.",
             ));
         }
         UiAction::SetTrusted { extension, trusted } => {

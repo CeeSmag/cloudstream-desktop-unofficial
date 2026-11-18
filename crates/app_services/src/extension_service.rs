@@ -80,10 +80,19 @@ impl ExtensionService {
         self.load_one(&path, record.trusted)
     }
 
-    /// Deletes the file and the record and stops offering its providers. The runtime keeps the
-    /// code in memory until the app restarts, but nothing can reach it any more.
+    /// Unloads the extension in the runtime, deletes the file and the record, and stops offering
+    /// its providers. Unloading first means a later install of the same plugin can register again
+    /// without restarting the app.
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn uninstall(&self, extension: &InstalledExtension) -> Result<(), ServiceError> {
+        let path = self.installer.extensions_dir().join(&extension.file_name);
+        if let Err(error) = self.gateway.unload_extension(&path) {
+            tracing::warn!(
+                extension = %extension.file_name,
+                %error,
+                "the extension runtime did not unload the plugin; a reinstall may need an app restart"
+            );
+        }
         self.installer.uninstall(&extension.internal_name)?;
         self.installed.remove(&extension.file_name)?;
         let names = self

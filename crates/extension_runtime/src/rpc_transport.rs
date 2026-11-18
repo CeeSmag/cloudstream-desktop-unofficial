@@ -21,6 +21,12 @@ pub trait RpcTransport: Send + Sync {
         let _ = (method, params, timeout);
     }
 
+    /// Drops a remembered restart call that matches `method` and `params` (an uninstalled
+    /// extension must not be loaded again after a crash). Transports that never restart ignore it.
+    fn forget_for_restart(&self, method: &str, params: &Value) {
+        let _ = (method, params);
+    }
+
     /// Like [`Self::remember_for_restart`] for a setting: only the latest value of `method` is
     /// repeated, so switching a setting on and off leaves it as the viewer last chose.
     fn remember_setting_for_restart(&self, method: &str, params: Value, timeout: Duration) {
