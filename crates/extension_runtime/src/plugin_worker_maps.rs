@@ -9,29 +9,90 @@ use extension_api::{GatewayError, ProviderGateway};
 /// One loaded plugin's gateway (its own JVM process in production).
 pub(crate) type Worker = Arc<dyn ProviderGateway>;
 
+/// Metadata kept after a worker is parked so it can be revived without rediscovery.
+#[derive(Debug, Clone)]
+pub(crate) struct PluginRecord {
+    pub(crate) trusted: bool,
+    pub(crate) providers: Vec<String>,
+}
+
 /// Maps that route provider and link-search ids to the worker that owns them.
 #[derive(Default)]
 pub(crate) struct WorkerMaps {
     by_path: HashMap<PathBuf, Worker>,
     provider_to_path: HashMap<String, PathBuf>,
     search_to_path: HashMap<String, PathBuf>,
+    /// Every loaded plugin (live or parked).
+    records: HashMap<PathBuf, PluginRecord>,
+    /// Live workers oldest-first for LRU eviction.
+    live_order: Vec<PathBuf>,
 }
 
 impl WorkerMaps {
     /// Registers a freshly loaded worker and the providers it reported.
-    pub(crate) fn insert(&mut self, path: PathBuf, worker: Worker, providers: &[String]) {
+    pub(crate) fn insert(&mut self, path: PathBuf, worker: Worker, record: PluginRecord) {
         self.clear_path_routes(&path);
-        for name in providers {
+        for name in &record.providers {
             self.provider_to_path.insert(name.clone(), path.clone());
         }
+        self.records.insert(path.clone(), record);
+        self.touch_live(&path);
         self.by_path.insert(path, worker);
+    }
+
+    /// Drops the live worker but keeps provider routes and the record (for later revive).
+    pub(crate) fn park(&mut self, path: &Path) -> Option<Worker> {
+        // Always drop LRU / search routes even when already parked, or enforce loops forever.
+        self.live_order.retain(|entry| entry != path);
+        self.search_to_path.retain(|_, mapped| mapped != path);
+        self.by_path.remove(path)
     }
 
     /// Drops the worker for `path` and every route that pointed at it.
     pub(crate) fn remove(&mut self, path: &Path) -> Option<Worker> {
-        let worker = self.by_path.remove(path)?;
+        let worker = self.by_path.remove(path);
+        self.live_order.retain(|entry| entry != path);
+        self.records.remove(path);
         self.clear_path_routes(path);
-        Some(worker)
+        worker
+    }
+
+    pub(crate) fn record(&self, path: &Path) -> Option<&PluginRecord> {
+        self.records.get(path)
+    }
+
+    pub(crate) fn path_for_provider(&self, provider: &str) -> Result<PathBuf, GatewayError> {
+        self.provider_to_path.get(provider).cloned().ok_or_else(|| {
+            GatewayError::Unavailable(format!("no worker loaded for provider '{provider}'"))
+        })
+    }
+
+    pub(crate) fn live_count(&self) -> usize {
+        self.by_path.len()
+    }
+
+    pub(crate) fn by_path_contains(&self, path: &Path) -> bool {
+        self.by_path.contains_key(path)
+    }
+
+    /// Oldest live path that is not `keep` and has no open link search, if any.
+    pub(crate) fn oldest_live_except(&self, keep: &Path) -> Option<PathBuf> {
+        self.live_order
+            .iter()
+            .find(|path| path.as_path() != keep && !self.has_open_search(path))
+            .cloned()
+    }
+
+    fn has_open_search(&self, path: &Path) -> bool {
+        self.search_to_path
+            .values()
+            .any(|mapped| mapped.as_path() == path)
+    }
+
+    /// Marks `path` as the most recently used live worker (LRU).
+    pub(crate) fn touch_live(&mut self, path: &Path) {
+        self.live_order.retain(|entry| entry != path);
+        self.live_order.push(path.to_path_buf());
     }
 
     /// Takes every worker and clears all routes (app shutdown).
@@ -39,6 +100,8 @@ impl WorkerMaps {
         let workers: Vec<Worker> = self.by_path.drain().map(|(_, worker)| worker).collect();
         self.provider_to_path.clear();
         self.search_to_path.clear();
+        self.records.clear();
+        self.live_order.clear();
         workers
     }
 
@@ -50,10 +113,6 @@ impl WorkerMaps {
             .into_iter()
             .map(|(_, worker)| Arc::clone(worker))
             .collect()
-    }
-
-    pub(crate) fn worker_for_provider(&self, provider: &str) -> Result<Worker, GatewayError> {
-        Ok(self.worker_and_path_for_provider(provider)?.0)
     }
 
     /// Worker that owns `provider`, plus its plugin path (for link-search routing).
@@ -139,18 +198,51 @@ mod tests {
     fn insert_routes_providers_and_remove_clears_them() {
         let path = PathBuf::from("/ext/A.cs3");
         let mut maps = WorkerMaps::default();
-        maps.insert(path.clone(), Arc::new(EmptyWorker), &["Alpha".to_owned()]);
-        assert!(maps.worker_for_provider("Alpha").is_ok());
+        maps.insert(
+            path.clone(),
+            Arc::new(EmptyWorker),
+            PluginRecord {
+                trusted: false,
+                providers: vec!["Alpha".to_owned()],
+            },
+        );
+        assert!(maps.worker_and_path_for_provider("Alpha").is_ok());
         assert!(maps.remove(&path).is_some());
-        assert!(maps.worker_for_provider("Alpha").is_err());
+        assert!(maps.worker_and_path_for_provider("Alpha").is_err());
         assert!(maps.all_workers().is_empty());
+    }
+
+    #[test]
+    fn park_keeps_provider_route_without_a_live_worker() {
+        let path = PathBuf::from("/ext/A.cs3");
+        let mut maps = WorkerMaps::default();
+        maps.insert(
+            path.clone(),
+            Arc::new(EmptyWorker),
+            PluginRecord {
+                trusted: true,
+                providers: vec!["Alpha".to_owned()],
+            },
+        );
+        assert!(maps.park(&path).is_some());
+        assert!(maps.by_path.is_empty());
+        assert_eq!(maps.path_for_provider("Alpha").expect("path"), path);
+        assert!(maps.record(&path).is_some_and(|r| r.trusted));
+        assert!(maps.worker_and_path_for_provider("Alpha").is_err());
     }
 
     #[test]
     fn remember_search_routes_poll_to_the_provider_worker() {
         let path = PathBuf::from("/ext/B.cs3");
         let mut maps = WorkerMaps::default();
-        maps.insert(path.clone(), Arc::new(EmptyWorker), &["Beta".to_owned()]);
+        maps.insert(
+            path.clone(),
+            Arc::new(EmptyWorker),
+            PluginRecord {
+                trusted: false,
+                providers: vec!["Beta".to_owned()],
+            },
+        );
         maps.remember_search("s1".to_owned(), path);
         assert!(maps.worker_for_search("s1").is_ok());
         maps.forget_search("s1");

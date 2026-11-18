@@ -6,6 +6,7 @@ import { UpdateCard } from '../../components/UpdateCard';
 import { DeleteDataCard } from '../../components/DeleteDataCard';
 import { StorageCapCard } from '../../components/StorageCapCard';
 import { VideoCacheCard } from '../../components/VideoCacheCard';
+import { PluginWorkerCard } from '../../components/PluginWorkerCard';
 
 interface GeneralSettingsProps {
   providers: ProviderInfo[];
@@ -21,6 +22,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ providers, onE
     <DebugLoggingCard onError={onError} />
     <StorageCapCard onError={onError} />
     <VideoCacheCard onError={onError} />
+    <PluginWorkerCard onError={onError} />
 
     <div className={SECTION}>
       <h2 className="text-lg font-bold text-white">Active Providers ({providers.length})</h2>

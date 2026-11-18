@@ -1,7 +1,7 @@
 //! One JVM sidecar process per loaded `.cs3`, routed by provider / search id.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -11,7 +11,7 @@ use core_model::{
 };
 use extension_api::{GatewayError, ProviderGateway};
 
-use crate::plugin_worker_maps::{Worker, WorkerMaps};
+use crate::plugin_worker_maps::{PluginRecord, Worker, WorkerMaps};
 use crate::{RpcProviderGateway, SidecarLaunchConfig, SidecarProcessTransport};
 
 /// Spawns a fresh worker gateway (one sidecar process). `trusted` selects OS FS jail off/on.
@@ -19,16 +19,21 @@ type SpawnFn = Arc<dyn Fn(bool) -> Worker + Send + Sync>;
 
 /// `ProviderGateway` that keeps a separate sidecar JVM for each loaded plugin file.
 pub struct PluginWorkerPool {
-    spawn: SpawnFn,
+    pub(crate) spawn: SpawnFn,
     maps: Mutex<WorkerMaps>,
-    debug_logging: AtomicBool,
+    pub(crate) debug_logging: AtomicBool,
+    /// 0 = unlimited resident workers; otherwise the max live JVMs.
+    pub(crate) resident_limit: AtomicUsize,
+    /// Serializes revive so two threads do not rebuild the same parked plugin at once.
+    pub(crate) revive_gate: Mutex<()>,
 }
 
 impl PluginWorkerPool {
     /// Production pool: each worker is a new [`SidecarProcessTransport`] with `config`.
     /// Trusted plugins skip AppContainer / Landlock via [`SidecarLaunchConfig::without_os_fs_sandbox`].
+    /// Starts with a resident limit of 1 (low-end); Settings can raise it.
     pub fn new(config: SidecarLaunchConfig) -> Self {
-        Self::with_spawn(Arc::new(move |trusted| {
+        let pool = Self::with_spawn(Arc::new(move |trusted| {
             let launch = if trusted {
                 config.clone().without_os_fs_sandbox()
             } else {
@@ -37,7 +42,9 @@ impl PluginWorkerPool {
             Arc::new(RpcProviderGateway::new(SidecarProcessTransport::new(
                 launch,
             )))
-        }))
+        }));
+        pool.resident_limit.store(1, Ordering::SeqCst);
+        pool
     }
 
     /// Test / custom pool: `spawn` builds each worker (no real JVM required).
@@ -46,15 +53,14 @@ impl PluginWorkerPool {
             spawn,
             maps: Mutex::new(WorkerMaps::default()),
             debug_logging: AtomicBool::new(false),
+            // Production [`Self::new`] sets 1; tests leave unlimited until they opt in.
+            resident_limit: AtomicUsize::new(0),
+            revive_gate: Mutex::new(()),
         }
     }
 
-    fn lock_maps(&self) -> std::sync::MutexGuard<'_, WorkerMaps> {
+    pub(crate) fn lock_maps(&self) -> std::sync::MutexGuard<'_, WorkerMaps> {
         self.maps.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn worker_for_provider(&self, provider: &str) -> Result<Worker, GatewayError> {
-        self.lock_maps().worker_for_provider(provider)
     }
 
     fn worker_for_search(&self, id: &str) -> Result<Worker, GatewayError> {
@@ -92,10 +98,19 @@ impl ProviderGateway for PluginWorkerPool {
             }
         };
         let names: Vec<String> = providers.iter().map(|info| info.name.clone()).collect();
-        self.lock_maps().insert(path.to_path_buf(), worker, &names);
+        let count = names.len();
+        self.lock_maps().insert(
+            path.to_path_buf(),
+            worker,
+            PluginRecord {
+                trusted,
+                providers: names,
+            },
+        );
+        self.enforce_resident_limit(path);
         tracing::info!(
             path = %path.display(),
-            providers = names.len(),
+            providers = count,
             trusted,
             os_fs_sandbox = !trusted,
             "plugin worker loaded"
@@ -116,7 +131,8 @@ impl ProviderGateway for PluginWorkerPool {
     }
 
     fn search(&self, provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError> {
-        self.worker_for_provider(provider)?
+        self.live_worker_for_provider(provider)?
+            .0
             .search(provider, query, page)
     }
 
@@ -126,21 +142,25 @@ impl ProviderGateway for PluginWorkerPool {
         page: u32,
         entry: &MainPageEntry,
     ) -> Result<Option<HomePage>, GatewayError> {
-        self.worker_for_provider(provider)?
+        self.live_worker_for_provider(provider)?
+            .0
             .main_page(provider, page, entry)
     }
 
     fn load(&self, provider: &str, url: &str) -> Result<Option<LoadDetails>, GatewayError> {
-        self.worker_for_provider(provider)?.load(provider, url)
+        self.live_worker_for_provider(provider)?
+            .0
+            .load(provider, url)
     }
 
     fn load_links(&self, provider: &str, data: &str) -> Result<PlayableLinks, GatewayError> {
-        self.worker_for_provider(provider)?
+        self.live_worker_for_provider(provider)?
+            .0
             .load_links(provider, data)
     }
 
     fn start_link_search(&self, provider: &str, data: &str) -> Result<String, GatewayError> {
-        let (worker, path) = self.lock_maps().worker_and_path_for_provider(provider)?;
+        let (worker, path) = self.live_worker_for_provider(provider)?;
         let id = worker.start_link_search(provider, data)?;
         self.lock_maps().remember_search(id.clone(), path);
         Ok(id)
@@ -219,6 +239,34 @@ impl ProviderGateway for PluginWorkerPool {
         match last_error {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+
+    fn set_resident_worker_limit(&self, limit: Option<usize>) {
+        let value = limit.unwrap_or(0);
+        self.resident_limit.store(value, Ordering::SeqCst);
+        tracing::info!(?limit, "plugin resident worker limit set");
+        if let Some(cap) = limit {
+            // Park extras using an empty keep path so the oldest are removed first.
+            let keep = Path::new("");
+            while self.lock_maps().live_count() > cap {
+                let Some(path) = self.lock_maps().oldest_live_except(keep) else {
+                    break;
+                };
+                match self.lock_maps().park(&path) {
+                    Some(worker) => worker.shutdown(),
+                    None => break,
+                }
+            }
+        }
+    }
+
+    fn resident_worker_limit(&self) -> Option<usize> {
+        let value = self.resident_limit.load(Ordering::SeqCst);
+        if value == 0 {
+            None
+        } else {
+            Some(value)
         }
     }
 }

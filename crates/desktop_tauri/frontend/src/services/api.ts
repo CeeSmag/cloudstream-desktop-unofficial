@@ -11,6 +11,7 @@ import {
   PlaybackStatus,
   StorageInfo,
   VideoCacheSetting,
+  PluginWorkerLimit,
   VideoMode,
   PluginHit,
   Preferences,
@@ -200,6 +201,11 @@ export const api = {
   runStorageCleanup: () => invokeTauri<StorageInfo>('run_storage_cleanup'),
 
   getVideoCache: () => invokeTauri<VideoCacheSetting>('get_video_cache'),
+
+  getPluginWorkerLimit: () => invokeTauri<PluginWorkerLimit>('get_plugin_worker_limit'),
+
+  setPluginWorkerLimit: (limit: number) =>
+    invokeTauri<PluginWorkerLimit>('set_plugin_worker_limit', { limit }),
 
   /** Saves the video cache size and ahead share; the player follows at once. */
   setVideoCache: (sizeMb: number, aheadPercent: number) =>

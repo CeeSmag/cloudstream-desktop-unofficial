@@ -96,4 +96,15 @@ pub trait ProviderGateway: Send + Sync {
         let _ = enabled;
         Ok(())
     }
+
+    /// Caps how many plugin processes may stay alive (`None` = unlimited). Pools that cannot
+    /// park workers ignore it.
+    fn set_resident_worker_limit(&self, limit: Option<usize>) {
+        let _ = limit;
+    }
+
+    /// Current resident-worker cap (`None` = unlimited).
+    fn resident_worker_limit(&self) -> Option<usize> {
+        None
+    }
 }

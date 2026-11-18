@@ -15,7 +15,7 @@ use crate::ServiceError;
 /// Installs, removes and loads extension files.
 #[derive(Clone)]
 pub struct ExtensionService {
-    gateway: Arc<dyn ProviderGateway>,
+    pub(crate) gateway: Arc<dyn ProviderGateway>,
     installer: Arc<ExtensionInstaller<Arc<dyn HttpFetcher>>>,
     installed: InstalledExtensionStore,
     clock: Arc<dyn Clock>,

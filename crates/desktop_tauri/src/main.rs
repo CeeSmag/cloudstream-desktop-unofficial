@@ -44,6 +44,7 @@ mod native_video;
 mod opening_flow_tests;
 mod playback_commands;
 mod plugin_catalog_commands;
+mod plugin_worker_commands;
 mod preferences_commands;
 mod provider_switch;
 #[cfg(test)]
@@ -159,6 +160,8 @@ fn build_app(paths: AppPaths, debug_logs: DebugLogs) -> Builder<Wry> {
             video_cache_commands::leave_playback,
             video_cache_commands::get_video_cache,
             video_cache_commands::set_video_cache,
+            plugin_worker_commands::get_plugin_worker_limit,
+            plugin_worker_commands::set_plugin_worker_limit,
             playback_commands::get_playback_status,
             playback_commands::select_media_track,
             playback_commands::set_volume,
@@ -219,6 +222,7 @@ fn init_services(
     app.manage(debug_logs);
     app.manage(data_commands::DataFolder(paths.data_dir().to_path_buf()));
     preferences_commands::apply_saved(&services.settings, services.playback.as_ref());
+    plugin_worker_commands::apply_saved(&services);
     let extensions = services.extensions.clone();
     let repositories = services.repositories.clone();
     let services_valid_from = services

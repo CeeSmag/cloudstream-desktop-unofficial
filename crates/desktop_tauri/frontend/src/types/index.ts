@@ -358,6 +358,12 @@ export interface VideoCacheSetting {
   ahead_percents: number[];
 }
 
+/** Resident plugin JVM cap (`get_plugin_worker_limit`); `0` = unlimited. */
+export interface PluginWorkerLimit {
+  limit: number;
+  choices: number[];
+}
+
 export interface StorageInfo {
   cap_gb: number;
   used_bytes: number;

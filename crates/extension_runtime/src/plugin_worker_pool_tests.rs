@@ -192,7 +192,7 @@ fn queue_spawn(workers: Vec<Arc<ScriptedWorker>>) -> SpawnFn {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
-            .expect("spawn queue empty");
+            .unwrap_or_else(|| ScriptedWorker::ok("spare", &["Alpha", "Beta"]));
         let worker: Worker = next;
         worker
     })
@@ -354,6 +354,67 @@ fn concurrent_load_unload_and_search_keep_maps_consistent() {
     }
     pool.shutdown();
     assert!(pool.search("P0", "q", 1).is_err());
+}
+
+#[test]
+fn resident_limit_of_one_parks_the_older_worker_and_revives_on_search() {
+    let a_first = ScriptedWorker::ok("A", &["Alpha"]);
+    let a_shutdowns = Arc::clone(&a_first.shutdowns);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![
+        a_first,
+        ScriptedWorker::ok("B", &["Beta"]),
+        ScriptedWorker::ok("A2", &["Alpha"]),
+    ]));
+    pool.set_resident_worker_limit(Some(1));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("load A");
+    pool.load_extension(Path::new("/ext/B.cs3"), false)
+        .expect("load B");
+    assert_eq!(a_shutdowns.load(Ordering::SeqCst), 1, "A parked");
+    assert_eq!(pool.lock_maps().live_count(), 1);
+    let page = pool.search("Alpha", "moon", 1).expect("revive");
+    assert!(page.items[0].name.contains("Alpha"));
+    assert_eq!(pool.lock_maps().live_count(), 1);
+}
+
+#[test]
+fn race_park_revive_under_limit_stays_consistent() {
+    use std::sync::atomic::AtomicBool;
+    let pool = Arc::new(PluginWorkerPool::with_spawn(queue_spawn(vec![
+        ScriptedWorker::ok("A", &["Alpha"]),
+        ScriptedWorker::ok("B", &["Beta"]),
+        ScriptedWorker::ok("A2", &["Alpha"]),
+        ScriptedWorker::ok("B2", &["Beta"]),
+        ScriptedWorker::ok("A3", &["Alpha"]),
+        ScriptedWorker::ok("B3", &["Beta"]),
+        ScriptedWorker::ok("A4", &["Alpha"]),
+        ScriptedWorker::ok("B4", &["Beta"]),
+    ])));
+    pool.set_resident_worker_limit(None);
+    pool.load_extension(Path::new("/a.cs3"), false).expect("a");
+    pool.load_extension(Path::new("/b.cs3"), false).expect("b");
+    pool.set_resident_worker_limit(Some(1));
+    let stop = Arc::new(AtomicBool::new(false));
+    let threads: Vec<_> = [0, 1]
+        .into_iter()
+        .map(|slot| {
+            let pool = Arc::clone(&pool);
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    let name = if slot == 0 { "Alpha" } else { "Beta" };
+                    let _ = pool.search(name, "q", 1);
+                }
+            })
+        })
+        .collect();
+    thread::sleep(std::time::Duration::from_millis(100));
+    stop.store(true, Ordering::Relaxed);
+    for t in threads {
+        t.join().expect("thread");
+    }
+    assert!(pool.lock_maps().live_count() <= 1);
+    pool.shutdown();
 }
 
 #[test]
