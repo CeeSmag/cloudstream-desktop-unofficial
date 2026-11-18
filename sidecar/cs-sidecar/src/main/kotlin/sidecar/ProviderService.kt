@@ -48,7 +48,12 @@ class ProviderService {
     fun loadExtension(path: String, trusted: Boolean): List<ProviderInfo> {
         SidecarLog.debug { "loadExtension path=$path trusted=$trusted" }
         val file = ExtensionPathJail.requireInsideExtensions(path)
-        if (trusted) ExtensionLoader.addTrusted(file)
+        if (trusted) {
+            ExtensionLoader.addTrusted(file)
+        } else {
+            // Clear a prior trust so untrust + reload does not keep the wide classloader.
+            ExtensionLoader.removeTrusted(file)
+        }
         val before = APIHolder.allProviders.toSet()
         ExtensionLoader.loadAndInit(file)
         val added = APIHolder.allProviders.filter { it !in before }.map(::describe)

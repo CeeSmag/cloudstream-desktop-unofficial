@@ -23,6 +23,9 @@ pub struct SidecarLaunchConfig {
     pub args: Vec<String>,
     /// Extra environment variables for the child process.
     pub environment: Vec<(String, String)>,
+    /// When true (default with `with_data_dir`), use AppContainer / Landlock.
+    /// Trusted plugins clear this so they skip the FS jail while keeping heap and Job/rlimit.
+    pub os_fs_sandbox: bool,
 }
 
 impl SidecarLaunchConfig {
@@ -40,6 +43,7 @@ impl SidecarLaunchConfig {
             program: home.join("bin").join(script),
             args: Vec::new(),
             environment,
+            os_fs_sandbox: false,
         }
     }
 
@@ -59,6 +63,13 @@ impl SidecarLaunchConfig {
         );
         // AppContainer cannot open HKCU\Software\JavaSoft\Prefs; keep prefs in memory.
         self.add_java_option("-Djava.util.prefs.PreferencesFactory=sidecar.NoOpPreferencesFactory");
+        self.os_fs_sandbox = true;
+        self
+    }
+
+    /// Trusted plugins: keep `data.dir` and heap caps, but do not use AppContainer / Landlock.
+    pub fn without_os_fs_sandbox(mut self) -> Self {
+        self.os_fs_sandbox = false;
         self
     }
 
@@ -165,5 +176,14 @@ mod tests {
             config.environment,
             vec![("JAVA_HOME".to_owned(), "/jdk21".to_owned())]
         );
+        assert!(!config.os_fs_sandbox);
+    }
+
+    #[test]
+    fn with_data_dir_enables_os_fs_sandbox_until_cleared() {
+        let sandboxed =
+            SidecarLaunchConfig::for_install(Path::new("h"), None).with_data_dir(Path::new("/d"));
+        assert!(sandboxed.os_fs_sandbox);
+        assert!(!sandboxed.without_os_fs_sandbox().os_fs_sandbox);
     }
 }

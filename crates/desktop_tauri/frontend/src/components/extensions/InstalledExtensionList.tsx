@@ -50,7 +50,7 @@ export const InstalledExtensionList: React.FC<InstalledExtensionListProps> = ({
                 onBlur={() => setConfirmTrust(null)}
                 autoFocus
                 disabled={working}
-                title="Trusted skips bytecode checks and widens JDK access. Only trust authors you know."
+                title="Trusted skips bytecode checks, widens JDK access, and runs without the OS filesystem jail (AppContainer/Landlock). Job/memory caps remain. Only trust authors you know."
                 className="flex flex-none items-center gap-1.5 px-2.5 py-1 rounded-lg border bg-amber-600/80 border-amber-400/50 text-white text-[11px] font-semibold disabled:opacity-50"
               >
                 Confirm trust
@@ -68,7 +68,7 @@ export const InstalledExtensionList: React.FC<InstalledExtensionListProps> = ({
                 title={
                   extension.trusted
                     ? 'Return to the default sandbox (reloads now).'
-                    : 'Trusted skips static bytecode checks and widens JDK access. Confirm to apply now.'
+                    : 'Trusted skips bytecode checks, widens JDK access, and skips the OS filesystem jail. Confirm to apply now.'
                 }
                 className={`flex flex-none items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors disabled:opacity-50 ${
                   extension.trusted

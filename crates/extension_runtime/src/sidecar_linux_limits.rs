@@ -45,6 +45,16 @@ impl Drop for LinuxGuards {
     }
 }
 
+/// Installs process-group + rlimit `pre_exec` without Landlock (trusted / no-FS-jail path).
+pub(crate) fn attach_limits_to_command(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: closure runs only in the child after fork; only setpgid/prctl/setrlimit.
+    unsafe {
+        command.pre_exec(apply_in_child);
+    }
+}
+
 /// `setpgid(0,0)`, `PR_SET_PDEATHSIG`, and `RLIMIT_AS`. Call only in the child (`pre_exec`).
 pub(crate) fn apply_in_child() -> io::Result<()> {
     // SAFETY: runs once in the forked child before exec; setpgid(0,0) makes this pid the leader.

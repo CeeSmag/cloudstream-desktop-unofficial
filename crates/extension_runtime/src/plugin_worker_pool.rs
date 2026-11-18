@@ -14,8 +14,8 @@ use extension_api::{GatewayError, ProviderGateway};
 use crate::plugin_worker_maps::{Worker, WorkerMaps};
 use crate::{RpcProviderGateway, SidecarLaunchConfig, SidecarProcessTransport};
 
-/// Spawns a fresh worker gateway (one sidecar process).
-type SpawnFn = Arc<dyn Fn() -> Worker + Send + Sync>;
+/// Spawns a fresh worker gateway (one sidecar process). `trusted` selects OS FS jail off/on.
+type SpawnFn = Arc<dyn Fn(bool) -> Worker + Send + Sync>;
 
 /// `ProviderGateway` that keeps a separate sidecar JVM for each loaded plugin file.
 pub struct PluginWorkerPool {
@@ -26,10 +26,16 @@ pub struct PluginWorkerPool {
 
 impl PluginWorkerPool {
     /// Production pool: each worker is a new [`SidecarProcessTransport`] with `config`.
+    /// Trusted plugins skip AppContainer / Landlock via [`SidecarLaunchConfig::without_os_fs_sandbox`].
     pub fn new(config: SidecarLaunchConfig) -> Self {
-        Self::with_spawn(Arc::new(move || {
+        Self::with_spawn(Arc::new(move |trusted| {
+            let launch = if trusted {
+                config.clone().without_os_fs_sandbox()
+            } else {
+                config.clone()
+            };
             Arc::new(RpcProviderGateway::new(SidecarProcessTransport::new(
-                config.clone(),
+                launch,
             )))
         }))
     }
@@ -74,7 +80,7 @@ impl ProviderGateway for PluginWorkerPool {
         trusted: bool,
     ) -> Result<Vec<ProviderInfo>, GatewayError> {
         self.drop_existing(path);
-        let worker = (self.spawn)();
+        let worker = (self.spawn)(trusted);
         if self.debug_logging.load(Ordering::SeqCst) {
             let _ = worker.set_debug_logging(true);
         }
@@ -90,6 +96,8 @@ impl ProviderGateway for PluginWorkerPool {
         tracing::info!(
             path = %path.display(),
             providers = names.len(),
+            trusted,
+            os_fs_sandbox = !trusted,
             "plugin worker loaded"
         );
         Ok(providers)

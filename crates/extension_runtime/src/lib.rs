@@ -44,6 +44,7 @@ mod sidecar_output;
 mod sidecar_process_kill;
 mod sidecar_process_start;
 mod sidecar_process_transport;
+mod sidecar_spawn_mode;
 
 pub use plugin_worker_pool::PluginWorkerPool;
 pub use reply_wait::DeadlineHold;

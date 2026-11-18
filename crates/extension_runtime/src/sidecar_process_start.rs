@@ -6,6 +6,7 @@ use std::sync::mpsc::{self, Receiver};
 use extension_api::GatewayError;
 
 use crate::sidecar_output::{forward_stdout, log_stderr};
+use crate::sidecar_spawn_mode::{uses_linux_process_limits, uses_os_fs_sandbox};
 use crate::SidecarLaunchConfig;
 
 /// A running child process and the channel its reply lines arrive on.
@@ -55,19 +56,12 @@ pub(crate) fn start_sidecar(config: &SidecarLaunchConfig) -> Result<RunningSidec
 
 #[cfg(windows)]
 fn start_windows(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
-    if config_requests_data_dir(config) {
+    if uses_os_fs_sandbox(config) {
         start_app_container(config)
     } else {
+        // Trusted (or tests): Job Object only — no AppContainer.
         start_windows_plain(config)
     }
-}
-
-/// Production JVM launches set `cloudstream.data.dir` via `with_data_dir`; tests use `fake_sidecar`.
-fn config_requests_data_dir(config: &SidecarLaunchConfig) -> bool {
-    config
-        .environment
-        .iter()
-        .any(|(name, value)| name == "JAVA_OPTS" && value.contains("-Dcloudstream.data.dir="))
 }
 
 #[cfg(windows)]
@@ -105,7 +99,10 @@ fn start_windows_plain(config: &SidecarLaunchConfig) -> Result<RunningSidecar, G
         ))
     })?;
     let job = SidecarJobObject::constrain(&child)?;
-    tracing::info!(program = %config.program.display(), "sidecar started");
+    tracing::info!(
+        program = %config.program.display(),
+        "sidecar started with Job Object (no AppContainer)"
+    );
     let missing_pipe = || GatewayError::Transport("sidecar pipe missing".to_owned());
     let stdin = child.stdin.take().ok_or_else(missing_pipe)?;
     let stdout = child.stdout.take().ok_or_else(missing_pipe)?;
@@ -150,8 +147,10 @@ fn wire_windows(parts: WiredSidecar) -> Result<RunningSidecar, GatewayError> {
 
 #[cfg(target_os = "linux")]
 fn start_linux(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
-    if config_requests_data_dir(config) {
+    if uses_os_fs_sandbox(config) {
         start_sandboxed(config)
+    } else if uses_linux_process_limits(config) {
+        start_limited(config)
     } else {
         start_plain(config)
     }
@@ -186,7 +185,7 @@ fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, Gatew
     use crate::sidecar_linux_limits::{sandbox_unavailable, LinuxGuards, MEMORY_LIMIT_BYTES};
 
     let (mut command, abi) = sandboxed_command(config)?;
-    let mut child = command.spawn().map_err(|source| {
+    let child = command.spawn().map_err(|source| {
         sandbox_unavailable(format!("spawn {}: {source}", config.program.display()))
     })?;
     let pid = child.id();
@@ -198,6 +197,47 @@ fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, Gatew
         memory_mb = MEMORY_LIMIT_BYTES / (1024 * 1024),
         "linux sandbox: landlock+rlimit+pgid"
     );
+    finish_linux_child(child, linux_guards)
+}
+
+/// Trusted plugins: rlimit + process group, no Landlock FS jail.
+#[cfg(target_os = "linux")]
+fn start_limited(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
+    use std::process::{Command, Stdio};
+
+    use crate::sidecar_linux_limits::{
+        attach_limits_to_command, sandbox_unavailable, LinuxGuards, MEMORY_LIMIT_BYTES,
+    };
+
+    let mut command = Command::new(&config.program);
+    command
+        .args(&config.args)
+        .envs(config.environment.iter().map(|(k, v)| (k, v)))
+        .env_remove("DISPLAY")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    attach_limits_to_command(&mut command);
+    let child = command.spawn().map_err(|source| {
+        sandbox_unavailable(format!("spawn {}: {source}", config.program.display()))
+    })?;
+    let pid = child.id();
+    let linux_guards = Some(LinuxGuards::for_leader(pid));
+    tracing::info!(
+        program = %config.program.display(),
+        pid,
+        memory_mb = MEMORY_LIMIT_BYTES / (1024 * 1024),
+        "linux limits: rlimit+pgid (no Landlock)"
+    );
+    finish_linux_child(child, linux_guards)
+}
+
+#[cfg(target_os = "linux")]
+fn finish_linux_child(
+    mut child: std::process::Child,
+    linux_guards: Option<crate::sidecar_linux_limits::LinuxGuards>,
+) -> Result<RunningSidecar, GatewayError> {
+    let pid = child.id();
     let missing_pipe = || GatewayError::Transport("sidecar pipe missing".to_owned());
     let stdin = child.stdin.take().ok_or_else(missing_pipe)?;
     let stdout = child.stdout.take().ok_or_else(missing_pipe)?;
@@ -256,18 +296,4 @@ fn spawn_reader(name: &str, body: impl FnOnce() + Send + 'static) -> Result<(), 
         .spawn(body)
         .map(drop)
         .map_err(|source| GatewayError::Transport(format!("cannot start {name} thread: {source}")))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::Path;
-
-    #[test]
-    fn config_requests_data_dir_detects_java_opts_marker() {
-        let plain = SidecarLaunchConfig::for_install(Path::new("/opt/sidecar"), None);
-        assert!(!config_requests_data_dir(&plain));
-        let production = plain.with_data_dir(Path::new("/data/sidecar"));
-        assert!(config_requests_data_dir(&production));
-    }
 }

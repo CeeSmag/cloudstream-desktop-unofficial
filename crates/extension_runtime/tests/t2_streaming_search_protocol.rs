@@ -20,6 +20,7 @@ fn transport() -> SidecarProcessTransport {
         program: env!("CARGO_BIN_EXE_fake_sidecar").into(),
         args: Vec::new(),
         environment: Vec::new(),
+        os_fs_sandbox: false,
     })
 }
 

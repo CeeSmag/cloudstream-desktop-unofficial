@@ -187,7 +187,7 @@ impl ProviderGateway for ScriptedWorker {
 
 fn queue_spawn(workers: Vec<Arc<ScriptedWorker>>) -> SpawnFn {
     let queue = Arc::new(Mutex::new(VecDeque::from(workers)));
-    Arc::new(move || {
+    Arc::new(move |_trusted| {
         let next = queue
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -305,7 +305,7 @@ fn start_link_search_routes_poll_to_the_same_worker() {
 
 fn race_pool() -> Arc<PluginWorkerPool> {
     let spawn_count = Arc::new(AtomicUsize::new(0));
-    Arc::new(PluginWorkerPool::with_spawn(Arc::new(move || {
+    Arc::new(PluginWorkerPool::with_spawn(Arc::new(move |_trusted| {
         let n = spawn_count.fetch_add(1, Ordering::SeqCst);
         let name = format!("P{n}");
         let worker: Worker = ScriptedWorker::ok(&format!("W{n}"), &[name.as_str()]);
@@ -354,6 +354,56 @@ fn concurrent_load_unload_and_search_keep_maps_consistent() {
     }
     pool.shutdown();
     assert!(pool.search("P0", "q", 1).is_err());
+}
+
+#[test]
+fn trusted_load_asks_spawn_for_trusted_true() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let seen_spawn = Arc::clone(&seen);
+    let pool = PluginWorkerPool::with_spawn(Arc::new(move |trusted| {
+        seen_spawn
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(trusted);
+        let worker: Worker = ScriptedWorker::ok("T", &["TrustedProv"]);
+        worker
+    }));
+    pool.load_extension(Path::new("/t.cs3"), true)
+        .expect("trusted load");
+    pool.load_extension(Path::new("/u.cs3"), false)
+        .expect("untrusted load");
+    assert_eq!(
+        *seen.lock().unwrap_or_else(PoisonError::into_inner),
+        vec![true, false]
+    );
+}
+
+#[test]
+fn race_trusted_and_untrusted_loads_interleave_without_panic() {
+    let pool = Arc::new(PluginWorkerPool::with_spawn(Arc::new(|trusted| {
+        let name = if trusted { "T" } else { "U" };
+        let worker: Worker = ScriptedWorker::ok(name, &[name]);
+        worker
+    })));
+    let barrier = Arc::new(Barrier::new(8));
+    let mut handles = Vec::new();
+    for slot in 0..8 {
+        let pool = Arc::clone(&pool);
+        let barrier = Arc::clone(&barrier);
+        handles.push(thread::spawn(move || {
+            barrier.wait();
+            for round in 0..30 {
+                let path = PathBuf::from(format!("/ext/r-{slot}-{round}.cs3"));
+                let trusted = round % 2 == 0;
+                let _ = pool.load_extension(&path, trusted);
+                let _ = pool.unload_extension(&path);
+            }
+        }));
+    }
+    for handle in handles {
+        handle.join().expect("thread");
+    }
+    pool.shutdown();
 }
 
 #[test]
