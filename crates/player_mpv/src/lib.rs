@@ -24,6 +24,7 @@ mod preferred_subtitles;
 mod status_tracker;
 mod subtitle_attacher;
 mod track_reader;
+mod track_refresh;
 
 pub use libmpv_locator::{auto_detect_player, locate_libmpv, locate_libmpv_candidates};
 pub use mpv_player::{MpvPlayer, PlayerOptions};

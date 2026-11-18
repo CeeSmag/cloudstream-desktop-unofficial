@@ -68,7 +68,9 @@ impl EventWorker {
             }
             self.poll_progress();
             ticks += 1;
-            if ticks.is_multiple_of(TRACK_REFRESH_EVERY) {
+            if ticks.is_multiple_of(TRACK_REFRESH_EVERY)
+                && crate::track_refresh::should_refresh_tracks(&self.tracker.snapshot().state)
+            {
                 self.refresh_tracks();
                 self.refresh_chapters();
             }
