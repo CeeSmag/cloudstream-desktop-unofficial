@@ -1,0 +1,116 @@
+import { Button, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PosterItem, ShelfSection } from "types.slint";
+import { PosterRow, PosterTile } from "poster.slint";
+import { SectionTitle, MutedLabel } from "widgets.slint";
+
+export component HomePage inherits ScrollView {
+    in property <[PosterItem]> continue-items: [];
+    in property <[ShelfSection]> shelves: [];
+    in property <string> provider-name: "";
+    in property <string> hero-title: "";
+    in property <string> hero-subtitle: "";
+    in property <image> hero-image;
+    callback open-continue(int);
+    callback open-shelf(int, int);
+    callback resume-hero();
+    callback play-continue(int);
+    callback bookmark-continue(int);
+    callback remove-continue(int);
+
+    accessible-role: AccessibleRole.main;
+
+    VerticalLayout {
+        padding: Theme.page-pad;
+        spacing: Theme.space-3;
+
+        if continue-items.length > 0: Rectangle {
+            height: 220px;
+            border-radius: Theme.radius;
+            clip: true;
+            background: Theme.panel;
+
+            if hero-image.width > 1: Image {
+                width: 100%;
+                height: 100%;
+                source: root.hero-image;
+                image-fit: cover;
+            }
+
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: @linear-gradient(90deg, #0c0f17f2 0%, #0c0f17cc 45%, #0c0f1744 100%);
+            }
+
+            Rectangle {
+                x: Theme.space-3;
+                y: Theme.space-3;
+                width: min(420px, parent.width - 48px);
+                height: parent.height - 40px;
+                background: #14182499;
+                border-radius: Theme.radius;
+                backdrop-blur: 10px;
+
+                VerticalLayout {
+                    padding: Theme.space-3;
+                    spacing: Theme.space-2;
+                    alignment: end;
+                    Text {
+                        text: root.hero-title == "" ? "Continue watching" : root.hero-title;
+                        color: Theme.text;
+                        font-size: 28px;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.hero-subtitle;
+                        color: Theme.muted;
+                        font-size: Theme.body-size;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        Button {
+                            text: "Resume";
+                            primary: true;
+                            clicked => { root.resume-hero(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        if continue-items.length > 0: SectionTitle { text: "Continue watching"; }
+        if continue-items.length > 0: PosterRow {
+            items: root.continue-items;
+            open-at(i) => { root.open-continue(i); }
+            play-at(i) => { root.play-continue(i); }
+            bookmark-at(i) => { root.bookmark-continue(i); }
+            remove-at(i) => { root.remove-continue(i); }
+        }
+
+        SectionTitle {
+            text: root.provider-name == "" ? "Home" : root.provider-name;
+        }
+        if shelves.length == 0: MutedLabel {
+            text: "Add a plugin in Settings → Extensions to fill Home.";
+        }
+
+        for shelf[s] in shelves: VerticalLayout {
+            spacing: Theme.space-2;
+            Text {
+                text: shelf.title;
+                color: Theme.text;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            PosterRow {
+                items: shelf.items;
+                open-at(i) => { root.open-shelf(s, i); }
+                play-at(i) => { root.open-shelf(s, i); }
+                bookmark-at(i) => { root.open-shelf(s, i); }
+                remove-at(i) => { }
+            }
+        }
+    }
+}

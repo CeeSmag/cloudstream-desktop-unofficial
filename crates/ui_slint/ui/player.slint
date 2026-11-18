@@ -1,0 +1,283 @@
+import { Button, Slider } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { SourceItem } from "types.slint";
+
+export component PlayerOverlay inherits Rectangle {
+    in property <string> title: "";
+    in property <image> video-frame;
+    in property <float> position-ms: 0;
+    in property <float> duration-ms: 1;
+    in property <bool> paused: false;
+    in property <float> volume: 100;
+    in property <bool> show-sources: false;
+    in-out property <bool> chrome-visible: true;
+    in property <[SourceItem]> sources: [];
+    in property <[string]> audio-track-labels: [];
+    in property <[string]> subtitle-track-labels: [];
+    in property <string> audio-track-value: "";
+    in property <string> subtitle-track-value: "";
+
+    callback toggle-pause();
+    callback seek-to(float);
+    callback set-volume(float);
+    callback close-player();
+    callback leave-player();
+    callback toggle-sources();
+    callback refresh-sources();
+    callback skip-segment();
+    callback select-source(int);
+    callback select-audio(string);
+    callback select-subtitle(string);
+    callback reveal-chrome();
+
+    background: #000000;
+    accessible-role: AccessibleRole.main;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        KeyBinding {
+            keys: @keys(Space);
+            activated => {
+                root.reveal-chrome();
+                root.toggle-pause();
+            }
+        }
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            activated => {
+                root.reveal-chrome();
+                root.seek-to(Math.max(root.position-ms - 5000, 0));
+            }
+        }
+        KeyBinding {
+            keys: @keys(RightArrow);
+            activated => {
+                root.reveal-chrome();
+                root.seek-to(Math.min(root.position-ms + 5000, root.duration-ms));
+            }
+        }
+        KeyBinding {
+            keys: @keys(UpArrow);
+            activated => {
+                root.reveal-chrome();
+                root.set-volume(Math.min(root.volume + 5, 130));
+            }
+        }
+        KeyBinding {
+            keys: @keys(DownArrow);
+            activated => {
+                root.reveal-chrome();
+                root.set-volume(Math.max(root.volume - 5, 0));
+            }
+        }
+        KeyBinding {
+            keys: @keys(M);
+            activated => {
+                root.reveal-chrome();
+                root.set-volume(root.volume > 0 ? 0 : 100);
+            }
+        }
+
+        VerticalLayout {
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.reveal-chrome();
+                    root.toggle-pause();
+                }
+                Image {
+                    source: root.video-frame;
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    image-fit: contain;
+                }
+            }
+
+            if root.chrome-visible: Rectangle {
+                height: 108px;
+                background: #141824ee;
+                backdrop-blur: 12px;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    Text { text: root.title; color: Theme.text; }
+                    Slider {
+                        value: root.duration-ms <= 0 ? 0 : root.position-ms / root.duration-ms;
+                        changed(v) => { root.seek-to(v * root.duration-ms); }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: root.paused ? "Play" : "Pause";
+                            clicked => { root.toggle-pause(); }
+                        }
+                        Button {
+                            text: "Sources";
+                            clicked => { root.toggle-sources(); }
+                        }
+                        Button {
+                            text: "Refresh";
+                            clicked => { root.refresh-sources(); }
+                        }
+                        Button {
+                            text: "Skip";
+                            clicked => { root.skip-segment(); }
+                        }
+                        Button {
+                            text: "Audio";
+                            clicked => { audio-popup.show(); }
+                        }
+                        Button {
+                            text: "Subs";
+                            clicked => { subs-popup.show(); }
+                        }
+                        Text {
+                            text: "Vol";
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                        Slider {
+                            width: 120px;
+                            value: root.volume / 130;
+                            changed(v) => { root.set-volume(v * 130); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        Button {
+                            text: "Leave";
+                            clicked => { root.leave-player(); }
+                        }
+                        Button {
+                            text: "Close";
+                            clicked => { root.close-player(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    audio-popup := PopupWindow {
+        x: 24px;
+        y: parent.height - 320px;
+        width: 260px;
+        height: 240px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.panel;
+            border-radius: Theme.radius;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 6px;
+                Text {
+                    text: "Audio tracks";
+                    color: Theme.text;
+                    font-weight: 600;
+                }
+                for label in root.audio-track-labels: Rectangle {
+                    height: 36px;
+                    background: label == root.audio-track-value ? Theme.panel-hi : transparent;
+                    border-radius: Theme.radius-sm;
+                    Text {
+                        text: label;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.select-audio(label);
+                            audio-popup.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    subs-popup := PopupWindow {
+        x: 300px;
+        y: parent.height - 320px;
+        width: 260px;
+        height: 240px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.panel;
+            border-radius: Theme.radius;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 6px;
+                Text {
+                    text: "Subtitles";
+                    color: Theme.text;
+                    font-weight: 600;
+                }
+                for label in root.subtitle-track-labels: Rectangle {
+                    height: 36px;
+                    background: label == root.subtitle-track-value ? Theme.panel-hi : transparent;
+                    border-radius: Theme.radius-sm;
+                    Text {
+                        text: label;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        x: 8px;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.select-subtitle(label);
+                            subs-popup.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.show-sources: Rectangle {
+        x: parent.width - 360px;
+        width: 340px;
+        height: parent.height - (root.chrome-visible ? 120px : 24px);
+        y: 12px;
+        background: Theme.panel;
+        border-radius: Theme.radius;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 6px;
+            Text {
+                text: "Sources";
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            for src[i] in root.sources: Rectangle {
+                height: 48px;
+                background: src.selected ? Theme.panel-hi : transparent;
+                border-radius: Theme.radius-sm;
+                HorizontalLayout {
+                    padding: 8px;
+                    VerticalLayout {
+                        Text {
+                            text: src.label;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: src.detail;
+                            color: src.working ? Theme.ok : Theme.muted;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                }
+                TouchArea { clicked => { root.select-source(i); } }
+            }
+        }
+    }
+
+    hide-timer := Timer {
+        interval: 4s;
+        running: root.chrome-visible && !root.paused;
+        triggered => {
+            root.chrome-visible = false;
+        }
+    }
+}

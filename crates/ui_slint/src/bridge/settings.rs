@@ -17,11 +17,10 @@ use crate::runner::{spawn_work, BrowseRow, EventPump, UiEvent};
 use crate::update::{self, UpdateInfo};
 use crate::{CloudStream, EpisodeItem, PosterItem};
 
-use super::session::{AppExtras, Session};
 use super::catalog::load_home;
-use super::settings_extra::{
-    pump_dummy, refresh_plugins, tx_notice, tx_notice_from_extras, wire_cloudflare,
-};
+use super::session::{AppExtras, Session};
+use super::settings_extra::{refresh_plugins, tx_notice, wire_cloudflare};
+use super::settings_prefs::wire_settings_prefs;
 
 
 pub(crate) fn wire_settings(
@@ -76,16 +75,18 @@ pub(crate) fn wire_settings(
         let services = Rc::clone(&services);
         let ui = ui.clone();
         some_ui.on_set_video_cache(move |value| {
-            if let Ok(mb) = value.parse::<u32>() {
-                if let Ok(mut cache) = services.settings.video_cache() {
-                    cache.size_mb = mb;
-                    let _ = services.settings.set_video_cache(cache);
-                    if let Some(ui) = ui.upgrade() {
-                        ui.set_video_cache_label(format!("{mb} MB").into());
-                    }
-                    if let Some(playback) = &services.playback {
-                        let _ = playback.set_cache_limits(cache.while_watching());
-                    }
+            let Some(mb) = parse_leading_u32(&value) else {
+                return;
+            };
+            if let Ok(mut cache) = services.settings.video_cache() {
+                cache.size_mb = mb;
+                let _ = services.settings.set_video_cache(cache);
+                if let Some(ui) = ui.upgrade() {
+                    ui.set_video_cache_label(format!("{mb} MB").into());
+                    ui.set_cache_size_value(format!("{mb} MB").into());
+                }
+                if let Some(playback) = &services.playback {
+                    let _ = playback.set_cache_limits(cache.while_watching());
                 }
             }
         });
@@ -93,6 +94,55 @@ pub(crate) fn wire_settings(
     {
         let services = Rc::clone(&services);
         let ui = ui.clone();
+        some_ui.on_set_ahead(move |value| {
+            let Some(percent) = parse_leading_u32(&value).map(|v| v as u8) else {
+                return;
+            };
+            if let Ok(mut cache) = services.settings.video_cache() {
+                cache.ahead_percent = percent;
+                let _ = services.settings.set_video_cache(cache);
+                if let Some(ui) = ui.upgrade() {
+                    ui.set_ahead_value(format!("{percent}%").into());
+                }
+                if let Some(playback) = &services.playback {
+                    let _ = playback.set_cache_limits(cache.while_watching());
+                }
+            }
+        });
+    }
+    {
+        let services = Rc::clone(&services);
+        let ui = ui.clone();
+        some_ui.on_set_storage_cap(move |value| {
+            let Some(gb) = parse_leading_u32(&value) else {
+                return;
+            };
+            let _ = services.settings.set_storage_cap_gb(gb);
+            if let Some(ui) = ui.upgrade() {
+                ui.set_storage_label(format!("Storage limit: {gb} GB").into());
+                ui.set_storage_value(format!("{gb} GB").into());
+            }
+        });
+    }
+    {
+        let services = Rc::clone(&services);
+        let ui = ui.clone();
+        some_ui.on_set_worker_limit(move |value| {
+            let limit = match value.as_str() {
+                "1" => Some(1),
+                "2" => Some(2),
+                _ => None,
+            };
+            let _ = services.settings.set_plugin_worker_limit(limit);
+            if let Some(ui) = ui.upgrade() {
+                ui.set_worker_value(value);
+            }
+        });
+    }
+    {
+        let services = Rc::clone(&services);
+        let ui = ui.clone();
+        let pump = Rc::clone(&pump);
         some_ui.on_set_provider(move |name| {
             if let Some(ui) = ui.upgrade() {
                 ui.set_selected_provider(name.clone());
@@ -104,8 +154,7 @@ pub(crate) fn wire_settings(
                     .unwrap_or(0),
             );
             let _ = services.title_cache.invalidate_now();
-            load_home(&ui, &services, &pump_dummy(&ui));
-            let _ = name;
+            load_home(&ui, &services, &pump);
         });
     }
     {
@@ -145,15 +194,13 @@ pub(crate) fn wire_settings(
             let _ = ui.upgrade_in_event_loop(|_| {});
         });
     }
-    {
-        let extras = Rc::clone(&extras);
-        some_ui.on_wipe_data(move || {
-            if let Some(dir) = extras.borrow().data_dir.clone() {
-                let _ = std::fs::write(dir.join("delete_all_data.pending"), b"1");
-                let _ = tx_notice_from_extras(&extras, "Data wipe scheduled — restart the app");
-            }
-        });
-    }
+    wire_settings_prefs(
+        some_ui,
+        ui.clone(),
+        Rc::clone(&services),
+        Rc::clone(&pump),
+        Rc::clone(&extras),
+    );
     {
         let pump = Rc::clone(&pump);
         let ui = ui.clone();
@@ -242,6 +289,11 @@ pub(crate) fn wire_settings(
     }
     wire_cloudflare(some_ui, ui, Rc::clone(&session), Rc::clone(&extras));
     let _ = session;
+}
+
+fn parse_leading_u32(text: &str) -> Option<u32> {
+    let digits: String = text.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
 }
 
 

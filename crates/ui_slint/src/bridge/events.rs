@@ -9,18 +9,21 @@ use app_services::{PlaybackItem, StreamSelection, UiServices};
 use playback_session::{run_open, LiveSources, OpenControl, OpenRequest, RefreshRequest};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedPixelBuffer, VecModel};
 
+use crate::poster_images::global_cache;
 use crate::posters::{
-    cache_choices, empty_episodes, empty_posters, plugin_rows, posters_from_bookmarks,
-    posters_from_continue, posters_from_search, source_rows,
+    posters_from_bookmarks, posters_from_continue, posters_from_search, shelves_from_sections,
+    source_rows, string_model,
 };
-use crate::runner::{spawn_work, BrowseRow, EventPump, UiEvent};
-use crate::update::{self, UpdateInfo};
+use crate::runner::{BrowseRow, EventPump, PosterKind, UiEvent};
 use crate::{CloudStream, EpisodeItem, PosterItem};
 
-use super::session::{AppExtras, Session};
-use super::catalog::load_home;
+use super::catalog::{load_home, season_labels_from_episodes};
 use super::open::start_selected;
+use super::poster_hydrate::hydrate_poster_images;
+use super::session::{AppExtras, Session};
 use super::settings_extra::refresh_plugins;
+
+pub(crate) use super::events_extra::{browse_tmdb, drain_cloudflare};
 
 
 pub(crate) fn drain_events(
@@ -61,28 +64,52 @@ pub(crate) fn drain_events(
                 refresh_plugins(&ui.as_weak(), services);
                 if let Ok(bookmarks) = services.library.bookmarks() {
                     ui.set_library_items(posters_from_bookmarks(&bookmarks));
+                    hydrate_poster_images(&ui.as_weak(), &global_cache(), PosterKind::Library);
                 }
                 if let Ok(cont) = services.library.continue_watching() {
                     ui.set_continue_items(posters_from_continue(&cont));
+                    if let Some(first) = cont.first() {
+                        ui.set_hero_title(first.title.clone().into());
+                        let subtitle = match (first.season, first.episode) {
+                            (Some(s), Some(e)) => format!("S{s} E{e}"),
+                            _ => first.provider.clone(),
+                        };
+                        ui.set_hero_subtitle(subtitle.into());
+                    }
+                    hydrate_poster_images(&ui.as_weak(), &global_cache(), PosterKind::Continue);
                 }
                 load_home(&ui.as_weak(), services, pump);
             }
-            UiEvent::HomeLoaded(items) => ui.set_home_items(posters_from_search(&items)),
-            UiEvent::SearchLoaded(items) => ui.set_search_items(posters_from_search(&items)),
+            UiEvent::HomeLoaded(sections) => {
+                let flat: Vec<core_model::SearchResult> = sections
+                    .iter()
+                    .flat_map(|(_, items)| items.iter().cloned())
+                    .collect();
+                ui.set_home_items(posters_from_search(&flat));
+                ui.set_home_shelves(shelves_from_sections(&sections));
+                hydrate_poster_images(&ui.as_weak(), &global_cache(), PosterKind::Shelf);
+            }
+            UiEvent::SearchLoaded(items) => {
+                ui.set_search_items(posters_from_search(&items));
+                hydrate_poster_images(&ui.as_weak(), &global_cache(), PosterKind::Search);
+            }
             UiEvent::BrowseLoaded(rows) => {
                 let posters: Vec<PosterItem> = rows
                     .into_iter()
                     .map(|row| PosterItem {
-                        title: row.title.into(),
-                        subtitle: row.subtitle.into(),
+                        title: row.title.clone().into(),
+                        subtitle: row.subtitle.clone().into(),
                         provider: ui.get_selected_provider(),
-                        url: String::new().into(),
-                        poster: String::new().into(),
-                        media_key: String::new().into(),
-                        data: String::new().into(),
+                        url: row.url.clone().into(),
+                        poster: row.poster.clone().into(),
+                        media_key: row.url.clone().into(),
+                        data: row.url.into(),
+                        image: slint::Image::default(),
+                        progress: 0.0,
                     })
                     .collect();
                 ui.set_browse_items(ModelRc::new(VecModel::from(posters)));
+                hydrate_poster_images(&ui.as_weak(), &global_cache(), PosterKind::Browse);
             }
             UiEvent::DetailsLoaded {
                 title,
@@ -106,13 +133,16 @@ pub(crate) fn drain_events(
                 ui.set_details_plot(plot.into());
                 ui.set_details_meta(meta.into());
                 ui.set_resume_label(resume.into());
+                ui.set_season_filter(-1);
+                ui.set_season_labels(string_model(season_labels_from_episodes(&episodes)));
                 let rows: Vec<EpisodeItem> = episodes
                     .into_iter()
-                    .map(|(name, code, data, watched)| EpisodeItem {
+                    .map(|(name, code, data, watched, season)| EpisodeItem {
                         name: name.into(),
                         code: code.into(),
                         data: data.into(),
                         watched,
+                        season,
                     })
                     .collect();
                 ui.set_episodes(ModelRc::new(VecModel::from(rows)));
@@ -195,6 +225,21 @@ pub(crate) fn poll_player(ui: &CloudStream, services: &UiServices, session: &Ref
     ui.set_position_ms(status.position_ms as f32);
     ui.set_duration_ms(status.duration_ms.max(1) as f32);
     ui.set_paused(status.state == player_api::PlaybackState::Paused);
+    let tracks = playback.tracks();
+    let audio_labels: Vec<String> = tracks
+        .iter()
+        .filter(|t| t.kind == player_api::TrackKind::Audio)
+        .map(player_api::MediaTrack::label)
+        .collect();
+    let mut sub_labels: Vec<String> = vec!["Off".into()];
+    sub_labels.extend(
+        tracks
+            .iter()
+            .filter(|t| t.kind == player_api::TrackKind::Subtitle)
+            .map(player_api::MediaTrack::label),
+    );
+    ui.set_audio_track_labels(string_model(audio_labels));
+    ui.set_subtitle_track_labels(string_model(sub_labels));
     let mut s = session.borrow_mut();
     if let Some(frame) = playback.latest_frame(s.last_frame) {
         s.last_frame = frame.serial;
@@ -213,76 +258,5 @@ pub(crate) fn poll_player(ui: &CloudStream, services: &UiServices, session: &Ref
             let _ = target;
         }
     }
-}
-
-pub(crate) fn drain_cloudflare(
-    ui: &CloudStream,
-    extras: &RefCell<AppExtras>,
-    session: &RefCell<Session>,
-    pump: &EventPump,
-) {
-    let mut extras = extras.borrow_mut();
-    let Some(watch) = extras.cloudflare.as_ref() else {
-        return;
-    };
-    let mut pending = Vec::new();
-    while let Ok(event) = watch.events.try_recv() {
-        pending.push(event);
-    }
-    let data_dir = extras.data_dir.clone();
-    drop(extras);
-    for event in pending {
-        match event {
-            cloudflare_bridge::CloudflareEvent::Needed(request) => {
-                let allowed = session.borrow().allowed_cf.contains(&request.host);
-                if allowed {
-                    let _ = open::that(&request.url);
-                    if let Some(dir) = data_dir.as_ref() {
-                        let dir = dir.join("sidecar/cloudflare");
-                        let _ = cloudflare_bridge::write_result(
-                            &dir,
-                            &request.id,
-                            &cloudflare_bridge::Outcome::Waiting(
-                                "complete verification in browser".into(),
-                            ),
-                        );
-                    }
-                    ui.set_notice(
-                        format!("Cloudflare: complete check for {}", request.host).into(),
-                    );
-                } else {
-                    let _ = pump.sender().send(UiEvent::CloudflareNeeded {
-                        host: request.host,
-                        url: request.url,
-                        id: request.id,
-                    });
-                }
-            }
-        }
-    }
-}
-
-pub(crate) fn browse_tmdb(kind: &str) -> Result<Vec<BrowseRow>, String> {
-    use app_services::{BrowseFilterRequest, BrowseService};
-    let client = BrowseService::default();
-    let request = BrowseFilterRequest {
-        media_type: kind.to_owned(),
-        year: None,
-        sort_by: "popular".into(),
-        rating: None,
-        genres: Vec::new(),
-        genre: None,
-        page: 1,
-    };
-    let page = client.fetch_browse_page(&request)?;
-    Ok(page
-        .items
-        .into_iter()
-        .map(|item| BrowseRow {
-            title: item.name,
-            subtitle: item.media_type,
-            year: item.year,
-        })
-        .collect())
 }
 

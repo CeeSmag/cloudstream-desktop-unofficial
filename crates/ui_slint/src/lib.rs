@@ -7,6 +7,7 @@
 #![allow(clippy::too_many_lines)]
 
 mod bridge;
+mod poster_images;
 mod posters;
 mod runner;
 mod update;

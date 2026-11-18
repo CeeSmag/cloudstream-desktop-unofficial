@@ -1,0 +1,48 @@
+export struct PosterItem {
+    title: string,
+    subtitle: string,
+    provider: string,
+    url: string,
+    poster: string,
+    media-key: string,
+    data: string,
+    image: image,
+    progress: float,
+}
+
+export struct ShelfSection {
+    title: string,
+    items: [PosterItem],
+}
+
+export struct SourceItem {
+    label: string,
+    detail: string,
+    working: bool,
+    selected: bool,
+}
+
+export struct EpisodeItem {
+    name: string,
+    code: string,
+    data: string,
+    watched: bool,
+    season: int,
+}
+
+export struct PluginItem {
+    name: string,
+    detail: string,
+    file-name: string,
+    trusted: bool,
+}
+
+export struct SettingChoice {
+    label: string,
+    value: string,
+}
+
+export struct TrackChoice {
+    label: string,
+    id: int,
+}

@@ -1,0 +1,97 @@
+import { Button, LineEdit, RadioGroup, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PosterItem } from "types.slint";
+import { PosterRow } from "poster.slint";
+import { SectionTitle } from "widgets.slint";
+
+export component BrowsePage inherits VerticalLayout {
+    in property <[PosterItem]> items: [];
+    callback load-kind(string);
+    callback open-at(int);
+
+    padding: Theme.page-pad;
+    spacing: Theme.space-2;
+    accessible-role: AccessibleRole.main;
+
+    SectionTitle { text: "Browse"; }
+
+    RadioGroup {
+        title: "Type";
+        orientation: Orientation.horizontal;
+        selected(value) => {
+            if value == "Movies" {
+                root.load-kind("movie");
+            } else {
+                root.load-kind("tv");
+            }
+        }
+        RadioButton { text: "Movies"; checked: true; }
+        RadioButton { text: "TV"; }
+    }
+
+    ScrollView {
+        PosterRow {
+            items: root.items;
+            open-at(i) => { root.open-at(i); }
+            play-at(i) => { root.open-at(i); }
+            bookmark-at(i) => { root.open-at(i); }
+            remove-at(i) => { }
+        }
+    }
+}
+
+export component SearchPage inherits VerticalLayout {
+    in-out property <string> query: "";
+    in property <[PosterItem]> items: [];
+    callback search(string);
+    callback open-at(int);
+
+    padding: Theme.page-pad;
+    spacing: Theme.space-2;
+    accessible-role: AccessibleRole.search;
+
+    SectionTitle { text: "Search"; }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        LineEdit {
+            text <=> root.query;
+            placeholder-text: "Search titles…";
+            horizontal-stretch: 1;
+            accepted => { root.search(root.query); }
+        }
+        Button {
+            text: "Search";
+            primary: true;
+            clicked => { root.search(root.query); }
+        }
+    }
+    ScrollView {
+        PosterRow {
+            items: root.items;
+            open-at(i) => { root.open-at(i); }
+            play-at(i) => { root.open-at(i); }
+            bookmark-at(i) => { root.open-at(i); }
+            remove-at(i) => { }
+        }
+    }
+}
+
+export component LibraryPage inherits VerticalLayout {
+    in property <[PosterItem]> items: [];
+    callback open-at(int);
+
+    padding: Theme.page-pad;
+    spacing: Theme.space-2;
+    accessible-role: AccessibleRole.main;
+
+    SectionTitle { text: "Library"; }
+    ScrollView {
+        PosterRow {
+            items: root.items;
+            open-at(i) => { root.open-at(i); }
+            play-at(i) => { root.open-at(i); }
+            bookmark-at(i) => { root.open-at(i); }
+            remove-at(i) => { }
+        }
+    }
+}

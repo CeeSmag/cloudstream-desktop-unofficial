@@ -1,0 +1,104 @@
+import { Button, ComboBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { EpisodeItem } from "types.slint";
+import { MutedLabel } from "widgets.slint";
+
+export component DetailsOverlay inherits Rectangle {
+    in property <string> title: "";
+    in property <string> plot: "";
+    in property <string> meta: "";
+    in property <string> resume-label: "";
+    in property <bool> open-busy: false;
+    in property <string> open-status: "";
+    in property <[EpisodeItem]> episodes: [];
+    in property <[string]> season-labels: [];
+    in-out property <int> season-filter: -1;
+    callback play();
+    callback resume();
+    callback close();
+    callback skip-checks();
+    callback play-episode(int);
+    callback season-chosen(string);
+
+    background: #0c0f17f2;
+    accessible-role: AccessibleRole.main;
+
+    VerticalLayout {
+        padding: Theme.page-pad;
+        spacing: Theme.space-2;
+
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        MutedLabel { text: root.meta; }
+        Text {
+            text: root.plot;
+            color: Theme.text;
+            wrap: word-wrap;
+            font-size: Theme.body-size;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Button {
+                text: root.open-busy ? "Opening…" : "Play";
+                enabled: !root.open-busy;
+                primary: true;
+                clicked => { root.play(); }
+            }
+            if root.resume-label != "": Button {
+                text: root.resume-label;
+                clicked => { root.resume(); }
+            }
+            Button { text: "Close"; clicked => { root.close(); } }
+            if root.open-busy: Button {
+                text: "Skip checks";
+                clicked => { root.skip-checks(); }
+            }
+            if root.season-labels.length > 1: ComboBox {
+                model: root.season-labels;
+                current-index: 0;
+                selected(value) => { root.season-chosen(value); }
+            }
+        }
+
+        if root.open-status != "": Text {
+            text: root.open-status;
+            color: Theme.accent;
+        }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: Theme.space-1;
+                for ep[i] in root.episodes: Rectangle {
+                    height: (root.season-filter < 0 || ep.season == root.season-filter) ? 44px : 0px;
+                    background: Theme.panel;
+                    border-radius: Theme.radius-sm;
+                    clip: true;
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: Theme.space-2;
+                        Text {
+                            text: ep.code + "  " + ep.name;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        if ep.watched: Text {
+                            text: "Watched";
+                            color: Theme.ok;
+                            vertical-alignment: center;
+                        }
+                        Button {
+                            text: "Play";
+                            clicked => { root.play-episode(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

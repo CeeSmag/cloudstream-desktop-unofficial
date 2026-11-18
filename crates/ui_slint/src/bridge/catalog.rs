@@ -1,25 +1,15 @@
 //! Home and details loading.
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::time::Duration;
 
-use app_services::{PlaybackItem, StreamSelection, UiServices};
-use playback_session::{run_open, LiveSources, OpenControl, OpenRequest, RefreshRequest};
-use slint::{ComponentHandle, Image, Model, ModelRc, SharedPixelBuffer, VecModel};
+use app_services::UiServices;
+use slint::{ComponentHandle, Model};
 
-use crate::posters::{
-    cache_choices, empty_episodes, empty_posters, plugin_rows, posters_from_bookmarks,
-    posters_from_continue, posters_from_search, source_rows,
-};
-use crate::runner::{spawn_work, BrowseRow, EventPump, UiEvent};
-use crate::update::{self, UpdateInfo};
-use crate::{CloudStream, EpisodeItem, PosterItem};
+use crate::posters::poster_from_search;
+use crate::runner::{spawn_work, EventPump, UiEvent};
+use crate::{CloudStream, PosterItem};
 
 use super::session::Session;
-use super::open::begin_open;
-
 
 pub(crate) fn load_home(ui: &slint::Weak<CloudStream>, services: &UiServices, pump: &EventPump) {
     let services = services.clone();
@@ -35,17 +25,22 @@ pub(crate) fn load_home(ui: &slint::Weak<CloudStream>, services: &UiServices, pu
             .iter()
             .find(|p| p.name == provider)
             .or_else(|| providers.first());
-        let mut items = Vec::new();
+        let mut sections = Vec::new();
         if let Some(info) = chosen {
-            if let Some(entry) = info.main_page.first() {
+            for entry in &info.main_page {
                 if let Ok(Some(page)) = services.catalog.home(&info.name, entry) {
                     for section in page.items {
-                        items.extend(section.list);
+                        let title = if section.name.is_empty() {
+                            entry.name.clone()
+                        } else {
+                            section.name
+                        };
+                        sections.push((title, section.list));
                     }
                 }
             }
         }
-        let _ = tx.send(UiEvent::HomeLoaded(items));
+        let _ = tx.send(UiEvent::HomeLoaded(sections));
         let _ = ui.upgrade_in_event_loop(|_| {});
     });
 }
@@ -62,6 +57,26 @@ pub(crate) fn open_home_index(
             load_details(ui, services, session, pump, &item);
         }
     }
+}
+
+pub(crate) fn open_shelf_item(
+    ui: &slint::Weak<CloudStream>,
+    services: &Rc<UiServices>,
+    session: &Rc<RefCell<Session>>,
+    pump: &Rc<EventPump>,
+    shelf: i32,
+    index: i32,
+) {
+    let Some(ui_h) = ui.upgrade() else {
+        return;
+    };
+    let Some(section) = ui_h.get_home_shelves().row_data(shelf as usize) else {
+        return;
+    };
+    let Some(item) = section.items.row_data(index as usize) else {
+        return;
+    };
+    load_details(ui, services, session, pump, &item);
 }
 
 pub(crate) fn load_details(
@@ -93,21 +108,20 @@ pub(crate) fn load_details(
                     .resume_pointer(&provider, &url)
                     .ok()
                     .flatten()
-                    .map(|pointer| {
-                        match (pointer.season, pointer.episode) {
-                            (Some(s), Some(e)) => format!("Resume S{s} E{e}"),
-                            _ => "Resume".to_owned(),
-                        }
+                    .map(|pointer| match (pointer.season, pointer.episode) {
+                        (Some(s), Some(e)) => format!("Resume S{s} E{e}"),
+                        _ => "Resume".to_owned(),
                     })
                     .unwrap_or_default();
                 let progress = services
                     .library
                     .show_progress(&provider, &url)
                     .unwrap_or_default();
-                let episodes: Vec<(String, String, String, bool)> = details
+                let episodes: Vec<(String, String, String, bool, i32)> = details
                     .episodes
                     .iter()
                     .map(|ep| {
+                        let season = ep.season.unwrap_or(-1);
                         let code = match (ep.season, ep.episode) {
                             (Some(s), Some(e)) => format!("S{s}E{e}"),
                             _ => String::new(),
@@ -118,6 +132,7 @@ pub(crate) fn load_details(
                             code,
                             ep.data.clone(),
                             watched,
+                            season,
                         )
                     })
                     .collect();
@@ -151,4 +166,38 @@ pub(crate) fn load_details(
     });
 }
 
+pub(crate) fn season_labels_from_episodes(
+    episodes: &[(String, String, String, bool, i32)],
+) -> Vec<String> {
+    let mut labels = vec!["All".to_owned()];
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, _, _, _, season) in episodes {
+        if *season > 0 {
+            seen.insert(*season);
+        }
+    }
+    for season in seen {
+        labels.push(format!("Season {season}"));
+    }
+    labels
+}
 
+pub(crate) fn parse_season_label(label: &str) -> i32 {
+    if label == "All" {
+        return -1;
+    }
+    label
+        .strip_prefix("Season ")
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(-1)
+}
+
+#[allow(dead_code)]
+pub(crate) fn flatten_home_items(
+    sections: &[(String, Vec<core_model::SearchResult>)],
+) -> Vec<PosterItem> {
+    sections
+        .iter()
+        .flat_map(|(_, items)| items.iter().map(poster_from_search))
+        .collect()
+}

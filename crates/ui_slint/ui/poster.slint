@@ -1,0 +1,138 @@
+import { ProgressIndicator } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PosterItem } from "types.slint";
+
+export component PosterTile inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> artwork;
+    in property <float> progress: 0;
+    in property <bool> focused: false;
+    callback clicked();
+    callback play-requested();
+    callback bookmark-requested();
+    callback remove-requested();
+
+    width: 160px;
+    height: 248px;
+    background: transparent;
+    border-radius: Theme.radius;
+    border-width: root.focused || touch.has-hover ? 2px : 0px;
+    border-color: Theme.accent;
+
+    states [
+        hover when touch.has-hover || root.focused: {
+            card.transform-scale: 1.06;
+            in-out {
+                animate card.transform-scale { duration: 140ms; easing: ease-out; }
+            }
+        }
+    ]
+
+    card := Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.card;
+        border-radius: Theme.radius;
+        drop-shadow-blur: touch.has-hover || root.focused ? 18px : 0px;
+        drop-shadow-color: #00000088;
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 6px;
+
+            Rectangle {
+                height: 188px;
+                background: #0a0d14;
+                border-radius: Theme.radius-sm;
+                clip: true;
+
+                if artwork.width > 1: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.artwork;
+                    image-fit: cover;
+                }
+                if artwork.width <= 1: Text {
+                    text: "▶";
+                    color: Theme.muted;
+                    font-size: 32px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if root.progress > 0.01: Rectangle {
+                    y: parent.height - 6px;
+                    height: 6px;
+                    width: 100%;
+                    background: #000000aa;
+                    ProgressIndicator {
+                        width: 100%;
+                        height: 100%;
+                        progress: root.progress;
+                    }
+                }
+            }
+
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 13px;
+                overflow: elide;
+            }
+            Text {
+                text: root.subtitle;
+                color: Theme.muted;
+                font-size: Theme.caption-size;
+                overflow: elide;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Play";
+                activated => { root.play-requested(); }
+            }
+            MenuItem {
+                title: "Bookmark";
+                activated => { root.bookmark-requested(); }
+            }
+            MenuItem {
+                title: "Remove from continue";
+                activated => { root.remove-requested(); }
+            }
+        }
+    }
+}
+
+export component PosterRow inherits Flickable {
+    in property <[PosterItem]> items: [];
+    callback open-at(int);
+    callback play-at(int);
+    callback bookmark-at(int);
+    callback remove-at(int);
+
+    height: 260px;
+    mouse-drag-pan-enabled: true;
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: Theme.space-2;
+        for item[i] in root.items: PosterTile {
+            title: item.title;
+            subtitle: item.subtitle;
+            artwork: item.image;
+            progress: item.progress;
+            clicked => { root.open-at(i); }
+            play-requested => { root.play-at(i); }
+            bookmark-requested => { root.bookmark-at(i); }
+            remove-requested => { root.remove-at(i); }
+        }
+    }
+}

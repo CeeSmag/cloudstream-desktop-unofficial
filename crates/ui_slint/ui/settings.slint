@@ -1,0 +1,287 @@
+import { Button, ComboBox, GroupBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PluginItem } from "types.slint";
+import { SideNav, SettingRow, SectionTitle, MutedLabel } from "widgets.slint";
+
+export component SettingsPage inherits Rectangle {
+    in-out property <int> page-index: 0;
+    in property <[string]> cache-size-labels: [];
+    in property <string> cache-size-value: "";
+    in property <[string]> ahead-labels: [];
+    in property <string> ahead-value: "";
+    in property <[string]> storage-labels: [];
+    in property <string> storage-value: "";
+    in property <[string]> worker-labels: [];
+    in property <string> worker-value: "";
+    in property <[string]> provider-labels: [];
+    in property <string> selected-provider: "";
+    in property <[string]> audio-labels: [];
+    in property <string> audio-value: "";
+    in property <[string]> subtitle-labels: [];
+    in property <string> subtitle-add-value: "";
+    in property <string> subtitle-chips: "";
+    in property <bool> keep-video-ready: true;
+    in property <bool> autoplay-next: true;
+    in property <bool> skip-lookup: true;
+    in property <bool> stream-proxy: true;
+    in property <bool> auto-subtitles: true;
+    in property <string> storage-label: "";
+    in property <string> update-label: "";
+    in property <[PluginItem]> plugins: [];
+    in-out property <string> repo-url: "";
+
+    callback set-video-cache(string);
+    callback set-ahead(string);
+    callback set-storage-cap(string);
+    callback set-worker-limit(string);
+    callback set-provider(string);
+    callback set-audio(string);
+    callback set-subtitle-add(string);
+    callback clear-subtitles();
+    callback set-keep-ready(bool);
+    callback set-autoplay(bool);
+    callback set-skip-lookup(bool);
+    callback set-stream-proxy(bool);
+    callback set-auto-subtitles(bool);
+    callback clean-storage();
+    callback wipe-data();
+    callback check-updates();
+    callback apply-update();
+    callback open-logs();
+    callback install-repo(string);
+    callback set-trusted(string, bool);
+    callback uninstall-plugin(string);
+
+    background: transparent;
+    accessible-role: AccessibleRole.main;
+
+    HorizontalLayout {
+        padding: Theme.page-pad;
+        spacing: Theme.space-3;
+
+        SideNav {
+            title: "Settings";
+            model: ["General", "Preferences", "Extensions"];
+            current-item <=> root.page-index;
+        }
+
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding: Theme.space-2;
+                spacing: Theme.space-3;
+
+                SectionTitle { text: "Settings"; }
+
+                if root.page-index == 0: VerticalLayout {
+                    spacing: Theme.space-3;
+
+                    GroupBox {
+                        title: "Video cache";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            SettingRow {
+                                label: "Size";
+                                ComboBox {
+                                    model: root.cache-size-labels;
+                                    current-value: root.cache-size-value;
+                                    selected(value) => { root.set-video-cache(value); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Read-ahead";
+                                ComboBox {
+                                    model: root.ahead-labels;
+                                    current-value: root.ahead-value;
+                                    selected(value) => { root.set-ahead(value); }
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Storage";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            SettingRow {
+                                label: "Limit";
+                                ComboBox {
+                                    model: root.storage-labels;
+                                    current-value: root.storage-value;
+                                    selected(value) => { root.set-storage-cap(value); }
+                                }
+                            }
+                            MutedLabel { text: root.storage-label; }
+                            Button { text: "Clean up storage now"; clicked => { root.clean-storage(); } }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Plugin processes";
+                        SettingRow {
+                            label: "Resident workers";
+                            ComboBox {
+                                model: root.worker-labels;
+                                current-value: root.worker-value;
+                                selected(value) => { root.set-worker-limit(value); }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Updates & data";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            MutedLabel { text: root.update-label; }
+                            HorizontalLayout {
+                                spacing: Theme.space-2;
+                                Button { text: "Check for updates"; clicked => { root.check-updates(); } }
+                                Button { text: "Apply update"; clicked => { root.apply-update(); } }
+                                Button { text: "Open logs"; clicked => { root.open-logs(); } }
+                            }
+                            Button {
+                                text: "Delete all saved data";
+                                clicked => { root.wipe-data(); }
+                            }
+                        }
+                    }
+                }
+
+                if root.page-index == 1: VerticalLayout {
+                    spacing: Theme.space-3;
+
+                    GroupBox {
+                        title: "Playback";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            SettingRow {
+                                label: "Keep video ready when leaving";
+                                Switch {
+                                    checked: root.keep-video-ready;
+                                    toggled => { root.set-keep-ready(self.checked); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Autoplay next episode";
+                                Switch {
+                                    checked: root.autoplay-next;
+                                    toggled => { root.set-autoplay(self.checked); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Skip intro lookup";
+                                Switch {
+                                    checked: root.skip-lookup;
+                                    toggled => { root.set-skip-lookup(self.checked); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Local HLS helper (stream proxy)";
+                                Switch {
+                                    checked: root.stream-proxy;
+                                    toggled => { root.set-stream-proxy(self.checked); }
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Home provider";
+                        ComboBox {
+                            model: root.provider-labels;
+                            current-value: root.selected-provider;
+                            selected(value) => { root.set-provider(value); }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Languages";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            SettingRow {
+                                label: "Preferred audio";
+                                ComboBox {
+                                    model: root.audio-labels;
+                                    current-value: root.audio-value;
+                                    selected(value) => { root.set-audio(value); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Add subtitle language";
+                                ComboBox {
+                                    model: root.subtitle-labels;
+                                    current-value: root.subtitle-add-value;
+                                    selected(value) => { root.set-subtitle-add(value); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Preferred subtitles";
+                                HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    Text {
+                                        text: root.subtitle-chips == "" ? "None" : root.subtitle-chips;
+                                        color: Theme.muted;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                    Button { text: "Clear"; clicked => { root.clear-subtitles(); } }
+                                }
+                            }
+                            SettingRow {
+                                label: "Auto-select subtitles";
+                                Switch {
+                                    checked: root.auto-subtitles;
+                                    toggled => { root.set-auto-subtitles(self.checked); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.page-index == 2: VerticalLayout {
+                    spacing: Theme.space-3;
+
+                    GroupBox {
+                        title: "Add repository";
+                        HorizontalLayout {
+                            spacing: Theme.space-2;
+                            LineEdit {
+                                text <=> root.repo-url;
+                                placeholder-text: "https://…/repo.json";
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Install";
+                                clicked => { root.install-repo(root.repo-url); }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Installed plugins";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            for plugin in root.plugins: HorizontalLayout {
+                                spacing: Theme.space-2;
+                                Text {
+                                    text: plugin.name + " — " + plugin.detail;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                Button {
+                                    text: plugin.trusted ? "Trusted" : "Sandbox";
+                                    clicked => { root.set-trusted(plugin.file-name, !plugin.trusted); }
+                                }
+                                Button {
+                                    text: "Remove";
+                                    clicked => { root.uninstall-plugin(plugin.file-name); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

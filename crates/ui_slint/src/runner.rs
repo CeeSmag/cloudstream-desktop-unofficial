@@ -19,7 +19,7 @@ pub(crate) enum UiEvent {
         providers: Vec<String>,
         error: Option<String>,
     },
-    HomeLoaded(Vec<core_model::SearchResult>),
+    HomeLoaded(Vec<(String, Vec<core_model::SearchResult>)>),
     SearchLoaded(Vec<core_model::SearchResult>),
     BrowseLoaded(Vec<BrowseRow>),
     DetailsLoaded {
@@ -27,7 +27,8 @@ pub(crate) enum UiEvent {
         plot: String,
         meta: String,
         resume: String,
-        episodes: Vec<(String, String, String, bool)>,
+        /// name, code, data, watched, season (-1 unknown)
+        episodes: Vec<(String, String, String, bool, i32)>,
         provider: String,
         url: String,
         data: String,
@@ -69,6 +70,19 @@ pub(crate) struct BrowseRow {
     pub title: String,
     pub subtitle: String,
     pub year: Option<i32>,
+    pub poster: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub(crate) enum PosterKind {
+    Home,
+    Search,
+    Browse,
+    Library,
+    Continue,
+    Shelf,
 }
 
 /// Channels results from worker threads into the UI.

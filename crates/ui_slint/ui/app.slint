@@ -1,82 +1,15 @@
-import { Button, LineEdit, ListView, ScrollView, Slider, Spinner, VerticalBox, HorizontalBox, TabWidget } from "std-widgets.slint";
+import { Button, Palette, ProgressIndicator, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import {
+    PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice
+} from "types.slint";
+import { HomePage } from "home.slint";
+import { BrowsePage, SearchPage, LibraryPage } from "browse.slint";
+import { SettingsPage } from "settings.slint";
+import { DetailsOverlay } from "details.slint";
+import { PlayerOverlay } from "player.slint";
 
-export struct PosterItem {
-    title: string,
-    subtitle: string,
-    provider: string,
-    url: string,
-    poster: string,
-    media-key: string,
-    data: string,
-}
-
-export struct SourceItem {
-    label: string,
-    detail: string,
-    working: bool,
-    selected: bool,
-}
-
-export struct EpisodeItem {
-    name: string,
-    code: string,
-    data: string,
-    watched: bool,
-}
-
-export struct PluginItem {
-    name: string,
-    detail: string,
-    file-name: string,
-    trusted: bool,
-}
-
-export struct SettingChoice {
-    label: string,
-    value: string,
-}
-
-component PosterTile inherits Rectangle {
-    in property <string> title;
-    in property <string> subtitle;
-    callback clicked();
-    width: 140px;
-    height: 220px;
-    background: Theme.panel-hi;
-    border-radius: Theme.radius;
-    VerticalLayout {
-        padding: 8px;
-        spacing: 6px;
-        Rectangle {
-            height: 160px;
-            background: #0a0d14;
-            border-radius: 8px;
-            Text {
-                text: "▶";
-                color: Theme.muted;
-                font-size: 28px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-        Text {
-            text: root.title;
-            color: Theme.text;
-            font-size: 13px;
-            overflow: elide;
-        }
-        Text {
-            text: root.subtitle;
-            color: Theme.muted;
-            font-size: 11px;
-            overflow: elide;
-        }
-    }
-    TouchArea {
-        clicked => { root.clicked(); }
-    }
-}
+export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -85,6 +18,11 @@ export component CloudStream inherits Window {
     min-width: 760px;
     min-height: 560px;
     background: Theme.bg;
+    forward-focus: main-focus;
+
+    init => {
+        Palette.color-scheme = ColorScheme.dark;
+    }
 
     in-out property <int> tab: 0;
     in-out property <bool> starting: true;
@@ -108,11 +46,16 @@ export component CloudStream inherits Window {
     in-out property <image> video-frame;
     in-out property <bool> show-sources: false;
     in-out property <bool> show-cf: false;
+    in-out property <bool> show-wipe-confirm: false;
     in-out property <string> cf-host: "";
     in-out property <string> cf-url: "";
-    in-out property <string> settings-page: "general";
+    in-out property <int> settings-page-index: 0;
+    in-out property <string> repo-url: "";
+    in-out property <bool> player-chrome-visible: true;
+    in-out property <int> season-filter: -1;
 
     in property <[PosterItem]> home-items: [];
+    in property <[ShelfSection]> home-shelves: [];
     in property <[PosterItem]> search-items: [];
     in property <[PosterItem]> browse-items: [];
     in property <[PosterItem]> library-items: [];
@@ -122,18 +65,41 @@ export component CloudStream inherits Window {
     in property <[PluginItem]> plugins: [];
     in property <[string]> providers: [];
     in property <[SettingChoice]> cache-sizes: [];
+    in property <[string]> cache-size-labels: [];
+    in property <string> cache-size-value: "";
+    in property <[string]> ahead-labels: [];
+    in property <string> ahead-value: "";
+    in property <[string]> storage-labels: [];
+    in property <string> storage-value: "";
+    in property <[string]> worker-labels: [];
+    in property <string> worker-value: "";
+    in property <[string]> audio-labels: [];
+    in property <string> audio-value: "";
+    in property <[string]> subtitle-labels: [];
+    in property <string> subtitle-add-value: "";
+    in property <string> subtitle-chips: "";
+    in property <[string]> season-labels: [];
+    in property <[string]> audio-track-labels: [];
+    in property <[string]> subtitle-track-labels: [];
+    in property <string> audio-track-value: "";
+    in property <string> subtitle-track-value: "";
     in property <string> selected-provider: "";
     in property <string> video-cache-label: "";
     in property <bool> keep-video-ready: true;
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
+    in property <bool> auto-subtitles: true;
     in property <string> storage-label: "";
     in property <string> update-label: "";
+    in property <string> hero-title: "";
+    in property <string> hero-subtitle: "";
+    in property <image> hero-image;
 
     callback select-tab(int);
     callback search(string);
     callback open-poster(int);
+    callback open-shelf-item(int, int);
     callback open-search-hit(int);
     callback open-browse-hit(int);
     callback open-library-hit(int);
@@ -160,9 +126,18 @@ export component CloudStream inherits Window {
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
     callback set-stream-proxy(bool);
+    callback set-auto-subtitles(bool);
     callback set-video-cache(string);
+    callback set-ahead(string);
+    callback set-storage-cap(string);
+    callback set-worker-limit(string);
+    callback set-audio(string);
+    callback set-subtitle-add(string);
+    callback clear-subtitles();
     callback clean-storage();
     callback wipe-data();
+    callback confirm-wipe();
+    callback cancel-wipe();
     callback check-updates();
     callback apply-update();
     callback open-logs();
@@ -170,6 +145,20 @@ export component CloudStream inherits Window {
     callback cf-done();
     callback cf-cancel();
     callback dismiss-notice();
+    callback resume-hero();
+    callback play-continue(int);
+    callback bookmark-continue(int);
+    callback remove-continue(int);
+    callback season-chosen(string);
+    callback select-audio-track(string);
+    callback select-subtitle-track(string);
+    callback bookmark-item(string, string, string);
+    callback reveal-player-chrome();
+
+    main-focus := FocusScope {
+        width: 0px;
+        height: 0px;
+    }
 
     // Startup overlay
     if starting: Rectangle {
@@ -189,17 +178,10 @@ export component CloudStream inherits Window {
                 color: Theme.muted;
                 horizontal-alignment: center;
             }
-            Rectangle {
-                height: 8px;
+            ProgressIndicator {
                 width: 320px;
-                background: Theme.panel;
-                border-radius: 4px;
-                Rectangle {
-                    width: parent.width * startup-progress;
-                    height: 100%;
-                    background: Theme.accent;
-                    border-radius: 4px;
-                }
+                height: 8px;
+                progress: startup-progress;
             }
             Spinner { indeterminate: true; }
         }
@@ -210,10 +192,10 @@ export component CloudStream inherits Window {
         padding: 0;
         spacing: 0;
 
-        // Top nav
         Rectangle {
             height: 52px;
             background: Theme.panel;
+            accessible-role: AccessibleRole.banner;
             HorizontalLayout {
                 padding-left: 16px;
                 padding-right: 16px;
@@ -230,6 +212,7 @@ export component CloudStream inherits Window {
                     width: 88px;
                     background: tab == index ? Theme.panel-hi : transparent;
                     border-radius: 8px;
+                    border-width: tab == index ? 0px : 0px;
                     Text {
                         text: label;
                         color: tab == index ? Theme.text : Theme.muted;
@@ -261,278 +244,135 @@ export component CloudStream inherits Window {
             }
         }
 
-        // Body
-        if tab == 0: ScrollView {
-            VerticalLayout {
-                padding: 20px;
-                spacing: 16px;
-                if continue-items.length > 0: Text { text: "Continue watching"; color: Theme.text; font-size: 20px; font-weight: 600; }
-                HorizontalLayout {
-                    spacing: 12px;
-                    for item[i] in continue-items: PosterTile {
-                        title: item.title;
-                        subtitle: item.subtitle;
-                        clicked => { open-library-hit(i); }
-                    }
-                }
-                Text { text: selected-provider == "" ? "Home" : selected-provider; color: Theme.text; font-size: 20px; font-weight: 600; }
-                if home-items.length == 0: Text { text: "Add a plugin in Settings → Extensions to fill Home."; color: Theme.muted; }
-                HorizontalLayout {
-                    spacing: 12px;
-                    for item[i] in home-items: PosterTile {
-                        title: item.title;
-                        subtitle: item.subtitle;
-                        clicked => { open-poster(i); }
-                    }
-                }
-            }
+        if tab == 0: HomePage {
+            continue-items: root.continue-items;
+            shelves: root.home-shelves;
+            provider-name: root.selected-provider;
+            hero-title: root.hero-title;
+            hero-subtitle: root.hero-subtitle;
+            hero-image: root.hero-image;
+            open-continue(i) => { open-library-hit(i); }
+            open-shelf(s, i) => { open-shelf-item(s, i); }
+            resume-hero => { resume-hero(); }
+            play-continue(i) => { play-continue(i); }
+            bookmark-continue(i) => { bookmark-continue(i); }
+            remove-continue(i) => { remove-continue(i); }
         }
 
-        if tab == 1: VerticalLayout {
-            padding: 20px;
-            spacing: 12px;
-            Text { text: "Browse"; color: Theme.text; font-size: 22px; font-weight: 600; }
-            HorizontalLayout {
-                spacing: 8px;
-                Button { text: "Movies"; clicked => { load-browse("movie"); } }
-                Button { text: "TV"; clicked => { load-browse("tv"); } }
-            }
-            ScrollView {
-                HorizontalLayout {
-                    spacing: 12px;
-                    for item[i] in browse-items: PosterTile {
-                        title: item.title;
-                        subtitle: item.subtitle;
-                        clicked => { open-browse-hit(i); }
-                    }
-                }
-            }
+        if tab == 1: BrowsePage {
+            items: root.browse-items;
+            load-kind(kind) => { load-browse(kind); }
+            open-at(i) => { open-browse-hit(i); }
         }
 
-        if tab == 2: VerticalLayout {
-            padding: 20px;
-            spacing: 12px;
-            Text { text: "Search"; color: Theme.text; font-size: 22px; font-weight: 600; }
-            HorizontalLayout {
-                spacing: 8px;
-                LineEdit {
-                    text <=> search-query;
-                    placeholder-text: "Search titles…";
-                    horizontal-stretch: 1;
-                    accepted => { search(search-query); }
-                }
-                Button { text: "Search"; clicked => { search(search-query); } }
-            }
-            ScrollView {
-                HorizontalLayout {
-                    spacing: 12px;
-                    for item[i] in search-items: PosterTile {
-                        title: item.title;
-                        subtitle: item.subtitle;
-                        clicked => { open-search-hit(i); }
-                    }
-                }
-            }
+        if tab == 2: SearchPage {
+            query <=> search-query;
+            items: root.search-items;
+            search(q) => { search(q); }
+            open-at(i) => { open-search-hit(i); }
         }
 
-        if tab == 3: VerticalLayout {
-            padding: 20px;
-            spacing: 12px;
-            Text { text: "Library"; color: Theme.text; font-size: 22px; font-weight: 600; }
-            ScrollView {
-                HorizontalLayout {
-                    spacing: 12px;
-                    for item[i] in library-items: PosterTile {
-                        title: item.title;
-                        subtitle: item.subtitle;
-                        clicked => { open-library-hit(i); }
-                    }
-                }
-            }
+        if tab == 3: LibraryPage {
+            items: root.library-items;
+            open-at(i) => { open-library-hit(i); }
         }
 
-        if tab == 4: ScrollView {
-            VerticalLayout {
-                padding: 20px;
-                spacing: 14px;
-                Text { text: "Settings"; color: Theme.text; font-size: 22px; font-weight: 600; }
-                HorizontalLayout {
-                    spacing: 8px;
-                    Button { text: "General"; clicked => { settings-page = "general"; } }
-                    Button { text: "Preferences"; clicked => { settings-page = "prefs"; } }
-                    Button { text: "Extensions"; clicked => { settings-page = "extensions"; } }
-                }
-
-                if settings-page == "general": VerticalLayout {
-                    spacing: 10px;
-                    Text { text: "Video cache: " + video-cache-label; color: Theme.text; }
-                    for choice in cache-sizes: Button {
-                        text: choice.label;
-                        clicked => { set-video-cache(choice.value); }
-                    }
-                    Text { text: storage-label; color: Theme.muted; }
-                    Button { text: "Clean up storage now"; clicked => { clean-storage(); } }
-                    Text { text: update-label; color: Theme.muted; }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: "Check for updates"; clicked => { check-updates(); } }
-                        Button { text: "Apply update"; clicked => { apply-update(); } }
-                        Button { text: "Open logs"; clicked => { open-logs(); } }
-                    }
-                    Button { text: "Delete all saved data"; clicked => { wipe-data(); } }
-                }
-
-                if settings-page == "prefs": VerticalLayout {
-                    spacing: 10px;
-                    HorizontalLayout {
-                        Text { text: "Keep video ready when leaving"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                        Button {
-                            text: keep-video-ready ? "On" : "Off";
-                            clicked => { set-keep-ready(!keep-video-ready); }
-                        }
-                    }
-                    HorizontalLayout {
-                        Text { text: "Autoplay next episode"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                        Button { text: autoplay-next ? "On" : "Off"; clicked => { set-autoplay(!autoplay-next); } }
-                    }
-                    HorizontalLayout {
-                        Text { text: "Skip intro lookup"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                        Button { text: skip-lookup ? "On" : "Off"; clicked => { set-skip-lookup(!skip-lookup); } }
-                    }
-                    HorizontalLayout {
-                        Text { text: "Local HLS helper (stream proxy)"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                        Button { text: stream-proxy ? "On" : "Off"; clicked => { set-stream-proxy(!stream-proxy); } }
-                    }
-                    Text { text: "Home provider"; color: Theme.muted; }
-                    for name in providers: Button {
-                        text: name == selected-provider ? "● " + name : name;
-                        clicked => { set-provider(name); }
-                    }
-                }
-
-                if settings-page == "extensions": VerticalLayout {
-                    spacing: 10px;
-                    Text { text: "Installed plugins"; color: Theme.text; font-size: 16px; }
-                    for plugin in plugins: HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: plugin.name + " — " + plugin.detail; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                        Button {
-                            text: plugin.trusted ? "Trusted" : "Sandbox";
-                            clicked => { set-trusted(plugin.file-name, !plugin.trusted); }
-                        }
-                        Button { text: "Remove"; clicked => { uninstall-plugin(plugin.file-name); } }
-                    }
-                }
-            }
+        if tab == 4: SettingsPage {
+            page-index <=> settings-page-index;
+            cache-size-labels: root.cache-size-labels;
+            cache-size-value: root.cache-size-value;
+            ahead-labels: root.ahead-labels;
+            ahead-value: root.ahead-value;
+            storage-labels: root.storage-labels;
+            storage-value: root.storage-value;
+            worker-labels: root.worker-labels;
+            worker-value: root.worker-value;
+            provider-labels: root.providers;
+            selected-provider: root.selected-provider;
+            audio-labels: root.audio-labels;
+            audio-value: root.audio-value;
+            subtitle-labels: root.subtitle-labels;
+            subtitle-add-value: root.subtitle-add-value;
+            subtitle-chips: root.subtitle-chips;
+            keep-video-ready: root.keep-video-ready;
+            autoplay-next: root.autoplay-next;
+            skip-lookup: root.skip-lookup;
+            stream-proxy: root.stream-proxy;
+            auto-subtitles: root.auto-subtitles;
+            storage-label: root.storage-label;
+            update-label: root.update-label;
+            plugins: root.plugins;
+            repo-url <=> root.repo-url;
+            set-video-cache(v) => { set-video-cache(v); }
+            set-ahead(v) => { set-ahead(v); }
+            set-storage-cap(v) => { set-storage-cap(v); }
+            set-worker-limit(v) => { set-worker-limit(v); }
+            set-provider(v) => { set-provider(v); }
+            set-audio(v) => { set-audio(v); }
+            set-subtitle-add(v) => { set-subtitle-add(v); }
+            clear-subtitles => { clear-subtitles(); }
+            set-keep-ready(v) => { set-keep-ready(v); }
+            set-autoplay(v) => { set-autoplay(v); }
+            set-skip-lookup(v) => { set-skip-lookup(v); }
+            set-stream-proxy(v) => { set-stream-proxy(v); }
+            set-auto-subtitles(v) => { set-auto-subtitles(v); }
+            clean-storage => { clean-storage(); }
+            wipe-data => { show-wipe-confirm = true; }
+            check-updates => { check-updates(); }
+            apply-update => { apply-update(); }
+            open-logs => { open-logs(); }
+            install-repo(v) => { install-repo(v); }
+            set-trusted(f, t) => { set-trusted(f, t); }
+            uninstall-plugin(f) => { uninstall-plugin(f); }
         }
     }
 
-    // Details overlay
-    if details-title != "": Rectangle {
-        background: #0c0f17f2;
-        VerticalLayout {
-            padding: 28px;
-            spacing: 12px;
-            Text { text: details-title; color: Theme.text; font-size: 28px; font-weight: 700; }
-            Text { text: details-meta; color: Theme.muted; }
-            Text { text: details-plot; color: Theme.text; wrap: word-wrap; }
-            HorizontalLayout {
-                spacing: 8px;
-                Button { text: open-busy ? "Opening…" : "Play"; enabled: !open-busy; clicked => { play-details(); } }
-                if resume-label != "": Button { text: resume-label; clicked => { resume-details(); } }
-                Button { text: "Close"; clicked => { close-details(); } }
-                if open-busy: Button { text: "Skip checks"; clicked => { skip-checks(); } }
-            }
-            if open-status != "": Text { text: open-status; color: Theme.accent; }
-            ScrollView {
-                VerticalLayout {
-                    spacing: 6px;
-                    for ep[i] in episodes: Rectangle {
-                        height: 40px;
-                        background: Theme.panel;
-                        border-radius: 8px;
-                        HorizontalLayout {
-                            padding: 8px;
-                            Text { text: ep.code + "  " + ep.name; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
-                            if ep.watched: Text { text: "Watched"; color: Theme.ok; vertical-alignment: center; }
-                            Button { text: "Play"; clicked => { play-episode(i); } }
-                        }
-                    }
-                }
-            }
-        }
+    if details-title != "": DetailsOverlay {
+        title: details-title;
+        plot: details-plot;
+        meta: details-meta;
+        resume-label: resume-label;
+        open-busy: open-busy;
+        open-status: open-status;
+        episodes: episodes;
+        season-labels: season-labels;
+        season-filter <=> season-filter;
+        play => { play-details(); }
+        resume => { resume-details(); }
+        close => { close-details(); }
+        skip-checks => { skip-checks(); }
+        play-episode(i) => { play-episode(i); }
+        season-chosen(v) => { season-chosen(v); }
     }
 
-    // Player overlay
-    if player-open: Rectangle {
-        background: #000000;
-        VerticalLayout {
-            Image {
-                source: video-frame;
-                horizontal-stretch: 1;
-                vertical-stretch: 1;
-                image-fit: contain;
-            }
-            Rectangle {
-                height: 88px;
-                background: #141824ee;
-                VerticalLayout {
-                    padding: 10px;
-                    spacing: 6px;
-                    Text { text: player-title; color: Theme.text; }
-                    Slider {
-                        value: duration-ms <= 0 ? 0 : position-ms / duration-ms;
-                        changed(v) => { seek-to(v * duration-ms); }
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: paused ? "Play" : "Pause"; clicked => { toggle-pause(); } }
-                        Button { text: "Sources"; clicked => { toggle-sources(); } }
-                        Button { text: "Refresh sources"; clicked => { refresh-sources(); } }
-                        Button { text: "Skip"; clicked => { skip-segment(); } }
-                        Text { text: "Vol"; color: Theme.muted; vertical-alignment: center; }
-                        Slider {
-                            width: 120px;
-                            value: volume / 130;
-                            changed(v) => { set-volume(v * 130); }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        Button { text: "Leave"; clicked => { leave-player(); } }
-                        Button { text: "Close"; clicked => { close-player(); } }
-                    }
-                }
-            }
-        }
-
-        if show-sources: Rectangle {
-            x: parent.width - 360px;
-            width: 340px;
-            height: parent.height - 100px;
-            y: 12px;
-            background: Theme.panel;
-            border-radius: Theme.radius;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 6px;
-                Text { text: "Sources"; color: Theme.text; font-size: 16px; font-weight: 600; }
-                for src[i] in sources: Rectangle {
-                    height: 48px;
-                    background: src.selected ? Theme.panel-hi : transparent;
-                    border-radius: 8px;
-                    HorizontalLayout {
-                        padding: 8px;
-                        VerticalLayout {
-                            Text { text: src.label; color: Theme.text; overflow: elide; }
-                            Text { text: src.detail; color: src.working ? Theme.ok : Theme.muted; font-size: 11px; overflow: elide; }
-                        }
-                    }
-                    TouchArea { clicked => { select-source(i); } }
-                }
-            }
-        }
+    if player-open: PlayerOverlay {
+        title: player-title;
+        video-frame: video-frame;
+        position-ms: position-ms;
+        duration-ms: duration-ms;
+        paused: paused;
+        volume: volume;
+        show-sources: show-sources;
+        chrome-visible <=> player-chrome-visible;
+        sources: sources;
+        audio-track-labels: audio-track-labels;
+        subtitle-track-labels: subtitle-track-labels;
+        audio-track-value: audio-track-value;
+        subtitle-track-value: subtitle-track-value;
+        toggle-pause => { toggle-pause(); }
+        seek-to(v) => { seek-to(v); }
+        set-volume(v) => { set-volume(v); }
+        close-player => { close-player(); }
+        leave-player => { leave-player(); }
+        toggle-sources => { toggle-sources(); }
+        refresh-sources => { refresh-sources(); }
+        skip-segment => { skip-segment(); }
+        select-source(i) => { select-source(i); }
+        select-audio(v) => { select-audio-track(v); }
+        select-subtitle(v) => { select-subtitle-track(v); }
+        reveal-chrome => { reveal-player-chrome(); }
     }
 
-    // Cloudflare dialog
     if show-cf: Rectangle {
         background: #000000aa;
         VerticalLayout {
@@ -544,13 +384,66 @@ export component CloudStream inherits Window {
                 VerticalLayout {
                     padding: 20px;
                     spacing: 12px;
-                    Text { text: "Cloudflare check"; color: Theme.text; font-size: 18px; font-weight: 600; }
-                    Text { text: "Allow verification for " + cf-host + "?"; color: Theme.muted; wrap: word-wrap; }
+                    Text {
+                        text: "Cloudflare check";
+                        color: Theme.text;
+                        font-size: 18px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "Allow verification for " + cf-host + "?";
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                    }
                     HorizontalLayout {
                         spacing: 8px;
-                        Button { text: "Allow & open"; clicked => { allow-cf-host(); } }
+                        Button { text: "Allow & open"; primary: true; clicked => { allow-cf-host(); } }
                         Button { text: "I passed"; clicked => { cf-done(); } }
                         Button { text: "Cancel"; clicked => { cf-cancel(); } }
+                    }
+                }
+            }
+        }
+    }
+
+    if show-wipe-confirm: Rectangle {
+        background: #000000aa;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 420px;
+                background: Theme.panel;
+                border-radius: Theme.radius;
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    Text {
+                        text: "Delete all saved data?";
+                        color: Theme.text;
+                        font-size: 18px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "This schedules a full wipe on the next restart. Plugins, settings, and history will be removed.";
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: "Delete everything";
+                            clicked => {
+                                show-wipe-confirm = false;
+                                confirm-wipe();
+                            }
+                        }
+                        Button {
+                            text: "Cancel";
+                            clicked => {
+                                show-wipe-confirm = false;
+                                cancel-wipe();
+                            }
+                        }
                     }
                 }
             }

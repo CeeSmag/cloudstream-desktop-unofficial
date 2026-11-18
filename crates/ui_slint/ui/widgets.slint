@@ -1,0 +1,161 @@
+import { ComboBox, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component SettingRow inherits HorizontalLayout {
+    in property <string> label;
+    spacing: Theme.space-2;
+    padding-top: Theme.space-1;
+    padding-bottom: Theme.space-1;
+    Text {
+        text: root.label;
+        color: Theme.text;
+        font-size: Theme.body-size;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    @children
+}
+
+export component ChoiceCombo inherits ComboBox {
+    // Thin wrapper so call sites stay consistent as we restyle later.
+}
+
+component SideNavItem inherits Rectangle {
+    in property <int> tab-index;
+    in property <bool> selected;
+    in property <bool> has-focus;
+    in-out property <string> text <=> label.text;
+    callback clicked <=> touch.clicked;
+
+    min-height: 40px;
+    border-radius: Theme.radius-sm;
+    accessible-role: AccessibleRole.tab;
+    accessible-label: root.text;
+    accessible-item-index: root.tab-index;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { self.clicked(); }
+
+    states [
+        pressed when touch.pressed: { state.opacity: 0.85; }
+        hover when touch.has-hover: { state.opacity: 0.55; }
+        selected when root.selected: { state.opacity: 1; }
+        focused when root.has-focus: {
+            state.opacity: 0.9;
+            root.border-width: 2px;
+            root.border-color: Theme.focus;
+        }
+    ]
+
+    state := Rectangle {
+        opacity: 0;
+        background: Theme.panel-hi;
+        border-radius: Theme.radius-sm;
+        animate opacity { duration: 150ms; }
+    }
+
+    label := Text {
+        color: root.selected ? Theme.text : Theme.muted;
+        font-size: Theme.body-size;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        x: 12px;
+        width: parent.width - 24px;
+        height: 100%;
+        accessible-role: AccessibleRole.none;
+    }
+
+    touch := TouchArea { }
+}
+
+/// Settings left rail — gallery SideBar pattern (FocusScope + Up/Down).
+export component SideNav inherits Rectangle {
+    in property <[string]> model: [];
+    in property <string> title <=> title-label.text;
+    in-out property <int> current-item: 0;
+    out property <int> current-focused: fs.has-focus ? fs.focused-tab : -1;
+
+    width: 180px;
+    background: Theme.panel;
+    border-radius: Theme.radius;
+    forward-focus: fs;
+    accessible-role: AccessibleRole.navigation;
+
+    public function select(index: int) {
+        root.current-item = index;
+    }
+
+    VerticalLayout {
+        padding: Theme.space-2;
+        spacing: Theme.space-1;
+        alignment: start;
+
+        title-label := Text {
+            color: Theme.muted;
+            font-size: Theme.caption-size;
+            horizontal-alignment: left;
+        }
+
+        navigation := VerticalLayout {
+            alignment: start;
+            spacing: 4px;
+            accessible-role: AccessibleRole.tab-list;
+            accessible-orientation: Orientation.vertical;
+            accessible-delegate-focus: root.current-focused >= 0 ? root.current-focused : root.current-item;
+            accessible-label: root.title;
+            accessible-item-count: root.model.length;
+
+            fs := FocusScope {
+                property <int> focused-tab: 0;
+                width: 0px;
+                height: 0px;
+
+                key-pressed(event) => {
+                    if (event.text == "\n") {
+                        root.current-item = root.current-focused;
+                        return accept;
+                    }
+                    if (event.text == Key.UpArrow) {
+                        self.focused-tab = Math.max(self.focused-tab - 1, 0);
+                        return accept;
+                    }
+                    if (event.text == Key.DownArrow) {
+                        self.focused-tab = Math.min(self.focused-tab + 1, root.model.length - 1);
+                        return accept;
+                    }
+                    return reject;
+                }
+
+                key-released(event) => {
+                    if (event.text == " ") {
+                        root.current-item = root.current-focused;
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+
+            for item[index] in root.model: SideNavItem {
+                clicked => {
+                    root.current-item = index;
+                    fs.focused-tab = index;
+                }
+                tab-index: index;
+                has-focus: index == root.current-focused;
+                text: item;
+                selected: index == root.current-item;
+            }
+        }
+    }
+}
+
+export component SectionTitle inherits Text {
+    color: Theme.text;
+    font-size: Theme.title-size;
+    font-weight: 600;
+}
+
+export component MutedLabel inherits Text {
+    color: Theme.muted;
+    font-size: Theme.caption-size;
+}

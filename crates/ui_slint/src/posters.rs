@@ -2,21 +2,43 @@
 
 use app_services::PlaybackItem;
 use core_model::{Bookmark, SearchResult, WatchProgress};
-use slint::{ModelRc, VecModel};
+use slint::{Image, ModelRc, VecModel};
 
-use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, SourceItem};
+use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection, SourceItem};
+
+fn empty_image() -> Image {
+    Image::default()
+}
+
+pub(crate) fn poster_from_search(item: &SearchResult) -> PosterItem {
+    PosterItem {
+        title: item.name.clone().into(),
+        subtitle: item.api_name.clone().into(),
+        provider: item.api_name.clone().into(),
+        url: item.url.clone().into(),
+        poster: item.poster_url.clone().unwrap_or_default().into(),
+        media_key: item.url.clone().into(),
+        data: item.url.clone().into(),
+        image: empty_image(),
+        progress: 0.0,
+    }
+}
 
 pub(crate) fn posters_from_search(items: &[SearchResult]) -> ModelRc<PosterItem> {
-    let rows: Vec<PosterItem> = items
+    let rows: Vec<PosterItem> = items.iter().map(poster_from_search).collect();
+    ModelRc::new(VecModel::from(rows))
+}
+
+pub(crate) fn shelves_from_sections(
+    sections: &[(String, Vec<SearchResult>)],
+) -> ModelRc<ShelfSection> {
+    let rows: Vec<ShelfSection> = sections
         .iter()
-        .map(|item| PosterItem {
-            title: item.name.clone().into(),
-            subtitle: item.api_name.clone().into(),
-            provider: item.api_name.clone().into(),
-            url: item.url.clone().into(),
-            poster: item.poster_url.clone().unwrap_or_default().into(),
-            media_key: item.url.clone().into(),
-            data: item.url.clone().into(),
+        .map(|(title, items)| ShelfSection {
+            title: title.clone().into(),
+            items: ModelRc::new(VecModel::from(
+                items.iter().map(poster_from_search).collect::<Vec<_>>(),
+            )),
         })
         .collect();
     ModelRc::new(VecModel::from(rows))
@@ -33,6 +55,8 @@ pub(crate) fn posters_from_bookmarks(items: &[Bookmark]) -> ModelRc<PosterItem> 
             poster: item.poster_url.clone().unwrap_or_default().into(),
             media_key: item.url.clone().into(),
             data: item.url.clone().into(),
+            image: empty_image(),
+            progress: 0.0,
         })
         .collect();
     ModelRc::new(VecModel::from(rows))
@@ -46,6 +70,7 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
                 (Some(s), Some(e)) => format!("S{s} E{e}"),
                 _ => item.provider.clone(),
             };
+            let progress = item.fraction_watched().clamp(0.0, 1.0);
             PosterItem {
                 title: item.title.clone().into(),
                 subtitle: subtitle.into(),
@@ -54,6 +79,8 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
                 poster: item.poster_url.clone().unwrap_or_default().into(),
                 media_key: item.media_key.clone().into(),
                 data: item.detail_url.clone().into(),
+                image: empty_image(),
+                progress,
             }
         })
         .collect();
@@ -127,8 +154,21 @@ pub(crate) fn cache_choices() -> ModelRc<SettingChoice> {
     ModelRc::new(VecModel::from(rows))
 }
 
+pub(crate) fn string_model(labels: impl IntoIterator<Item = String>) -> ModelRc<slint::SharedString> {
+    ModelRc::new(VecModel::from(
+        labels
+            .into_iter()
+            .map(slint::SharedString::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
 pub(crate) fn empty_posters() -> ModelRc<PosterItem> {
     ModelRc::new(VecModel::from(Vec::<PosterItem>::new()))
+}
+
+pub(crate) fn empty_shelves() -> ModelRc<ShelfSection> {
+    ModelRc::new(VecModel::from(Vec::<ShelfSection>::new()))
 }
 
 pub(crate) fn empty_episodes() -> ModelRc<EpisodeItem> {
