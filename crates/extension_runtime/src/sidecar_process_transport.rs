@@ -1,7 +1,5 @@
 use std::io::Write;
-use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -10,19 +8,9 @@ use serde_json::Value;
 
 use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
 use crate::rpc_message::encode_request;
-use crate::sidecar_output::{forward_stdout, log_stderr};
+use crate::sidecar_process_kill::discard_child;
+use crate::sidecar_process_start::{start_sidecar, RunningSidecar};
 use crate::{RpcTransport, SidecarLaunchConfig};
-
-/// Windows flag that stops a console window from flashing up for the child.
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// A running child process and the channel its reply lines arrive on.
-struct RunningSidecar {
-    child: Child,
-    stdin: ChildStdin,
-    replies: Receiver<String>,
-}
 
 /// `RpcTransport` that talks JSON lines to a child process.
 ///
@@ -141,7 +129,7 @@ impl RpcTransport for SidecarProcessTransport {
             pid,
             "closing: stopping the sidecar and everything it started"
         );
-        kill_process_tree(pid);
+        crate::sidecar_process_kill::kill_process_tree(pid);
         match self.running.try_lock() {
             Ok(mut slot) => discard(&mut slot),
             Err(_) => tracing::warn!(
@@ -190,13 +178,10 @@ impl RpcTransport for SidecarProcessTransport {
             .startup_calls
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        calls.retain(|call| {
-            !(call.method == method && same_extension_load(&call.params, params))
-        });
+        calls.retain(|call| !(call.method == method && same_extension_load(&call.params, params)));
     }
 }
 
-/// True when two `load_extension` params name the same file (path separators and case ignored).
 fn same_extension_load(left: &Value, right: &Value) -> bool {
     let path = |value: &Value| {
         value
@@ -219,92 +204,8 @@ impl Drop for SidecarProcessTransport {
 #[tracing::instrument(level = "debug", skip_all)]
 fn discard(slot: &mut Option<RunningSidecar>) {
     if let Some(mut running) = slot.take() {
-        kill_process_tree(running.child.id());
-        if let Err(error) = running.child.kill() {
-            tracing::debug!(%error, "sidecar already exited");
-        }
-        if let Err(error) = running.child.wait() {
-            tracing::debug!(%error, "could not reap sidecar");
-        }
+        discard_child(&mut running.child);
     }
-}
-
-/// On Windows the sidecar starts through `cs-sidecar.bat` (cmd.exe), which starts `java.exe`; ending
-/// only the wrapper leaves the JVM running, holding the plugin files. `taskkill /T` ends the whole tree.
-#[cfg(windows)]
-fn kill_process_tree(pid: u32) {
-    use std::os::windows::process::CommandExt;
-    let mut command = Command::new("taskkill");
-    command
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .creation_flags(CREATE_NO_WINDOW);
-    end_by_pid(command, pid);
-}
-
-/// Elsewhere the sidecar's script `exec`s the JVM, so the process is the JVM itself. It is still
-/// ended by its id: `shutdown` cannot take the lock while a call waits on a reply, and only the
-/// sidecar's end (its output closing) releases that call.
-#[cfg(not(windows))]
-fn kill_process_tree(pid: u32) {
-    let mut command = Command::new("kill");
-    command.args(["-KILL", &pid.to_string()]);
-    end_by_pid(command, pid);
-}
-
-fn end_by_pid(mut command: Command, pid: u32) {
-    let outcome = command.stdout(Stdio::null()).stderr(Stdio::null()).status();
-    match outcome {
-        Ok(status) => tracing::info!(
-            pid,
-            success = status.success(),
-            "ended the sidecar's process tree"
-        ),
-        Err(error) => {
-            tracing::warn!(pid, %error, "cannot end the sidecar's process tree; it may keep running")
-        }
-    }
-}
-
-#[tracing::instrument(level = "debug", skip_all, err)]
-fn start_sidecar(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
-    let mut command = Command::new(&config.program);
-    command
-        .args(&config.args)
-        .envs(config.environment.iter().map(|(k, v)| (k, v)))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(windows)]
-    std::os::windows::process::CommandExt::creation_flags(&mut command, CREATE_NO_WINDOW);
-
-    let mut child = command.spawn().map_err(|source| {
-        GatewayError::Unavailable(format!(
-            "cannot start {}: {source}",
-            config.program.display()
-        ))
-    })?;
-    tracing::info!(program = %config.program.display(), "sidecar started");
-
-    let missing_pipe = || GatewayError::Transport("sidecar pipe missing".to_owned());
-    let stdin = child.stdin.take().ok_or_else(missing_pipe)?;
-    let stdout = child.stdout.take().ok_or_else(missing_pipe)?;
-    let stderr = child.stderr.take().ok_or_else(missing_pipe)?;
-    let (sender, replies) = mpsc::channel();
-    spawn_reader("sidecar-stdout", move || forward_stdout(stdout, &sender))?;
-    spawn_reader("sidecar-stderr", move || log_stderr(stderr))?;
-    Ok(RunningSidecar {
-        child,
-        stdin,
-        replies,
-    })
-}
-
-fn spawn_reader(name: &str, body: impl FnOnce() + Send + 'static) -> Result<(), GatewayError> {
-    std::thread::Builder::new()
-        .name(name.to_owned())
-        .spawn(body)
-        .map(drop)
-        .map_err(|source| GatewayError::Transport(format!("cannot start {name} thread: {source}")))
 }
 
 fn exchange(running: &mut RunningSidecar, call: &PendingCall<'_>) -> Result<Value, GatewayError> {
