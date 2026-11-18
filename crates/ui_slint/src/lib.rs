@@ -7,7 +7,6 @@
 
 mod background_work;
 mod bridge;
-mod poster_images;
 mod posters;
 mod startup_progress;
 mod ui_events;

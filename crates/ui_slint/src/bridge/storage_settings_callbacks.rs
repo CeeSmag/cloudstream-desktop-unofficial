@@ -99,7 +99,7 @@ fn clean_storage(ctx: &BridgeContext) {
     let Some(dir) = ctx.extras.borrow().data_dir.clone() else {
         return;
     };
-    for folder in ["sources", "subtitles"] {
+    for folder in ["sources", "subtitles", "artwork"] {
         if let Err(error) = std::fs::remove_dir_all(dir.join(folder)) {
             tracing::debug!(folder, %error, "nothing removed");
         }

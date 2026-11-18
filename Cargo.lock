@@ -225,6 +225,7 @@ dependencies = [
  "extension_api",
  "extension_repo",
  "player_api",
+ "poster_artwork",
  "serde",
  "serde_json",
  "storage",
@@ -247,6 +248,7 @@ dependencies = [
  "extension_runtime",
  "player_api",
  "player_mpv",
+ "poster_artwork",
  "storage",
  "stream_proxy",
  "title_cache",
@@ -2351,6 +2353,8 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
  "image-webp",
  "moxcms",
  "num-traits",
@@ -3642,6 +3646,17 @@ dependencies = [
  "flate2",
  "tar",
  "winresource",
+]
+
+[[package]]
+name = "poster_artwork"
+version = "0.4.8"
+dependencies = [
+ "core_model",
+ "image",
+ "thiserror 2.0.21",
+ "tracing",
+ "ureq",
 ]
 
 [[package]]
@@ -5034,10 +5049,10 @@ dependencies = [
  "cloudflare_bridge",
  "core_model",
  "extension_api",
- "image",
  "open",
  "playback_session",
  "player_api",
+ "poster_artwork",
  "semver",
  "serde",
  "serde_json",

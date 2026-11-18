@@ -14,6 +14,7 @@ members = [
     "crates/title_cache",
     "crates/app_services",
     "crates/playback_session",
+    "crates/poster_artwork",
     "crates/ui_slint",
     "crates/app_shell",
     "crates/portable_launcher",

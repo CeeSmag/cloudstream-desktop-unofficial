@@ -8,7 +8,6 @@ use app_services::UiServices;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::background_work::{spawn_work, EventPump};
-use crate::poster_images::PosterImageCache;
 use crate::posters::{cache_choices, empty_episodes, empty_posters, empty_shelves};
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
@@ -38,7 +37,6 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
         session: Rc::new(RefCell::new(Session::default())),
         pump: Rc::new(EventPump::new()),
         extras: Rc::new(RefCell::new(extras)),
-        posters: PosterImageCache::default(),
     };
     set_empty_models(&ui);
     apply_settings_to_ui(&ui, &ctx.services);

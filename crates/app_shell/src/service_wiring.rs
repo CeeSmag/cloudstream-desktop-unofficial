@@ -11,6 +11,7 @@ use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
 use extension_runtime::PluginWorkerPool;
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
+use poster_artwork::{ArtworkLoader, ArtworkLoaderConfig, DiskCache, UreqArtworkFetcher};
 use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
@@ -71,7 +72,31 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
             paths.data_dir().join("sources"),
             title_cache::CacheLimits::default(),
         )),
+        artwork: build_artwork(&paths.data_dir().join("artwork")),
     })
+}
+
+/// The poster loader, with downloaded files kept in `dir` (trimmed once at start, off this thread).
+fn build_artwork(dir: &Path) -> Arc<ArtworkLoader> {
+    let disk = DiskCache::new(dir);
+    let pruned = disk.clone();
+    let started = std::thread::Builder::new()
+        .name("artwork-prune".into())
+        .spawn(move || {
+            let removed = pruned.prune();
+            tracing::info!(removed, "old poster files removed");
+        });
+    if let Err(error) = started {
+        tracing::warn!(%error, "poster files not trimmed this run");
+    }
+    let config = ArtworkLoaderConfig {
+        disk: Some(disk),
+        ..ArtworkLoaderConfig::default()
+    };
+    Arc::new(ArtworkLoader::new(
+        Arc::new(UreqArtworkFetcher::default()),
+        config,
+    ))
 }
 
 /// Applies the saved plugin process limit; installs from before the setting keep "unlimited".

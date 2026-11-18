@@ -10,6 +10,7 @@ core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }
 player_api = { path = "../player_api" }
+poster_artwork = { path = "../poster_artwork" }
 serde.workspace = true
 serde_json.workspace = true
 storage = { path = "../storage" }

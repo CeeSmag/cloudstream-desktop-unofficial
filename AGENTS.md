@@ -181,6 +181,11 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `subtitle_loader.rs`: `SubtitleLoader` coordinates cache lookup -> HTTP fetch -> normalize -> disk save. `LoadOptions` (default 3 attempts, 400ms exponential backoff).
   - `subtitle_prefetch.rs`: `SubtitlePrefetch` multi-threaded background fetcher prioritizing tracks matching the user's preferred language rankings (`LanguageRank`), stoppable via `KeepGoing`. Ranks of `SKIP_DOWNLOAD_RANK` are not queued; the desktop app ranks non-preferred languages that way and attaches at most 12 external files per stream (`subtitle_attach_limits`).
 
+#### `crates/poster_artwork`
+- **Location**: `crates/poster_artwork/` (README lists every part)
+- **Dependencies**: `core_model`, `image` (JPEG/PNG/WebP/GIF), `thiserror`, `tracing`, `ureq = "3"`
+- **Responsibility**: Poster images for the UI, never on the UI thread. `poster_address` rewrites TMDB `original` (and widths over 500) to `w342`, adds `https:` to `//host` addresses and percent-encodes; `UreqArtworkFetcher` (10 s, browser UA, Referer = the provider's site, 12 MB cap); `decode_artwork` shrinks to 360 px wide; `DiskCache` keeps downloads in `<data>/artwork/` (14 days, 256 MB); `ArtworkLoader` (6 workers, newest first, one download per address, LRU memory budget, exactly one answer per request). Built in `app_shell::service_wiring::build_artwork`, handed to the UI as `UiServices::artwork`.
+
 #### `crates/title_cache`
 - **Location**: `crates/title_cache/`
 - **Dependencies**: `core_model`, `serde`, `serde_json`, `thiserror`, `tracing`

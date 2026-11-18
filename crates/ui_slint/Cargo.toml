@@ -11,9 +11,9 @@ app_services = { path = "../app_services" }
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 open = "5"
 playback_session = { path = "../playback_session" }
+poster_artwork = { path = "../poster_artwork" }
 player_api = { path = "../player_api" }
 semver = "1"
 serde.workspace = true

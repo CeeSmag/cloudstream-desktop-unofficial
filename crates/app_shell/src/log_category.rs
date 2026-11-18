@@ -18,6 +18,7 @@ pub const OWN_TARGETS: &[&str] = &[
     "player_api",
     "player_mpv",
     "playback_session",
+    "poster_artwork",
     "sidecar",
     "skip_times",
     "storage",

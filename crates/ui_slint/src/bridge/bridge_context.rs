@@ -6,7 +6,6 @@ use std::rc::Rc;
 use app_services::UiServices;
 
 use crate::background_work::{EventPump, UiSender};
-use crate::poster_images::PosterImageCache;
 use crate::CloudStream;
 
 use super::session::{AppExtras, Session};
@@ -19,7 +18,6 @@ pub(crate) struct BridgeContext {
     pub(crate) session: Rc<RefCell<Session>>,
     pub(crate) pump: Rc<EventPump>,
     pub(crate) extras: Rc<RefCell<AppExtras>>,
-    pub(crate) posters: PosterImageCache,
 }
 
 impl BridgeContext {
