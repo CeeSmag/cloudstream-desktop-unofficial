@@ -1,28 +1,25 @@
 //! The title page: play, resume, episodes, seasons, close.
 
-use app_services::PlaybackItem;
-use slint::Model;
+use app_services::{NextEpisode, PlaybackItem};
 
 use crate::posters::empty_episodes;
 use crate::request_tickets::RequestKind;
+use crate::ui_events::EpisodeRow;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::parse_season_label;
 use super::home_callbacks::row;
+use super::session::DetailsTarget;
 use super::stream_opening::begin_open;
 
 pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_play_details(move || play_details(&c));
-    let weak = ctx.ui.clone();
-    ui.on_resume_details(move || {
-        if let Some(ui) = weak.upgrade() {
-            ui.invoke_play_details();
-        }
-    });
     let c = ctx.clone();
-    ui.on_play_episode(move |index| play_episode(&c, index));
+    ui.on_resume_details(move || resume_details(&c));
+    let c = ctx.clone();
+    ui.on_play_episode(move |index| play_episode(&c, row(index)));
     let c = ctx.clone();
     ui.on_close_details(move || close_details(&c));
     let c = ctx.clone();
@@ -54,6 +51,7 @@ fn close_details(ctx: &BridgeContext) {
     ui.set_episodes(empty_episodes());
 }
 
+/// Plays the movie (or the title's own stream when it lists no episodes).
 fn play_details(ctx: &BridgeContext) {
     let title = ctx
         .window()
@@ -61,35 +59,119 @@ fn play_details(ctx: &BridgeContext) {
         .unwrap_or_default();
     let details = ctx.session.borrow().details.clone();
     let item = PlaybackItem {
-        provider: details.provider,
-        media_key: details.media_key,
-        title,
-        detail_url: details.url,
-        poster_url: None,
+        provider: details.provider.clone(),
+        media_key: details.media_key.clone(),
+        title: title.clone(),
+        detail_url: details.url.clone(),
+        poster_url: details.poster_url.clone(),
         season: None,
         episode: None,
         next_episode: None,
     };
-    begin_open(ctx, item, details.data);
+    begin_open(ctx, item, details.data, &title);
 }
 
-fn play_episode(ctx: &BridgeContext, index: i32) {
-    let Some(ui) = ctx.window() else {
+/// Plays where the viewer left off: the remembered episode, else the title itself.
+fn resume_details(ctx: &BridgeContext) {
+    let resume_index = {
+        let session = ctx.session.borrow();
+        let wanted = session.details.resume_media_key.clone();
+        wanted.and_then(|key| session.episodes.iter().position(|row| row.data == key))
+    };
+    match resume_index {
+        Some(index) => play_episode(ctx, index),
+        None => play_details(ctx),
+    }
+}
+
+/// Plays episode `index` of the title page (provider order).
+pub(crate) fn play_episode(ctx: &BridgeContext, index: usize) {
+    let show_title = ctx
+        .window()
+        .map(|ui| ui.get_details_title().to_string())
+        .unwrap_or_default();
+    let (details, episodes) = {
+        let session = ctx.session.borrow();
+        (session.details.clone(), session.episodes.clone())
+    };
+    let Some(item) = episode_item(&details, &episodes, index, &show_title) else {
         return;
     };
-    let Some(episode) = ui.get_episodes().row_data(row(index)) else {
-        return;
-    };
-    let details = ctx.session.borrow().details.clone();
-    let item = PlaybackItem {
-        provider: details.provider,
-        media_key: episode.data.to_string(),
-        title: format!("{} — {}", ui.get_details_title(), episode.name),
-        detail_url: details.url,
-        poster_url: None,
-        season: None,
-        episode: None,
-        next_episode: None,
-    };
-    begin_open(ctx, item, episode.data.to_string());
+    let shown = episodes
+        .get(index)
+        .map(|episode| format!("{show_title} — {} {}", episode.code, episode.name))
+        .unwrap_or_else(|| show_title.clone());
+    let data = item.media_key.clone();
+    begin_open(ctx, item, data, shown.trim());
+}
+
+/// The item for episode `index`: saved under the show's title with its season and episode, and the
+/// following episode for auto-advance.
+pub(crate) fn episode_item(
+    details: &DetailsTarget,
+    episodes: &[EpisodeRow],
+    index: usize,
+    show_title: &str,
+) -> Option<PlaybackItem> {
+    let episode = episodes.get(index)?;
+    let next_episode = episodes.get(index + 1).map(|next| NextEpisode {
+        media_key: next.data.clone(),
+        season: (next.season >= 0).then_some(next.season),
+        episode: next.episode,
+    });
+    Some(PlaybackItem {
+        provider: details.provider.clone(),
+        media_key: episode.data.clone(),
+        title: show_title.to_owned(),
+        detail_url: details.url.clone(),
+        poster_url: details.poster_url.clone(),
+        season: (episode.season >= 0).then_some(episode.season),
+        episode: episode.episode,
+        next_episode,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(data: &str, season: i32, episode: Option<i32>) -> EpisodeRow {
+        EpisodeRow {
+            name: format!("Episode {data}"),
+            code: String::new(),
+            data: data.to_owned(),
+            watched: false,
+            season,
+            episode,
+        }
+    }
+
+    #[test]
+    fn episode_item_carries_numbers_poster_and_next_episode() {
+        let details = DetailsTarget {
+            provider: "P".into(),
+            url: "https://p/show".into(),
+            poster_url: Some("https://p/poster.jpg".into()),
+            ..DetailsTarget::default()
+        };
+        let episodes = [row("e1", 1, Some(1)), row("e2", 1, Some(2))];
+        let first = episode_item(&details, &episodes, 0, "Show").expect("first");
+        assert_eq!((first.season, first.episode), (Some(1), Some(1)));
+        assert_eq!(first.title, "Show");
+        assert_eq!(first.poster_url.as_deref(), Some("https://p/poster.jpg"));
+        assert_eq!(
+            first.next_episode.map(|next| next.media_key),
+            Some("e2".to_owned())
+        );
+        let last = episode_item(&details, &episodes, 1, "Show").expect("last");
+        assert!(last.next_episode.is_none());
+        assert!(episode_item(&details, &episodes, 2, "Show").is_none());
+    }
+
+    #[test]
+    fn episode_item_unknown_season_is_none() {
+        let details = DetailsTarget::default();
+        let item = episode_item(&details, &[row("e", -1, None)], 0, "Show").expect("item");
+        assert_eq!((item.season, item.episode), (None, None));
+    }
 }

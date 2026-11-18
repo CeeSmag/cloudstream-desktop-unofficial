@@ -25,12 +25,16 @@ struct OpenJob {
     live: LiveSources,
 }
 
-/// Starts finding streams for `item` (`data` is the provider's episode or movie payload).
-pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String) {
-    if ctx.services.playback.is_none() {
+/// Starts finding streams for `item` (`data` is the provider's episode or movie payload);
+/// `shown_title` is what the player shows (the item keeps the show's own title for the history).
+pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, shown_title: &str) {
+    let Some(playback) = &ctx.services.playback else {
         let problem = ctx.services.player_problem.clone();
         ctx.sender()
             .notice(problem.unwrap_or_else(|| "no player".into()));
+        return;
+    };
+    if come_back_to_waiting_video(ctx, playback, &item.media_key) {
         return;
     }
     let (control, live, ticket) = {
@@ -44,12 +48,14 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String) 
         session.episode_data.clone_from(&data);
         session.links.clear();
         session.selected = 0;
+        session.watch.reset();
+        session.away_key = None;
         (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {
         ui.set_open_busy(true);
         ui.set_open_status("Searching streams…".into());
-        ui.set_player_title(item.title.clone().into());
+        ui.set_player_title(shown_title.into());
     }
     let job = OpenJob {
         ticket,
@@ -184,10 +190,45 @@ fn play_stream(ctx: &BridgeContext, index: usize, start_position_ms: i64) -> Res
 
 /// Starts the stream the opening picked.
 pub(crate) fn start_selected(ctx: &BridgeContext, ui: &CloudStream, index: usize) {
-    if let Err(error) = play_stream(ctx, index, 0) {
+    let start_ms = resume_position(ctx);
+    if let Err(error) = play_stream(ctx, index, start_ms) {
         tracing::warn!(%error, index, "the picked stream did not start");
         ui.set_notice(format!("Cannot start playback: {error}").into());
     }
+}
+
+/// Where the target was left off (0 when it was finished or never started).
+fn resume_position(ctx: &BridgeContext) -> i64 {
+    let (Some(playback), Some(item)) =
+        (&ctx.services.playback, ctx.session.borrow().target.clone())
+    else {
+        return 0;
+    };
+    playback.resume_position_ms(&item).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not read the saved position; starting from the beginning");
+        0
+    })
+}
+
+/// Opening the video the viewer left (still loaded and paused) plays it on from memory.
+fn come_back_to_waiting_video(
+    ctx: &BridgeContext,
+    playback: &app_services::PlaybackService,
+    media_key: &str,
+) -> bool {
+    if ctx.session.borrow().away_key.as_deref() != Some(media_key) {
+        return false;
+    }
+    let cache = ctx.services.settings.video_cache().unwrap_or_default();
+    if let Err(error) = playback.come_back(cache.while_watching()) {
+        tracing::warn!(%error, "the waiting video could not resume; opening it again");
+        return false;
+    }
+    ctx.session.borrow_mut().away_key = None;
+    if let Some(ui) = ctx.window() {
+        ui.set_player_open(true);
+    }
+    true
 }
 
 /// Plays another source of the list from the current position.

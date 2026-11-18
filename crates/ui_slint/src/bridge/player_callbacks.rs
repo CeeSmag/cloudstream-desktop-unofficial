@@ -83,6 +83,7 @@ fn close_player(ctx: &BridgeContext) {
         let mut session = ctx.session.borrow_mut();
         session.control.cancel_open();
         session.tickets.cancel(RequestKind::Open);
+        session.away_key = None;
     }
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
@@ -96,7 +97,11 @@ fn leave_player(ctx: &BridgeContext) {
     if let Some(playback) = &ctx.services.playback {
         let keep_ready = ctx.services.settings.keep_video_ready().unwrap_or(true);
         match ctx.services.settings.video_cache() {
-            Ok(cache) if keep_ready => report("leave", playback.leave(cache.while_away())),
+            Ok(cache) if keep_ready => {
+                report("leave", playback.leave(cache.while_away()));
+                let mut session = ctx.session.borrow_mut();
+                session.away_key = session.target.as_ref().map(|item| item.media_key.clone());
+            }
             _ => report("stop", playback.stop()),
         }
     }

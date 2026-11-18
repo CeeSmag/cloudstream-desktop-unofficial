@@ -3,7 +3,9 @@
 use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
+use crate::playback_watch::{PlaybackWatch, SourceCheck};
 use crate::request_tickets::RequestTickets;
+use crate::ui_events::EpisodeRow;
 use crate::update::UpdateInfo;
 
 /// Optional runtime extras that are not part of [`app_services::UiServices`].
@@ -34,6 +36,14 @@ pub(crate) struct Session {
     pub(crate) tickets: RequestTickets,
     /// The TMDB titles Browse shows, in the grid's order.
     pub(crate) browse_items: Vec<app_services::BrowseItem>,
+    /// The episodes of the title page, in the provider's order (all seasons).
+    pub(crate) episodes: Vec<EpisodeRow>,
+    /// What to do when the playing stream fails or ends.
+    pub(crate) watch: PlaybackWatch,
+    /// How each source of the open list fared in its check.
+    pub(crate) source_checks: Vec<SourceCheck>,
+    /// The video the viewer left (still loaded, paused) by its media key.
+    pub(crate) away_key: Option<String>,
 }
 
 /// Which title the details page shows.
@@ -43,6 +53,9 @@ pub(crate) struct DetailsTarget {
     pub(crate) url: String,
     pub(crate) data: String,
     pub(crate) media_key: String,
+    pub(crate) poster_url: Option<String>,
+    /// The episode (or movie) the viewer left off at.
+    pub(crate) resume_media_key: Option<String>,
 }
 
 impl Default for Session {
@@ -62,6 +75,10 @@ impl Default for Session {
             update: None,
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),
+            episodes: Vec::new(),
+            watch: PlaybackWatch::default(),
+            source_checks: Vec::new(),
+            away_key: None,
         }
     }
 }

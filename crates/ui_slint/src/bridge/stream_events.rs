@@ -2,6 +2,7 @@
 
 use playback_session::{CheckedOpen, OpenProgress};
 
+use crate::playback_watch::SourceCheck;
 use crate::posters::source_rows;
 use crate::CloudStream;
 
@@ -34,10 +35,22 @@ pub(crate) fn show_open_update(ctx: &BridgeContext, ui: &CloudStream, open: Chec
         let mut session = ctx.session.borrow_mut();
         session.links = open.links.iter().map(|(link, _)| link.clone()).collect();
         session.subtitles.clone_from(&open.subtitles);
-        if let Some(index) = open.play_index {
+        // Once playing, the playing source stays selected (the viewer or a fallback may have
+        // switched away from the checker's first pick).
+        if let (false, Some(index)) = (ui.get_player_open(), open.play_index) {
             session.selected = index;
         }
+        session.source_checks = open
+            .links
+            .iter()
+            .map(|(_, health)| match health {
+                Some(health) if health.is_working() => SourceCheck::Working,
+                Some(_) => SourceCheck::Broken,
+                None => SourceCheck::Unchecked,
+            })
+            .collect();
         session.live.publish(open.clone());
     }
-    ui.set_sources(source_rows(&open.links, open.play_index));
+    let selected = ctx.session.borrow().selected;
+    ui.set_sources(source_rows(&open.links, Some(selected)));
 }

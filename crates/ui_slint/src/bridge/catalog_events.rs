@@ -143,12 +143,21 @@ pub(crate) fn show_browse(
 }
 
 pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsPage) {
-    ctx.session.borrow_mut().details = DetailsTarget {
-        provider: page.provider,
-        url: page.url,
-        data: page.data,
-        media_key: page.media_key,
-    };
+    {
+        let mut session = ctx.session.borrow_mut();
+        let poster_url = page
+            .poster_url
+            .or_else(|| session.details.poster_url.clone());
+        session.details = DetailsTarget {
+            provider: page.provider,
+            url: page.url,
+            data: page.data,
+            media_key: page.media_key,
+            poster_url,
+            resume_media_key: page.resume_media_key,
+        };
+        session.episodes.clone_from(&page.episodes);
+    }
     ui.set_details_loading(false);
     ui.set_details_title(page.title.into());
     ui.set_details_plot(page.plot.into());

@@ -1,15 +1,13 @@
 //! Loads a title page in the background.
 
-use app_services::UiServices;
-use core_model::{LoadDetails, WatchProgress};
-
 use crate::background_work::spawn_work;
 use crate::posters::{empty_episodes, string_model};
 use crate::request_tickets::RequestKind;
-use crate::ui_events::{DetailsPage, EpisodeRow, UiEvent};
+use crate::ui_events::{EpisodeRow, UiEvent};
 use crate::PosterItem;
 
 use super::bridge_context::BridgeContext;
+use super::details_page::details_page;
 use super::session::DetailsTarget;
 
 /// Opens the title page of `item`.
@@ -19,6 +17,8 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
         url: item.url.to_string(),
         data: item.url.to_string(),
         media_key: item.media_key.to_string(),
+        poster_url: Some(item.poster.to_string()).filter(|poster| !poster.is_empty()),
+        resume_media_key: None,
     };
     ctx.session.borrow_mut().details = target.clone();
     let ticket = ctx.issue_ticket(RequestKind::Details);
@@ -62,71 +62,6 @@ pub(crate) fn show_details_failed(ctx: &BridgeContext, message: &str) {
     ui.set_details_loading(false);
     ui.set_details_title("".into());
     ui.set_notice(message.into());
-}
-
-fn details_page(
-    services: &UiServices,
-    target: DetailsTarget,
-    details: LoadDetails,
-    fallback_title: String,
-) -> DetailsPage {
-    let library = &services.library;
-    let resume = match library.resume_pointer(&target.provider, &target.url) {
-        Ok(Some(pointer)) => match (pointer.season, pointer.episode) {
-            (Some(season), Some(episode)) => format!("Resume S{season} E{episode}"),
-            _ => "Resume".to_owned(),
-        },
-        Ok(None) => String::new(),
-        Err(error) => {
-            tracing::warn!(%error, "could not read where the title was left off");
-            String::new()
-        }
-    };
-    let progress = library
-        .show_progress(&target.provider, &target.url)
-        .unwrap_or_default();
-    let data = match &details.data_url {
-        Some(data_url) if details.episodes.is_empty() => data_url.clone(),
-        _ => target.url.clone(),
-    };
-    DetailsPage {
-        title: if details.name.is_empty() {
-            fallback_title
-        } else {
-            details.name.clone()
-        },
-        plot: details.plot.clone().unwrap_or_default(),
-        meta: details
-            .year
-            .map(|year| year.to_string())
-            .unwrap_or_default(),
-        resume,
-        episodes: episode_rows(&details, &progress),
-        provider: target.provider,
-        url: target.url,
-        data,
-        media_key: target.media_key,
-    }
-}
-
-fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<EpisodeRow> {
-    details
-        .episodes
-        .iter()
-        .map(|episode| {
-            let code = match (episode.season, episode.episode) {
-                (Some(season), Some(number)) => format!("S{season}E{number}"),
-                _ => String::new(),
-            };
-            EpisodeRow {
-                name: episode.name.clone().unwrap_or_else(|| code.clone()),
-                watched: progress.iter().any(|seen| seen.media_key == episode.data),
-                code,
-                data: episode.data.clone(),
-                season: episode.season.unwrap_or(-1),
-            }
-        })
-        .collect()
 }
 
 /// "All" plus one label per known season, in order.

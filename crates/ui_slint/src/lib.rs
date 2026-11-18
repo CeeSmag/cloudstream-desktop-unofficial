@@ -7,6 +7,7 @@
 
 mod background_work;
 mod bridge;
+mod playback_watch;
 mod posters;
 mod request_tickets;
 mod startup_progress;

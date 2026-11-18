@@ -11,6 +11,7 @@ use crate::posters::string_model;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::playback_reactions::react_to_status;
 
 /// Updates position, times, pause, buffering, tracks and the video surface size.
 pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
@@ -30,6 +31,7 @@ pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_fullscreen(ui.window().is_fullscreen());
     show_tracks_if_changed(ctx, ui, &playback.tracks());
     follow_window_size(ctx, ui);
+    react_to_status(ctx, ui, &status.state);
 }
 
 /// Shows the newest video frame, if there is one the screen has not shown yet.

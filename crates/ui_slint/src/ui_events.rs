@@ -55,7 +55,10 @@ pub(crate) struct DetailsPage {
     pub plot: String,
     pub meta: String,
     pub resume: String,
+    /// The episode (or movie) the viewer left off at.
+    pub resume_media_key: Option<String>,
     pub episodes: Vec<EpisodeRow>,
+    pub poster_url: Option<String>,
     pub provider: String,
     pub url: String,
     pub data: String,
@@ -71,6 +74,8 @@ pub(crate) struct EpisodeRow {
     pub watched: bool,
     /// Season number, -1 when unknown.
     pub season: i32,
+    /// Episode number, if known.
+    pub episode: Option<i32>,
 }
 
 /// The provider's entry found for a Browse title, if any.
