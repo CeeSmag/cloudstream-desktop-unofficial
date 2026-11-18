@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -235,8 +236,8 @@ class ExtensionCompatibilityTest {
 
     @Test
     fun `loadExtension refuses paths outside the extensions folder`() {
-        val data = createTempDir(prefix = "cs-path-jail-data")
-        val outside = createTempDir(prefix = "cs-path-jail-outside")
+        val data = createTempDirectory(prefix = "cs-path-jail-data").toFile()
+        val outside = createTempDirectory(prefix = "cs-path-jail-outside").toFile()
         try {
             System.setProperty("cloudstream.data.dir", data.absolutePath)
             File(data, "extensions").mkdirs()
