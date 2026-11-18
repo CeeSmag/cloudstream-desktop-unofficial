@@ -1,6 +1,6 @@
-# Builds the Windows (x64) release files:
+# Builds the Windows (x64) release files for the egui shell:
 #
-#   CloudStream_<ver>_x64-setup.exe       installer
+#   CloudStream_<ver>_x64-setup.exe       installer (NSIS)
 #   CloudStream_<ver>_x64_portable.exe    single-file portable
 #
 #   .\scripts\build_release.ps1                    # both
@@ -9,10 +9,10 @@
 # The Linux AppImage is built by scripts/build_release.sh. GitHub builds all of them
 # (.github/workflows/release.yml), or run each script on its own OS.
 #
-# Needs: the Rust MSVC toolchain, Node 20+, and the extension sidecar built once with
-# scripts\setup_sidecar.ps1. Every package carries what the app needs to run on a clean PC:
-# libmpv, vulkan-1.dll, the sidecar and a Java runtime (downloaded once into target\bundle-cache).
-# Results land in .\dist.
+# Needs: the Rust MSVC toolchain, NSIS (makensis; for -Kind installer|all), and the extension
+# sidecar built once with scripts\setup_sidecar.ps1. Every package carries what the app needs to
+# run on a clean PC: libmpv, vulkan-1.dll, the sidecar and a Java runtime (downloaded once into
+# target\bundle-cache). Results land in .\dist.
 param(
     [ValidateSet('all', 'installer', 'portable')][string]$Kind = 'all',
     [string]$SidecarHome = 'C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar',
@@ -27,12 +27,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$appDir = Join-Path $repoRoot 'crates\desktop_tauri'
-$frontendDir = Join-Path $appDir 'frontend'
+$iconDir = Join-Path $repoRoot 'crates\app_shell\icons'
 $cache = Join-Path $repoRoot 'target\bundle-cache'
 $stageRoot = Join-Path $repoRoot 'target\bundle-stage'
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot 'dist' }
-$version = (Get-Content (Join-Path $appDir 'tauri.conf.json') -Raw | ConvertFrom-Json).version
+$cargoToml = Get-Content (Join-Path $repoRoot 'Cargo.toml') -Raw
+if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+    throw 'Could not read workspace version from Cargo.toml.'
+}
+$version = $Matches[1]
 $triple = 'x86_64-pc-windows-msvc'
 
 $started = Get-Date
@@ -178,7 +181,7 @@ function Assert-InPayload([string]$archive, [string]$name) {
     }
 }
 
-# Lays out what ships beside the program: libmpv-2.dll, vulkan-1.dll, sidecar\, jre\.
+# Lays out what ships beside the program: cloudstream.exe, libmpv-2.dll, vulkan-1.dll, sidecar\, jre\.
 function New-Stage {
     Write-Step 'Collecting libmpv, vulkan-1.dll, the sidecar and Java'
     $stage = Join-Path $stageRoot 'x64'
@@ -192,47 +195,60 @@ function New-Stage {
     return $stage
 }
 
-# The installer build copies the staged files next to the program through tauri's `resources`.
-function New-BundleConfig([string]$stage) {
-    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
-        if (-not (Test-Path (Join-Path $stage $name))) { throw "$name is not staged; the installer would ship without it." }
-    }
-    $slash = { param($p) $p.Replace('\', '/') }
-    $resources = [ordered]@{}
-    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') { $resources[(& $slash (Join-Path $stage $name))] = $name }
-    $file = Join-Path $stageRoot 'tauri.bundle.x64.json'
-    @{ bundle = @{ resources = $resources } } | ConvertTo-Json -Depth 6 | Set-Content $file -Encoding UTF8
-    return $file
-}
-
-function Build-App([string]$configFile) {
-    Write-Step "Building the app ($triple)"
+function Build-App {
+    Write-Step "Building cloudstream ($triple)"
     Invoke-Native 'Adding the Rust target' 'rustup' @('target', 'add', $triple)
-    Push-Location $appDir
-    try {
-        $bundling = if ($Kind -eq 'portable') { @('--no-bundle') } else { @('--bundles', 'nsis') }
-        $tauri = Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'
-        Invoke-Native 'Compiling and packaging (the first build takes several minutes)' $tauri (@('build', '--target', $triple, '--config', $configFile) + $bundling)
-    }
-    finally { Pop-Location }
+    Invoke-Native 'Compiling app_shell' 'cargo' @('build', '--release', '--target', $triple, '-p', 'app_shell')
 }
 
-function Copy-Installer {
-    $setup = Get-ChildItem (Join-Path $repoRoot "target\$triple\release\bundle\nsis") -Filter '*-setup.exe' |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $setup) { throw 'The installer was not produced.' }
+function New-InstallPayload([string]$stage) {
+    $payload = Join-Path $stageRoot 'installer-payload'
+    if (Test-Path $payload) { Remove-Item $payload -Recurse -Force }
+    New-Item -ItemType Directory -Force $payload | Out-Null
+    $exe = Join-Path $repoRoot "target\$triple\release\cloudstream.exe"
+    if (-not (Test-Path $exe)) { throw "cloudstream.exe missing at $exe" }
+    Copy-Item $exe (Join-Path $payload 'cloudstream.exe')
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payload }
+    foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payload -Recurse }
+    if (Test-Path (Join-Path $iconDir 'icon.ico')) {
+        Copy-Item (Join-Path $iconDir 'icon.ico') (Join-Path $payload 'icon.ico')
+    }
+    return $payload
+}
+
+function Copy-Installer([string]$stage) {
+    Write-Step 'Packaging the NSIS installer'
+    $makensis = Get-Command makensis -ErrorAction SilentlyContinue
+    if (-not $makensis) {
+        throw 'makensis not found. Install NSIS (https://nsis.sourceforge.io/) or choco install nsis.'
+    }
+    $payload = New-InstallPayload $stage
+    foreach ($name in 'cloudstream.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
+        if (-not (Test-Path (Join-Path $payload $name))) { throw "$name is not in the installer payload." }
+    }
     $dest = Join-Path $OutDir "CloudStream_${version}_x64-setup.exe"
-    Copy-Item $setup.FullName $dest -Force
+    $nsi = Join-Path $PSScriptRoot 'windows_installer.nsi'
+    # NSIS wants forward slashes in /D paths.
+    $payloadNsis = $payload.Replace('\', '/')
+    $destNsis = $dest.Replace('\', '/')
+    Invoke-Native 'Compiling the installer (makensis)' 'makensis' @(
+        "/DVERSION=$version",
+        "/DPAYLOAD_DIR=$payloadNsis",
+        "/DOUT_FILE=$destNsis",
+        $nsi
+    )
+    if (-not (Test-Path $dest)) { throw "Installer was not written to $dest" }
     return $dest
 }
 
 function New-Portable([string]$stage) {
     Write-Step 'Making the single-exe portable app'
-    $exe = Join-Path $repoRoot "target\$triple\release\desktop_tauri.exe"
+    $exe = Join-Path $repoRoot "target\$triple\release\cloudstream.exe"
+    if (-not (Test-Path $exe)) { throw "cloudstream.exe missing at $exe" }
     $payloadFolder = Join-Path $stageRoot 'single-exe-x64\payload'
     if (Test-Path (Split-Path $payloadFolder)) { Remove-Item (Split-Path $payloadFolder) -Recurse -Force }
     New-Item -ItemType Directory -Force $payloadFolder | Out-Null
-    Copy-Item $exe (Join-Path $payloadFolder 'desktop_tauri.exe')
+    Copy-Item $exe (Join-Path $payloadFolder 'cloudstream.exe')
     foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payloadFolder }
     foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payloadFolder -Recurse }
 
@@ -241,6 +257,7 @@ function New-Portable([string]$stage) {
     Invoke-Native 'Archiving the payload' 'tar' @('-czf', $archive, '-C', $payloadFolder, '.')
 
     Assert-InPayload $archive 'vulkan-1.dll'
+    Assert-InPayload $archive 'cloudstream.exe'
     $env:CS_PAYLOAD_ARCHIVE = $archive
     Invoke-Native 'Compiling the single-exe launcher' 'cargo' @('build', '--release', '--target', $triple, '-p', 'portable_launcher')
 
@@ -256,17 +273,11 @@ if (-not (Test-Path (Join-Path $SidecarHome 'bin'))) {
 }
 New-Item -ItemType Directory -Force $OutDir, $cache | Out-Null
 
-if (-not (Test-Path (Join-Path $frontendDir 'node_modules\.bin\tauri.cmd'))) {
-    Write-Step 'Installing the frontend tools (npm install)'
-    Push-Location $frontendDir
-    try { Invoke-Native 'npm install' 'npm.cmd' @('install', '--no-audit', '--no-fund') } finally { Pop-Location }
-}
-
 $stage = New-Stage
-Build-App (New-BundleConfig $stage)
+Build-App
 
 $results = @()
-if ($Kind -eq 'all' -or $Kind -eq 'installer') { $results += Copy-Installer }
+if ($Kind -eq 'all' -or $Kind -eq 'installer') { $results += Copy-Installer $stage }
 if ($Kind -eq 'all' -or $Kind -eq 'portable') { $results += New-Portable $stage }
 
 Write-Step "Done in $(Get-Elapsed $started)"

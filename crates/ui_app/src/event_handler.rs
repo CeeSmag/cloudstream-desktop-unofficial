@@ -30,6 +30,26 @@ pub(crate) fn apply(model: &mut AppModel, dispatcher: &Dispatcher, event: UiEven
         UiEvent::PluginInstalled { name, result } => {
             plugin_installed(model, dispatcher, &name, result)
         }
+        UiEvent::UpdateChecked(result) => {
+            model.settings.checking_update = false;
+            match result {
+                Ok(None) => {
+                    model.settings.update_status =
+                        Some("You are on the latest release.".to_owned());
+                    model.settings.update_url = None;
+                }
+                Ok(Some(info)) => {
+                    let name = info.asset_name.unwrap_or_else(|| "release".to_owned());
+                    model.settings.update_status =
+                        Some(format!("Update {} available ({name})", info.tag));
+                    model.settings.update_url = info.download_url;
+                }
+                Err(error) => {
+                    model.settings.update_status = Some(format!("Update check failed: {error}"));
+                    model.settings.update_url = None;
+                }
+            }
+        }
         UiEvent::Notice(notice) => model.notify(notice),
     }
 }

@@ -7,8 +7,9 @@
 #   --install-deps  install the build tools first (Debian/Ubuntu, needs root or sudo)
 # Results land in ./dist (or $CS_OUT_DIR).
 #
-# The Windows files are built by scripts/build_release.ps1. GitHub builds all of them
-# (.github/workflows/release.yml), on Debian 12 so the AppImage runs on most distros.
+# This fork ships the egui shell (`cloudstream` from app_shell). The Windows files are built by
+# scripts/build_release.ps1. GitHub builds all of them (.github/workflows/release.yml), on Debian 12
+# so the AppImage runs on most distros.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,8 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CACHE_DIR="$REPO_ROOT/target/bundle-cache"
 STAGE_DIR="$REPO_ROOT/target/bundle-stage"
 OUT_DIR="${CS_OUT_DIR:-$REPO_ROOT/dist}"
-APP_DIR="$REPO_ROOT/crates/desktop_tauri"
-FRONTEND_DIR="$APP_DIR/frontend"
+ICON_DIR="$REPO_ROOT/crates/app_shell/icons"
 
 case "$(uname -m)" in
     x86_64)        IMAGE_ARCH=x86_64;  ADOPTIUM_ARCH=x64;     GNU_DIR=x86_64-linux-gnu ;;
@@ -28,7 +28,9 @@ esac
 step() { echo; echo "==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "'$1' is missing. Run: scripts/build_release.sh --install-deps"; }
-version() { python3 -c "import json; print(json.load(open('$APP_DIR/tauri.conf.json'))['version'])"; }
+version() {
+    python3 -c "import re, pathlib; t=pathlib.Path('$REPO_ROOT/Cargo.toml').read_text(); m=re.search(r'(?m)^version\s*=\s*\"([^\"]+)\"', t); print(m.group(1) if m else '')"
+}
 
 # --- one-time tool installation ---------------------------------------------------------------------
 install_deps() {
@@ -36,15 +38,11 @@ install_deps() {
     local SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
     step "Installing system packages"
     $SUDO apt-get update
+    # egui/eframe: GTK3 + common X11/Wayland bits. No WebKit / Node (Tauri frontend dropped).
     $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential pkg-config curl ca-certificates git rsync file xz-utils unzip python3 python3-pil \
-        libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev \
-        libmpv-dev libmpv2
-    if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
-        step "Installing Node 20"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO bash -
-        $SUDO apt-get install -y --no-install-recommends nodejs
-    fi
+        libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev \
+        libssl-dev libmpv-dev libmpv2
     if [ ! -x /usr/lib/jvm/temurin-21/bin/javac ]; then
         step "Installing JDK 21 (compiles the Kotlin sidecar)"
         local url
@@ -63,7 +61,7 @@ install_deps() {
 for arg in "$@"; do
     case "$arg" in
         --install-deps) install_deps; exit 0 ;;
-        -h|--help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown argument: $arg" ;;
     esac
 done
@@ -71,8 +69,9 @@ done
 # --- build ----------------------------------------------------------------------------------------
 # shellcheck disable=SC1091
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-need cargo; need python3; need node; need npm; need curl; need git
+need cargo; need python3; need curl; need git
 VERSION="$(version)"
+[ -n "$VERSION" ] || die "Could not read workspace version from Cargo.toml."
 mkdir -p "$CACHE_DIR" "$STAGE_DIR" "$OUT_DIR"
 STARTED=$(date +%s)
 
@@ -131,28 +130,27 @@ get_jre() {
     echo "$folder"
 }
 
-step "Building the React / Vite frontend"
-(cd "$FRONTEND_DIR" && npm ci --silent && npm run build)
 ensure_sidecar
 
-step "Compiling desktop_tauri"
+step "Compiling app_shell (cloudstream)"
+(cd "$REPO_ROOT" && cargo build --release -p app_shell)
+
 APPDIR="$STAGE_DIR/CloudStream-$IMAGE_ARCH.AppDir"
 ICONS="$STAGE_DIR/icons"
 mkdir -p "$ICONS"
-python3 - "$APP_DIR/icons/icon.png" "$ICONS" <<'PY'
+[ -f "$ICON_DIR/icon.png" ] || die "Missing $ICON_DIR/icon.png"
+python3 - "$ICON_DIR/icon.png" "$ICONS" <<'PY'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert('RGBA')
 for size, name in ((32, '32x32'), (128, '128x128'), (256, '256x256'), (512, 'icon')):
     im.resize((size, size), Image.Resampling.LANCZOS).save(f'{sys.argv[2]}/{name}.png')
 PY
-CFG=$(printf '{"build":{"devUrl":null,"beforeBuildCommand":""},"bundle":{"icon":["%s/32x32.png","%s/128x128.png","%s/icon.png"]}}' "$ICONS" "$ICONS" "$ICONS")
-(cd "$REPO_ROOT" && TAURI_CONFIG="$CFG" cargo build --release -p desktop_tauri --features tauri/custom-protocol)
 
 step "Staging the AppDir"
 rm -rf "$APPDIR"; mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib"
-cp "$REPO_ROOT/target/release/desktop_tauri" "$APPDIR/usr/bin/desktop_tauri"
-strip "$APPDIR/usr/bin/desktop_tauri" 2>/dev/null || true
+cp "$REPO_ROOT/target/release/cloudstream" "$APPDIR/usr/bin/cloudstream"
+strip "$APPDIR/usr/bin/cloudstream" 2>/dev/null || true
 cp -rf "$SIDECAR_DIST" "$APPDIR/usr/bin/sidecar"
 chmod +x "$APPDIR/usr/bin/sidecar/bin/cs-sidecar"
 cp -rf "$(get_jre)" "$APPDIR/usr/jre"
@@ -176,7 +174,7 @@ cat > "$APPDIR/CloudStream.desktop" <<EOF
 [Desktop Entry]
 Name=CloudStream
 Comment=CloudStream desktop streaming application
-Exec=desktop_tauri
+Exec=cloudstream
 Icon=CloudStream
 Terminal=false
 Type=Application
@@ -196,7 +194,7 @@ cat > "$APPDIR/usr/share/metainfo/com.cloudstream.desktop.metainfo.xml" <<EOF
   <summary>CloudStream desktop streaming application</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
-  <url type="homepage">https://github.com/CeeSmag/cloudstream-desktop-unofficial</url>
+  <url type="homepage">https://github.com/CeeSmag/cloudstream-rs-egui</url>
   <description>
     <p>CloudStream is a fast and responsive desktop streaming application with universal extension support.</p>
   </description>
@@ -228,7 +226,7 @@ export CS_SIDECAR_JAVA_HOME="$APPDIR/usr/jre"
 if [ -f "$APPDIR/usr/lib/mpv/libmpv.so.2" ]; then
     export CS_LIBMPV_PATH="$APPDIR/usr/lib/mpv/libmpv.so.2"
 fi
-exec "$APPDIR/usr/bin/desktop_tauri" "$@"
+exec "$APPDIR/usr/bin/cloudstream" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 chmod -R a+rX "$APPDIR"

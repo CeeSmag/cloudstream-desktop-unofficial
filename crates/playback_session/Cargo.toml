@@ -1,0 +1,16 @@
+[package]
+name = "playback_session"
+description = "Shell-agnostic stream search, check, and open orchestration for egui (and any non-WebView UI)."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+app_services = { path = "../app_services" }
+core_model = { path = "../core_model" }
+extension_repo = { path = "../extension_repo" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

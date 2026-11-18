@@ -1,10 +1,10 @@
 # CloudStream RS
 
-[![CI](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml)
+[![CI](https://github.com/CeeSmag/cloudstream-rs-egui/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-rs-egui/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?label=release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-rs-egui?label=release)](https://github.com/CeeSmag/cloudstream-rs-egui/releases/latest)
 
-A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux, with a modern interface and a fast video player.
+A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux, with a native **egui** interface and a fast video player (`cloudstream-rs-egui`).
 
 <p align="center">
   <img src="docs/images/home-with-content.jpg" alt="CloudStream RS Home page with featured content and poster rows" width="800">
@@ -21,7 +21,7 @@ A desktop app for watching shows and movies through **plugins** you choose. It i
 
 ## Download
 
-Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest):
+Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudstream-rs-egui/releases/latest):
 
 | File | For |
 |---|---|
@@ -87,12 +87,18 @@ Build instructions, architecture, and contribution rules live in:
 - [RULES.md](RULES.md) — coding invariants and quality gates  
 - [docs/RELEASING.md](docs/RELEASING.md) — how releases are built and signed  
 
-Quick start from source (Windows):
+Quick start from source:
 
 ```powershell
+# Windows: build the JVM sidecar once, then run the egui shell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1
-cd crates\desktop_tauri\frontend; npm install; cd ..\..\..
-powershell -ExecutionPolicy Bypass -File .\scripts\run_tauri.ps1
+cargo run -p app_shell
+```
+
+```bash
+# Linux
+bash scripts/setup_sidecar.ps1   # or follow AGENTS.md / sidecar docs
+cargo run -p app_shell
 ```
 
 ---

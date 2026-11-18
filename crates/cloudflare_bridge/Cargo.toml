@@ -1,0 +1,14 @@
+[package]
+name = "cloudflare_bridge"
+description = "Sidecar Cloudflare challenge file exchange without a main WebView shell."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+open = "5"
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

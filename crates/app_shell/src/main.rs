@@ -5,6 +5,7 @@
 use app_shell::{
     build_services, start_logging, wipe_if_requested, AppPaths, RetryPlan, ServiceOptions,
 };
+use ui_app::{run_desktop_app_with, AppExtras};
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::from_environment()?;
@@ -14,5 +15,9 @@ fn main() -> anyhow::Result<()> {
     wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream starting");
     let services = build_services(&paths, &ServiceOptions::default())?;
-    ui_app::run_desktop_app(services).map_err(|error| anyhow::anyhow!("window failed: {error}"))
+    let cloudflare_dir = paths.data_dir().join("sidecar").join("cloudflare");
+    // Opens challenges in the system browser; cookie return is not wired yet (Waiting/Declined).
+    let cloudflare = Some(cloudflare_bridge::spawn_watcher(cloudflare_dir, true));
+    let extras = AppExtras { cloudflare };
+    run_desktop_app_with(services, extras).map_err(|error| anyhow::anyhow!("window failed: {error}"))
 }

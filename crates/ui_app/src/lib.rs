@@ -13,8 +13,9 @@ mod task_runner;
 mod theme;
 mod ui_event;
 mod ui_services;
+mod update_check;
 mod video_presenter;
 mod widgets;
 
-pub use app::run_desktop_app;
+pub use app::{run_desktop_app, run_desktop_app_with, AppExtras};
 pub use ui_services::UiServices;

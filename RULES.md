@@ -35,13 +35,15 @@ crates/
   skip_times/        # intro/recap/credits times from online databases
   stream_proxy/      # local HTTP proxy that lets the player open HLS streams (headers, ranges, redirects)
   app_services/      # use cases behind the screens
-  desktop_tauri/     # Tauri v2 app + React frontend (the main app)
-  ui_app/ app_shell/ # the native egui shell: screens, and main() wiring only, no logic
+  playback_session/  # search + check + open (egui product; no WebView)
+  cloudflare_bridge/ # sidecar CF file exchange without main WebView chrome
+  ui_app/ app_shell/ # product UI: egui screens, and main() wiring only, no logic
+  archive/desktop_tauri/  # former Tauri+React shell (not a workspace member)
   portable_launcher/ # the single-file Windows portable exe
 # native Rust extractors (no JVM): planned, not started; add their crates when there is code
 ```
 
-Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`, frontend `*.test.ts`), grouped by the tiers in §9.
+Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`), grouped by the tiers in §9.
 
 - **Dependency direction is one-way**: `ui_app → services → traits ← implementations`. `core_model` depends on nothing internal. No cycles. Enforce with `cargo deny`/`cargo-modules` in CI.
 - `app_shell` is the only place where concrete implementations are wired to traits (dependency injection by constructor).

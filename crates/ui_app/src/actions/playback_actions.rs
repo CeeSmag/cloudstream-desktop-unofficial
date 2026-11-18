@@ -67,11 +67,25 @@ fn resolve_streams(dispatcher: &Dispatcher, model: &mut AppModel, target: PlayTa
         return;
     }
     model.resolving_streams = true;
+    model.fallback_attempts = 0;
     let streams = std::sync::Arc::clone(&dispatcher.services.streams);
     dispatcher.runner.spawn("resolve-streams", move || {
-        let result = streams
-            .resolve(&target.item.provider, &target.data)
-            .map_err(|error| error.to_string());
+        let result = playback_session::check_and_pick(
+            &streams,
+            &target.item.provider,
+            &target.data,
+            &|_| {},
+        )
+        .map(|opened| crate::ui_event::CheckedStreams {
+            links: opened
+                .links
+                .into_iter()
+                .map(|(link, _)| link)
+                .collect(),
+            play_index: opened.play_index,
+            subtitles: opened.subtitles,
+        })
+        .map_err(|error| error.to_string());
         UiEvent::StreamsResolved { target, result }
     });
 }
@@ -147,7 +161,7 @@ pub(crate) fn handle_resolved(
     dispatcher: &Dispatcher,
     model: &mut AppModel,
     target: PlayTarget,
-    result: Result<core_model::PlayableLinks, String>,
+    result: Result<crate::ui_event::CheckedStreams, String>,
 ) {
     model.resolving_streams = false;
     match result {
@@ -157,25 +171,43 @@ pub(crate) fn handle_resolved(
                 "No playable streams were found for this item.",
             ));
         }
-        Ok(found) => match found.links.as_slice() {
-            links if links.len() == 1 || same_source(links) => {
+        Ok(found) => {
+            let selected = found.play_index.unwrap_or(0);
+            if found.play_index.is_some() || found.links.len() == 1 || same_source(&found.links) {
                 let start = PlaybackStart {
                     target,
-                    links: found.links.clone(),
-                    selected: 0,
-                    subtitles: found.subtitles.clone(),
+                    links: found.links,
+                    selected,
+                    subtitles: found.subtitles,
                 };
                 begin(dispatcher, model, start);
-            }
-            _ => {
+            } else {
                 model.pending_streams = Some(PendingStreams {
                     target,
                     links: found.links,
                     subtitles: found.subtitles,
                 });
             }
-        },
+        }
     }
+}
+
+/// Tries the next source after a playback failure (check-gate style fallback).
+pub(crate) fn try_fallback(dispatcher: &Dispatcher, model: &mut AppModel, reason: &str) -> bool {
+    const MAX_ATTEMPTS: u32 = 3;
+    if model.fallback_attempts >= MAX_ATTEMPTS {
+        return false;
+    }
+    let next = model.sources.selected.saturating_add(1);
+    if next >= model.sources.links.len() {
+        return false;
+    }
+    model.fallback_attempts += 1;
+    model.notify(Notice::info(format!(
+        "Source failed ({reason}); trying the next stream…"
+    )));
+    switch_source(dispatcher, model, next);
+    true
 }
 
 fn open_player(dispatcher: &Dispatcher, model: &mut AppModel) {

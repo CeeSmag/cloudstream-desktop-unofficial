@@ -44,5 +44,12 @@ pub(crate) enum UiAction {
         provider: String,
         enabled: bool,
     },
+    SetDebugLogging(bool),
+    SetStreamProxy(bool),
+    SetSkipLookup(bool),
+    SetAutoplayNext(bool),
+    SetPluginWorkerLimit(u32),
+    CheckForUpdate,
+    OpenUpdateUrl,
     DismissNotice(usize),
 }

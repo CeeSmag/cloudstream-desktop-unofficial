@@ -13,11 +13,13 @@ members = [
     "crates/stream_proxy",
     "crates/title_cache",
     "crates/app_services",
+    "crates/playback_session",
     "crates/ui_app",
     "crates/app_shell",
-    "crates/desktop_tauri",
     "crates/portable_launcher",
+    "crates/cloudflare_bridge",
 ]
+# `archive/desktop_tauri` is the former WebView shell — kept for reference, not a workspace member.
 
 [workspace.package]
 edition = "2021"

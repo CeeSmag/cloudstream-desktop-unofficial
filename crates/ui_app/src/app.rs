@@ -20,8 +20,20 @@ const PLAYBACK_POLL: Duration = Duration::from_millis(500);
 /// Width of the floating now-playing pill.
 const NOW_PLAYING_WIDTH: f32 = 620.0;
 
+/// Optional runtime extras that are not part of [`UiServices`] (non-Clone handles).
+#[derive(Default)]
+pub struct AppExtras {
+    /// Sidecar Cloudflare challenge watcher (system-browser path for egui).
+    pub cloudflare: Option<cloudflare_bridge::WatchHandle>,
+}
+
 /// Opens the main window and runs until it is closed.
 pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
+    run_desktop_app_with(services, AppExtras::default())
+}
+
+/// Same as [`run_desktop_app`], with Cloudflare (or other) handles from the shell.
+pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("CloudStream")
@@ -38,6 +50,7 @@ pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
             Ok(Box::new(CloudStreamApp::new(
                 creation.egui_ctx.clone(),
                 services,
+                extras,
             )))
         }),
     )
@@ -52,10 +65,11 @@ struct CloudStreamApp {
     last_poll: Instant,
     presenter: VideoPresenter,
     window_fullscreen: bool,
+    cloudflare: Option<cloudflare_bridge::WatchHandle>,
 }
 
 impl CloudStreamApp {
-    fn new(context: egui::Context, services: UiServices) -> Self {
+    fn new(context: egui::Context, services: UiServices, extras: AppExtras) -> Self {
         let dispatcher = Dispatcher::new(services.clone(), TaskRunner::new(context));
         let mut model = AppModel::default();
         dispatcher.start_up(&mut model);
@@ -66,12 +80,30 @@ impl CloudStreamApp {
             last_poll: Instant::now(),
             presenter: VideoPresenter::default(),
             window_fullscreen: false,
+            cloudflare: extras.cloudflare,
         }
     }
 
     fn apply_background_results(&mut self) {
         for event in self.dispatcher.drain_events() {
             event_handler::apply(&mut self.model, &self.dispatcher, event);
+        }
+        self.drain_cloudflare();
+    }
+
+    fn drain_cloudflare(&mut self) {
+        let Some(watch) = &self.cloudflare else {
+            return;
+        };
+        while let Ok(event) = watch.events.try_recv() {
+            match event {
+                cloudflare_bridge::CloudflareEvent::Needed(request) => {
+                    self.model.notify(crate::notice::Notice::info(format!(
+                        "Cloudflare check for {}: opened in your browser",
+                        request.host
+                    )));
+                }
+            }
         }
     }
 
@@ -213,14 +245,20 @@ impl CloudStreamApp {
     }
 
     /// Closes the video screen once playback is over, and tells the user when it failed.
+    /// On failure, tries the next checked source a few times before giving up.
     fn close_player_when_finished(&mut self) {
         if !self.model.player.open {
             return;
         }
         match &self.model.playback.state {
             player_api::PlaybackState::Failed(reason) => {
-                let text = format!("Playback failed: {reason}");
-                self.model.notify(crate::notice::Notice::error(text));
+                let reason = reason.clone();
+                if crate::actions::try_fallback(&self.dispatcher, &mut self.model, &reason) {
+                    return;
+                }
+                self.model.notify(crate::notice::Notice::error(format!(
+                    "Playback failed: {reason}"
+                )));
             }
             player_api::PlaybackState::Ended => {}
             _ => return,

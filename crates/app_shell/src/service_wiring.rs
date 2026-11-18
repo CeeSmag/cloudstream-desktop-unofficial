@@ -41,18 +41,27 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
 
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
     let (playback, player_problem) = build_playback(&database, &clock, options);
+    let settings = SettingsService::new(SettingsStore::new(Arc::clone(&database)));
+    let had_prior = InstalledExtensionStore::new(Arc::clone(&database))
+        .list()
+        .map(|list| !list.is_empty())
+        .unwrap_or(false);
+    if let Ok(limit) = settings.plugin_worker_limit_migrating(had_prior) {
+        gateway.set_resident_worker_limit(limit);
+    }
+    let extensions = ExtensionService::new(
+        Arc::clone(&gateway),
+        installer,
+        InstalledExtensionStore::new(Arc::clone(&database)),
+        Arc::clone(&clock),
+    );
     Ok(UiServices {
         repositories: RepositoryService::new(
             Arc::clone(&fetcher),
             RepositoryStore::new(Arc::clone(&database)),
             Arc::clone(&clock),
         ),
-        extensions: ExtensionService::new(
-            Arc::clone(&gateway),
-            installer,
-            InstalledExtensionStore::new(Arc::clone(&database)),
-            Arc::clone(&clock),
-        ),
+        extensions,
         catalog: CatalogService::new(Arc::clone(&gateway)),
         streams: Arc::new(StreamResolver::new(gateway)),
         playback,
@@ -62,7 +71,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
             WatchProgressStore::new(Arc::clone(&database)),
             ResumeStore::new(Arc::clone(&database)),
         ),
-        settings: SettingsService::new(SettingsStore::new(database)),
+        settings,
         clock,
     })
 }

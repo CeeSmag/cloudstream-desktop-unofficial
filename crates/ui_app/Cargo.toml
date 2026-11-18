@@ -7,14 +7,21 @@ license.workspace = true
 
 [dependencies]
 app_services = { path = "../app_services" }
+cloudflare_bridge = { path = "../cloudflare_bridge" }
 core_model = { path = "../core_model" }
 egui = "0.37.0"
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["all_loaders"] }
 extension_api = { path = "../extension_api" }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+open = "5"
+playback_session = { path = "../playback_session" }
 player_api = { path = "../player_api" }
+semver = "1"
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
+ureq = "3"
 
 [lints]
 workspace = true

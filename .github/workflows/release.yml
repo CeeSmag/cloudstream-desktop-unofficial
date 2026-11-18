@@ -34,21 +34,16 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
+      - name: Install NSIS
+        run: choco install nsis -y
+
       - name: Build the extension sidecar
         run: ./scripts/setup_sidecar.ps1 -Jdk21 $env:JAVA_HOME
-
-      - name: Install frontend packages
-        working-directory: crates/desktop_tauri/frontend
-        run: npm ci
 
       - name: Build installer and portable exe
         run: ./scripts/build_release.ps1
@@ -109,8 +104,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y minisign
 
       # The app installs an update only when SHA256SUMS is signed with the owner's key
-      # (crates/desktop_tauri/src/update_verify.rs). The script fails when a secret is missing or
-      # does not match crates/desktop_tauri/update_signing_key.pub, so no unsigned draft is made.
+      # (signed SHA256SUMS for the egui updater). The script fails when a secret is missing or
+      # does not match crates/app_shell/update_signing_key.pub, so no unsigned draft is made.
       - name: Write and sign SHA256SUMS
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}

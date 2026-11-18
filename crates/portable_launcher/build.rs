@@ -32,7 +32,7 @@ fn fingerprint(archive: &str) -> String {
 /// Embeds the app icon into the Windows exe (file explorer and taskbar show it).
 #[cfg(windows)]
 fn embed_icon() {
-    let icon = "../desktop_tauri/icons/icon.ico";
+    let icon = "../app_shell/icons/icon.ico";
     println!("cargo:rerun-if-changed={icon}");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes SHA256SUMS for the release files in a folder and signs it with minisign, so the app's
-# updater accepts them (crates/desktop_tauri/src/update_verify.rs). Used by the release workflow and
+# updater accepts them (ui_app update check + signed SHA256SUMS). Used by the release workflow and
 # by hand (Linux, or Git Bash on Windows with minisign installed).
 #
 #   scripts/sign_release.sh dist                     # sign with the key named below
@@ -21,7 +21,7 @@ if [[ "${1:-}" == "--require-signature" ]]; then
 fi
 folder="${1:?usage: sign_release.sh [--require-signature] <folder with the release files>}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-public_key="${SIGN_RELEASE_PUBLIC_KEY:-$repo_root/crates/desktop_tauri/update_signing_key.pub}"
+public_key="${SIGN_RELEASE_PUBLIC_KEY:-$repo_root/crates/app_shell/update_signing_key.pub}"
 minisign_bin="${MINISIGN:-minisign}"
 
 if [[ -n "${MINISIGN_SECRET_KEY_FILE:-}" ]]; then

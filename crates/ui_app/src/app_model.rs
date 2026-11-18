@@ -67,6 +67,22 @@ pub(crate) struct SettingsState {
     pub(crate) disabled_providers: Vec<String>,
     pub(crate) busy_plugins: HashSet<String>,
     pub(crate) adding_repository: bool,
+    /// Debug logging preference (mirrors SettingsService).
+    pub(crate) debug_logging: bool,
+    /// Play HLS through the local stream proxy.
+    pub(crate) stream_proxy: bool,
+    /// Look up intro/credits skip times online.
+    pub(crate) skip_lookup: bool,
+    /// Autoplay the next episode when one ends.
+    pub(crate) autoplay_next: bool,
+    /// Resident plugin JVM cap (`0` = unlimited).
+    pub(crate) plugin_worker_limit: u32,
+    /// Latest update check result text for the Settings card.
+    pub(crate) update_status: Option<String>,
+    /// Download URL from the last successful update check.
+    pub(crate) update_url: Option<String>,
+    /// True while an update check is running.
+    pub(crate) checking_update: bool,
 }
 
 /// The pop-up menus of the video screen.
@@ -122,6 +138,8 @@ pub(crate) struct AppModel {
     pub(crate) player: PlayerView,
     pub(crate) tracks: Vec<MediaTrack>,
     pub(crate) sources: SourceSet,
+    /// How many automatic source switches happened for the current open.
+    pub(crate) fallback_attempts: u32,
     pub(crate) playback: PlaybackStatus,
     pub(crate) settings: SettingsState,
     pub(crate) notices: Vec<Notice>,

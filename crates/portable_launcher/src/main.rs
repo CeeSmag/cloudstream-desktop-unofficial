@@ -35,9 +35,9 @@ fn get_runtime_dir() -> anyhow::Result<PathBuf> {
 
 fn extract_payload_if_needed(runtime_dir: &Path) -> anyhow::Result<()> {
     let main_binary_name = if cfg!(windows) {
-        "desktop_tauri.exe"
+        "cloudstream.exe"
     } else {
-        "desktop_tauri"
+        "cloudstream"
     };
 
     if runtime_dir.join(main_binary_name).exists() {
@@ -62,9 +62,9 @@ fn main() -> anyhow::Result<()> {
     extract_payload_if_needed(&runtime_dir)?;
 
     let main_binary_name = if cfg!(windows) {
-        "desktop_tauri.exe"
+        "cloudstream.exe"
     } else {
-        "desktop_tauri"
+        "cloudstream"
     };
     let app_exe = runtime_dir.join(main_binary_name);
 

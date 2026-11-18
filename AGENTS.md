@@ -1,6 +1,6 @@
 # AGENTS.md — Developer & AI Agent Codebase Guide
 
-This document is the architectural index, navigation map, and modification handbook for the **CloudStream Rust rewrite (`cloudstream-rs`)**. It is kept up to date by hand, so it can lag behind: **when it and the code differ, the code wins**, and fixing this file is part of the change. Only the command table in section 4 is checked by a test (`crates/desktop_tauri/src/docs_drift_tests.rs`); file paths, symbols, limits and schemas elsewhere are not.
+This document is the architectural index for **`cloudstream-rs-egui`** (egui-only fork of the CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_app` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). Sibling repo `cloudstream-desktop-unofficial` remains the dual Tauri/egui product. When this file and the code differ, the code wins.
 
 ---
 
@@ -42,9 +42,10 @@ This document is the architectural index, navigation map, and modification handb
 - **Player Backend**: `libmpv` is the sole video player engine, loaded dynamically at runtime (`libmpv-2.dll` on Windows, `.so.2` on Linux, `.dylib` on macOS).
 - **Decoupled One-Way Flow**: `ui -> services -> traits <- implementations`. Concrete implementations are only wired in `app_shell`.
 - **Fault-Tolerant Resilience**: No unhandled panics (`unwrap`, `expect`, `panic!`, `indexing_slicing` denied). Fallible paths have explicit fallbacks or structured errors.
-- **Dual Application Frontends**:
-  1. `desktop_tauri`: Tauri v2 application shell hosting a React 18 + TypeScript + Vite + Tailwind CSS frontend with software-rendered libmpv frames over an HTML5 `<canvas>`.
-  2. `app_shell` / `ui_app`: Native desktop shell running an immediate-mode `egui` GUI with blurred glass shaders and embedded mpv textures.
+- **Application Frontend (this fork)**: `app_shell` / `ui_app` — native desktop shell with an immediate-mode `egui` GUI, blurred glass shaders and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
+- **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`check_and_pick`) for egui; wired from `ui_app` playback actions (replaces one-shot `StreamResolver::resolve` for open).
+- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare` and can open challenges in the system browser; cookie return is not fully wired yet.
+- **Legacy reference**: `archive/desktop_tauri` (former Tauri + React shell) is kept for porting remaining features; it is **not** a workspace member.
 
 ---
 
@@ -398,21 +399,17 @@ This document is the architectural index, navigation map, and modification handb
 - `scripts/setup_sidecar.ps1`:
   - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`.
   - Overlays `sidecar/cs-sidecar` and builds the sidecar distribution with JDK 21.
-- `scripts/run_tauri.ps1`:
-  - Starts the Vite frontend server on port `5173`.
-  - Sets `CS_DATA_DIR`, `CS_LIBMPV_PATH`, `CS_SIDECAR_HOME`, `CS_SIDECAR_JAVA_HOME`.
-  - Runs `cargo run -p desktop_tauri`.
 - `scripts/test_sidecar.ps1`:
   - Runs JUnit test suites for the Kotlin sidecar.
 - `scripts/record_sidecar_replies.py`:
   - Executes the JVM sidecar with CineStream extension and saves sanitized golden JSON responses to `crates/extension_runtime/tests/fixtures/sidecar_replies/`.
 
 - `scripts/build_release.ps1` (Windows PC):
-  - Builds `CloudStream_<ver>_x64-setup.exe` (NSIS installer) and `CloudStream_<ver>_x64_portable.exe` into `dist/` (`-Kind installer|portable`).
-  - Stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer resources or portable payload.
+ - Builds `CloudStream_<ver>_x64-setup.exe` (NSIS via `scripts/windows_installer.nsi`) and `CloudStream_<ver>_x64_portable.exe` into `dist/` (`-Kind installer|portable`).
+ - Compiles `app_shell` (`cloudstream.exe`); stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer payload or portable payload.
 - `scripts/check_file_lengths.py`: fails on a Rust file outside the tests over 300 lines (clippy only counts functions). Files that were already over are in `scripts/file_length_baseline.txt`: they may shrink, not grow, and their line must go once they are split. Tests: `scripts/check_file_lengths_test.py`.
 - `scripts/sign_release.sh`: writes `SHA256SUMS` for the release files in a folder, signs it with minisign (`MINISIGN_SECRET_KEY`/`_FILE`, `MINISIGN_PASSWORD`) and checks it against `crates/desktop_tauri/update_signing_key.pub`. The in-app updater refuses releases without it. Run by `release.yml` on tags; by hand see `docs/RELEASING.md`.
-- `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU (`--install-deps` installs the tools on Debian/Ubuntu).
+- `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU from `app_shell` (`cloudstream`); `--install-deps` installs egui/libmpv tools on Debian/Ubuntu (no Node/WebKit).
 - `scripts/vendor/vulkan/`: the vendored x64 Vulkan loader (`vulkan-1.dll`), its Apache-2.0 license and rebuild steps. libmpv imports it; PCs without a GPU driver have none.
 
 #### GitHub Actions (`.github/workflows/`)
@@ -723,11 +720,9 @@ just gates
 # Run all unit and integration tests across workspace
 cargo test --workspace
 
-# Run Tauri desktop app in dev mode (spins up Vite + Tauri)
-powershell -File scripts/run_tauri.ps1
-
-# Run native egui desktop shell
+# Run the egui desktop shell (product UI)
 cargo run -p app_shell
+# just run
 
 # Build the Kotlin JVM extension sidecar
 just sidecar
