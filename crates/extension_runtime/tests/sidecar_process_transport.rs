@@ -95,6 +95,31 @@ fn transport_retries_once_when_the_child_died_between_calls() {
 }
 
 #[test]
+fn concurrent_calls_after_the_child_exits_all_finish_without_hanging() {
+    use std::sync::{Arc, Barrier};
+    let transport = Arc::new(transport());
+    assert_eq!(
+        transport.call("reply_then_die", Value::Null, SHORT),
+        Ok(json!("bye"))
+    );
+    let barrier = Arc::new(Barrier::new(9));
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let transport = Arc::clone(&transport);
+        let barrier = Arc::clone(&barrier);
+        handles.push(std::thread::spawn(move || {
+            barrier.wait();
+            transport.call("ping", Value::Null, SHORT)
+        }));
+    }
+    barrier.wait();
+    for handle in handles {
+        let outcome = handle.join().expect("thread");
+        assert_eq!(outcome, Ok(json!("pong")));
+    }
+}
+
+#[test]
 fn missing_executable_is_reported_as_unavailable() {
     let transport = SidecarProcessTransport::new(SidecarLaunchConfig {
         program: "definitely-not-a-real-program".into(),

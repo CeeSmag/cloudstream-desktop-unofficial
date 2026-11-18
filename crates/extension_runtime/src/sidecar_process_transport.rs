@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
 use crate::rpc_message::encode_request;
-use crate::sidecar_process_kill::discard_running;
+use crate::sidecar_process_kill::{discard_running, take_if_exited};
 use crate::sidecar_process_start::{start_sidecar, RunningSidecar};
 use crate::{RpcTransport, SidecarLaunchConfig};
 
@@ -88,6 +88,9 @@ impl SidecarProcessTransport {
         slot: &mut Option<RunningSidecar>,
         request: &CallRequest<'_>,
     ) -> Result<Value, GatewayError> {
+        if take_if_exited(slot) {
+            self.pid.store(0, Ordering::SeqCst);
+        }
         if slot.is_none() {
             if self.closed.load(Ordering::SeqCst) {
                 return Err(GatewayError::Unavailable("the app is closing".to_owned()));
@@ -181,22 +184,17 @@ impl RpcTransport for SidecarProcessTransport {
     fn shutdown(&self) {
         self.closed.store(true, Ordering::SeqCst);
         let pid = self.pid.swap(0, Ordering::SeqCst);
-        if pid == 0 {
-            tracing::info!("closing: the sidecar was not running, nothing to stop");
-            return;
-        }
-        tracing::info!(
-            pid,
-            "closing: stopping the sidecar and everything it started"
-        );
-        crate::sidecar_process_kill::kill_process_tree(pid);
-        match self.running.try_lock() {
-            Ok(mut slot) => discard(&mut slot),
-            Err(_) => tracing::warn!(
+        if pid != 0 {
+            tracing::info!(
                 pid,
-                "closing: a call was still running; the sidecar was ended by its process id"
-            ),
+                "closing: stopping the sidecar and everything it started"
+            );
+            crate::sidecar_process_kill::kill_process_tree(pid);
+        } else {
+            tracing::info!("closing: the sidecar was not running, nothing to stop");
         }
+        // Block until any in-flight call releases the slot so the Child is always reaped.
+        discard(&mut self.lock_running());
     }
 
     fn extend_call_deadline(&self, extra: Duration) {

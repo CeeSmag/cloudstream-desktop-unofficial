@@ -9,6 +9,45 @@ use crate::sidecar_process_start::RunningSidecar;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// If the child has already exited, reaps it and clears `slot`. Returns whether the slot was cleared.
+#[cfg(not(windows))]
+pub(crate) fn take_if_exited(slot: &mut Option<RunningSidecar>) -> bool {
+    let Some(running) = slot.as_mut() else {
+        return false;
+    };
+    let exited = match running.child.try_wait() {
+        Ok(Some(status)) => {
+            tracing::warn!(
+                pid = running.pid,
+                ?status,
+                "sidecar process exited on its own; reaping"
+            );
+            true
+        }
+        Ok(None) => false,
+        Err(error) => {
+            tracing::warn!(pid = running.pid, %error, "could not poll sidecar process; discarding");
+            true
+        }
+    };
+    if exited {
+        discard_running_slot(slot);
+    }
+    exited
+}
+
+#[cfg(windows)]
+pub(crate) fn take_if_exited(slot: &mut Option<RunningSidecar>) -> bool {
+    let _ = slot;
+    false
+}
+
+fn discard_running_slot(slot: &mut Option<RunningSidecar>) {
+    if let Some(mut running) = slot.take() {
+        discard_running(&mut running);
+    }
+}
+
 /// Kills the process tree for a running sidecar and drops its handles.
 #[tracing::instrument(level = "debug", skip_all)]
 pub(crate) fn discard_running(running: &mut RunningSidecar) {
