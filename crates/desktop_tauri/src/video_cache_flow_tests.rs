@@ -50,7 +50,7 @@ fn calls(rig: &Rig) -> Vec<String> {
 }
 
 #[test]
-fn a_video_left_waits_paused_with_half_the_cache_and_opening_it_again_plays_on() {
+fn a_video_left_waits_paused_with_zero_ahead_cache_and_opening_it_again_plays_on() {
     let (rig, background) = playing_video();
     let playback = &rig.services.playback;
     calls(&rig);
@@ -58,7 +58,7 @@ fn a_video_left_waits_paused_with_half_the_cache_and_opening_it_again_plays_on()
     leave_player(&rig.sources, playback, two_gb()).expect("left");
     assert_eq!(
         calls(&rig),
-        ["paused true", &format!("cache {} {}", 768 * MB, 256 * MB)]
+        ["paused true", &format!("cache {} {}", 0, 256 * MB)]
     );
     assert!(
         rig.sources.session().snapshot().is_some(),
