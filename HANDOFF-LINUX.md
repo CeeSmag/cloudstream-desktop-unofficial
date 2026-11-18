@@ -17,7 +17,7 @@ Match the **threat model and fail-closed posture** Windows already has for produ
 | One JVM per `.cs3` | Yes (`PluginWorkerPool`) | Yes (same code) | Keep |
 | Bytecode / classloader sandbox | Yes (Kotlin) | Yes (same) | Keep |
 | Install download gates + path jail | Yes | Yes | Keep |
-| Memory cap on the process tree | Job Object **1536 MB** | None (`-Xmx512m` only) | Cap ~1536 MB, fail closed |
+| Memory cap on the process tree | Job Object **1536 MB** (commit) | None (`-Xmx512m` only) | `RLIMIT_AS` **4096 MB** (virtual; + CCS 256m), fail closed |
 | Kill whole tree when worker drops | Job kill-on-close + `taskkill /T` | `kill -KILL` on one PID | Process-group / PDEATHSIG; reliable |
 | Filesystem jail | AppContainer ACLs + optional JDK mirror | Full user FS (as app user) | Restrict to needed paths |
 | Network | Allowed (`internetClient`) | Allowed | **Keep allowed** (plugins need HTTPS) |
