@@ -81,6 +81,20 @@ fn crashing_child_yields_transport_error_then_recovers() {
 }
 
 #[test]
+fn transport_retries_once_when_the_child_died_between_calls() {
+    let transport = transport();
+    assert_eq!(
+        transport.call("reply_then_die", Value::Null, SHORT),
+        Ok(json!("bye"))
+    );
+    // The child is gone; the next call must restart inside `call` and still succeed.
+    assert_eq!(
+        transport.call("ping", Value::Null, SHORT),
+        Ok(json!("pong"))
+    );
+}
+
+#[test]
 fn missing_executable_is_reported_as_unavailable() {
     let transport = SidecarProcessTransport::new(SidecarLaunchConfig {
         program: "definitely-not-a-real-program".into(),

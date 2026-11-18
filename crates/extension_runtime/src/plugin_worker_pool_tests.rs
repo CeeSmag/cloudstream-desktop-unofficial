@@ -21,6 +21,7 @@ struct ScriptedWorker {
     extract_reply: Mutex<Option<PlayableLinks>>,
     extract_calls: Mutex<u32>,
     repos: Mutex<Vec<DiscoveredRepository>>,
+    repos_fail: bool,
     shutdowns: Arc<AtomicUsize>,
     load_fail: bool,
 }
@@ -34,7 +35,22 @@ impl ScriptedWorker {
             extract_reply: Mutex::new(None),
             extract_calls: Mutex::new(0),
             repos: Mutex::new(Vec::new()),
+            repos_fail: false,
             shutdowns: Arc::new(AtomicUsize::new(0)),
+            load_fail: false,
+        })
+    }
+
+    fn with_repos_fail(self: &Arc<Self>) -> Arc<Self> {
+        Arc::new(Self {
+            label: self.label.clone(),
+            providers: self.providers.clone(),
+            search_hits: Mutex::new(0),
+            extract_reply: Mutex::new(None),
+            extract_calls: Mutex::new(0),
+            repos: Mutex::new(Vec::new()),
+            repos_fail: true,
+            shutdowns: Arc::clone(&self.shutdowns),
             load_fail: false,
         })
     }
@@ -156,6 +172,9 @@ impl ProviderGateway for ScriptedWorker {
     }
 
     fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
+        if self.repos_fail {
+            return Err(GatewayError::Transport("worker pipe broken".into()));
+        }
         Ok(std::mem::take(
             &mut *self.repos.lock().unwrap_or_else(PoisonError::into_inner),
         ))
@@ -257,6 +276,18 @@ fn take_added_repositories_merges_every_worker() {
 }
 
 #[test]
+fn take_added_repositories_skips_a_failed_worker() {
+    let good = ScriptedWorker::ok("A", &["Alpha"]).with_repo("One", "https://one/repo.json");
+    let bad = ScriptedWorker::ok("B", &["Beta"]).with_repos_fail();
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![bad, good]));
+    pool.load_extension(Path::new("/b.cs3"), false).expect("b");
+    pool.load_extension(Path::new("/a.cs3"), false).expect("a");
+    let found = pool.take_added_repositories().expect("repos");
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].name, "One");
+}
+
+#[test]
 fn start_link_search_routes_poll_to_the_same_worker() {
     let a = ScriptedWorker::ok("A", &["Alpha"]);
     let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![a]));
@@ -334,6 +365,7 @@ fn failed_load_does_not_leave_a_routed_worker() {
         extract_reply: Mutex::new(None),
         extract_calls: Mutex::new(0),
         repos: Mutex::new(Vec::new()),
+        repos_fail: false,
         shutdowns: Arc::new(AtomicUsize::new(0)),
         load_fail: true,
     });

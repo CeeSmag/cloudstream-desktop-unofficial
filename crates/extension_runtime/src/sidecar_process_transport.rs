@@ -81,15 +81,17 @@ impl SidecarProcessTransport {
     fn lock_running(&self) -> MutexGuard<'_, Option<RunningSidecar>> {
         self.running.lock().unwrap_or_else(PoisonError::into_inner)
     }
-}
 
-impl RpcTransport for SidecarProcessTransport {
-    fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, GatewayError> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(GatewayError::Unavailable("the app is closing".to_owned()));
-        }
-        let mut slot = self.lock_running();
+    /// Starts the sidecar if needed, then runs one JSON-lines exchange.
+    fn run_call(
+        &self,
+        slot: &mut Option<RunningSidecar>,
+        request: &CallRequest<'_>,
+    ) -> Result<Value, GatewayError> {
         if slot.is_none() {
+            if self.closed.load(Ordering::SeqCst) {
+                return Err(GatewayError::Unavailable("the app is closing".to_owned()));
+            }
             let mut fresh = start_sidecar(&self.config)?;
             self.pid.store(fresh.pid, Ordering::SeqCst);
             self.replay_startup_calls(&mut fresh);
@@ -98,24 +100,82 @@ impl RpcTransport for SidecarProcessTransport {
         let id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let pending = PendingCall {
             id,
+            method: request.method,
+            params: request.params,
+            timeout: request.timeout,
+            hold: &self.hold,
+        };
+        match slot.as_mut() {
+            Some(running) => exchange(running, &pending),
+            None => Err(GatewayError::Unavailable("sidecar vanished".to_owned())),
+        }
+    }
+
+    fn discard_slot(&self, slot: &mut Option<RunningSidecar>) {
+        discard(slot);
+        self.pid.store(0, Ordering::SeqCst);
+    }
+
+    /// After a Transport death: discard, restart once, and re-run. Timeouts stay unretried.
+    fn retry_after_transport(
+        &self,
+        slot: &mut Option<RunningSidecar>,
+        request: &CallRequest<'_>,
+        error: GatewayError,
+    ) -> Result<Value, GatewayError> {
+        tracing::warn!(
+            method = request.method,
+            %error,
+            "discarding sidecar after transport failure; retrying once"
+        );
+        self.discard_slot(slot);
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(error);
+        }
+        let retry = self.run_call(slot, request);
+        if matches!(
+            retry,
+            Err(GatewayError::Timeout { .. } | GatewayError::Transport(_))
+        ) {
+            tracing::warn!(
+                method = request.method,
+                "discarding sidecar process after failed retry"
+            );
+            self.discard_slot(slot);
+        }
+        retry
+    }
+}
+
+/// Method, params, and deadline for one sidecar exchange.
+struct CallRequest<'a> {
+    method: &'a str,
+    params: &'a Value,
+    timeout: Duration,
+}
+
+impl RpcTransport for SidecarProcessTransport {
+    fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, GatewayError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(GatewayError::Unavailable("the app is closing".to_owned()));
+        }
+        let request = CallRequest {
             method,
             params: &params,
             timeout,
-            hold: &self.hold,
         };
-        let outcome = match slot.as_mut() {
-            Some(running) => exchange(running, &pending),
-            None => Err(GatewayError::Unavailable("sidecar vanished".to_owned())),
-        };
-        if matches!(
-            outcome,
-            Err(GatewayError::Timeout { .. } | GatewayError::Transport(_))
-        ) {
-            tracing::warn!(method, "discarding sidecar process after failed call");
-            discard(&mut slot);
-            self.pid.store(0, Ordering::SeqCst);
+        let mut slot = self.lock_running();
+        match self.run_call(&mut slot, &request) {
+            Err(error) if matches!(error, GatewayError::Transport(_)) => {
+                self.retry_after_transport(&mut slot, &request, error)
+            }
+            Err(error) if matches!(error, GatewayError::Timeout { .. }) => {
+                tracing::warn!(method, "discarding sidecar process after failed call");
+                self.discard_slot(&mut slot);
+                Err(error)
+            }
+            other => other,
         }
-        outcome
     }
 
     fn shutdown(&self) {

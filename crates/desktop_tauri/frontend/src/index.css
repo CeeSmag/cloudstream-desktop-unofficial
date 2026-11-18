@@ -16,6 +16,8 @@
   /* Fluid type scale: every rem-based size grows from small windows up to 4K displays. */
   html {
     font-size: clamp(13px, 0.4vw + 11px, 24px);
+    /* Native <select> popups follow the OS form palette unless this is set. */
+    color-scheme: dark;
   }
 
   body {

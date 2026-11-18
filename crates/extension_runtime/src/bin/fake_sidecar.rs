@@ -1,8 +1,9 @@
 //! Test double for the JVM sidecar: speaks the same JSON-lines protocol with scripted behavior.
 //! Methods: `ping`, `echo` (returns params), `fail` (error reply), `noise` (junk line then reply),
-//! `hang` (never replies), `crash` (exits), `handled` (how many requests this process has seen),
-//! and the streaming link search (`start_link_search` with data `"<count>,<gap ms>,<tail ms>"`,
-//! `poll_link_search`, `cancel_link_search`, `search_stats`).
+//! `hang` (never replies), `crash` (exits), `reply_then_die` (replies then exits),
+//! `handled` (how many requests this process has seen), and the streaming link search
+//! (`start_link_search` with data `"<count>,<gap ms>,<tail ms>"`, `poll_link_search`,
+//! `cancel_link_search`, `search_stats`).
 #![forbid(unsafe_code)]
 
 use std::io::{BufRead, Write};
@@ -73,6 +74,36 @@ fn search_reply(
     }
 }
 
+/// Scripted process exits and noise; returns `true` when the match arm already wrote.
+fn special_method(method: &str, request: &Value, out: &mut impl Write) -> bool {
+    match method {
+        "hang" => {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            true
+        }
+        "crash" => std::process::exit(3),
+        "reply_then_die" => {
+            let _ = writeln!(
+                out,
+                "{}",
+                json!({"id": field(request, "id"), "result": "bye"})
+            );
+            let _ = out.flush();
+            std::process::exit(0);
+        }
+        "noise" => {
+            let _ = writeln!(out, "[main] INFO this is not json");
+            let _ = writeln!(
+                out,
+                "{}",
+                json!({"id": field(request, "id"), "result": "after-noise"})
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 fn main() {
     let searches = FakeLinkSearches::new(SearchScript::from_data);
     let stdin = std::io::stdin();
@@ -88,24 +119,12 @@ fn main() {
             .to_owned();
         handled += 1;
         let mut out = stdout.lock();
-        match method.as_str() {
-            "hang" => std::thread::sleep(std::time::Duration::from_secs(60)),
-            "crash" => std::process::exit(3),
-            "noise" => {
-                let _ = writeln!(out, "[main] INFO this is not json");
-                let _ = writeln!(
-                    out,
-                    "{}",
-                    json!({"id": field(&request, "id"), "result": "after-noise"})
-                );
-            }
-            other => {
-                let (id, params) = (field(&request, "id"), field(&request, "params"));
-                let reply = search_reply(other, &id, &params, &searches)
-                    .or_else(|| reply_for(other, &id, &params, handled));
-                if let Some(reply) = reply {
-                    let _ = writeln!(out, "{reply}");
-                }
+        if !special_method(&method, &request, &mut out) {
+            let (id, params) = (field(&request, "id"), field(&request, "params"));
+            let reply = search_reply(&method, &id, &params, &searches)
+                .or_else(|| reply_for(&method, &id, &params, handled));
+            if let Some(reply) = reply {
+                let _ = writeln!(out, "{reply}");
             }
         }
         let _ = out.flush();

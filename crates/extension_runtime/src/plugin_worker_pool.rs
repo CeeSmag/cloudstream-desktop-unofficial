@@ -174,7 +174,15 @@ impl ProviderGateway for PluginWorkerPool {
     fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
         let mut all = Vec::new();
         for worker in self.all_workers() {
-            all.extend(worker.take_added_repositories()?);
+            match worker.take_added_repositories() {
+                Ok(found) => all.extend(found),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "skipping a plugin worker that failed take_added_repositories"
+                    );
+                }
+            }
         }
         Ok(all)
     }

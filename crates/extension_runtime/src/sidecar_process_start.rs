@@ -158,11 +158,12 @@ fn start_linux(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayEr
 }
 
 #[cfg(target_os = "linux")]
-fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
+fn sandboxed_command(
+    config: &SidecarLaunchConfig,
+) -> Result<(std::process::Command, i32), GatewayError> {
     use std::process::{Command, Stdio};
 
     use crate::sidecar_linux_landlock::{attach_to_command, ensure_supported};
-    use crate::sidecar_linux_limits::{sandbox_unavailable, LinuxGuards, MEMORY_LIMIT_BYTES};
     use crate::sidecar_linux_paths::SandboxPaths;
 
     let abi = ensure_supported()?;
@@ -171,10 +172,20 @@ fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, Gatew
     command
         .args(&config.args)
         .envs(config.environment.iter().map(|(k, v)| (k, v)))
+        // Landlock has no X11 socket; clear DISPLAY so AWT never tries `:0`.
+        .env_remove("DISPLAY")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     attach_to_command(&mut command, paths);
+    Ok((command, abi))
+}
+
+#[cfg(target_os = "linux")]
+fn start_sandboxed(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
+    use crate::sidecar_linux_limits::{sandbox_unavailable, LinuxGuards, MEMORY_LIMIT_BYTES};
+
+    let (mut command, abi) = sandboxed_command(config)?;
     let mut child = command.spawn().map_err(|source| {
         sandbox_unavailable(format!("spawn {}: {source}", config.program.display()))
     })?;

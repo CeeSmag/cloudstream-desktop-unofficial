@@ -10,6 +10,9 @@ const SIDECAR_JAVA_HOME_VARIABLE: &str = "CS_SIDECAR_JAVA_HOME";
 const SIDECAR_MAX_HEAP_OPTION: &str = "-Xmx512m";
 /// Shrinks HotSpot's default 1 GiB compressed-class reservation so Linux `RLIMIT_AS` can apply.
 const SIDECAR_COMPRESSED_CLASS_OPTION: &str = "-XX:CompressedClassSpaceSize=256m";
+/// Plugins (e.g. StreamPlay) use Swing dispatchers; without this Linux tries X11 and dies.
+#[cfg(target_os = "linux")]
+const SIDECAR_HEADLESS_OPTION: &str = "-Djava.awt.headless=true";
 
 /// How to start the sidecar process.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +51,8 @@ impl SidecarLaunchConfig {
         self.add_java_option(SIDECAR_MAX_HEAP_OPTION);
         // Linux Landlock path also sets RLIMIT_AS; without this the JVM reserves 1 GiB CCS and dies.
         self.add_java_option(SIDECAR_COMPRESSED_CLASS_OPTION);
+        #[cfg(target_os = "linux")]
+        self.add_java_option(SIDECAR_HEADLESS_OPTION);
         // Everything the sidecar prints is read as UTF-8, whatever the Windows code page is.
         self.add_java_option(
             "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dfile.encoding=UTF-8",
@@ -121,6 +126,11 @@ mod tests {
         assert!(
             value.contains("-XX:CompressedClassSpaceSize=256m"),
             "compressed class space must be capped for Linux RLIMIT_AS"
+        );
+        assert_eq!(
+            value.contains("-Djava.awt.headless=true"),
+            cfg!(target_os = "linux"),
+            "headless AWT only on Linux (Windows keeps a real toolkit)"
         );
         assert!(
             value.contains("PreferencesFactory=sidecar.NoOpPreferencesFactory"),
