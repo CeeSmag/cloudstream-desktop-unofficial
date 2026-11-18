@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
 use extension_api::ProviderGateway;
-use extension_repo::{ExtensionInstaller, HttpFetcher};
+use extension_repo::{plugin_path_in, ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
 
 use crate::clock::Clock;
@@ -85,7 +85,7 @@ impl ExtensionService {
     /// without restarting the app.
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn uninstall(&self, extension: &InstalledExtension) -> Result<(), ServiceError> {
-        let path = self.installer.extensions_dir().join(&extension.file_name);
+        let path = plugin_path_in(self.installer.extensions_dir(), &extension.file_name)?;
         if let Err(error) = self.gateway.unload_extension(&path) {
             tracing::warn!(
                 extension = %extension.file_name,
@@ -203,7 +203,20 @@ impl ExtensionService {
                 total,
                 current: extension.internal_name.clone(),
             });
-            let path = self.installer.extensions_dir().join(&extension.file_name);
+            let path = match plugin_path_in(self.installer.extensions_dir(), &extension.file_name) {
+                Ok(path) => path,
+                Err(error) => {
+                    tracing::warn!(
+                        extension = %extension.file_name,
+                        %error,
+                        "extension file name failed the path jail"
+                    );
+                    report
+                        .failures
+                        .push((extension.file_name, error.to_string()));
+                    continue;
+                }
+            };
             match self.load_one(&path, extension.trusted) {
                 Ok(mut providers) => report.providers.append(&mut providers),
                 Err(error) => {

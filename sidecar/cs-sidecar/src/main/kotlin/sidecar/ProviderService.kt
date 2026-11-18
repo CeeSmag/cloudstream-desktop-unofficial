@@ -47,8 +47,7 @@ class ProviderService {
 
     fun loadExtension(path: String, trusted: Boolean): List<ProviderInfo> {
         SidecarLog.debug { "loadExtension path=$path trusted=$trusted" }
-        val file = File(path)
-        require(file.isFile) { "extension file not found: $path" }
+        val file = ExtensionPathJail.requireInsideExtensions(path)
         if (trusted) ExtensionLoader.addTrusted(file)
         val before = APIHolder.allProviders.toSet()
         ExtensionLoader.loadAndInit(file)
@@ -67,7 +66,8 @@ class ProviderService {
     /** Drops a loaded plugin so the same path can register providers again on the next load. */
     fun unloadExtension(path: String) {
         SidecarLog.info("unloadExtension path=$path")
-        ExtensionLoader.unloadPlugin(path)
+        val file = ExtensionPathJail.requireInsideExtensions(path)
+        ExtensionLoader.unloadPlugin(file.absolutePath)
     }
 
     private fun providersOwnedBy(file: File): List<MainAPI> {

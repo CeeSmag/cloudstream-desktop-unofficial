@@ -44,6 +44,16 @@ fn listing(name: &str) -> PluginListing {
 }
 
 #[test]
+fn uninstall_rejects_unsafe_stored_file_names() {
+    let (service, _, dir) = setup("jail");
+    service.install(&listing("Good"), REPO).expect("installs");
+    let mut record = service.installed().expect("list").remove(0);
+    record.file_name = "../Good.cs3".into();
+    assert!(service.uninstall(&record).is_err());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn install_downloads_records_and_loads_untrusted() {
     let (service, gateway, dir) = setup("install");
     let providers = service.install(&listing("Good"), REPO).expect("installs");

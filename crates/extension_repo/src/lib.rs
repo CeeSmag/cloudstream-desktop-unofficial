@@ -16,3 +16,4 @@ pub use http_probe::{HttpProbe, ProbeResponse, UreqProbe};
 pub use repo_error::RepoError;
 pub use repository_client::RepositoryClient;
 pub use repository_manifest::RepositoryManifest;
+pub use safe_file_name::{plugin_file_name, plugin_path_in, validate_installed_file_name};

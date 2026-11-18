@@ -219,12 +219,31 @@ class ExtensionCompatibilityTest {
     }
 
     @Test
+    fun `loadExtension refuses paths outside the extensions folder`() {
+        val data = createTempDir(prefix = "cs-path-jail-data")
+        val outside = createTempDir(prefix = "cs-path-jail-outside")
+        try {
+            System.setProperty("cloudstream.data.dir", data.absolutePath)
+            File(data, "extensions").mkdirs()
+            val decoy = File(outside, "Evil.cs3").apply { writeText("PK") }
+            assertFailsWith<IllegalArgumentException> {
+                ProviderService().loadExtension(decoy.absolutePath, trusted = false)
+            }
+        } finally {
+            data.deleteRecursively()
+            outside.deleteRecursively()
+            System.clearProperty("cloudstream.data.dir")
+        }
+    }
+
+    @Test
     fun `StreamPlay cs3 loads untrusted without Disallowed ServerSocket`() {
         val cs3 = File("""C:\cs3d\appdata2\extensions\StreamPlay.cs3""")
         if (!cs3.isFile) {
             // Dev machine without the plugin: policy/stub tests above still cover the sandbox.
             return
         }
+        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2""")
         try {
             val providers = ProviderService().loadExtension(cs3.absolutePath, trusted = false)
             assertTrue(providers.isNotEmpty(), "StreamPlay must register at least one provider")
@@ -237,6 +256,7 @@ class ExtensionCompatibilityTest {
     fun `unload then load registers StreamPlay providers again`() {
         val cs3 = File("""C:\cs3d\appdata2\extensions\StreamPlay.cs3""")
         if (!cs3.isFile) return
+        System.setProperty("cloudstream.data.dir", """C:\cs3d\appdata2""")
         val service = ProviderService()
         service.unloadExtension(cs3.absolutePath)
         val first = service.loadExtension(cs3.absolutePath, trusted = false)
