@@ -55,7 +55,7 @@ fn a_video_left_waits_paused_with_zero_ahead_cache_and_opening_it_again_plays_on
     let playback = &rig.services.playback;
     calls(&rig);
 
-    leave_player(&rig.sources, playback, two_gb()).expect("left");
+    leave_player(&rig.sources, playback, two_gb(), true).expect("left");
     assert_eq!(
         calls(&rig),
         ["paused true", &format!("cache {} {}", 0, 256 * MB)]
@@ -87,7 +87,7 @@ fn a_video_left_waits_paused_with_zero_ahead_cache_and_opening_it_again_plays_on
 #[test]
 fn another_video_is_not_taken_for_the_one_that_waits() {
     let (rig, background) = playing_video();
-    leave_player(&rig.sources, &rig.services.playback, two_gb()).expect("left");
+    leave_player(&rig.sources, &rig.services.playback, two_gb(), true).expect("left");
     let other = PlaybackItem {
         media_key: "other".to_owned(),
         ..the_video()
@@ -106,7 +106,7 @@ fn a_video_that_ended_is_stopped_on_leaving_and_opened_again_afterwards() {
     *rig.player.reported.lock().expect("lock") = Some(ended());
     calls(&rig);
 
-    leave_player(&rig.sources, &rig.services.playback, two_gb()).expect("left");
+    leave_player(&rig.sources, &rig.services.playback, two_gb(), true).expect("left");
 
     assert!(
         rig.sources.session().snapshot().is_none(),
@@ -123,12 +123,29 @@ fn a_video_that_ended_is_stopped_on_leaving_and_opened_again_afterwards() {
 #[test]
 fn a_video_whose_stream_is_gone_is_opened_again_rather_than_resumed() {
     let (rig, background) = playing_video();
-    leave_player(&rig.sources, &rig.services.playback, two_gb()).expect("left");
+    leave_player(&rig.sources, &rig.services.playback, two_gb(), true).expect("left");
     *rig.player.reported.lock().expect("lock") = None; // idle: mpv lost the stream meanwhile
     assert_eq!(
         come_back_to(&rig.sources, &rig.services.playback, &the_video(), two_gb()),
         Ok(false)
     );
     rig.sources.close();
+    join_within(background, TIME_LIMIT);
+}
+
+#[test]
+fn leaving_with_keep_ready_off_stops_the_stream() {
+    let (rig, background) = playing_video();
+    calls(&rig);
+    leave_player(&rig.sources, &rig.services.playback, two_gb(), false).expect("left");
+    assert!(
+        rig.sources.session().snapshot().is_none(),
+        "sources are dropped"
+    );
+    assert!(
+        calls(&rig).iter().any(|call| call == "stop"),
+        "player stopped: {:?}",
+        calls(&rig)
+    );
     join_within(background, TIME_LIMIT);
 }

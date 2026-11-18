@@ -46,6 +46,7 @@ describe('sourceRow', () => {
       autoplay_next: true,
       skip_lookup: true,
   stream_proxy: true,
+  keep_video_ready: true,
       languages: [
         { code: 'eng', name: 'English', codes: ['eng', 'en'] },
         { code: 'ara', name: 'Arabic', codes: ['ara', 'ar'] },

@@ -106,7 +106,7 @@ fn check_queue_stops_early_when_the_answers_are_no_longer_wanted() {
     });
 
     assert!(
-        seen.load(Ordering::SeqCst) <= WORKERS,
+        seen.load(Ordering::SeqCst) <= MAX_WORKERS,
         "kept going after being told to stop"
     );
 }
@@ -189,4 +189,12 @@ fn check_queue_reports_every_stream_under_the_index_the_caller_gave() {
         .map(|(i, _)| *i)
         .collect();
     assert_eq!(working, [10]);
+}
+
+#[test]
+fn check_worker_count_stays_between_two_and_twelve() {
+    assert_eq!(check_worker_count(1), 2);
+    assert_eq!(check_worker_count(4), 4);
+    assert_eq!(check_worker_count(12), 12);
+    assert_eq!(check_worker_count(64), 12);
 }

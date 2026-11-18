@@ -8,6 +8,7 @@ mod clock;
 mod extension_load_report;
 mod extension_resident;
 mod extension_service;
+mod keep_video_ready_setting;
 mod language_settings;
 mod library_service;
 mod link_search;
@@ -51,7 +52,7 @@ pub use request_router::RequestRouter;
 pub use routed_player::RoutedPlayer;
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;
-pub use stream_checker::{LinkHealth, StreamChecker};
+pub use stream_checker::{check_worker_count, LinkHealth, StreamChecker};
 pub use stream_label::{describe_link, full_label, source_label, stream_host, stream_kind};
 pub use stream_resolver::{
     is_audio_only_url, link_rank, playable_links_best_first, StreamResolver,

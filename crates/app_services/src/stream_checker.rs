@@ -11,8 +11,15 @@ use extension_repo::{HttpProbe, ProbeResponse};
 use crate::subtitle_scan::subtitle_languages;
 use crate::CheckQueue;
 
-/// How many streams are asked at the same time.
-const WORKERS: usize = 12;
+/// Upper bound on parallel stream checks.
+const MAX_WORKERS: usize = 12;
+/// Floor so a single-core reading still overlaps a little I/O.
+const MIN_WORKERS: usize = 2;
+
+/// How many check workers to run for `available_parallelism` (clamped to 2…12).
+pub fn check_worker_count(parallelism: usize) -> usize {
+    parallelism.clamp(MIN_WORKERS, MAX_WORKERS)
+}
 /// Sent when a link names no `User-Agent`; mpv itself identifies as libmpv.
 const DEFAULT_USER_AGENT: &str = "libmpv";
 
@@ -72,8 +79,13 @@ impl StreamChecker {
         keep_going: &(dyn Fn() -> bool + Sync),
         on_result: &(dyn Fn(usize, LinkHealth) -> bool + Sync),
     ) {
+        let workers = check_worker_count(
+            std::thread::available_parallelism()
+                .map(std::num::NonZeroUsize::get)
+                .unwrap_or(MIN_WORKERS),
+        );
         std::thread::scope(|scope| {
-            for _ in 0..WORKERS {
+            for _ in 0..workers {
                 scope.spawn(|| {
                     while keep_going() {
                         let Some((index, link)) = queue.next() else {

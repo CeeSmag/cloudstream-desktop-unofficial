@@ -72,8 +72,10 @@ pub(crate) fn configure(
         }
     } else if embedded {
         // `vo=libmpv` renders into memory through the render API (no mpv window); `sw-fast`
-        // trades a little quality for speed on the CPU renderer.
+        // trades a little quality for speed on the CPU renderer. `auto-safe` avoids the extra
+        // copy surface that `auto-copy-safe` (from COMMON) keeps for zero-copy paths.
         handle.set_option("vo", "libmpv")?;
+        handle.set_option("hwdec", "auto-safe")?;
         if let Err(error) = handle.set_option("sw-fast", "yes") {
             tracing::debug!(%error, "this libmpv has no sw-fast option");
         }
@@ -118,6 +120,26 @@ mod tests {
         };
         assert_eq!(value("force-window"), Some("yes"));
         assert_eq!(value("vo"), Some("gpu"));
+    }
+
+    #[test]
+    fn embedded_canvas_path_overrides_hwdec_to_auto_safe() {
+        // COMMON still lists auto-copy-safe for non-embedded paths; configure() then sets
+        // auto-safe when embedded so the software canvas path does not keep a second surface.
+        let value = |name: &str| {
+            COMMON
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("hwdec"), Some("auto-copy-safe"));
+        assert_eq!(
+            WINDOW_OPTIONS
+                .iter()
+                .find(|(option, _)| *option == "hwdec")
+                .map(|(_, value)| *value),
+            Some("auto-safe")
+        );
     }
 
     #[test]

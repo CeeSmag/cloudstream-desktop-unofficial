@@ -97,22 +97,33 @@ pub async fn leave_playback(
         .playback
         .as_ref()
         .ok_or_else(|| "Playback service unavailable".to_owned())?;
-    leave_player(sources.inner(), playback, video_cache(&services.settings))
+    let keep_ready = services.settings.keep_video_ready().unwrap_or(true);
+    leave_player(
+        sources.inner(),
+        playback,
+        video_cache(&services.settings),
+        keep_ready,
+    )
 }
 
-/// What [`leave_playback`] does, without the window.
+/// What [`leave_playback`] does, without the window. When `keep_ready` is false the stream is
+/// stopped instead of waiting paused (frees RAM on low-end PCs).
 pub(crate) fn leave_player(
     sources: &SourceManager,
     playback: &PlaybackService,
     cache: VideoCache,
+    keep_ready: bool,
 ) -> Result<(), String> {
-    let away = cache.while_away();
-    let waits = holds_a_stream(&playback.tick().state)
-        && sources.leave_with(|| playback.leave(away).map_err(|error| error.to_string()))?;
-    if !waits {
-        sources.close();
-        playback.stop().map_err(|error| error.to_string())?;
+    if keep_ready {
+        let away = cache.while_away();
+        let waits = holds_a_stream(&playback.tick().state)
+            && sources.leave_with(|| playback.leave(away).map_err(|error| error.to_string()))?;
+        if waits {
+            return Ok(());
+        }
     }
+    sources.close();
+    playback.stop().map_err(|error| error.to_string())?;
     Ok(())
 }
 

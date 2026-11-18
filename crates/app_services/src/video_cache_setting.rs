@@ -8,7 +8,7 @@ use crate::{ServiceError, SettingsService};
 const SIZE_KEY: &str = "video_cache_mb";
 const AHEAD_KEY: &str = "video_cache_ahead_percent";
 /// The sizes (in MB) the viewer can choose.
-pub const VIDEO_CACHE_SIZES_MB: [u32; 5] = [256, 512, 1024, 2048, 4096];
+pub const VIDEO_CACHE_SIZES_MB: [u32; 6] = [128, 256, 512, 1024, 2048, 4096];
 /// The ahead shares (in percent) the viewer can choose.
 pub const VIDEO_CACHE_AHEAD_PERCENTS: [u8; 4] = [25, 50, 75, 90];
 /// The size until the viewer chooses one.

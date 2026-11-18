@@ -35,6 +35,8 @@ pub struct PreferencesDto {
     pub skip_lookup: bool,
     /// Whether HLS streams go through the local stream proxy.
     pub stream_proxy: bool,
+    /// Whether leaving the player keeps the stream paused in memory.
+    pub keep_video_ready: bool,
     /// Every language that can be chosen, English first.
     pub languages: Vec<LanguageDto>,
 }
@@ -145,7 +147,8 @@ pub async fn set_auto_subtitles(
     describe(&services.settings)
 }
 
-/// Switches one playback option on or off: `autoplay_next`, `skip_lookup` or `stream_proxy`.
+/// Switches one playback option on or off: `autoplay_next`, `skip_lookup`, `stream_proxy` or
+/// `keep_video_ready`.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, fields(option = ?option, enabled = ?enabled), err)]
 pub async fn set_playback_option(
@@ -163,6 +166,7 @@ fn apply_option(settings: &SettingsService, option: &str, enabled: bool) -> Resu
         "autoplay_next" => settings.set_autoplay_next(enabled),
         "skip_lookup" => settings.set_skip_lookup(enabled),
         "stream_proxy" => settings.set_stream_proxy(enabled),
+        "keep_video_ready" => settings.set_keep_video_ready(enabled),
         other => return Err(format!("Unknown playback option: {other}")),
     }
     .map_err(|error| error.to_string())
@@ -186,6 +190,7 @@ fn describe(settings: &SettingsService) -> Result<PreferencesDto, String> {
         autoplay_next: settings.autoplay_next().unwrap_or(true),
         skip_lookup: settings.skip_lookup().unwrap_or(true),
         stream_proxy: settings.stream_proxy().unwrap_or(true),
+        keep_video_ready: settings.keep_video_ready().unwrap_or(true),
         preferred_audio: preferred.map(|language| language.code().to_owned()),
         preferred_subtitles: subtitles
             .iter()
@@ -256,8 +261,14 @@ mod tests {
         apply_option(&settings, "autoplay_next", false).expect("saves");
         apply_option(&settings, "skip_lookup", false).expect("saves");
         apply_option(&settings, "stream_proxy", false).expect("saves");
+        apply_option(&settings, "keep_video_ready", false).expect("saves");
         let described = describe(&settings).expect("describes");
-        assert!(!described.autoplay_next && !described.skip_lookup && !described.stream_proxy);
+        assert!(
+            !described.autoplay_next
+                && !described.skip_lookup
+                && !described.stream_proxy
+                && !described.keep_video_ready
+        );
         let refused = apply_option(&settings, "volume", false).expect_err("unknown");
         assert!(refused.contains("volume"), "{refused}");
     }

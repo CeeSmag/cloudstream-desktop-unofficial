@@ -77,6 +77,7 @@ impl VideoPlayer for RecordingPlayer {
         Ok(())
     }
     fn stop(&self) -> Result<(), PlayerError> {
+        self.calls.lock().expect("lock").push("stop".to_owned());
         Ok(())
     }
     fn status(&self) -> PlaybackStatus {

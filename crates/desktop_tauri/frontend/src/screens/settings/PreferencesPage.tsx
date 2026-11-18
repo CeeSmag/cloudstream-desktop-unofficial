@@ -109,6 +109,22 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = ({ onError }) => 
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3 text-sm text-zinc-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={preferences?.keep_video_ready ?? true}
+            disabled={busy || preferences === null}
+            onChange={(event) => void choosePlaybackOption('keep_video_ready', event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Keep video ready when leaving
+            <span className="block text-xs text-zinc-400">
+              Leaving the player pauses the stream in memory so opening it again is instant. Switch it off on a
+              low-end PC to free that memory when you leave.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="p-4 sm:p-6 rounded-2xl glass-panel space-y-4">

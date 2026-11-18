@@ -13,6 +13,7 @@ const preferences = (preferred: string[]): Preferences => ({
   autoplay_next: true,
   skip_lookup: true,
   stream_proxy: true,
+  keep_video_ready: true,
   languages: [english, arabic, french],
 });
 
