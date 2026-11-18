@@ -168,17 +168,28 @@ impl ExtensionService {
         }
     }
 
-    /// Changes whether an extension is trusted; takes effect the next time it is loaded.
+    /// Changes whether an extension is trusted and reloads it so the new sandbox mode applies now.
     #[tracing::instrument(level = "debug", skip_all, fields(trusted = ?trusted), err)]
     pub fn set_trusted(
         &self,
         extension: &InstalledExtension,
         trusted: bool,
     ) -> Result<(), ServiceError> {
-        Ok(self.installed.upsert(&InstalledExtension {
+        let updated = InstalledExtension {
             trusted,
             ..extension.clone()
-        })?)
+        };
+        self.installed.upsert(&updated)?;
+        let path = plugin_path_in(self.installer.extensions_dir(), &updated.file_name)?;
+        if let Err(error) = self.gateway.unload_extension(&path) {
+            tracing::warn!(
+                extension = %updated.file_name,
+                %error,
+                "the extension runtime did not unload before the trust reload"
+            );
+        }
+        self.load_one(&path, trusted)?;
+        Ok(())
     }
 
     /// Loads every installed extension; one failing extension never blocks the others.

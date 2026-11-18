@@ -35,16 +35,16 @@ fn perform_extension_change(dispatcher: &Dispatcher, model: &mut AppModel, actio
                 "Cannot uninstall",
                 services.extensions.uninstall(&extension),
             );
-            model.notify(Notice::info(
-                "Extension uninstalled.",
-            ));
+            model.notify(Notice::info("Extension uninstalled."));
         }
         UiAction::SetTrusted { extension, trusted } => {
             let outcome = services.extensions.set_trusted(&extension, trusted);
             report(model, "Cannot change trust", outcome);
-            model.notify(Notice::info(
-                "Trust changes apply the next time the app starts.",
-            ));
+            model.notify(Notice::info(if trusted {
+                "Extension marked trusted and reloaded with wider access."
+            } else {
+                "Extension returned to the sandbox and reloaded."
+            }));
         }
         UiAction::SetProviderEnabled { provider, enabled } => {
             let outcome = services.settings.set_provider_enabled(&provider, enabled);

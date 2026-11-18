@@ -101,21 +101,18 @@ fn loading_reports_each_extension_and_a_final_done() {
 }
 
 #[test]
-fn trusting_an_extension_is_used_on_the_next_load() {
+fn trusting_an_extension_unloads_and_reloads_it_immediately() {
     let (service, gateway, dir) = setup("trust");
     service.install(&listing("Good"), REPO).expect("installs");
     let record = service.installed().expect("list").remove(0);
+    gateway.loaded_paths.lock().expect("lock").clear();
+    gateway.unloaded_paths.lock().expect("lock").clear();
     service.set_trusted(&record, true).expect("trust");
-    service.load_installed().expect("loads");
-    assert!(
-        gateway
-            .loaded_paths
-            .lock()
-            .expect("lock")
-            .last()
-            .expect("a load")
-            .1
-    );
+    assert_eq!(gateway.unloaded_paths.lock().expect("lock").len(), 1);
+    let loads = gateway.loaded_paths.lock().expect("lock");
+    assert_eq!(loads.len(), 1);
+    assert!(loads[0].1, "reload must use trusted=true");
+    assert!(service.installed().expect("list")[0].trusted);
     let _ = fs::remove_dir_all(dir);
 }
 

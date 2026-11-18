@@ -18,6 +18,7 @@ export const InstalledExtensionList: React.FC<InstalledExtensionListProps> = ({
   onSetTrusted,
 }) => {
   const [confirming, setConfirming] = React.useState<string | null>(null);
+  const [confirmTrust, setConfirmTrust] = React.useState<string | null>(null);
 
   if (extensions.length === 0) {
     return <p className="text-xs text-zinc-500">No extensions installed yet. Open a repository below to add one.</p>;
@@ -40,19 +41,45 @@ export const InstalledExtensionList: React.FC<InstalledExtensionListProps> = ({
               )}
             </div>
 
-            <button
-              onClick={() => onSetTrusted(name, !extension.trusted)}
-              disabled={working}
-              title="Trusted extensions may use files and system features. Applies the next time the app starts."
-              className={`flex flex-none items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors disabled:opacity-50 ${
-                extension.trusted
-                  ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                  : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10'
-              }`}
-            >
-              {extension.trusted ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
-              <span>{extension.trusted ? 'Trusted' : 'Sandboxed'}</span>
-            </button>
+            {confirmTrust === name ? (
+              <button
+                onClick={() => {
+                  setConfirmTrust(null);
+                  onSetTrusted(name, true);
+                }}
+                onBlur={() => setConfirmTrust(null)}
+                autoFocus
+                disabled={working}
+                title="Trusted skips bytecode checks and widens JDK access. Only trust authors you know."
+                className="flex flex-none items-center gap-1.5 px-2.5 py-1 rounded-lg border bg-amber-600/80 border-amber-400/50 text-white text-[11px] font-semibold disabled:opacity-50"
+              >
+                Confirm trust
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (extension.trusted) {
+                    onSetTrusted(name, false);
+                    return;
+                  }
+                  setConfirmTrust(name);
+                }}
+                disabled={working}
+                title={
+                  extension.trusted
+                    ? 'Return to the default sandbox (reloads now).'
+                    : 'Trusted skips static bytecode checks and widens JDK access. Confirm to apply now.'
+                }
+                className={`flex flex-none items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                  extension.trusted
+                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                    : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10'
+                }`}
+              >
+                {extension.trusted ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                <span>{extension.trusted ? 'Trusted' : 'Sandboxed'}</span>
+              </button>
+            )}
 
             {confirming === name ? (
               <button

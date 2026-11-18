@@ -18,7 +18,7 @@ pub struct InstalledExtensionDto {
     pub version: i64,
     /// Repository it came from, when known.
     pub repository_url: Option<String>,
-    /// Whether it may use files and the system (changes apply on the next start).
+    /// Whether bytecode checks are skipped and the classloader is widened (reloads immediately).
     pub trusted: bool,
     /// Providers it registered in this session.
     pub providers: Vec<String>,
@@ -171,12 +171,13 @@ pub async fn uninstall_extension(
     Ok(())
 }
 
-/// Changes whether an extension is trusted; it applies the next time the app starts.
+/// Changes whether an extension is trusted and reloads it under the new sandbox mode.
 #[tauri::command]
 #[tracing::instrument(level = "debug", skip_all, fields(internal_name = ?internal_name, trusted = ?trusted), err)]
 pub async fn set_extension_trusted(
     internal_name: String,
     trusted: bool,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let services = state.read();
@@ -184,7 +185,9 @@ pub async fn set_extension_trusted(
     services
         .extensions
         .set_trusted(&extension, trusted)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    notify_providers_changed(&app);
+    Ok(())
 }
 
 fn find_installed(
