@@ -5,12 +5,13 @@ use std::time::Duration;
 use slint::{ModelRc, VecModel};
 
 use crate::posters::{
-    posters_from_bookmarks, posters_from_continue, posters_from_search, shelves_from_sections,
-    string_model,
+    posters_from_bookmarks, posters_from_browse, posters_from_continue, posters_from_search,
+    shelves_from_sections, string_model,
 };
 use crate::startup_progress::{home_loading_view, plugin_loading_view, StartupView};
-use crate::ui_events::{BrowseRow, DetailsPage, PosterKind};
-use crate::{CloudStream, EpisodeItem, PosterItem};
+use crate::ui_events::{DetailsPage, PosterKind};
+use crate::{CloudStream, EpisodeItem};
+use app_services::BrowseItem;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
@@ -18,6 +19,7 @@ use super::extension_settings_callbacks::refresh_plugins;
 use super::home_loading::load_home;
 use super::poster_hydrate::hydrate_poster_images;
 use super::session::DetailsTarget;
+use super::title_search::{search_message, SearchSummary};
 
 /// Longest the start-up screen waits for Home after the plugins loaded; then Home shows its own
 /// loading state.
@@ -109,32 +111,34 @@ pub(crate) fn show_home(
     hydrate_poster_images(ctx, PosterKind::Shelf);
 }
 
-pub(crate) fn show_search(
-    ctx: &BridgeContext,
-    ui: &CloudStream,
-    items: &[core_model::SearchResult],
-) {
-    ui.set_search_items(posters_from_search(items));
+pub(crate) fn show_search(ctx: &BridgeContext, ui: &CloudStream, summary: &SearchSummary) {
+    ui.set_search_loading(false);
+    ui.set_search_message(search_message(summary).into());
+    ui.set_search_items(posters_from_search(&summary.items));
     hydrate_poster_images(ctx, PosterKind::Search);
 }
 
-pub(crate) fn show_browse(ctx: &BridgeContext, ui: &CloudStream, rows: Vec<BrowseRow>) {
-    let provider = ui.get_selected_provider();
-    let posters: Vec<PosterItem> = rows
-        .into_iter()
-        .map(|row| PosterItem {
-            title: row.title.into(),
-            subtitle: row.subtitle.into(),
-            provider: provider.clone(),
-            url: row.url.clone().into(),
-            poster: row.poster.into(),
-            media_key: row.url.clone().into(),
-            data: row.url.into(),
-            image: slint::Image::default(),
-            progress: 0.0,
-        })
-        .collect();
-    ui.set_browse_items(ModelRc::new(VecModel::from(posters)));
+pub(crate) fn show_browse(
+    ctx: &BridgeContext,
+    ui: &CloudStream,
+    result: Result<Vec<BrowseItem>, String>,
+) {
+    ui.set_browse_loading(false);
+    let items = match result {
+        Ok(items) => items,
+        Err(error) => {
+            ui.set_browse_message(format!("Browse could not load: {error}").into());
+            return;
+        }
+    };
+    let message = if items.is_empty() {
+        "Nothing to show."
+    } else {
+        ""
+    };
+    ui.set_browse_message(message.into());
+    ui.set_browse_items(posters_from_browse(&items));
+    ctx.session.borrow_mut().browse_items = items;
     hydrate_poster_images(ctx, PosterKind::Browse);
 }
 
@@ -145,6 +149,7 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
         data: page.data,
         media_key: page.media_key,
     };
+    ui.set_details_loading(false);
     ui.set_details_title(page.title.into());
     ui.set_details_plot(page.plot.into());
     ui.set_details_meta(page.meta.into());

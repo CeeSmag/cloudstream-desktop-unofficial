@@ -1,11 +1,53 @@
-import { Button, LineEdit, RadioGroup, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { PosterItem } from "types.slint";
-import { PosterRow } from "poster.slint";
-import { SectionTitle } from "widgets.slint";
+import { PosterGrid } from "poster.slint";
+import { SectionTitle, MutedLabel } from "widgets.slint";
+
+/// A spinner with a line of text: something is loading.
+export component LoadingLine inherits HorizontalLayout {
+    in property <string> text;
+    spacing: Theme.space-2;
+    alignment: start;
+    Spinner {
+        width: 20px;
+        height: 20px;
+        indeterminate: true;
+    }
+    MutedLabel {
+        text: root.text;
+        vertical-alignment: center;
+    }
+}
+
+/// Two-choice switch for "Movies" / "TV shows".
+component KindChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    width: label.preferred-width + 32px;
+    border-radius: 17px;
+    background: root.selected ? Theme.accent : (touch.has-hover ? Theme.panel-hi : Theme.panel);
+    animate background { duration: 120ms; }
+    label := Text {
+        text: root.text;
+        color: root.selected ? #0c0f17 : Theme.text;
+        font-weight: 600;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
 
 export component BrowsePage inherits VerticalLayout {
     in property <[PosterItem]> items: [];
+    in property <string> kind: "movie";
+    in property <bool> loading: false;
+    in property <string> message: "";
     callback load-kind(string);
     callback open-at(int);
 
@@ -13,36 +55,42 @@ export component BrowsePage inherits VerticalLayout {
     spacing: Theme.space-2;
     accessible-role: AccessibleRole.main;
 
-    SectionTitle { text: "Browse"; }
-
-    RadioGroup {
-        title: "Type";
-        orientation: Orientation.horizontal;
-        selected(value) => {
-            if value == "Movies" {
-                root.load-kind("movie");
-            } else {
-                root.load-kind("tv");
-            }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        SectionTitle {
+            text: "Browse";
+            vertical-alignment: center;
         }
-        RadioButton { text: "Movies"; checked: true; }
-        RadioButton { text: "TV"; }
+        Rectangle { width: Theme.space-2; }
+        KindChip {
+            text: "Movies";
+            selected: root.kind == "movie";
+            clicked => { root.load-kind("movie"); }
+        }
+        KindChip {
+            text: "TV shows";
+            selected: root.kind == "tv";
+            clicked => { root.load-kind("tv"); }
+        }
     }
-
-    ScrollView {
-        PosterRow {
-            items: root.items;
-            open-at(i) => { root.open-at(i); }
-            play-at(i) => { root.open-at(i); }
-            bookmark-at(i) => { root.open-at(i); }
-            remove-at(i) => { }
-        }
+    MutedLabel { text: "Popular on TMDB. Pick a title to find it on your providers."; }
+    if root.loading: LoadingLine { text: "Loading popular titles…"; }
+    if !root.loading && root.message != "": MutedLabel { text: root.message; }
+    PosterGrid {
+        vertical-stretch: 1;
+        items: root.items;
+        open-at(i) => { root.open-at(i); }
+        play-at(i) => { root.open-at(i); }
+        bookmark-at(i) => { root.open-at(i); }
     }
 }
 
 export component SearchPage inherits VerticalLayout {
     in-out property <string> query: "";
     in property <[PosterItem]> items: [];
+    in property <bool> loading: false;
+    in property <string> message: "";
     callback search(string);
     callback open-at(int);
 
@@ -60,19 +108,20 @@ export component SearchPage inherits VerticalLayout {
             accepted => { root.search(root.query); }
         }
         Button {
-            text: "Search";
+            text: root.loading ? "Searching…" : "Search";
+            enabled: !root.loading;
             primary: true;
             clicked => { root.search(root.query); }
         }
     }
-    ScrollView {
-        PosterRow {
-            items: root.items;
-            open-at(i) => { root.open-at(i); }
-            play-at(i) => { root.open-at(i); }
-            bookmark-at(i) => { root.open-at(i); }
-            remove-at(i) => { }
-        }
+    if root.loading: LoadingLine { text: "Searching your providers for “" + root.query + "”…"; }
+    if !root.loading && root.message != "": MutedLabel { text: root.message; }
+    PosterGrid {
+        vertical-stretch: 1;
+        items: root.items;
+        open-at(i) => { root.open-at(i); }
+        play-at(i) => { root.open-at(i); }
+        bookmark-at(i) => { root.open-at(i); }
     }
 }
 
@@ -85,13 +134,14 @@ export component LibraryPage inherits VerticalLayout {
     accessible-role: AccessibleRole.main;
 
     SectionTitle { text: "Library"; }
-    ScrollView {
-        PosterRow {
-            items: root.items;
-            open-at(i) => { root.open-at(i); }
-            play-at(i) => { root.open-at(i); }
-            bookmark-at(i) => { root.open-at(i); }
-            remove-at(i) => { }
-        }
+    if root.items.length == 0: MutedLabel {
+        text: "Bookmarked titles show up here.";
+    }
+    PosterGrid {
+        vertical-stretch: 1;
+        items: root.items;
+        open-at(i) => { root.open-at(i); }
+        play-at(i) => { root.open-at(i); }
+        bookmark-at(i) => { root.open-at(i); }
     }
 }

@@ -3,6 +3,7 @@
 
 mod browse_fetcher;
 mod browse_genres;
+mod browse_match;
 mod browse_query;
 mod browse_service;
 mod catalog_service;
@@ -43,6 +44,7 @@ pub use browse_genres::{
     movie_genre_id, tv_genre_id, BrowseFilterRequest, BrowseItem, BrowsePage, TMDB_API_KEY,
     TMDB_BASE_URL,
 };
+pub use browse_match::pick_best_search_match;
 pub use browse_service::BrowseClient;
 
 /// Alias for [`BrowseClient`] (TMDB catalog discovery).

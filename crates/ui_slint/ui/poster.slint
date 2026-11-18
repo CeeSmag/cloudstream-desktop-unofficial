@@ -1,4 +1,4 @@
-import { ProgressIndicator } from "std-widgets.slint";
+import { ProgressIndicator, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { PosterItem } from "types.slint";
 
@@ -121,6 +121,33 @@ export component PosterRow inherits Flickable {
 
     HorizontalLayout {
         padding: 4px;
+        spacing: Theme.space-2;
+        for item[i] in root.items: PosterTile {
+            title: item.title;
+            subtitle: item.subtitle;
+            artwork: item.image;
+            progress: item.progress;
+            clicked => { root.open-at(i); }
+            play-requested => { root.play-at(i); }
+            bookmark-requested => { root.bookmark-at(i); }
+            remove-requested => { root.remove-at(i); }
+        }
+    }
+}
+
+/// Posters that wrap into rows and scroll vertically (Browse, Search, Library).
+export component PosterGrid inherits ScrollView {
+    in property <[PosterItem]> items: [];
+    callback open-at(int);
+    callback play-at(int);
+    callback bookmark-at(int);
+    callback remove-at(int);
+
+    FlexboxLayout {
+        width: root.visible-width;
+        height: max(self.preferred-height, root.visible-height);
+        cross-axis-line-alignment: start;
+        padding: 8px;
         spacing: Theme.space-2;
         for item[i] in root.items: PosterTile {
             title: item.title;

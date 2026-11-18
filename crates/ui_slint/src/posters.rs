@@ -43,6 +43,29 @@ pub(crate) fn shelves_from_sections(
     ModelRc::new(VecModel::from(rows))
 }
 
+/// Browse tiles: TMDB titles (their id stands in for the address until they are matched).
+pub(crate) fn posters_from_browse(items: &[app_services::BrowseItem]) -> ModelRc<PosterItem> {
+    let rows: Vec<PosterItem> = items
+        .iter()
+        .map(|item| PosterItem {
+            title: item.name.clone().into(),
+            subtitle: item
+                .year
+                .map(|year| year.to_string())
+                .unwrap_or_default()
+                .into(),
+            provider: "".into(),
+            url: item.id.clone().into(),
+            poster: item.poster_url.clone().unwrap_or_default().into(),
+            media_key: item.id.clone().into(),
+            data: item.id.clone().into(),
+            image: empty_image(),
+            progress: 0.0,
+        })
+        .collect();
+    ModelRc::new(VecModel::from(rows))
+}
+
 pub(crate) fn posters_from_bookmarks(items: &[Bookmark]) -> ModelRc<PosterItem> {
     let rows: Vec<PosterItem> = items
         .iter()

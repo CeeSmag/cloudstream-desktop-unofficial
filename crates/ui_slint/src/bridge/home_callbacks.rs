@@ -6,13 +6,20 @@ use crate::posters::posters_from_continue;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::catalog_callbacks::load_browse_if_empty;
 use super::details_loading::load_details;
 
+/// The Browse tab's index in the top bar.
+const BROWSE_TAB: i32 = 1;
+
 pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
-    let weak = ctx.ui.clone();
+    let c = ctx.clone();
     ui.on_select_tab(move |tab| {
-        if let Some(ui) = weak.upgrade() {
+        if let Some(ui) = c.window() {
             ui.set_tab(tab);
+        }
+        if tab == BROWSE_TAB {
+            load_browse_if_empty(&c);
         }
     });
     let weak = ctx.ui.clone();

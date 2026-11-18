@@ -35,6 +35,12 @@ export component CloudStream inherits Window {
     in-out property <bool> open-busy: false;
     in-out property <string> open-status: "";
     in-out property <string> search-query: "";
+    in-out property <bool> search-loading: false;
+    in-out property <string> search-message: "";
+    in-out property <string> browse-kind: "movie";
+    in-out property <bool> browse-loading: false;
+    in-out property <string> browse-message: "";
+    in-out property <bool> details-loading: false;
     in-out property <string> details-title: "";
     in-out property <string> details-plot: "";
     in-out property <string> details-meta: "";
@@ -262,6 +268,9 @@ export component CloudStream inherits Window {
 
         if tab == 1: BrowsePage {
             items: root.browse-items;
+            kind: root.browse-kind;
+            loading: root.browse-loading;
+            message: root.browse-message;
             load-kind(kind) => { load-browse(kind); }
             open-at(i) => { open-browse-hit(i); }
         }
@@ -269,6 +278,8 @@ export component CloudStream inherits Window {
         if tab == 2: SearchPage {
             query <=> search-query;
             items: root.search-items;
+            loading: root.search-loading;
+            message: root.search-message;
             search(q) => { search(q); }
             open-at(i) => { open-search-hit(i); }
         }
@@ -330,6 +341,7 @@ export component CloudStream inherits Window {
 
     if details-title != "": DetailsOverlay {
         title: details-title;
+        loading: details-loading;
         plot: details-plot;
         meta: details-meta;
         resume-label: resume-label;

@@ -24,7 +24,9 @@ mod session;
 mod storage_settings_callbacks;
 mod stream_events;
 mod stream_opening;
+mod title_search;
 mod update_callbacks;
 
 pub use app_start::{run_desktop_app, run_desktop_app_with};
 pub use session::AppExtras;
+pub(crate) use title_search::SearchSummary;

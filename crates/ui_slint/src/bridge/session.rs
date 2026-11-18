@@ -33,6 +33,8 @@ pub(crate) struct Session {
     pub(crate) cf_host: Option<String>,
     pub(crate) allowed_cf: HashSet<String>,
     pub(crate) tickets: RequestTickets,
+    /// The TMDB titles Browse shows, in the grid's order.
+    pub(crate) browse_items: Vec<app_services::BrowseItem>,
 }
 
 /// Which title the details page shows.
@@ -61,6 +63,7 @@ impl Default for Session {
             cf_host: None,
             allowed_cf: HashSet::new(),
             tickets: RequestTickets::default(),
+            browse_items: Vec::new(),
         }
     }
 }

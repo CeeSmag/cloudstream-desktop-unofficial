@@ -1,5 +1,6 @@
 //! Results of background work, handed to the Slint event loop.
 
+use crate::bridge::SearchSummary;
 use crate::request_tickets::Ticket;
 
 /// One finished piece of background work for the UI thread to show.
@@ -15,8 +16,9 @@ pub(crate) enum UiEvent {
         error: Option<String>,
     },
     HomeLoaded(Ticket, Vec<(String, Vec<core_model::SearchResult>)>),
-    SearchLoaded(Ticket, Vec<core_model::SearchResult>),
-    BrowseLoaded(Ticket, Vec<BrowseRow>),
+    SearchLoaded(Ticket, SearchSummary),
+    BrowseLoaded(Ticket, Result<Vec<app_services::BrowseItem>, String>),
+    BrowseMatched(Ticket, BrowseMatch),
     DetailsLoaded(Ticket, Box<DetailsPage>),
     DetailsFailed(Ticket, String),
     OpenProgress(Ticket, playback_session::OpenProgress),
@@ -39,6 +41,7 @@ impl UiEvent {
             Self::HomeLoaded(ticket, _)
             | Self::SearchLoaded(ticket, _)
             | Self::BrowseLoaded(ticket, _)
+            | Self::BrowseMatched(ticket, _)
             | Self::DetailsLoaded(ticket, _)
             | Self::DetailsFailed(ticket, _)
             | Self::OpenProgress(ticket, _)
@@ -75,13 +78,11 @@ pub(crate) struct EpisodeRow {
     pub season: i32,
 }
 
-/// One TMDB title on the Browse screen.
+/// The provider's entry found for a Browse title, if any.
 #[derive(Debug, Clone)]
-pub(crate) struct BrowseRow {
+pub(crate) struct BrowseMatch {
     pub title: String,
-    pub subtitle: String,
-    pub poster: String,
-    pub url: String,
+    pub found: Option<core_model::SearchResult>,
 }
 
 /// Which poster model an artwork result belongs to.

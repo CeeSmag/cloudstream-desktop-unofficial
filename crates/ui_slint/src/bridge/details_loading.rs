@@ -4,6 +4,7 @@ use app_services::UiServices;
 use core_model::{LoadDetails, WatchProgress};
 
 use crate::background_work::spawn_work;
+use crate::posters::{empty_episodes, string_model};
 use crate::request_tickets::RequestKind;
 use crate::ui_events::{DetailsPage, EpisodeRow, UiEvent};
 use crate::PosterItem;
@@ -22,6 +23,7 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
     ctx.session.borrow_mut().details = target.clone();
     let ticket = ctx.issue_ticket(RequestKind::Details);
     let fallback_title = item.title.to_string();
+    show_details_pending(ctx, &fallback_title, "");
     let services = ctx.owned_services();
     let sender = ctx.sender();
     spawn_work("details", move || {
@@ -36,6 +38,30 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
             }
         }
     });
+}
+
+/// Shows the title page at once, empty, with a spinner and `status` ("" = "Loading the title…").
+pub(crate) fn show_details_pending(ctx: &BridgeContext, title: &str, status: &str) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    ui.set_details_title(title.into());
+    ui.set_details_plot(status.into());
+    ui.set_details_meta("".into());
+    ui.set_resume_label("".into());
+    ui.set_season_labels(empty_strings());
+    ui.set_episodes(empty_episodes());
+    ui.set_details_loading(true);
+}
+
+/// Closes the pending title page and says why it could not be shown.
+pub(crate) fn show_details_failed(ctx: &BridgeContext, message: &str) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    ui.set_details_loading(false);
+    ui.set_details_title("".into());
+    ui.set_notice(message.into());
 }
 
 fn details_page(
@@ -121,4 +147,8 @@ pub(crate) fn parse_season_label(label: &str) -> i32 {
         .strip_prefix("Season ")
         .and_then(|number| number.parse().ok())
         .unwrap_or(-1)
+}
+
+fn empty_strings() -> slint::ModelRc<slint::SharedString> {
+    string_model(std::iter::empty())
 }

@@ -1,10 +1,11 @@
-import { Button, ComboBox, ScrollView } from "std-widgets.slint";
+import { Button, ComboBox, ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { EpisodeItem } from "types.slint";
 import { MutedLabel } from "widgets.slint";
 
 export component DetailsOverlay inherits Rectangle {
     in property <string> title: "";
+    in property <bool> loading: false;
     in property <string> plot: "";
     in property <string> meta: "";
     in property <string> resume-label: "";
@@ -33,15 +34,32 @@ export component DetailsOverlay inherits Rectangle {
             font-size: 28px;
             font-weight: 700;
         }
-        MutedLabel { text: root.meta; }
-        Text {
+        if root.loading: HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            Spinner {
+                width: 20px;
+                height: 20px;
+                indeterminate: true;
+            }
+            MutedLabel {
+                text: root.plot == "" ? "Loading the title…" : root.plot;
+                vertical-alignment: center;
+            }
+            Button {
+                text: "Cancel";
+                clicked => { root.close(); }
+            }
+        }
+        if !root.loading: MutedLabel { text: root.meta; }
+        if !root.loading: Text {
             text: root.plot;
             color: Theme.text;
             wrap: word-wrap;
             font-size: Theme.body-size;
         }
 
-        HorizontalLayout {
+        if !root.loading: HorizontalLayout {
             spacing: Theme.space-2;
             Button {
                 text: root.open-busy ? "Opening…" : "Play";

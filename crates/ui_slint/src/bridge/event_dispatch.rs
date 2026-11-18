@@ -4,9 +4,11 @@ use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::browse_loading::show_browse_match;
 use super::catalog_events::{
     show_browse, show_details, show_home, show_search, show_startup_done, show_startup_progress,
 };
+use super::details_loading::show_details_failed;
 use super::stream_events::{show_open_progress, show_open_update, start_ready_stream};
 
 /// Shows everything the workers finished since the last tick.
@@ -33,8 +35,9 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
             show_startup_done(ctx, ui, &providers, error);
         }
         UiEvent::HomeLoaded(_, sections) => show_home(ctx, ui, &sections),
-        UiEvent::SearchLoaded(_, items) => show_search(ctx, ui, &items),
-        UiEvent::BrowseLoaded(_, rows) => show_browse(ctx, ui, rows),
+        UiEvent::SearchLoaded(_, summary) => show_search(ctx, ui, &summary),
+        UiEvent::BrowseLoaded(_, result) => show_browse(ctx, ui, result),
+        UiEvent::BrowseMatched(_, matched) => show_browse_match(ctx, matched),
         UiEvent::DetailsLoaded(_, page) => show_details(ctx, ui, *page),
         UiEvent::OpenProgress(_, progress) => show_open_progress(ui, progress),
         UiEvent::OpenReady(_, index) => start_ready_stream(ctx, ui, index),
@@ -43,17 +46,24 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
             ui.set_open_busy(false);
             ui.set_notice(error.into());
         }
-        UiEvent::DetailsFailed(_, text) | UiEvent::Notice(text) => ui.set_notice(text.into()),
-        UiEvent::CloudflareNeeded { host, url, id } => {
-            {
-                let mut session = ctx.session.borrow_mut();
-                session.cf_host = Some(host.clone());
-                session.cf_id = Some(id);
-            }
-            ui.set_cf_host(host.into());
-            ui.set_cf_url(url.into());
-            ui.set_show_cf(true);
+        UiEvent::DetailsFailed(_, error) => {
+            show_details_failed(ctx, &format!("The title could not be loaded: {error}"));
         }
+        UiEvent::Notice(text) => ui.set_notice(text.into()),
+        UiEvent::CloudflareNeeded { host, url, id } => ask_cloudflare(ctx, ui, host, (url, id)),
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
     }
+}
+
+/// Shows the Cloudflare question for `host`; `request` is the page and the sidecar's request id.
+fn ask_cloudflare(ctx: &BridgeContext, ui: &CloudStream, host: String, request: (String, String)) {
+    let (url, id) = request;
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.cf_host = Some(host.clone());
+        session.cf_id = Some(id);
+    }
+    ui.set_cf_host(host.into());
+    ui.set_cf_url(url.into());
+    ui.set_show_cf(true);
 }
