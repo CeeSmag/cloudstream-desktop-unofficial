@@ -123,23 +123,27 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
 
 /// Searches the playing title's streams again while the current one keeps playing.
 pub(crate) fn refresh_playing(ctx: &BridgeContext) {
-    let session = ctx.session.borrow();
-    let job = OpenJob {
-        ticket: session.tickets.current(RequestKind::Open),
-        services: ctx.owned_services(),
-        item: session
-            .target
-            .clone()
-            .unwrap_or_else(|| empty_item(&session.details.provider)),
-        data: session.episode_data.clone(),
-        control: session.control.clone(),
-        live: session.live.clone(),
+    let (job, playing_url) = {
+        let mut session = ctx.session.borrow_mut();
+        // New ticket and control so the still-running open cannot race this refresh.
+        let (control, ticket) = session.begin_source_refresh();
+        let playing_url = session
+            .links
+            .get(session.selected)
+            .map(|link| link.url.clone());
+        let job = OpenJob {
+            ticket,
+            services: ctx.owned_services(),
+            item: session
+                .target
+                .clone()
+                .unwrap_or_else(|| empty_item(&session.details.provider)),
+            data: session.episode_data.clone(),
+            control,
+            live: session.live.clone(),
+        };
+        (job, playing_url)
     };
-    let playing_url = session
-        .links
-        .get(session.selected)
-        .map(|link| link.url.clone());
-    drop(session);
     let sender = ctx.sender();
     spawn_work("refresh-sources", move || {
         let ticket = job.ticket;

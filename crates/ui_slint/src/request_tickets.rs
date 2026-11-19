@@ -152,6 +152,36 @@ mod tests {
     }
 
     #[test]
+    fn is_current_second_refresh_open_ticket_drops_the_first() {
+        // Two Refresh clicks: the slower first OpenUpdate must not overwrite the newer list.
+        let mut tickets = RequestTickets::default();
+        let first = tickets.issue(RequestKind::Open);
+        let second = tickets.issue(RequestKind::Open);
+        let (answers, received) = mpsc::channel();
+        let workers = [
+            std::thread::spawn({
+                let answers = answers.clone();
+                move || answers.send((first, 1)).expect("send")
+            }),
+            std::thread::spawn({
+                let answers = answers.clone();
+                move || answers.send((second, 2)).expect("send")
+            }),
+        ];
+        drop(answers);
+        for worker in workers {
+            worker.join().expect("worker");
+        }
+        let mut shown = None;
+        while let Ok((ticket, generation)) = received.recv_timeout(Duration::from_secs(1)) {
+            if tickets.is_current(ticket) {
+                shown = Some(generation);
+            }
+        }
+        assert_eq!(shown, Some(2));
+    }
+
+    #[test]
     fn is_current_answers_in_any_order_only_newest_request_is_shown() {
         // Workers answer 200 searches in a scrambled order; the screen must end on the last one.
         let mut tickets = RequestTickets::default();

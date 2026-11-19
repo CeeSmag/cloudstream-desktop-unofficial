@@ -147,6 +147,14 @@ impl Session {
         self.source_checks.clear();
         self.shown_tracks.clear();
     }
+
+    /// Stops the in-flight open/refresh and starts a new one under a fresh ticket and control.
+    pub(crate) fn begin_source_refresh(&mut self) -> (OpenControl, crate::request_tickets::Ticket) {
+        self.control.cancel_open();
+        self.control = OpenControl::default();
+        let ticket = self.tickets.issue(RequestKind::Open);
+        (self.control.clone(), ticket)
+    }
 }
 
 #[cfg(test)]
@@ -184,5 +192,18 @@ mod tests {
         assert_eq!(session.timeline.read_for, None);
         assert!(session.source_checks.is_empty());
         assert!(session.seeks.pending().is_none());
+    }
+
+    #[test]
+    fn begin_source_refresh_cancels_prior_control_and_issues_new_ticket() {
+        use std::sync::atomic::Ordering;
+        let mut session = Session::default();
+        let prior_control = session.control.clone();
+        let prior = session.tickets.issue(RequestKind::Open);
+        let (control, ticket) = session.begin_source_refresh();
+        assert!(prior_control.cancel.load(Ordering::SeqCst));
+        assert!(!session.tickets.is_current(prior));
+        assert!(session.tickets.is_current(ticket));
+        assert!(!control.cancel.load(Ordering::SeqCst));
     }
 }
