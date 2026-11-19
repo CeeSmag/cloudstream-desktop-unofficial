@@ -9,11 +9,13 @@ use super::catalog_callbacks::load_browse_if_empty;
 use super::catalog_events::show_library;
 use super::details_loading::load_details;
 use super::focus_navigation::restore_focus;
+use super::storage_usage_view::measure_storage_usage;
 
 /// The Browse tab's index in the top bar.
 const BROWSE_TAB: i32 = 1;
 /// The Library tab's index in the top bar.
 const LIBRARY_TAB: i32 = 3;
+const SETTINGS_TAB: i32 = 4;
 
 pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -54,6 +56,9 @@ fn select_tab(ctx: &BridgeContext, tab: i32) {
     }
     if tab == LIBRARY_TAB {
         show_library(ctx, &ui);
+    }
+    if tab == SETTINGS_TAB {
+        measure_storage_usage(ctx);
     }
     restore_focus(ctx, &ui);
 }

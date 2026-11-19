@@ -43,7 +43,7 @@ fn apply_cache_choices(ui: &CloudStream, services: &UiServices) {
 fn apply_storage_and_workers(ui: &CloudStream, services: &UiServices) {
     match services.settings.storage_cap_gb() {
         Ok(cap) => {
-            ui.set_storage_label(format!("Storage limit: {cap} GB").into());
+            ui.set_storage_label(format!("Limit {cap} GB · measured when Settings opens").into());
             ui.set_storage_value(format!("{cap} GB").into());
         }
         Err(error) => tracing::warn!(%error, "could not read the storage limit"),

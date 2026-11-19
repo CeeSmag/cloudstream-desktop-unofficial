@@ -12,6 +12,7 @@ use super::details_loading::show_details_failed;
 use super::extension_catalog::show_catalog;
 use super::extension_changes::show_change_done;
 use super::player_timeline::show_online_parts;
+use super::storage_usage_view::show_storage_usage;
 use super::stream_events::{show_open_progress, show_open_update, start_ready_stream};
 
 /// Shows everything the workers finished since the last tick.
@@ -55,6 +56,7 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         }
         UiEvent::Notice(text) => ui.set_notice(text.into()),
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
+        UiEvent::StorageMeasured(usage) => show_storage_usage(ctx, ui, &usage),
         UiEvent::UpdateBadge(badge) => ui.set_update_badge(badge.into()),
         UiEvent::ExtensionChanged(message) => show_change_done(ctx, ui, message),
         UiEvent::ExtensionsLoaded(catalog) => show_catalog(ctx, ui, *catalog),

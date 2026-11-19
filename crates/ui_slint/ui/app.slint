@@ -215,6 +215,9 @@ export component CloudStream inherits Window {
     callback open-logs();
     callback set-debug-logging(bool);
     in-out property <bool> debug-logging: false;
+    in-out property <float> storage-fraction: 0;
+    in-out property <bool> storage-over: false;
+    in-out property <[string]> storage-rows: [];
     callback cf-verify();
     callback cf-dismiss();
     callback dismiss-notice();
@@ -407,6 +410,9 @@ export component CloudStream inherits Window {
                 apply-update => { apply-update(); }
                 open-logs => { open-logs(); }
                 debug-logging: root.debug-logging;
+                storage-fraction: root.storage-fraction;
+                storage-over: root.storage-over;
+                storage-rows: root.storage-rows;
                 set-debug-logging(v) => { set-debug-logging(v); }
                 install-repo(v) => { install-repo(v); }
                 set-trusted(f, t) => { set-trusted(f, t); }

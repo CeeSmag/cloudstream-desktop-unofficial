@@ -38,6 +38,7 @@ mod session;
 mod skip_lookup_start;
 mod source_picker;
 mod storage_settings_callbacks;
+mod storage_usage_view;
 mod stream_events;
 mod stream_opening;
 mod subtitle_languages;

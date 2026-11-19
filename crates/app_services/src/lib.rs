@@ -32,6 +32,7 @@ mod routed_player;
 mod service_error;
 mod settings_service;
 mod storage_cap_setting;
+mod storage_usage;
 mod stream_checker;
 mod stream_label;
 mod stream_proxy_setting;
@@ -73,6 +74,7 @@ pub use request_router::RequestRouter;
 pub use routed_player::RoutedPlayer;
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;
+pub use storage_usage::{measure_storage, FolderUsage, StorageUsage, MEASURED_FOLDERS};
 pub use stream_checker::{check_worker_count, LinkHealth, StreamChecker};
 pub use stream_label::{describe_link, full_label, source_label, stream_host, stream_kind};
 pub use stream_resolver::{

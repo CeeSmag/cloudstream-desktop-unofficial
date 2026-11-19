@@ -32,6 +32,10 @@ export component SettingsPage inherits Rectangle {
     in property <bool> stream-proxy: true;
     in property <bool> auto-subtitles: true;
     in property <bool> debug-logging: false;
+    /// How full the storage limit is (0..1), whether it is over, and the folders' sizes.
+    in property <float> storage-fraction: 0;
+    in property <bool> storage-over: false;
+    in property <[string]> storage-rows: [];
     in property <string> storage-label: "";
     in property <string> update-label: "";
     in property <[PluginItem]> plugins: [];
@@ -125,7 +129,24 @@ export component SettingsPage inherits Rectangle {
                                     selected(value) => { root.set-storage-cap(value); }
                                 }
                             }
-                            MutedLabel { text: root.storage-label; }
+                            Rectangle {
+                                height: 8px;
+                                border-radius: 4px;
+                                background: #ffffff1a;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * clamp(root.storage-fraction, 0, 1);
+                                    border-radius: 4px;
+                                    background: root.storage-over ? Theme.danger : Theme.accent;
+                                    animate width { duration: 250ms; }
+                                }
+                            }
+                            Text {
+                                text: root.storage-label;
+                                color: root.storage-over ? Theme.danger : Theme.muted;
+                                wrap: word-wrap;
+                            }
+                            for line in root.storage-rows: MutedLabel { text: line; }
                             Button { text: "Clean up storage now"; clicked => { root.clean-storage(); } }
                         }
                     }

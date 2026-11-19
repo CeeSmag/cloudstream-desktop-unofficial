@@ -29,6 +29,8 @@ pub(crate) enum UiEvent {
     SkipTimesFound(Ticket, Vec<crate::skip_segments::Segment>),
     Notice(String),
     UpdateLabel(String),
+    /// The data folder was measured (Settings > Storage).
+    StorageMeasured(app_services::StorageUsage),
     /// The nav bar's update badge ("Update v0.5.0"); empty for none.
     UpdateBadge(String),
     /// A plugin or repository change finished; the message says how.

@@ -1,15 +1,17 @@
 //! Settings > General: video cache, storage limit, plugin processes, cleanup and data wipe.
 
-use app_services::clean_regenerable;
+use app_services::{clean_regenerable, measure_storage};
 use slint::SharedString;
 
 use crate::background_work::spawn_work;
+use crate::ui_events::UiEvent;
 
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::player_callbacks::report;
 use super::preference_callbacks::saved;
+use super::storage_usage_view::measure_storage_usage;
 
 pub(crate) fn wire_storage_settings(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -78,9 +80,9 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
         ctx.services.settings.set_storage_cap_gb(gigabytes),
     );
     if let Some(ui) = ctx.window() {
-        ui.set_storage_label(format!("Storage limit: {gigabytes} GB").into());
         ui.set_storage_value(format!("{gigabytes} GB").into());
     }
+    measure_storage_usage(ctx);
 }
 
 fn set_worker_limit(ctx: &BridgeContext, value: SharedString) {
@@ -106,6 +108,7 @@ fn clean_storage(ctx: &BridgeContext) {
     let sender = ctx.sender();
     spawn_work("storage-cleanup", move || {
         let report = clean_regenerable(&dir);
+        sender.send(UiEvent::StorageMeasured(measure_storage(&dir)));
         let megabytes = report.bytes / (1024 * 1024);
         sender.notice(format!(
             "Cleaned up {} files ({megabytes} MB). Sources, subtitles and posters load again when needed.",
