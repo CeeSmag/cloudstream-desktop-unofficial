@@ -1,40 +1,143 @@
-//! The seek bar's extras on screen: the buffered stretch, chapter dividers and the hover text.
+//! The seek bar's extras and the skip button on screen: the buffered stretch, chapter dividers,
+//! the intro / credits marks, the hover text, "Skip Intro" / "Next episode" and the episode
+//! buttons.
 
+use player_api::{Chapter, PlaybackStatus};
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::seek_bar::{buffered_fraction, chapter_notches, hover_text};
-use crate::CloudStream;
+use crate::skip_segments::{
+    segment_at, segments_from_chapters, skip_prompt, PromptAction, Segment, SkipPrompt,
+};
+use crate::{CloudStream, SeekMark};
 
 use super::bridge_context::BridgeContext;
+use super::details_callbacks::play_episode;
+use super::playback_reactions::play_next_episode;
+use super::player_callbacks::report;
+
+/// What the player knows about the playing stream's parts.
+#[derive(Debug, Default)]
+pub(crate) struct Timeline {
+    chapters: Vec<Chapter>,
+    segments: Vec<Segment>,
+    /// The stream length the chapters were read for (-1: not yet).
+    read_for: Option<i64>,
+    prompt: Option<SkipPrompt>,
+}
 
 pub(crate) fn wire_timeline(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_describe_seek(move |ms| {
         let session = c.session.borrow();
-        SharedString::from(hover_text(ms as i64, &session.chapters.0, None))
+        let timeline = &session.timeline;
+        let part = segment_at(&timeline.segments, ms as i64).map(|s| s.kind.name());
+        SharedString::from(hover_text(ms as i64, &timeline.chapters, part))
+    });
+    let c = ctx.clone();
+    ui.on_skip_segment(move || take_prompt(&c));
+    let c = ctx.clone();
+    ui.on_next_episode(move || play_next_episode(&c));
+    let c = ctx.clone();
+    ui.on_previous_episode(move || {
+        if let Some(index) = previous_episode(&c) {
+            play_episode(&c, index);
+        }
     });
 }
 
-/// Follows the player: how much is loaded and, once per stream length, its chapters.
-pub(crate) fn show_timeline(
-    ctx: &BridgeContext,
-    ui: &CloudStream,
-    status: &player_api::PlaybackStatus,
-) {
+/// Follows the player: how much is loaded, the stream's parts (once per stream length), the
+/// skip button and whether there is an episode before / after.
+pub(crate) fn show_timeline(ctx: &BridgeContext, ui: &CloudStream, status: &PlaybackStatus) {
     ui.set_buffered_fraction(buffered_fraction(
         status.buffered_ms,
         status.position_ms,
         status.duration_ms,
     ));
-    if ctx.session.borrow().chapters.1 == status.duration_ms {
-        return;
+    if ctx.session.borrow().timeline.read_for != Some(status.duration_ms) {
+        read_parts(ctx, ui, status.duration_ms);
     }
+    let has_next = ctx
+        .session
+        .borrow()
+        .target
+        .as_ref()
+        .is_some_and(|item| item.next_episode.is_some());
+    let prompt = {
+        let segments = &ctx.session.borrow().timeline.segments;
+        skip_prompt(segments, status.position_ms, status.duration_ms, has_next)
+    };
+    ui.set_skip_label(prompt.map_or("", |p| p.label).into());
+    ui.set_skip_key(prompt_key(prompt).into());
+    ui.set_has_next_episode(has_next);
+    ui.set_has_previous_episode(previous_episode(ctx).is_some());
+    ctx.session.borrow_mut().timeline.prompt = prompt;
+}
+
+/// The chapters come with the stream's length, so a new length means a new stream.
+fn read_parts(ctx: &BridgeContext, ui: &CloudStream, duration_ms: i64) {
     let Some(playback) = &ctx.services.playback else {
         return;
     };
-    // The chapters come with the stream's length, so a new length means a new stream.
     let chapters = playback.chapters();
-    let notches = chapter_notches(&chapters, status.duration_ms);
-    ui.set_chapter_notches(ModelRc::new(VecModel::from(notches)));
-    ctx.session.borrow_mut().chapters = (chapters, status.duration_ms);
+    let segments = segments_from_chapters(&chapters, duration_ms);
+    ui.set_chapter_notches(ModelRc::new(VecModel::from(chapter_notches(
+        &chapters,
+        duration_ms,
+    ))));
+    ui.set_skip_marks(ModelRc::new(VecModel::from(marks(&segments, duration_ms))));
+    if !segments.is_empty() {
+        tracing::info!(parts = segments.len(), "skip parts found in the chapters");
+    }
+    let mut session = ctx.session.borrow_mut();
+    session.timeline.chapters = chapters;
+    session.timeline.segments = segments;
+    session.timeline.read_for = Some(duration_ms);
+}
+
+/// The coloured stretches on the bar, as shares of its length.
+fn marks(segments: &[Segment], duration_ms: i64) -> Vec<SeekMark> {
+    if duration_ms <= 0 {
+        return Vec::new();
+    }
+    let share = |ms: i64| (ms.clamp(0, duration_ms) as f64 / duration_ms as f64) as f32;
+    segments
+        .iter()
+        .map(|segment| SeekMark {
+            start: share(segment.start_ms),
+            width: share(segment.end_ms) - share(segment.start_ms),
+            kind: segment.kind.slot(),
+        })
+        .collect()
+}
+
+/// Names the prompt, so a new part (or entering one again) is told apart from the same part
+/// going on: the button shows by itself for its first seconds only when this changes.
+fn prompt_key(prompt: Option<SkipPrompt>) -> String {
+    match prompt.map(|p| p.action) {
+        None => String::new(),
+        Some(PromptAction::NextEpisode) => "next".to_owned(),
+        Some(PromptAction::Seek(to)) => format!("seek:{to}"),
+    }
+}
+
+fn take_prompt(ctx: &BridgeContext) {
+    let prompt = ctx.session.borrow().timeline.prompt;
+    match prompt.map(|p| p.action) {
+        Some(PromptAction::Seek(to)) => {
+            if let Some(playback) = &ctx.services.playback {
+                report("skip", playback.seek_to(to));
+            }
+        }
+        Some(PromptAction::NextEpisode) => play_next_episode(ctx),
+        None => {}
+    }
+}
+
+/// The title page's index of the episode before the playing one.
+fn previous_episode(ctx: &BridgeContext) -> Option<usize> {
+    let session = ctx.session.borrow();
+    let key = session.target.as_ref()?.media_key.as_str();
+    let playing = session.episodes.iter().position(|row| row.data == key)?;
+    playing.checked_sub(1)
 }

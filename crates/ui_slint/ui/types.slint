@@ -33,6 +33,14 @@ export struct SourceItem {
     selected: bool,
 }
 
+/// A coloured stretch on the seek bar (intro, recap, credits, preview), as shares of its length.
+export struct SeekMark {
+    start: float,
+    width: float,
+    /// 0 intro, 1 recap, 2 credits, 3 preview.
+    kind: int,
+}
+
 /// A toggle of a filter row (`1080p` with its count, or a subtitle language).
 export struct FilterChip {
     label: string,

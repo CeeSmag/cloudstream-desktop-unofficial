@@ -54,7 +54,7 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
 }
 
 /// Opens the episode after the one that ended: from the title page when it still lists it.
-fn play_next_episode(ctx: &BridgeContext) {
+pub(crate) fn play_next_episode(ctx: &BridgeContext) {
     let (target, index) = {
         let session = ctx.session.borrow();
         let Some(target) = session.target.clone() else {

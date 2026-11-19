@@ -14,9 +14,6 @@ use super::bridge_context::BridgeContext;
 use super::player_feedback::show_feedback;
 use super::stream_opening::{refresh_playing, switch_source};
 
-/// How far "Skip" jumps when no intro times are known.
-const SKIP_JUMP_MS: i64 = 85_000;
-
 pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_toggle_pause(move || toggle_pause(&c));
@@ -40,13 +37,6 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
         if let Some(ui) = c.window() {
             ui.set_volume(volume);
             show_feedback(&ui, volume_text(volume), Some(volume / 100.0));
-        }
-    });
-    let c = ctx.clone();
-    ui.on_skip_segment(move || {
-        if let Some(playback) = &c.services.playback {
-            let position = playback.tick().position_ms;
-            report("skip", playback.seek_to(position + SKIP_JUMP_MS));
         }
     });
     let c = ctx.clone();

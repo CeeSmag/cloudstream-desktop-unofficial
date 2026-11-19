@@ -1,6 +1,6 @@
 import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
+import { SeekMark, SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
 import { SourcePanel } from "source_panel.slint";
 
 /// A horizontal bar the viewer drags; the shown value follows `value` (0..1) until dragged, and
@@ -14,6 +14,8 @@ component DragBar inherits Rectangle {
     in property <float> buffered: 0;
     /// Where chapters start, 0..1, drawn as dividers.
     in property <[float]> notches: [];
+    /// Intro, recap, credits and preview, drawn in their colours.
+    in property <[SeekMark]> marks: [];
     /// The text over the bar where the pointer is; empty for none.
     in property <string> hover-text: "";
     out property <bool> dragging: touch.pressed;
@@ -30,6 +32,13 @@ component DragBar inherits Rectangle {
         border-radius: self.height / 2;
         background: #ffffff33;
         animate height { duration: 100ms; }
+        for mark in root.marks: Rectangle {
+            x: parent.width * mark.start;
+            width: parent.width * mark.width;
+            height: 100%;
+            border-radius: 2px;
+            background: mark.kind == 0 ? #fbbf24b3 : mark.kind == 1 ? #38bdf8b3 : mark.kind == 2 ? #34d399b3 : #e879f9b3;
+        }
         Rectangle {
             x: 0;
             width: parent.width * clamp(root.buffered, 0, 1);
@@ -220,6 +229,13 @@ export component PlayerOverlay inherits Rectangle {
     in property <float> buffered-fraction: 0;
     /// Where the stream's chapters start, 0..1.
     in property <[float]> chapter-notches: [];
+    in property <[SeekMark]> skip-marks: [];
+    /// "Skip Intro", "Next episode"; empty for none.
+    in property <string> skip-label: "";
+    /// Changes with every new part of the video, so the button shows by itself again.
+    in property <string> skip-key: "";
+    in property <bool> has-next-episode: false;
+    in property <bool> has-previous-episode: false;
     in property <float> volume: 100;
     in property <bool> fullscreen: false;
     in-out property <bool> show-sources: false;
@@ -241,6 +257,8 @@ export component PlayerOverlay inherits Rectangle {
     callback toggle-sources();
     callback refresh-sources();
     callback skip-segment();
+    callback next-episode();
+    callback previous-episode();
     callback select-source(int);
     callback toggle-tier(int);
     callback toggle-source-subtitle(int);
@@ -276,6 +294,8 @@ export component PlayerOverlay inherits Rectangle {
             if event.text == Key.DownArrow { root.show-chrome(); root.set-volume(max(root.volume - 5, 0)); return accept; }
             if event.text == "m" { root.show-chrome(); root.set-volume(root.volume > 0 ? 0 : 100); return accept; }
             if event.text == "f" { root.toggle-fullscreen(); return accept; }
+            if event.text == "s" && root.skip-label != "" { root.skip-segment(); return accept; }
+            if event.text == "N" && root.has-next-episode { root.next-episode(); return accept; }
             if event.text == Key.Escape {
                 if root.open-panel != 0 || root.show-sources { root.open-panel = 0; root.show-sources = false; return accept; }
                 if root.fullscreen { root.toggle-fullscreen(); return accept; }
@@ -430,6 +450,7 @@ export component PlayerOverlay inherits Rectangle {
                     horizontal-stretch: 1;
                     buffered: root.buffered-fraction;
                     notches: root.chapter-notches;
+                    marks: root.skip-marks;
                     hover-text: self.hovering && root.duration-ms > 1
                         ? root.describe-seek(self.drag-value * root.duration-ms) : "";
                     value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
@@ -442,7 +463,8 @@ export component PlayerOverlay inherits Rectangle {
                 BarButton { text: root.paused ? "▶  Play" : "❚❚  Pause"; active: true; clicked => { root.toggle-pause(); } }
                 BarButton { text: "−10s"; clicked => { root.nudge(-10000); } }
                 BarButton { text: "+10s"; clicked => { root.nudge(10000); } }
-                BarButton { text: "Skip intro"; clicked => { root.skip-segment(); } }
+                if root.has-previous-episode: BarButton { text: "⏮  Previous"; clicked => { root.previous-episode(); } }
+                if root.has-next-episode: BarButton { text: "Next  ⏭"; clicked => { root.next-episode(); } }
                 Rectangle { horizontal-stretch: 1; }
                 Text { text: "Vol"; color: Theme.muted; vertical-alignment: center; }
                 DragBar {
@@ -486,6 +508,56 @@ export component PlayerOverlay inherits Rectangle {
         pick(index) => { root.select-source(index); }
         toggle-tier(i) => { root.toggle-tier(i); }
         toggle-subtitle(i) => { root.toggle-source-subtitle(i); }
+    }
+
+    // The skip button shows by itself for the first 5 s of its part, then with the controls.
+    property <bool> skip-window: false;
+    changed skip-key => {
+        root.skip-window = root.skip-key != "";
+        skip-timer.running = root.skip-window;
+        if root.skip-window { skip-timer.restart(); }
+    }
+    skip-timer := Timer {
+        interval: 5s;
+        running: false;
+        triggered => {
+            root.skip-window = false;
+            self.running = false;
+        }
+    }
+    if root.skip-label != "" && (root.skip-window || root.chrome-visible): Rectangle {
+        x: parent.width - self.width - 32px;
+        y: parent.height - self.height - 170px;
+        height: 48px;
+        width: skip-text.preferred-width + 48px;
+        border-radius: 12px;
+        background: skip-touch.has-hover ? #ffffff : #fffffff2;
+        clip: true;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #00000099;
+        accessible-role: AccessibleRole.button;
+        accessible-label: root.skip-label;
+        accessible-action-default => { root.skip-segment(); }
+        // A shade drains across the button while its 5 s run.
+        Rectangle {
+            x: 0;
+            width: root.skip-window ? 0px : parent.width;
+            background: #00000026;
+            visible: root.skip-window;
+            animate width { duration: root.skip-window ? 5s : 0ms; }
+        }
+        skip-text := Text {
+            text: "⏭  " + root.skip-label;
+            color: Theme.bg;
+            font-size: 15px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        skip-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.skip-segment(); }
+        }
     }
 
     hide-timer := Timer {

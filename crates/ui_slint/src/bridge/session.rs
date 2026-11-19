@@ -8,6 +8,7 @@ use crate::playback_watch::{PlaybackWatch, SourceCheck};
 use crate::source_menu::SourceFilter;
 
 use super::focus_screens::FocusScreen;
+use super::player_timeline::Timeline;
 use crate::request_tickets::RequestTickets;
 use crate::ui_events::EpisodeRow;
 
@@ -38,8 +39,8 @@ pub(crate) struct Session {
     pub(crate) last_frame: u64,
     /// The track menus on screen (audio, subtitles), so they are rebuilt only when they change.
     pub(crate) shown_tracks: Vec<player_api::MediaTrack>,
-    /// The chapters of the playing stream, and the length they were read for.
-    pub(crate) chapters: (Vec<player_api::Chapter>, i64),
+    /// The playing stream's chapters, skip parts and skip button.
+    pub(crate) timeline: Timeline,
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
     pub(crate) tickets: RequestTickets,
@@ -86,7 +87,7 @@ impl Default for Session {
             details: DetailsTarget::default(),
             last_frame: 0,
             shown_tracks: Vec::new(),
-            chapters: (Vec::new(), -1),
+            timeline: Timeline::default(),
             surface_size: (0, 0),
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),

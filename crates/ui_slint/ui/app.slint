@@ -1,7 +1,7 @@
 import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
+    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
     RepositoryItem, AvailablePlugin
 } from "types.slint";
 import { HomePage } from "home.slint";
@@ -13,7 +13,7 @@ import { CloudflareBanner } from "cloudflare_banner.slint";
 import { TopBar } from "top_bar.slint";
 import { Toast } from "toast.slint";
 
-export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
+export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -80,6 +80,11 @@ export component CloudStream inherits Window {
     in-out property <int> player-feedback-count: 0;
     in-out property <float> buffered-fraction: 0;
     in property <[float]> chapter-notches: [];
+    in property <[SeekMark]> skip-marks: [];
+    in property <string> skip-label: "";
+    in property <string> skip-key: "";
+    in property <bool> has-next-episode: false;
+    in property <bool> has-previous-episode: false;
     in-out property <bool> fullscreen: false;
     in-out property <string> position-text: "0:00";
     in-out property <string> duration-text: "0:00";
@@ -166,6 +171,8 @@ export component CloudStream inherits Window {
     callback leave-player();
     callback toggle-sources();
     callback skip-segment();
+    callback next-episode();
+    callback previous-episode();
     callback load-browse(string);
     callback set-provider(string);
     callback install-repo(string);
@@ -448,6 +455,13 @@ export component CloudStream inherits Window {
             toggle-sources => { toggle-sources(); }
             refresh-sources => { refresh-sources(); }
             skip-segment => { skip-segment(); }
+            next-episode => { next-episode(); }
+            previous-episode => { previous-episode(); }
+            skip-marks: skip-marks;
+            skip-label: skip-label;
+            skip-key: skip-key;
+            has-next-episode: has-next-episode;
+            has-previous-episode: has-previous-episode;
             select-source(i) => { select-source(i); }
             select-audio(v) => { select-audio-track(v); }
             select-subtitle(v) => { select-subtitle-track(v); }
