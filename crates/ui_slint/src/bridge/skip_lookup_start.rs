@@ -6,18 +6,24 @@ use std::sync::Arc;
 use skip_times::SkipQuery;
 
 use crate::background_work::spawn_work;
-use crate::request_tickets::RequestKind;
+use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::skip_segments::{from_online, title_kind};
 use crate::ui_events::UiEvent;
 
 use super::bridge_context::BridgeContext;
 
+/// When this stream cannot ask the databases, drop any prior skip answer still in flight.
+pub(crate) fn cancel_skips_if_idle(tickets: &mut RequestTickets, will_lookup: bool) {
+    if !will_lookup {
+        tickets.cancel(RequestKind::Skips);
+    }
+}
+
 /// Starts the lookup for a stream of `duration_ms`; a newer stream's lookup drops this answer.
 pub(crate) fn start_online_lookup(ctx: &BridgeContext, duration_ms: i64) {
-    if !ctx.services.settings.skip_lookup().unwrap_or(true) {
-        return;
-    }
-    let Some(query) = query_for(ctx, duration_ms) else {
+    let enabled = ctx.services.settings.skip_lookup().unwrap_or(true);
+    let Some(query) = enabled.then(|| query_for(ctx, duration_ms)).flatten() else {
+        cancel_skips_if_idle(&mut ctx.session.borrow_mut().tickets, false);
         return;
     };
     let ticket = ctx.issue_ticket(RequestKind::Skips);
@@ -48,4 +54,25 @@ fn query_for(ctx: &BridgeContext, duration_ms: i64) -> Option<SkipQuery> {
         episode: number(item.episode),
         duration_ms: u64::try_from(duration_ms).unwrap_or(0),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancel_skips_if_idle_drops_a_prior_lookup_ticket() {
+        let mut tickets = RequestTickets::default();
+        let prior = tickets.issue(RequestKind::Skips);
+        cancel_skips_if_idle(&mut tickets, true);
+        assert!(
+            tickets.is_current(prior),
+            "a running lookup keeps its ticket"
+        );
+        cancel_skips_if_idle(&mut tickets, false);
+        assert!(
+            !tickets.is_current(prior),
+            "no lookup means prior answers are stale"
+        );
+    }
 }
