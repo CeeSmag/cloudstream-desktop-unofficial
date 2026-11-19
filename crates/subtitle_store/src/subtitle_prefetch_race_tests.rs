@@ -73,5 +73,32 @@ fn stopping_at_any_moment_ends_every_thread() {
             before,
             "a file was reported after the stop"
         );
+        let summary = run.prefetch.summary();
+        assert_eq!(
+            (summary.queued, summary.in_flight, run.prefetch.is_busy()),
+            (0, 0, false),
+            "nothing remains queued or in flight after threads join"
+        );
     }
+}
+
+#[test]
+fn busy_stays_true_while_downloads_run_and_clears_when_done() {
+    let fetcher = Arc::new(Behavior::with_delay(|_| Duration::from_millis(30)));
+    let mut run = start(fetcher, 2);
+    assert!(!run.prefetch.is_busy());
+    run.prefetch.submit(vec![
+        track("English", "https://s.test/en1"),
+        track("Arabic", "https://s.test/ar1"),
+        track("French", "https://s.test/fr1"),
+    ]);
+    assert!(run.prefetch.is_busy());
+    run.prefetch.finish();
+    join(std::mem::take(&mut run.handles));
+    let summary = run.prefetch.summary();
+    assert!(!run.prefetch.is_busy());
+    assert_eq!(
+        (summary.queued, summary.in_flight, summary.ready),
+        (0, 0, 3)
+    );
 }

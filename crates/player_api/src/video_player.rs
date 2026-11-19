@@ -58,6 +58,11 @@ pub trait VideoPlayer: Send + Sync {
         let _ = subtitles;
     }
 
+    /// Number of external subtitle files queued or currently attaching to the active stream.
+    fn pending_subtitles(&self) -> usize {
+        0
+    }
+
     /// Sets the language whose audio track is played when a stream offers it; `None` leaves the
     /// choice to the stream. Takes effect from the next stream that loads.
     fn set_preferred_audio(&self, language: Option<Language>) {

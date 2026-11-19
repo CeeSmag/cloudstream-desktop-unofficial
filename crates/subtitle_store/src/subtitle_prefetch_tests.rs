@@ -97,7 +97,10 @@ fn start(fetcher: Arc<Behavior>, workers: usize) -> Run {
 
 fn start_ranked(fetcher: Arc<Behavior>, workers: usize, rank_of: LanguageRank) -> Run {
     let scratch = Scratch::new();
-    let cache = SubtitleCache::new(scratch.0.clone(), Duration::from_secs(3600));
+    let cache = Arc::new(SubtitleCache::new(
+        scratch.0.clone(),
+        Duration::from_secs(3600),
+    ));
     let options = LoadOptions {
         attempts: 2,
         backoff: Duration::from_millis(1),

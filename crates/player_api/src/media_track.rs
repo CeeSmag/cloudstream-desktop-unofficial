@@ -28,15 +28,18 @@ pub struct MediaTrack {
 
 impl MediaTrack {
     /// Whether the track is in `language`: by its language code (`eng`, `en`, `en-US`), or, when
-    /// the file gave no usable language, by the language's name in its title.
+    /// the file gave no usable language, by a code or the language's name in its title.
     pub fn is_language(&self, language: &Language) -> bool {
         if language.has_code(&self.language) {
             return true;
         }
         let code = self.language.trim().to_ascii_lowercase();
         let unknown = code.is_empty() || matches!(code.as_str(), "und" | "unk");
-        unknown
-            && self
+        if !unknown {
+            return false;
+        }
+        language.has_code(&self.title)
+            || self
                 .title
                 .to_ascii_lowercase()
                 .contains(&language.name.to_ascii_lowercase())
@@ -82,10 +85,14 @@ mod tests {
     fn english_is_recognised_by_title_only_when_the_language_is_unknown() {
         assert!(track("", "English 5.1").is_language(&ENGLISH));
         assert!(track("und", "english").is_language(&ENGLISH));
+        assert!(track("", "en").is_language(&ENGLISH));
+        assert!(track("", "eng").is_language(&ENGLISH));
+        assert!(track("und", "en-US").is_language(&ENGLISH));
         assert!(
             !track("hin", "English").is_language(&ENGLISH),
             "the language tag wins"
         );
+        assert!(!track("hin", "en").is_language(&ENGLISH));
         assert!(!track("", "Commentary").is_language(&ENGLISH));
     }
 

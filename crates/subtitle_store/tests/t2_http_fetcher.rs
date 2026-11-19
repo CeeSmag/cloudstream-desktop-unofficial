@@ -80,6 +80,12 @@ fn serve(mut stream: TcpStream, referers: &Mutex<Vec<String>>) {
     {
         referers.lock().expect("lock").push(referer.to_owned());
     }
+    if let Some(ua) = request
+        .lines()
+        .find(|line| line.to_ascii_lowercase().starts_with("user-agent:"))
+    {
+        referers.lock().expect("lock").push(ua.to_owned());
+    }
     match path.as_str() {
         "/ok" => respond(
             &mut stream,
@@ -154,8 +160,30 @@ fn the_headers_the_provider_asked_for_are_sent() {
         .fetch(&server.url("/ok"), &headers)
         .expect("downloads");
     let seen = server.referers.lock().expect("lock");
-    assert_eq!(seen.len(), 1);
-    assert!(seen[0].contains("https://provider.test/"));
+    assert!(seen
+        .iter()
+        .any(|line| line.contains("https://provider.test/")));
+    assert!(
+        seen.iter()
+            .any(|line| line.contains(core_model::DEFAULT_STREAM_USER_AGENT)),
+        "default browser user-agent was sent"
+    );
+}
+
+#[test]
+fn a_custom_user_agent_header_replaces_the_default() {
+    let server = Server::start();
+    let headers = vec![("User-Agent".to_owned(), "CustomAgent/1.0".to_owned())];
+    fetcher()
+        .fetch(&server.url("/ok"), &headers)
+        .expect("downloads");
+    let seen = server.referers.lock().expect("lock");
+    let uas: Vec<&String> = seen
+        .iter()
+        .filter(|line| line.to_ascii_lowercase().starts_with("user-agent:"))
+        .collect();
+    assert_eq!(uas.len(), 1);
+    assert!(uas[0].contains("CustomAgent/1.0"));
 }
 
 /// Many downloads at once, as the app does: every one is answered, none is mixed up with another.

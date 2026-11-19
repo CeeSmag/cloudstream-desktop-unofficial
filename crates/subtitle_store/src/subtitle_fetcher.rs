@@ -3,13 +3,14 @@
 use std::io::Read;
 use std::time::Duration;
 
+use core_model::DEFAULT_STREAM_USER_AGENT;
+
 /// How long one download may take in all; a host slower than this is given up on.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long connecting may take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// The largest subtitle accepted; real ones are a few hundred kilobytes at most.
 const MAX_BYTES: u64 = 8 * 1024 * 1024;
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CloudStream";
 
 /// Why a download failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -78,7 +79,13 @@ impl SubtitleFetcher for UreqSubtitleFetcher {
     #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     fn fetch(&self, url: &str, headers: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
         let network = |error: String| FetchError::Network { reason: error };
-        let mut request = self.agent.get(url).header("User-Agent", USER_AGENT);
+        let has_ua = headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("user-agent"));
+        let mut request = self.agent.get(url);
+        if !has_ua {
+            request = request.header("User-Agent", DEFAULT_STREAM_USER_AGENT);
+        }
         for (name, value) in headers {
             request = request.header(name.as_str(), value.as_str());
         }

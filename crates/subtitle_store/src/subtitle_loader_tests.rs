@@ -75,7 +75,10 @@ fn track(url: &str) -> SubtitleTrack {
 }
 
 fn loader(scratch: &Scratch, fetcher: Arc<ScriptedFetcher>) -> SubtitleLoader {
-    let cache = SubtitleCache::new(scratch.0.clone(), Duration::from_secs(3600));
+    let cache = Arc::new(SubtitleCache::new(
+        scratch.0.clone(),
+        Duration::from_secs(3600),
+    ));
     let options = LoadOptions {
         attempts: 3,
         backoff: Duration::from_millis(1),

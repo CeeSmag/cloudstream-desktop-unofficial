@@ -36,6 +36,10 @@ pub struct PrefetchConfig {
 pub struct PrefetchSummary {
     /// Files asked for (each address once).
     pub submitted: usize,
+    /// Files waiting in the queue.
+    pub queued: usize,
+    /// Files currently being downloaded or normalized.
+    pub in_flight: usize,
     /// Files that are ready.
     pub ready: usize,
     /// Of those, files that were on disk already.
@@ -57,6 +61,7 @@ struct State {
     waiting: Vec<Job>,
     seen: HashSet<String>,
     submitted: usize,
+    in_flight: usize,
     closed: bool,
 }
 
@@ -158,8 +163,17 @@ impl SubtitlePrefetch {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        summary.submitted = self.shared.lock().submitted;
+        let state = self.shared.lock();
+        summary.submitted = state.submitted;
+        summary.queued = state.waiting.len();
+        summary.in_flight = state.in_flight;
         summary
+    }
+
+    /// True while any file is waiting in the queue or currently being downloaded.
+    pub fn is_busy(&self) -> bool {
+        let state = self.shared.lock();
+        !state.waiting.is_empty() || state.in_flight > 0
     }
 }
 
@@ -179,6 +193,7 @@ impl Shared {
                 .min_by_key(|(_, job)| (job.rank, job.order))
                 .map(|(position, _)| position);
             if let Some(position) = best {
+                state.in_flight += 1;
                 return Some(state.waiting.remove(position));
             }
             if state.closed {
@@ -194,10 +209,14 @@ impl Shared {
     fn run(&self) {
         while let Some(job) = self.next() {
             if !(self.keep_going)() {
-                self.lock().waiting.clear();
+                let mut state = self.lock();
+                state.waiting.clear();
+                state.in_flight = state.in_flight.saturating_sub(1);
                 break;
             }
             self.process(&job);
+            let mut state = self.lock();
+            state.in_flight = state.in_flight.saturating_sub(1);
         }
         if self.workers_left.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.log_summary();

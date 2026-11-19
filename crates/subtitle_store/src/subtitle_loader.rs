@@ -65,7 +65,7 @@ pub struct LoadedSubtitle {
 
 /// Downloads, cleans and saves subtitle files.
 pub struct SubtitleLoader {
-    cache: SubtitleCache,
+    cache: Arc<SubtitleCache>,
     fetcher: Arc<dyn SubtitleFetcher>,
     options: LoadOptions,
 }
@@ -73,7 +73,7 @@ pub struct SubtitleLoader {
 impl SubtitleLoader {
     /// A loader that keeps its files in `cache` and downloads through `fetcher`.
     pub fn new(
-        cache: SubtitleCache,
+        cache: Arc<SubtitleCache>,
         fetcher: Arc<dyn SubtitleFetcher>,
         options: LoadOptions,
     ) -> Self {
@@ -85,7 +85,7 @@ impl SubtitleLoader {
     }
 
     /// The cache, for the per-title lists.
-    pub fn cache(&self) -> &SubtitleCache {
+    pub fn cache(&self) -> &Arc<SubtitleCache> {
         &self.cache
     }
 
