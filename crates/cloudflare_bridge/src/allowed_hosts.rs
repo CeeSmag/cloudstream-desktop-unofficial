@@ -3,6 +3,7 @@
 //! A window opens only for a site the viewer said yes to (pressing Verify); every other request is
 //! answered at once with "ask again" so the plugin fails fast and the UI can show the question.
 //! Allowing a site covers its subdomains (`cdn.site.test` under `site.test`).
+//! Single-label names (`com`) are refused: the suffix rule would otherwise match every `*.com`.
 
 use std::collections::HashSet;
 use std::sync::{Arc, PoisonError, RwLock};
@@ -14,20 +15,29 @@ pub struct AllowedHosts {
 }
 
 impl AllowedHosts {
-    /// Starts with `hosts` (the ones saved in the settings).
+    /// Starts with `hosts` (the ones saved in the settings); single-label names are dropped.
     pub fn new(hosts: impl IntoIterator<Item = String>) -> Self {
-        let hosts = hosts.into_iter().map(|host| normalize(&host)).collect();
+        let hosts = hosts
+            .into_iter()
+            .map(|host| normalize(&host))
+            .filter(|host| is_multi_label_host(host))
+            .collect();
         Self {
             hosts: Arc::new(RwLock::new(hosts)),
         }
     }
 
     /// Allows `host` and its subdomains; true when it was not allowed before.
+    /// Single-label hosts are ignored (too broad for the subdomain rule).
     pub fn allow(&self, host: &str) -> bool {
+        let host = normalize(host);
+        if !is_multi_label_host(&host) {
+            return false;
+        }
         self.hosts
             .write()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(normalize(host))
+            .insert(host)
     }
 
     /// True when `host`, or a site it belongs to, was allowed.
@@ -35,12 +45,19 @@ impl AllowedHosts {
         let host = normalize(host);
         let hosts = self.hosts.read().unwrap_or_else(PoisonError::into_inner);
         hosts.iter().any(|allowed| {
-            host == *allowed
-                || host
-                    .strip_suffix(allowed.as_str())
-                    .is_some_and(|prefix| prefix.ends_with('.'))
+            is_multi_label_host(allowed)
+                && (host == *allowed
+                    || host
+                        .strip_suffix(allowed.as_str())
+                        .is_some_and(|prefix| prefix.ends_with('.')))
         })
     }
+}
+
+/// True when `host` has at least two non-empty labels (`site.test`, not `com` or `.test`).
+pub fn is_multi_label_host(host: &str) -> bool {
+    let host = normalize(host);
+    !host.is_empty() && host.contains('.') && !host.split('.').any(str::is_empty)
 }
 
 fn normalize(host: &str) -> String {
@@ -66,6 +83,25 @@ mod tests {
         assert!(allowed.allow("a.test"));
         assert!(!allowed.allow("A.TEST."));
         assert!(allowed.is_allowed("a.test"));
+    }
+
+    #[test]
+    fn allow_rejects_single_label_hosts_that_would_match_every_tld_suffix() {
+        let allowed = AllowedHosts::default();
+        assert!(!allowed.allow("com"));
+        assert!(!allowed.is_allowed("evil.com"));
+        assert!(!AllowedHosts::new(["com".to_owned()]).is_allowed("evil.com"));
+        assert!(allowed.allow("site.test"));
+        assert!(allowed.is_allowed("cdn.site.test"));
+    }
+
+    #[test]
+    fn is_multi_label_host_needs_two_labels() {
+        assert!(is_multi_label_host("site.test"));
+        assert!(!is_multi_label_host("com"));
+        assert!(!is_multi_label_host(""));
+        assert!(!is_multi_label_host(".test"));
+        assert!(!is_multi_label_host("site."));
     }
 
     #[test]

@@ -8,11 +8,12 @@ const HOST_SEPARATOR: char = ' ';
 
 impl SettingsService {
     /// Sites the viewer pressed Verify for; their checks open a window without asking again.
+    /// Single-label names are dropped (they would match every host under that TLD).
     pub fn cloudflare_allowed_hosts(&self) -> Result<Vec<String>, ServiceError> {
         let raw = self.stored(CLOUDFLARE_ALLOWED_KEY)?.unwrap_or_default();
         Ok(raw
             .split(HOST_SEPARATOR)
-            .filter(|host| !host.is_empty())
+            .filter(|host| is_multi_label_host(host))
             .map(str::to_owned)
             .collect())
     }
@@ -20,7 +21,7 @@ impl SettingsService {
     /// Remembers that the viewer allowed `host`'s check (kept once, lower case).
     pub fn allow_cloudflare_host(&self, host: &str) -> Result<(), ServiceError> {
         let host = host.trim().to_ascii_lowercase();
-        if host.is_empty() || host.contains(char::is_whitespace) {
+        if !is_multi_label_host(&host) || host.contains(char::is_whitespace) {
             return Ok(());
         }
         let mut hosts = self.cloudflare_allowed_hosts()?;
@@ -31,6 +32,12 @@ impl SettingsService {
         let joined = hosts.join(&HOST_SEPARATOR.to_string());
         self.store_value(CLOUDFLARE_ALLOWED_KEY, &joined)
     }
+}
+
+/// Same rule as `cloudflare_bridge::allowed_hosts`: at least two non-empty labels.
+fn is_multi_label_host(host: &str) -> bool {
+    let host = host.trim().trim_end_matches('.');
+    !host.is_empty() && host.contains('.') && !host.split('.').any(str::is_empty)
 }
 
 #[cfg(test)]
@@ -65,5 +72,17 @@ mod tests {
         service.allow_cloudflare_host("  ").expect("blank");
         service.allow_cloudflare_host("a b").expect("spaced");
         assert!(service.cloudflare_allowed_hosts().expect("read").is_empty());
+    }
+
+    #[test]
+    fn allow_cloudflare_host_ignores_single_label_tld_like_names() {
+        let service = service();
+        service.allow_cloudflare_host("com").expect("tld");
+        assert!(service.cloudflare_allowed_hosts().expect("read").is_empty());
+        service.allow_cloudflare_host("site.test").expect("ok");
+        assert_eq!(
+            service.cloudflare_allowed_hosts().expect("read"),
+            ["site.test"]
+        );
     }
 }
