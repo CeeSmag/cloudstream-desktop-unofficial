@@ -81,14 +81,6 @@ impl RequestTickets {
         *self.generation_mut(kind) += 1;
     }
 
-    /// The ticket of the request of `kind` that is still wanted, if one runs.
-    pub(crate) fn current(&self, kind: RequestKind) -> Ticket {
-        Ticket {
-            kind,
-            generation: self.generation(kind),
-        }
-    }
-
     /// True when `ticket`'s answer is still wanted.
     pub(crate) fn is_current(&self, ticket: Ticket) -> bool {
         self.generation(ticket.kind) == ticket.generation
@@ -144,11 +136,11 @@ mod tests {
     }
 
     #[test]
-    fn current_matches_last_issued() {
+    fn ticket_kind_matches_what_was_issued() {
         let mut tickets = RequestTickets::default();
         let open = tickets.issue(RequestKind::Open);
-        assert_eq!(tickets.current(RequestKind::Open), open);
         assert_eq!(open.kind(), RequestKind::Open);
+        assert!(tickets.is_current(open));
     }
 
     #[test]

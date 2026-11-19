@@ -123,48 +123,51 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
 
 /// Searches the playing title's streams again while the current one keeps playing.
 pub(crate) fn refresh_playing(ctx: &BridgeContext) {
-    let (job, playing_url) = {
-        let mut session = ctx.session.borrow_mut();
-        // New ticket and control so the still-running open cannot race this refresh.
-        let (control, ticket) = session.begin_source_refresh();
-        let playing_url = session
-            .links
-            .get(session.selected)
-            .map(|link| link.url.clone());
-        let job = OpenJob {
-            ticket,
-            services: ctx.owned_services(),
-            item: session
-                .target
-                .clone()
-                .unwrap_or_else(|| empty_item(&session.details.provider)),
-            data: session.episode_data.clone(),
-            control,
-            live: session.live.clone(),
-        };
-        (job, playing_url)
-    };
+    let (job, playing_url) = prepare_refresh(ctx);
     let sender = ctx.sender();
-    spawn_work("refresh-sources", move || {
-        let ticket = job.ticket;
-        let on_progress =
-            |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
-        let request = RefreshRequest {
-            streams: &job.services.streams,
-            provider: &job.item.provider,
-            data: &job.data,
-            media_key: &job.item.media_key,
-            playing_url: playing_url.as_deref(),
-            cache: Some(&job.services.title_cache),
-            live: &job.live,
-            control: &job.control,
-            on_progress: &on_progress,
-        };
-        match playback_session::refresh_sources(request) {
-            Ok(opened) => sender.send(UiEvent::OpenUpdate(ticket, opened)),
-            Err(error) => sender.notice(format!("Refresh failed: {error}")),
-        }
-    });
+    spawn_work("refresh-sources", move || run_refresh_job(&job, playing_url, &sender));
+}
+
+/// New ticket and control so the still-running open cannot race this refresh.
+fn prepare_refresh(ctx: &BridgeContext) -> (OpenJob, Option<String>) {
+    let mut session = ctx.session.borrow_mut();
+    let (control, ticket) = session.begin_source_refresh();
+    let playing_url = session
+        .links
+        .get(session.selected)
+        .map(|link| link.url.clone());
+    let job = OpenJob {
+        ticket,
+        services: ctx.owned_services(),
+        item: session
+            .target
+            .clone()
+            .unwrap_or_else(|| empty_item(&session.details.provider)),
+        data: session.episode_data.clone(),
+        control,
+        live: session.live.clone(),
+    };
+    (job, playing_url)
+}
+
+fn run_refresh_job(job: &OpenJob, playing_url: Option<String>, sender: &UiSender) {
+    let ticket = job.ticket;
+    let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
+    let request = RefreshRequest {
+        streams: &job.services.streams,
+        provider: &job.item.provider,
+        data: &job.data,
+        media_key: &job.item.media_key,
+        playing_url: playing_url.as_deref(),
+        cache: Some(&job.services.title_cache),
+        live: &job.live,
+        control: &job.control,
+        on_progress: &on_progress,
+    };
+    match playback_session::refresh_sources(request) {
+        Ok(opened) => sender.send(UiEvent::OpenUpdate(ticket, opened)),
+        Err(error) => sender.notice(format!("Refresh failed: {error}")),
+    }
 }
 
 fn empty_item(provider: &str) -> PlaybackItem {
