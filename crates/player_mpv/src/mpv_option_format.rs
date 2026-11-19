@@ -1,9 +1,7 @@
+use core_model::DEFAULT_STREAM_USER_AGENT;
 use player_api::{PlaybackRequest, PlayerError, SubtitleSource};
 
 use crate::mpv_api::MpvHandle;
-
-/// Default User-Agent restored when a stream does not specify its own.
-const DEFAULT_USER_AGENT: &str = "libmpv";
 
 /// Encodes one string for mpv's list options using the length-prefixed `%len%value` form,
 /// which keeps commas and colons inside the value intact.
@@ -20,14 +18,14 @@ pub(crate) fn header_fields(headers: &[(String, String)]) -> String {
         .join(",")
 }
 
-/// Extracts a custom `User-Agent` from `headers`, or falls back to `DEFAULT_USER_AGENT`.
+/// Extracts a custom `User-Agent` from `headers`, or falls back to CloudStream's Chrome default.
 pub(crate) fn user_agent_option(headers: &[(String, String)]) -> &str {
     headers
         .iter()
         .find(|(name, _)| name.eq_ignore_ascii_case("user-agent"))
         .map(|(_, value)| value.as_str())
         .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_USER_AGENT)
+        .unwrap_or(DEFAULT_STREAM_USER_AGENT)
 }
 
 /// Builds `demuxer-lavf-o` options for ClearKey CENC decryption (`decryption_key` for MP4/MOV and
@@ -130,7 +128,7 @@ mod tests {
 
     #[test]
     fn user_agent_option_finds_case_insensitive_header_or_defaults() {
-        assert_eq!(user_agent_option(&[]), "libmpv");
+        assert_eq!(user_agent_option(&[]), DEFAULT_STREAM_USER_AGENT);
         let headers = vec![("user-agent".to_owned(), "Mozilla/5.0".to_owned())];
         assert_eq!(user_agent_option(&headers), "Mozilla/5.0");
     }

@@ -100,7 +100,13 @@ pub(crate) fn assert_provider_headers_everywhere(origin: &FakeOrigin) {
         let target = &request.target;
         assert_eq!(request.header("x-token"), Some("t"), "{target}");
         assert_eq!(request.header("referer"), Some(REFERER), "{target}");
-        assert_eq!(request.header("user-agent"), Some("libmpv"), "{target}");
+        assert_eq!(
+            request.header("user-agent"),
+            Some(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+            ),
+            "{target}"
+        );
         assert_eq!(request.header("accept-encoding"), Some("identity"));
     }
 }

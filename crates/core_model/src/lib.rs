@@ -15,6 +15,7 @@ mod repository_entry;
 mod resume_pointer;
 mod search_result;
 mod stable_key;
+mod stream_user_agent;
 mod watch_progress;
 
 pub use bookmark::Bookmark;
@@ -31,4 +32,5 @@ pub use repository_entry::RepositoryEntry;
 pub use resume_pointer::ResumePointer;
 pub use search_result::{SearchPage, SearchResult};
 pub use stable_key::stable_key;
+pub use stream_user_agent::DEFAULT_STREAM_USER_AGENT;
 pub use watch_progress::WatchProgress;

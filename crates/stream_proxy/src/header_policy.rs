@@ -3,9 +3,10 @@
 use crate::stream_spec::StreamSpec;
 use crate::url_parts::host_of;
 
-/// The User-Agent the player sends when a stream names none (see `player_mpv`); keeping it the same
-/// means a host that accepts the player directly accepts the proxy too.
-const DEFAULT_USER_AGENT: &str = "libmpv";
+/// Same Chrome desktop string as `core_model::DEFAULT_STREAM_USER_AGENT` / CloudStream Android
+/// (`MainAPI.USER_AGENT`). Kept as a literal so this crate stays free of internal deps; a host that
+/// accepts the player must accept the proxy with the same agent.
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 /// Headers the proxy sets itself or that only make sense on the player's own connection.
 const NEVER_FORWARDED: &[&str] = &[
@@ -166,7 +167,10 @@ mod tests {
     #[test]
     fn for_url_uses_the_players_user_agent_unless_the_stream_names_one() {
         let sent = HeaderPolicy::new(&spec(&[], "")).for_url("https://home.test/a");
-        assert_eq!(value_of(&sent, "user-agent").as_deref(), Some("libmpv"));
+        assert_eq!(
+            value_of(&sent, "user-agent").as_deref(),
+            Some(DEFAULT_USER_AGENT)
+        );
         let own = HeaderPolicy::new(&spec(&[("User-Agent", "Custom/1")], ""));
         assert_eq!(
             value_of(&own.for_url("https://home.test/a"), "user-agent").as_deref(),

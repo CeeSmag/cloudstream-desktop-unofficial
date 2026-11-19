@@ -8,6 +8,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 /// How much of the start of the file is read: enough to tell a video or playlist from a web page
 /// and to read the track list at the start of a Matroska file.
 const PROBE_BYTES: u64 = 32 * 1024;
+/// Statuses with which hosts refuse a `Range` request (same set as `stream_proxy::origin_fetch`).
+const RANGE_REFUSED: &[u16] = &[400, 403, 405, 416];
 
 /// What a host answered when asked for the first bytes of a stream.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -48,12 +50,34 @@ impl Default for UreqProbe {
 impl HttpProbe for UreqProbe {
     #[tracing::instrument(level = "debug", skip_all, fields(url = ?url))]
     fn probe(&self, url: &str, headers: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
+        let first = self.probe_once(url, headers, true)?;
+        if RANGE_REFUSED.contains(&first.status) {
+            tracing::debug!(
+                status = first.status,
+                "the host refused the range; probing without Range"
+            );
+            return self.probe_once(url, headers, false);
+        }
+        Ok(first)
+    }
+}
+
+impl UreqProbe {
+    fn probe_once(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        with_range: bool,
+    ) -> Result<ProbeResponse, RepoError> {
         let fail = |reason: String| RepoError::Download {
             url: url.to_owned(),
             reason,
         };
-        let range = format!("bytes=0-{}", PROBE_BYTES - 1);
-        let mut request = self.agent.get(url).header("Range", range.as_str());
+        let mut request = self.agent.get(url);
+        if with_range {
+            let range = format!("bytes=0-{}", PROBE_BYTES - 1);
+            request = request.header("Range", range.as_str());
+        }
         for (name, value) in headers {
             request = request.header(name.as_str(), value.as_str());
         }
@@ -104,8 +128,9 @@ fn total_size(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write as _;
+    use std::io::{Read, Write as _};
     use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
 
     use super::*;
 
@@ -119,6 +144,29 @@ mod tests {
                 let _ = stream.read(&mut buffer);
                 let _ = stream.write_all(response.as_bytes());
             }
+        });
+        format!("http://127.0.0.1:{port}/video.mp4")
+    }
+
+    /// Serves responses in order for Range-refuse then retry.
+    fn serve_scripted(replies: Vec<&'static str>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("address").port();
+        let queue = Arc::new(Mutex::new(replies));
+        std::thread::spawn(move || loop {
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
+            let mut buffer = [0_u8; 2048];
+            let _ = stream.read(&mut buffer);
+            let next = {
+                let mut q = queue.lock().expect("lock");
+                if q.is_empty() {
+                    break;
+                }
+                q.remove(0)
+            };
+            let _ = stream.write_all(next.as_bytes());
         });
         format!("http://127.0.0.1:{port}/video.mp4")
     }
@@ -154,10 +202,22 @@ mod tests {
 
     #[test]
     fn error_statuses_are_returned_not_raised() {
+        // 404 is not a Range-refuse code, so there is no second request.
         let url =
-            serve_once("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         let response = UreqProbe::default().probe(&url, &[]).expect("answers");
-        assert_eq!(response.status, 403);
+        assert_eq!(response.status, 404);
+    }
+
+    #[test]
+    fn range_refuse_retries_without_range_and_keeps_the_second_answer() {
+        let url = serve_scripted(vec![
+            "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nContent-Length: 4\r\nConnection: close\r\n\r\nabcd",
+        ]);
+        let response = UreqProbe::default().probe(&url, &[]).expect("answers");
+        assert_eq!(response.status, 200);
+        assert_eq!(response.head, b"abcd");
     }
 
     #[test]

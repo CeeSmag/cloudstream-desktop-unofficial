@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use core_model::PlayableLink;
+use core_model::{PlayableLink, DEFAULT_STREAM_USER_AGENT};
 use extension_repo::{HttpProbe, ProbeResponse};
 
 use crate::subtitle_scan::subtitle_languages;
@@ -20,8 +20,6 @@ const MIN_WORKERS: usize = 2;
 pub fn check_worker_count(parallelism: usize) -> usize {
     parallelism.clamp(MIN_WORKERS, MAX_WORKERS)
 }
-/// Sent when a link names no `User-Agent`; mpv itself identifies as libmpv.
-const DEFAULT_USER_AGENT: &str = "libmpv";
 
 /// Whether a stream answered like something a player can open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,7 +58,8 @@ impl StreamChecker {
     /// Asks the host of one stream for its first bytes.
     #[tracing::instrument(level = "debug", skip_all, fields(host = link.url.split('/').nth(2).unwrap_or_default()))]
     pub fn check(&self, link: &PlayableLink) -> LinkHealth {
-        match self.probe.probe(&link.url, &request_headers(link)) {
+        let headers = request_headers(link);
+        match self.probe.probe(&link.url, &headers) {
             Ok(response) => classify(&link.link_type, &response),
             Err(error) => LinkHealth::Broken(error.to_string()),
         }
@@ -116,7 +115,10 @@ fn request_headers(link: &PlayableLink) -> Vec<(String, String)> {
         headers.push(("Referer".to_owned(), link.referer.clone()));
     }
     if !has("user-agent", &headers) {
-        headers.push(("User-Agent".to_owned(), DEFAULT_USER_AGENT.to_owned()));
+        headers.push((
+            "User-Agent".to_owned(),
+            DEFAULT_STREAM_USER_AGENT.to_owned(),
+        ));
     }
     headers
 }
@@ -134,11 +136,20 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     if link_type == "M3U8" {
         return LinkHealth::Broken("not an HLS playlist".to_owned());
     }
-    if link_type == "DASH" && (head.starts_with("<?xml") || head.starts_with("<MPD")) {
+    if link_type == "DASH" && looks_like_dash(head) {
         return working(None, response);
     }
     if response.head.is_empty() {
         return LinkHealth::Broken("empty answer".to_owned());
+    }
+    classify_body(link_type, head, response)
+}
+
+/// After playlist/DASH tips: container magic, then reject HTML/JSON noise.
+fn classify_body(link_type: &str, head: &str, response: &ProbeResponse) -> LinkHealth {
+    // Media magic wins over a mislabeled `text/html` Content-Type (some CDNs do this).
+    if looks_like_container(&response.head) {
+        return working(video_size(link_type, response), response);
     }
     if head.starts_with('<') || response.content_type.contains("text/html") {
         return LinkHealth::Broken("a web page, not a video".to_owned());
@@ -146,14 +157,29 @@ pub(crate) fn classify(link_type: &str, response: &ProbeResponse) -> LinkHealth 
     if head.starts_with('{') || head.starts_with('[') {
         return LinkHealth::Broken("data, not a video".to_owned());
     }
-    working(
-        if link_type == "VIDEO" {
-            response.total_bytes
-        } else {
-            None
-        },
-        response,
-    )
+    working(video_size(link_type, response), response)
+}
+
+fn video_size(link_type: &str, response: &ProbeResponse) -> Option<u64> {
+    if link_type == "VIDEO" {
+        response.total_bytes
+    } else {
+        None
+    }
+}
+
+/// DASH MPD tip, case-insensitive (`<mpd` / `<?xml`).
+fn looks_like_dash(head: &str) -> bool {
+    let lower = head.to_ascii_lowercase();
+    lower.starts_with("<?xml") || lower.starts_with("<mpd")
+}
+
+/// Matroska EBML or ISO BMFF (`ftyp` at offset 4).
+fn looks_like_container(head: &[u8]) -> bool {
+    if head.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        return true;
+    }
+    head.get(4..8) == Some(&b"ftyp"[..])
 }
 
 fn working(size_bytes: Option<u64>, response: &ProbeResponse) -> LinkHealth {

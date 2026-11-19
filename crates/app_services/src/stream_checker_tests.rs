@@ -82,6 +82,25 @@ fn a_dash_manifest_is_working_and_an_empty_answer_is_not() {
 }
 
 #[test]
+fn lowercase_mpd_is_a_working_dash_manifest() {
+    assert!(classify(
+        "DASH",
+        &answer(
+            200,
+            "application/dash+xml",
+            b"<mpd xmlns=\"urn:mpeg:dash:schema:mpd:2011\">"
+        )
+    )
+    .is_working());
+}
+
+#[test]
+fn html_content_type_with_ftyp_body_is_working() {
+    let body = b"\0\0\0\x18ftypmp42";
+    assert!(classify("VIDEO", &answer(200, "text/html", body)).is_working());
+}
+
+#[test]
 fn request_headers_add_referer_and_user_agent_unless_the_link_has_them() {
     let link = PlayableLink {
         referer: "https://site.test".into(),
@@ -92,6 +111,15 @@ fn request_headers_add_referer_and_user_agent_unless_the_link_has_them() {
     assert!(headers.contains(&("Referer".to_owned(), "https://site.test".to_owned())));
     assert!(headers.contains(&("User-Agent".to_owned(), "MovieBlast".to_owned())));
     assert_eq!(headers.len(), 2);
+}
+
+#[test]
+fn request_headers_default_user_agent_matches_cloudstream_chrome() {
+    let headers = request_headers(&PlayableLink::default());
+    assert!(headers.contains(&(
+        "User-Agent".to_owned(),
+        core_model::DEFAULT_STREAM_USER_AGENT.to_owned()
+    )));
 }
 
 #[test]
