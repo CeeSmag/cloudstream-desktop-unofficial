@@ -57,9 +57,7 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {
-        ui.set_open_busy(true);
-        ui.set_open_status("Searching streams…".into());
-        ui.set_player_title(shown_title.into());
+        show_opening_started(&ui, shown_title);
     }
     let job = OpenJob {
         ticket,
@@ -71,6 +69,16 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
     };
     let sender = ctx.sender();
     spawn_work("open-streams", move || run_open_job(&job, &sender));
+}
+
+/// The opening panel starts empty: nothing found, nothing to play yet.
+fn show_opening_started(ui: &CloudStream, shown_title: &str) {
+    ui.set_open_busy(true);
+    ui.set_open_title("Finding sources…".into());
+    ui.set_open_status("".into());
+    ui.set_open_fraction(0.0);
+    ui.set_can_skip_checks(false);
+    ui.set_player_title(shown_title.into());
 }
 
 fn run_open_job(job: &OpenJob, sender: &UiSender) {

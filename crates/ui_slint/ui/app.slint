@@ -55,6 +55,9 @@ export component CloudStream inherits Window {
     in-out property <string> status-line: "";
     in-out property <bool> open-busy: false;
     in-out property <string> open-status: "";
+    in-out property <string> open-title: "Finding sources…";
+    in-out property <float> open-fraction: 0;
+    in-out property <bool> can-skip-checks: false;
     in-out property <string> search-query: "";
     in-out property <bool> search-loading: false;
     in-out property <string> search-message: "";
@@ -407,6 +410,9 @@ export component CloudStream inherits Window {
             resume-label: resume-label;
             open-busy: open-busy;
             open-status: open-status;
+            open-title: open-title;
+            open-fraction: open-fraction;
+            can-skip-checks: can-skip-checks;
             episodes: episodes;
             season-labels: season-labels;
             season-filter <=> season-filter;

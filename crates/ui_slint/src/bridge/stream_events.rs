@@ -2,6 +2,7 @@
 
 use playback_session::{CheckedOpen, OpenProgress};
 
+use crate::check_text::{can_skip_check, check_detail, check_fraction, check_title};
 use crate::playback_watch::SourceCheck;
 use crate::CloudStream;
 
@@ -10,17 +11,17 @@ use super::source_picker::show_sources;
 use super::stream_opening::start_selected;
 
 pub(crate) fn show_open_progress(ui: &CloudStream, progress: OpenProgress) {
-    let done = if progress.search_done {
-        " · search done"
+    let detail = check_detail(&progress);
+    ui.set_open_title(check_title(&progress).into());
+    ui.set_open_status(detail.clone().into());
+    ui.set_open_fraction(check_fraction(&progress));
+    ui.set_can_skip_checks(can_skip_check(&progress));
+    let line = if detail.is_empty() {
+        check_title(&progress).to_owned()
     } else {
-        ""
+        detail
     };
-    let status = format!(
-        "Streams {} · checked {} · working {}{done}",
-        progress.found, progress.checked, progress.working
-    );
-    ui.set_open_status(status.clone().into());
-    ui.set_status_line(status.into());
+    ui.set_status_line(line.into());
 }
 
 pub(crate) fn start_ready_stream(ctx: &BridgeContext, ui: &CloudStream, index: usize) {

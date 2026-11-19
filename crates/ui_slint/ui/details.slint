@@ -79,6 +79,9 @@ export component DetailsOverlay inherits Rectangle {
     in property <image> poster;
     in property <bool> open-busy: false;
     in property <string> open-status: "";
+    in property <string> open-title: "";
+    in property <float> open-fraction: 0;
+    in property <bool> can-skip-checks: false;
     in property <[EpisodeItem]> episodes: [];
     in property <[string]> season-labels: [];
     in-out property <int> season-filter: -1;
@@ -223,11 +226,29 @@ export component DetailsOverlay inherits Rectangle {
                         Spinner { width: 22px; height: 22px; indeterminate: true; }
                         VerticalLayout {
                             horizontal-stretch: 1;
-                            Text { text: "Finding a working stream"; color: Theme.text; font-weight: 600; }
-                            MutedLabel { text: root.open-status; }
+                            spacing: 6px;
+                            Text { text: root.open-title; color: Theme.text; font-weight: 600; }
+                            Rectangle {
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #ffffff1a;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * clamp(root.open-fraction, 0, 1);
+                                    border-radius: 3px;
+                                    background: Theme.accent;
+                                    animate width { duration: 200ms; }
+                                }
+                            }
+                            if root.open-status != "": MutedLabel { text: root.open-status; }
+                            if root.can-skip-checks: MutedLabel {
+                                text: "Play now starts a working source; the rest is checked in the background.";
+                                font-size: 11px;
+                            }
                         }
                         PillButton {
                             text: "Play now";
+                            enabled: root.can-skip-checks;
                             focused: root.action-focused(root.back-index + 1);
                             clicked => { root.skip-checks(); }
                         }
