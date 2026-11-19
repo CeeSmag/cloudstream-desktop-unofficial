@@ -15,7 +15,8 @@ import { CloudflareBanner } from "cloudflare_banner.slint";
 import { TopBar } from "top_bar.slint";
 import { Toast } from "toast.slint";
 
-export { PluginList } from "extensions_page.slint";
+export { PluginList } from "extensions_plugins.slint";
+export { RepoList, RepoDetail } from "extensions_repos.slint";
 export { BrowseFilter } from "browse.slint";
 export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
 
@@ -109,6 +110,7 @@ export component CloudStream inherits Window {
     in-out property <string> cf-host: "";
     in-out property <string> cf-message: "";
     in-out property <int> settings-page-index: 0;
+    in-out property <int> extensions-tab: 0;
     in-out property <string> repo-url: "";
     in-out property <bool> player-chrome-visible: true;
     in-out property <int> season-filter: -1;
@@ -415,6 +417,7 @@ export component CloudStream inherits Window {
                 available-plugins: root.available-plugins;
                 extensions-busy: root.extensions-busy;
                 plugins-loading: root.plugins-loading;
+                extensions-tab <=> root.extensions-tab;
                 repo-url <=> root.repo-url;
                 set-video-cache(v) => { set-video-cache(v); }
                 set-ahead(v) => { set-ahead(v); }

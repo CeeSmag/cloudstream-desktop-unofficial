@@ -14,6 +14,7 @@ mod focus_grid;
 mod playback_watch;
 mod plugin_filter;
 mod posters;
+mod repository_filter;
 mod request_tickets;
 mod resume_hero;
 mod seek_bar;

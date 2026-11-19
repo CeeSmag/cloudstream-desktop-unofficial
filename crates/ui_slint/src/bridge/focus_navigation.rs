@@ -1,9 +1,9 @@
 //! Remote / keyboard navigation: arrows move the focus, Enter opens, Back closes or goes up.
 
-use slint::Model;
+use slint::{ComponentHandle, Model};
 
 use crate::focus_grid::{Direction, FocusGrid, FocusPoint, NAV_ROW};
-use crate::CloudStream;
+use crate::{CloudStream, RepoDetail};
 
 use super::bridge_context::BridgeContext;
 use super::details_view::shown_episodes;
@@ -148,6 +148,14 @@ fn remove_focused(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
 fn go_back(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
     if screen == FocusScreen::Details {
         return close_details(ctx, ui);
+    }
+    if screen == FocusScreen::Settings
+        && ui.get_settings_page_index() == 2
+        && ui.get_extensions_tab() == 0
+        && !ui.global::<RepoDetail>().get_open_url().is_empty()
+    {
+        ui.global::<RepoDetail>().invoke_close();
+        return;
     }
     let point = focus_of(ctx, screen).point();
     if point.row != NAV_ROW {

@@ -2,28 +2,68 @@ import { Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
-import { TvBadge, TvButton, TvSegmented, TvSelect, TvSwitch, TvTextInput } from "controls.slint";
-import { Card, MutedLabel, SectionTitle } from "widgets.slint";
+import { TvBadge } from "controls.slint";
+import { MutedLabel, SectionTitle } from "widgets.slint";
+import { PluginsTab } from "extensions_plugins.slint";
+import { RepoDetail, RepoList, RepositoriesTab, RepositoryDetailView } from "extensions_repos.slint";
 
-/// Settings > Extensions: repositories, the plugins they offer, and the installed plugins.
-/// The plugin list's search, filters and paging (read by the app when `changed` fires).
-export global PluginList {
-    in-out property <string> search: "";
-    /// "All languages", then the languages the plugins are in.
-    in property <[string]> languages: ["All languages"];
-    in-out property <string> language: "All languages";
-    in property <[string]> sorts: ["Sort: Name", "Sort: Language", "Sort: Size"];
-    in-out property <string> sort: "Sort: Name";
-    /// 0 all, 1 not installed, 2 installed.
-    in-out property <int> view: 0;
-    /// "12 of 340".
-    in property <string> count-text: "";
-    in property <bool> has-more: false;
-    callback changed();
-    callback more();
+/// One pill in the Extensions sub-navigation bar (Repositories | Plugins).
+component ExtensionsNavPill inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <int> count: 0;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 40px;
+    min-width: row.preferred-width + 28px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 12px;
+    background: root.active ? Theme.accent-soft : (touch.has-hover ? #ffffff12 : transparent);
+    border-width: 1px;
+    border-color: root.active ? Theme.accent-border : transparent;
+    animate background, border-color { duration: 130ms; }
+    accessible-role: AccessibleRole.tab;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.active;
+    accessible-action-default => { root.clicked(); }
+
+    row := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+        cross-axis-alignment: center;
+        TvIcon {
+            commands: root.icon;
+            size: 16px;
+            color: root.active ? Theme.accent-hi : Theme.muted;
+        }
+        Text {
+            text: root.label;
+            color: root.active ? Theme.text : (touch.has-hover ? Theme.text : Theme.text-secondary);
+            font-size: 14px;
+            font-weight: root.active ? 700 : 500;
+            vertical-alignment: center;
+        }
+        if root.count > 0: TvBadge {
+            text: "\{root.count}";
+            tone: root.active ? "accent" : "neutral";
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
 }
 
+/// Settings > Extensions: split into Repositories (with per-repo plugin drill-down) and Plugins tabs.
 export component ExtensionsPage inherits VerticalLayout {
+    /// 0 = Repositories, 1 = Plugins.
+    in-out property <int> active-tab: 0;
     in property <[RepositoryItem]> repositories: [];
     in property <[AvailablePlugin]> available: [];
     in property <[PluginItem]> plugins: [];
@@ -39,13 +79,52 @@ export component ExtensionsPage inherits VerticalLayout {
     spacing: Theme.space-3;
     alignment: start;
 
-    VerticalLayout {
-        spacing: 4px;
-        SectionTitle { text: "Extensions"; }
-        MutedLabel {
-            text: "Add repositories, browse available providers, and manage trust or removal of installed plugins.";
-            font-size: 13.5px;
-            wrap: word-wrap;
+    HorizontalLayout {
+        spacing: 16px;
+        cross-axis-alignment: center;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            SectionTitle { text: "Extensions"; }
+            MutedLabel {
+                text: "Subscribe to repositories, browse providers, and manage installed plugins.";
+                font-size: 13.5px;
+                wrap: word-wrap;
+            }
+        }
+
+        // Frosted two-tab nav strip: Repositories | Plugins
+        Rectangle {
+            height: 48px;
+            horizontal-stretch: 0;
+            vertical-stretch: 0;
+            border-radius: 16px;
+            background: Theme.input-bg;
+            border-width: 1px;
+            border-color: Theme.border;
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                ExtensionsNavPill {
+                    label: "Repositories";
+                    icon: Icons.link;
+                    count: RepoList.total-count;
+                    active: root.active-tab == 0;
+                    clicked => {
+                        root.active-tab = 0;
+                        if RepoDetail.open-url != "" {
+                            RepoDetail.close();
+                        }
+                    }
+                }
+                ExtensionsNavPill {
+                    label: "Plugins";
+                    icon: Icons.puzzle;
+                    count: root.plugins.length;
+                    active: root.active-tab == 1;
+                    clicked => { root.active-tab = 1; }
+                }
+            }
         }
     }
 
@@ -76,294 +155,29 @@ export component ExtensionsPage inherits VerticalLayout {
         }
     }
 
-    Card {
-        title: "Repositories";
-        subtitle: "Paste a repo.json URL or short code to discover plugins";
-        icon: Icons.link;
-
-        HorizontalLayout {
-            spacing: 10px;
-            cross-axis-alignment: center;
-            TvTextInput {
-                text <=> root.repo-url;
-                placeholder-text: "https://…/repo.json or short code";
-                leading-icon: Icons.link;
-                horizontal-stretch: 1;
-                accepted => {
-                    if root.repo-url != "" && root.busy-text == "" {
-                        root.add-repository(root.repo-url);
-                    }
-                }
-            }
-            TvButton {
-                text: "Add";
-                icon: Icons.plus;
-                kind: "primary";
-                enabled: root.repo-url != "" && root.busy-text == "";
-                clicked => { root.add-repository(root.repo-url); }
-            }
-        }
-
-        if root.repositories.length > 0: VerticalLayout {
-            spacing: 6px;
-            padding-top: 4px;
-            for repository in root.repositories: Rectangle {
-                min-height: 54px;
-                border-radius: 10px;
-                background: repo-hover.has-hover ? #ffffff0f : #ffffff06;
-                border-width: 1px;
-                border-color: #ffffff0e;
-                animate background { duration: 120ms; }
-                repo-hover := TouchArea { }
-                HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 12px;
-                    padding-top: 8px;
-                    padding-bottom: 8px;
-                    spacing: 12px;
-                    cross-axis-alignment: center;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 2px;
-                        Text {
-                            text: repository.name;
-                            color: Theme.text;
-                            font-size: 14px;
-                            font-weight: 600;
-                            overflow: elide;
-                        }
-                        MutedLabel {
-                            text: repository.url;
-                            overflow: elide;
-                        }
-                    }
-                    TvButton {
-                        text: "Remove";
-                        icon: Icons.trash;
-                        kind: "ghost";
-                        compact: true;
-                        enabled: root.busy-text == "";
-                        clicked => { root.remove-repository(repository.url); }
-                    }
-                }
-            }
-        }
+    if root.active-tab == 0 && RepoDetail.open-url == "": RepositoriesTab {
+        repositories: root.repositories;
+        busy-text: root.busy-text;
+        repo-url <=> root.repo-url;
+        add-repository(url) => { root.add-repository(url); }
+        remove-repository(url) => { root.remove-repository(url); }
     }
 
-    Card {
-        title: "Available plugins";
-        subtitle: "Filter and install plugins offered by your repositories";
-        icon: Icons.puzzle;
-
-        HorizontalLayout {
-            spacing: 10px;
-            cross-axis-alignment: center;
-            TvTextInput {
-                text <=> PluginList.search;
-                placeholder-text: "Search by name, author, language or repository…";
-                leading-icon: Icons.search;
-                horizontal-stretch: 1;
-                edited => { PluginList.changed(); }
-            }
-            TvSelect {
-                width: 168px;
-                model: PluginList.languages;
-                current-value <=> PluginList.language;
-                selected => { PluginList.changed(); }
-            }
-            TvSelect {
-                width: 164px;
-                model: PluginList.sorts;
-                current-value <=> PluginList.sort;
-                selected => { PluginList.changed(); }
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            cross-axis-alignment: center;
-            TvSegmented {
-                model: ["All", "Not installed", "Installed"];
-                current-value: PluginList.view == 1 ? "Not installed" : (PluginList.view == 2 ? "Installed" : "All");
-                selected(choice) => {
-                    PluginList.view = choice == "Not installed" ? 1 : (choice == "Installed" ? 2 : 0);
-                    PluginList.changed();
-                }
-            }
-            Rectangle { horizontal-stretch: 1; }
-            if PluginList.count-text != "": TvBadge {
-                text: PluginList.count-text;
-                tone: "neutral";
-            }
-        }
-
-        if root.loading: HorizontalLayout {
-            spacing: 10px;
-            alignment: start;
-            padding-top: 4px;
-            Spinner { width: 18px; height: 18px; indeterminate: true; }
-            MutedLabel { text: "Loading the plugins your repositories offer…"; vertical-alignment: center; }
-        }
-        if !root.loading && root.available.length == 0: Rectangle {
-            min-height: 60px;
-            border-radius: 10px;
-            background: #ffffff05;
-            Text {
-                text: root.repositories.length == 0 ? "Add a repository above to browse its plugins."
-                    : PluginList.count-text == "" ? "Your repositories offer no plugins."
-                    : "No plugin matches that search or filter.";
-                color: Theme.muted;
-                font-size: 13.5px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-
-        if root.available.length > 0: VerticalLayout {
-            spacing: 6px;
-            for plugin in root.available: Rectangle {
-                min-height: plugin.description != "" ? 70px : 56px;
-                border-radius: 10px;
-                background: avail-hover.has-hover ? #ffffff0f : #ffffff06;
-                border-width: 1px;
-                border-color: #ffffff0d;
-                animate background { duration: 120ms; }
-                avail-hover := TouchArea { }
-                HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 12px;
-                    padding-top: 10px;
-                    padding-bottom: 10px;
-                    spacing: 12px;
-                    cross-axis-alignment: center;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 3px;
-                        Text {
-                            text: plugin.name;
-                            color: Theme.text;
-                            font-size: 14.5px;
-                            font-weight: 600;
-                            overflow: elide;
-                        }
-                        MutedLabel {
-                            text: plugin.detail;
-                            overflow: elide;
-                        }
-                        if plugin.description != "": Text {
-                            text: plugin.description;
-                            color: Theme.text-secondary;
-                            font-size: 12px;
-                            overflow: elide;
-                        }
-                    }
-                    if plugin.installed: TvBadge {
-                        text: "Installed";
-                        tone: "ok";
-                    }
-                    if !plugin.installed: TvButton {
-                        text: "Install";
-                        icon: Icons.download;
-                        kind: "primary";
-                        compact: true;
-                        enabled: root.busy-text == "";
-                        clicked => { root.install(plugin.key); }
-                    }
-                }
-            }
-        }
-
-        if PluginList.has-more: HorizontalLayout {
-            alignment: center;
-            padding-top: 6px;
-            TvButton {
-                text: "Show more plugins";
-                kind: "secondary";
-                clicked => { PluginList.more(); }
-            }
-        }
+    if root.active-tab == 0 && RepoDetail.open-url != "": RepositoryDetailView {
+        busy-text: root.busy-text;
+        loading: root.loading;
+        remove-repository(url) => { root.remove-repository(url); }
+        install(key) => { root.install(key); }
     }
 
-    Card {
-        title: "Installed plugins";
-        subtitle: "Manage sandbox trust and uninstall local extensions";
-        icon: Icons.shield;
-
-        if root.plugins.length == 0: Rectangle {
-            min-height: 54px;
-            border-radius: 10px;
-            background: #ffffff05;
-            Text {
-                text: "No plugins installed yet.";
-                color: Theme.muted;
-                font-size: 13.5px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-
-        if root.plugins.length > 0: VerticalLayout {
-            spacing: 6px;
-            for plugin in root.plugins: Rectangle {
-                min-height: 60px;
-                border-radius: 10px;
-                background: inst-hover.has-hover ? #ffffff0f : #ffffff06;
-                border-width: 1px;
-                border-color: #ffffff0e;
-                animate background { duration: 120ms; }
-                inst-hover := TouchArea { }
-                HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 12px;
-                    padding-top: 10px;
-                    padding-bottom: 10px;
-                    spacing: 12px;
-                    cross-axis-alignment: center;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 3px;
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
-                            cross-axis-alignment: center;
-                            Text {
-                                text: plugin.name;
-                                color: Theme.text;
-                                font-size: 14.5px;
-                                font-weight: 600;
-                                overflow: elide;
-                            }
-                            TvBadge {
-                                text: plugin.trusted ? "Trusted" : "Sandboxed";
-                                tone: plugin.trusted ? "warn" : "ok";
-                            }
-                        }
-                        MutedLabel {
-                            text: plugin.detail;
-                            overflow: elide;
-                        }
-                    }
-                    Text {
-                        text: "Trust";
-                        color: Theme.muted;
-                        font-size: 12.5px;
-                        vertical-alignment: center;
-                    }
-                    TvSwitch {
-                        checked: plugin.trusted;
-                        enabled: root.busy-text == "";
-                        toggled => { root.set-trusted(plugin.file-name, self.checked); }
-                    }
-                    TvButton {
-                        text: "Remove";
-                        icon: Icons.trash;
-                        kind: "danger";
-                        compact: true;
-                        enabled: root.busy-text == "";
-                        clicked => { root.uninstall(plugin.file-name); }
-                    }
-                }
-            }
-        }
+    if root.active-tab == 1: PluginsTab {
+        plugins: root.plugins;
+        available: root.available;
+        total-repositories: RepoList.total-count;
+        busy-text: root.busy-text;
+        loading: root.loading;
+        install(key) => { root.install(key); }
+        set-trusted(file, on) => { root.set-trusted(file, on); }
+        uninstall(file) => { root.uninstall(file); }
     }
 }

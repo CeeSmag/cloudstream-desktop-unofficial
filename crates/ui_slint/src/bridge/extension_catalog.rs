@@ -1,22 +1,25 @@
 //! The Extensions page's lists: repositories, the plugins they offer, the installed plugins.
 
+use std::collections::HashMap;
+
 use app_services::PluginHit;
-use slint::{ModelRc, VecModel};
 
 use crate::background_work::spawn_work;
+use crate::plugin_filter::format_file_size;
 use crate::posters::{plugin_rows, string_model};
 use crate::ui_events::UiEvent;
-use crate::{AvailablePlugin, CloudStream, RepositoryItem};
+use crate::{AvailablePlugin, CloudStream};
 
 use super::bridge_context::BridgeContext;
 use super::plugin_list::show_new_catalog;
+use super::repo_list::{show_repositories, sync_open_repo_detail};
 
 /// What the Extensions page lists.
 #[derive(Debug, Default)]
 pub(crate) struct ExtensionsCatalog {
     pub(crate) repositories: Vec<core_model::RepositoryEntry>,
     pub(crate) plugins: Vec<PluginHit>,
-    pub(crate) installed_names: Vec<String>,
+    pub(crate) installed_times: HashMap<String, i64>,
     pub(crate) error: Option<String>,
 }
 
@@ -37,55 +40,63 @@ pub(crate) fn load_extensions_catalog(ctx: &BridgeContext) {
             Ok(hits) => catalog.plugins = hits,
             Err(error) => catalog.error = Some(error.to_string()),
         }
-        catalog.installed_names = services
+        catalog.installed_times = services
             .extensions
             .installed()
-            .map(|list| list.into_iter().map(|ext| ext.internal_name).collect())
+            .map(|list| {
+                list.into_iter()
+                    .map(|ext| (ext.internal_name, ext.installed_at_ms))
+                    .collect()
+            })
             .unwrap_or_default();
         sender.send(UiEvent::ExtensionsLoaded(Box::new(catalog)));
     });
 }
 
-/// Shows the catalog on the Extensions page.
+/// Shows the catalog on the Extensions page (Repositories tab, open RepoDetail, and Plugins tab).
 pub(crate) fn show_catalog(ctx: &BridgeContext, ui: &CloudStream, catalog: ExtensionsCatalog) {
     ui.set_plugins_loading(false);
     if let Some(error) = &catalog.error {
         tracing::warn!(%error, "the plugin catalog is incomplete");
         ui.set_notice(format!("Some repositories could not be read: {error}").into());
     }
-    let repositories: Vec<RepositoryItem> = catalog
-        .repositories
-        .iter()
-        .map(|repo| RepositoryItem {
-            name: repo.name.clone().into(),
-            url: repo.url.clone().into(),
-        })
-        .collect();
-    ui.set_repositories(ModelRc::new(VecModel::from(repositories)));
     {
         let mut session = ctx.session.borrow_mut();
+        session.repositories = catalog.repositories;
         session.available = catalog.plugins;
-        session.installed_names = catalog.installed_names;
+        session.installed_times = catalog.installed_times;
     }
+    show_repositories(ctx);
     show_new_catalog(ctx, ui);
+    sync_open_repo_detail(ctx);
 }
 
-pub(crate) fn available_row(hit: &PluginHit, installed: &[String]) -> AvailablePlugin {
+pub(crate) fn available_row(
+    hit: &PluginHit,
+    installed: &HashMap<String, i64>,
+    show_repository: bool,
+) -> AvailablePlugin {
     let plugin = &hit.plugin;
-    let mut detail = format!("v{} · {}", plugin.version, hit.repository_name);
+    let mut parts = vec![format!("v{}", plugin.version)];
+    if show_repository && !hit.repository_name.is_empty() {
+        parts.push(hit.repository_name.clone());
+    }
     if let Some(language) = plugin
         .language
         .as_deref()
         .filter(|language| !language.is_empty())
     {
-        detail = format!("{detail} · {language}");
+        parts.push(language.to_owned());
+    }
+    if let Some(size) = format_file_size(plugin.file_size) {
+        parts.push(size);
     }
     AvailablePlugin {
         key: plugin_key(hit).into(),
         name: plugin.name.clone().into(),
-        detail: detail.into(),
+        detail: parts.join(" · ").into(),
         description: plugin.description.clone().unwrap_or_default().into(),
-        installed: installed.contains(&plugin.internal_name),
+        installed: installed.contains_key(&plugin.internal_name),
     }
 }
 

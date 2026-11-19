@@ -45,6 +45,7 @@ export component SettingsPage inherits Rectangle {
     in property <[AvailablePlugin]> available-plugins: [];
     in property <string> extensions-busy: "";
     in property <bool> plugins-loading: false;
+    in-out property <int> extensions-tab: 0;
     in-out property <string> repo-url: "";
 
     callback set-video-cache(string);
@@ -148,6 +149,7 @@ export component SettingsPage inherits Rectangle {
                 }
 
                 if root.page-index == 2: ExtensionsPage {
+                    active-tab <=> root.extensions-tab;
                     repositories: root.repositories;
                     available: root.available-plugins;
                     plugins: root.plugins;

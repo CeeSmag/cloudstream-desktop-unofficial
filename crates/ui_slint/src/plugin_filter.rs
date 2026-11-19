@@ -1,8 +1,12 @@
-//! The Extensions page's plugin list: search, language filter, installed / not installed, sort.
+//! The Extensions page's plugin list: search, language filter, repository scope, installed filter,
+//! and sort (Name, Language, Size, Date added).
 //!
 //! Ported from the old app (`pluginCatalog.ts`, `pluginSort.ts`). A search looks through the name,
 //! description, authors, language and repository; plugins with the search in their name come
 //! before those that only mention it.
+
+use std::cmp::{Ordering, Reverse};
+use std::collections::HashMap;
 
 use app_services::PluginHit;
 
@@ -23,6 +27,8 @@ pub(crate) enum PluginSort {
     Language,
     /// Biggest first; unknown sizes last.
     Size,
+    /// Most recently installed first; installed with unknown date next; not-installed last.
+    DateAdded,
 }
 
 /// What the viewer narrowed the list to.
@@ -31,19 +37,23 @@ pub(crate) struct PluginQuery {
     pub(crate) text: String,
     /// A language code as the repositories write it (`en`); empty for every language.
     pub(crate) language: String,
+    /// Repository URL to scope to; empty for all repositories.
+    pub(crate) repository_url: String,
     pub(crate) view: PluginView,
     pub(crate) sort: PluginSort,
 }
 
-/// The plugins that fit `query`, in the order to show them. `installed` holds internal names.
+/// The plugins that fit `query`, in the order to show them.
+/// `installed` maps each installed plugin's internal name to its `installed_at_ms` timestamp.
 pub(crate) fn filter_plugins<'a>(
     hits: &'a [PluginHit],
-    installed: &[String],
+    installed: &HashMap<String, i64>,
     query: &PluginQuery,
 ) -> Vec<&'a PluginHit> {
-    let is_installed = |hit: &PluginHit| installed.contains(&hit.plugin.internal_name);
+    let is_installed = |hit: &PluginHit| installed.contains_key(&hit.plugin.internal_name);
     let mut kept: Vec<&PluginHit> = hits
         .iter()
+        .filter(|hit| query.repository_url.is_empty() || hit.repository_url == query.repository_url)
         .filter(|hit| match query.view {
             PluginView::All => true,
             PluginView::NotInstalled => !is_installed(hit),
@@ -51,7 +61,7 @@ pub(crate) fn filter_plugins<'a>(
         })
         .filter(|hit| query.language.is_empty() || language_of(hit) == query.language)
         .collect();
-    kept.sort_by(|a, b| compare(a, b, query.sort));
+    kept.sort_by(|a, b| compare(a, b, installed, query.sort));
     let whole = query.text.trim().to_lowercase();
     let words: Vec<&str> = whole.split_whitespace().collect();
     if words.is_empty() {
@@ -77,6 +87,18 @@ pub(crate) fn language_choices(hits: &[PluginHit]) -> Vec<String> {
     languages
 }
 
+/// Readable file size (`6929` → `"6.8 KB"`), or `None` when unknown.
+pub(crate) fn format_file_size(bytes: Option<u64>) -> Option<String> {
+    let bytes = bytes?;
+    if bytes < 1024 {
+        return Some(format!("{bytes} B"));
+    }
+    if bytes < 1024 * 1024 {
+        return Some(format!("{:.1} KB", bytes as f64 / 1024.0));
+    }
+    Some(format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)))
+}
+
 fn language_of(hit: &PluginHit) -> String {
     hit.plugin
         .language
@@ -86,7 +108,12 @@ fn language_of(hit: &PluginHit) -> String {
         .to_lowercase()
 }
 
-fn compare(a: &PluginHit, b: &PluginHit, sort: PluginSort) -> std::cmp::Ordering {
+fn compare(
+    a: &PluginHit,
+    b: &PluginHit,
+    installed: &HashMap<String, i64>,
+    sort: PluginSort,
+) -> Ordering {
     let by_name = || {
         a.plugin
             .name
@@ -97,10 +124,20 @@ fn compare(a: &PluginHit, b: &PluginHit, sort: PluginSort) -> std::cmp::Ordering
         PluginSort::Name => by_name(),
         PluginSort::Language => language_of(a).cmp(&language_of(b)).then_with(by_name),
         PluginSort::Size => {
-            let size = |hit: &PluginHit| std::cmp::Reverse(hit.plugin.file_size);
-            // Reverse(None) sorts after every Reverse(Some(_)): unknown sizes go last.
+            let size = |hit: &PluginHit| Reverse(hit.plugin.file_size);
             size(a).cmp(&size(b)).then_with(by_name)
         }
+        PluginSort::DateAdded => installed_date_key(a, installed)
+            .cmp(&installed_date_key(b, installed))
+            .then_with(by_name),
+    }
+}
+
+fn installed_date_key(hit: &PluginHit, installed: &HashMap<String, i64>) -> (u8, Reverse<i64>) {
+    match installed.get(&hit.plugin.internal_name).copied() {
+        Some(ts) if ts > 0 => (0, Reverse(ts)),
+        Some(_) => (1, Reverse(0)),
+        None => (2, Reverse(0)),
     }
 }
 

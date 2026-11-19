@@ -72,12 +72,16 @@ pub(crate) struct Session {
     pub(crate) kept_sources: Option<title_cache::KeptTitle>,
     /// Details poster URL loaded ephemerally (forgotten on Back).
     pub(crate) details_artwork_url: Option<String>,
+    /// The saved repositories, in the database's order.
+    pub(crate) repositories: Vec<core_model::RepositoryEntry>,
     /// The plugins the repositories offer, in the repositories' order.
     pub(crate) available: Vec<app_services::PluginHit>,
-    /// Internal names of the installed plugins (for the list's installed marks and filter).
-    pub(crate) installed_names: Vec<String>,
-    /// How many plugins the list shows ("Show more" adds a page).
+    /// Installed plugins' internal names mapped to `installed_at_ms` (0 when unknown).
+    pub(crate) installed_times: std::collections::HashMap<String, i64>,
+    /// How many plugins the Plugins tab shows ("Show more" adds a page).
     pub(crate) plugin_page: usize,
+    /// How many plugins the open repository detail view shows ("Show more" adds a page).
+    pub(crate) repo_detail_page: usize,
     /// Where the remote's focus is on each screen.
     pub(crate) focus: std::collections::HashMap<FocusScreen, FocusGrid>,
 }
@@ -124,9 +128,11 @@ impl Default for Session {
             source_checks: Vec::new(),
             kept_sources: None,
             details_artwork_url: None,
+            repositories: Vec::new(),
             available: Vec::new(),
-            installed_names: Vec::new(),
+            installed_times: std::collections::HashMap::new(),
             plugin_page: 0,
+            repo_detail_page: 0,
             focus: std::collections::HashMap::new(),
         }
     }

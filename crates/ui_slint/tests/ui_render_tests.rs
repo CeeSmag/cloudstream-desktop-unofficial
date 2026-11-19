@@ -7,11 +7,12 @@ use std::rc::Rc;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{
-    Image, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel, SharedPixelBuffer, SharedString,
-    VecModel,
+    ComponentHandle, Image, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel, SharedPixelBuffer,
+    SharedString, VecModel,
 };
 use ui_slint::{
-    AvailablePlugin, CloudStream, EpisodeItem, PluginItem, PosterItem, RepositoryItem, ShelfSection,
+    AvailablePlugin, CloudStream, EpisodeItem, PluginItem, PluginList, PosterItem, RepoDetail,
+    RepoList, RepositoryItem, ShelfSection,
 };
 
 const WIDTH: u32 = 1280;
@@ -136,23 +137,48 @@ fn populate_settings(ui: &CloudStream) {
     ui.set_subtitle_chosen(strings(&["EN  English", "AR  Arabic"]));
 }
 
+fn sample_repositories() -> ModelRc<RepositoryItem> {
+    ModelRc::new(VecModel::from(vec![
+        RepositoryItem {
+            name: "Official Main Repository".into(),
+            url: "https://raw.githubusercontent.com/cloudstream/main/repo.json".into(),
+            detail: "raw.githubusercontent.com · Added 2026-11-19".into(),
+            plugin_count: "42 plugins".into(),
+        },
+        RepositoryItem {
+            name: "Anime Community Repo".into(),
+            url: "https://anime-repo.example/repo.json".into(),
+            detail: "anime-repo.example · Added 2026-11-12".into(),
+            plugin_count: "18 plugins".into(),
+        },
+        RepositoryItem {
+            name: "Cinema Archive".into(),
+            url: "https://cinema.example/repo.json".into(),
+            detail: "cinema.example · Added 2026-10-03".into(),
+            plugin_count: "9 plugins".into(),
+        },
+    ]))
+}
+
 fn populate_extensions(ui: &CloudStream) {
-    ui.set_repositories(ModelRc::new(VecModel::from(vec![RepositoryItem {
-        name: "Official Main Repository".into(),
-        url: "https://example.invalid/repo.json".into(),
-    }])));
+    let repos = ui.global::<RepoList>();
+    repos.set_total_count(3);
+    repos.set_count_text("3 repositories".into());
+    ui.set_repositories(sample_repositories());
+    let plugins_list = ui.global::<PluginList>();
+    plugins_list.set_count_text("2 of 69".into());
     ui.set_available_plugins(ModelRc::new(VecModel::from(vec![
         AvailablePlugin {
             key: "k1".into(),
             name: "StreamFlix".into(),
-            detail: "v14 · EN · Official Main Repository".into(),
+            detail: "v14 · Official Main Repository · en · 148.2 KB".into(),
             description: "High-bitrate movies and series with multi-language subtitles.".into(),
             installed: true,
         },
         AvailablePlugin {
             key: "k2".into(),
             name: "AnimePulse".into(),
-            detail: "v9 · EN/JA · Official Main Repository".into(),
+            detail: "v9 · Official Main Repository · ja · 94.5 KB".into(),
             description: "Subbed and dubbed anime catalog with AniSkip metadata.".into(),
             installed: false,
         },
@@ -169,6 +195,31 @@ fn populate_extensions(ui: &CloudStream) {
             detail: "v7 · Local".into(),
             file_name: "cinevault.cs3".into(),
             trusted: true,
+        },
+    ])));
+}
+
+fn populate_repo_detail(ui: &CloudStream) {
+    let detail = ui.global::<RepoDetail>();
+    detail.set_open_url("https://raw.githubusercontent.com/cloudstream/main/repo.json".into());
+    detail.set_name("Official Main Repository".into());
+    detail.set_summary("42 plugins · 1 installed".into());
+    detail.set_count_text("2 of 42".into());
+    detail.set_languages(strings(&["All languages", "en", "ja"]));
+    detail.set_plugins(ModelRc::new(VecModel::from(vec![
+        AvailablePlugin {
+            key: "k1".into(),
+            name: "StreamFlix".into(),
+            detail: "v14 · en · 148.2 KB".into(),
+            description: "High-bitrate movies and series with multi-language subtitles.".into(),
+            installed: true,
+        },
+        AvailablePlugin {
+            key: "k2".into(),
+            name: "AnimePulse".into(),
+            detail: "v9 · ja · 94.5 KB".into(),
+            description: "Subbed and dubbed anime catalog with AniSkip metadata.".into(),
+            installed: false,
         },
     ])));
 }
@@ -248,9 +299,22 @@ fn verify_settings_and_browse(ui: &CloudStream, window: &MinimalSoftwareWindow) 
         "settings_preferences",
     );
     ui.set_settings_page_index(2);
+    ui.set_extensions_tab(0);
+    ui.global::<RepoDetail>().set_open_url("".into());
     assert_non_blank(
-        &render_frame(window, "05_settings_extensions"),
-        "settings_extensions",
+        &render_frame(window, "05a_settings_extensions_repos"),
+        "settings_extensions_repos",
+    );
+    populate_repo_detail(ui);
+    assert_non_blank(
+        &render_frame(window, "05b_settings_extensions_repo_detail"),
+        "settings_extensions_repo_detail",
+    );
+    ui.global::<RepoDetail>().set_open_url("".into());
+    ui.set_extensions_tab(1);
+    assert_non_blank(
+        &render_frame(window, "05c_settings_extensions_plugins"),
+        "settings_extensions_plugins",
     );
     ui.set_tab(1);
     assert_non_blank(&render_frame(window, "06_browse"), "browse");
@@ -309,4 +373,15 @@ fn redesigned_tv_screens_render_without_panics_or_blank_frames() {
 
     ui.invoke_set_worker_limit("Unlimited".into());
     assert_eq!(worker_seen.borrow().as_str(), "Unlimited");
+
+    let opened_repo = Rc::new(RefCell::new(String::new()));
+    let opened_ref = opened_repo.clone();
+    ui.global::<RepoList>()
+        .on_open(move |url| *opened_ref.borrow_mut() = url.to_string());
+    ui.global::<RepoList>()
+        .invoke_open("https://anime-repo.example/repo.json".into());
+    assert_eq!(
+        opened_repo.borrow().as_str(),
+        "https://anime-repo.example/repo.json"
+    );
 }

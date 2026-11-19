@@ -19,12 +19,12 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `source_menu.rs`, `track_menu.rs` | player Sources (filters, sizes, subtitle tags) and track menus |
 | `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
-| `browse_filters.rs`, `plugin_filter.rs`, `resume_hero.rs` | Browse filters, plugin list, Home banner |
-| `focus_grid.rs`, `bridge/focus_*.rs` | remote / keyboard navigation: rows per screen, Enter / Back actions |
+| `browse_filters.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters, plugin & repository search/sort |
+| `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs` | remote / keyboard navigation, Home banner |
 | `startup_progress.rs` | the start-up screen's text and bar |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
 | `bridge/cloudflare_*.rs` | the Cloudflare banner (`ui/cloudflare_banner.slint`) |
-| `bridge/extension_*.rs` | repositories, plugin catalog, installs, trust, removal (background, busy line) |
+| `bridge/extension_*.rs`, `bridge/repo_list.rs`, `bridge/plugin_list.rs` | repositories tab, repo drill-down, plugins catalog, trust & removal |
 
 Navigation: the whole window is one `FocusScope`; keys a widget does not use bubble to it and go to
 `focus_navigation` (Home, grids, title page; Settings hands Down to its side menu, Tab to controls).

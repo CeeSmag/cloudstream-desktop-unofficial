@@ -97,6 +97,10 @@ export struct TrackChoice {
 export struct RepositoryItem {
     name: string,
     url: string,
+    /// Host and added date summary (e.g. "raw.githubusercontent.com · Added 2026-11-19").
+    detail: string,
+    /// Plugin count badge text (e.g. "42 plugins"), empty while loading.
+    plugin-count: string,
 }
 
 export struct AvailablePlugin {
