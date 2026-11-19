@@ -20,6 +20,10 @@ pub(crate) enum FocusScreen {
 const GRID_CHROME: f32 = 2.0 * 36.0 + 16.0 + 14.0;
 /// One tile and its gap.
 const TILE_STEP: f32 = 172.0;
+/// Below this the top bar drops the long logo and the provider chip.
+const NARROW_WIDTH: f32 = 980.0;
+/// Above this the top bar also shows how the opening goes.
+const WIDE_WIDTH: f32 = 1200.0;
 
 /// The screen the keys act on; None while the player is open (it has its own keys).
 pub(crate) fn current_screen(ui: &CloudStream) -> Option<FocusScreen> {
@@ -38,11 +42,21 @@ pub(crate) fn current_screen(ui: &CloudStream) -> Option<FocusScreen> {
     })
 }
 
-/// Posters per grid row for the window's width (the grids wrap at the same count).
-pub(crate) fn grid_columns(ui: &CloudStream) -> i32 {
+/// The window's width in logical pixels.
+pub(crate) fn logical_width(ui: &CloudStream) -> f32 {
     let window = ui.window();
-    let width = window.size().width as f32 / window.scale_factor().max(0.5);
-    columns_for_width(width)
+    window.size().width as f32 / window.scale_factor().max(0.5)
+}
+
+/// Follows the window's width: grid columns and the top bar's narrow / wide layout.
+pub(crate) fn follow_window_width(ui: &CloudStream) {
+    let width = logical_width(ui);
+    let columns = columns_for_width(width);
+    if ui.get_grid_columns() != columns {
+        ui.set_grid_columns(columns);
+    }
+    ui.set_narrow_window(width < NARROW_WIDTH);
+    ui.set_wide_window(width > WIDE_WIDTH);
 }
 
 pub(crate) fn columns_for_width(logical_width: f32) -> i32 {

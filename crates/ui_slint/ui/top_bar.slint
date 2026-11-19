@@ -38,6 +38,9 @@ export component TopBar inherits Rectangle {
     in property <string> provider;
     in property <bool> busy;
     in property <string> status;
+    /// A narrow window: short logo, no provider chip or status (decided by the window's width).
+    in property <bool> compact;
+    in property <bool> wide;
     callback select-tab(int);
     callback provider-clicked();
 
@@ -52,7 +55,7 @@ export component TopBar inherits Rectangle {
         alignment: start;
         cross-axis-alignment: center;
         Text {
-            text: root.width > 900px ? "CloudStream" : "CS";
+            text: root.compact ? "CS" : "CloudStream";
             color: Theme.accent;
             font-size: 22px;
             font-weight: 800;
@@ -65,14 +68,14 @@ export component TopBar inherits Rectangle {
             clicked => { root.select-tab(index); }
         }
         Rectangle { horizontal-stretch: 1; }
-        if root.status != "" && root.width > 1200px: Text {
+        if root.status != "" && root.wide: Text {
             text: root.status;
             color: Theme.muted;
             font-size: Theme.caption-size;
             overflow: elide;
             max-width: 320px;
         }
-        if root.provider != "" && root.width > 980px: Rectangle {
+        if root.provider != "" && !root.compact: Rectangle {
             height: 34px;
             width: chip.preferred-width + 28px;
             border-radius: 17px;

@@ -39,6 +39,9 @@ export component CloudStream inherits Window {
     in-out property <int> shelf-row-base: 0;
     // Posters per row of the Browse / Search / Library grids (set from the window's width).
     in-out property <int> grid-columns: 4;
+    // The window's width class, set from its real size (reading `width` here would loop).
+    in-out property <bool> narrow-window: false;
+    in-out property <bool> wide-window: false;
     // Raised to put the keyboard into the search box (Enter on it with the remote).
     in-out property <int> search-box-request: 0;
     in-out property <bool> starting: true;
@@ -240,6 +243,8 @@ export component CloudStream inherits Window {
 
             TopBar {
                 tab: root.tab;
+                compact: root.narrow-window;
+                wide: root.wide-window;
                 focused-tab: root.focus-visible && root.focus-row == -1 ? root.focus-col : -1;
                 provider: root.selected-provider;
                 busy: root.home-loading || root.search-loading || root.browse-loading || root.details-loading
