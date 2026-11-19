@@ -3,6 +3,7 @@
 use app_services::UiServices;
 use player_api::all_languages;
 
+use super::subtitle_languages::show_subtitle_languages;
 use crate::posters::string_model;
 use crate::CloudStream;
 
@@ -56,8 +57,7 @@ fn apply_storage_and_workers(ui: &CloudStream, services: &UiServices) {
 
 fn apply_languages(ui: &CloudStream, services: &UiServices) {
     let labels = language_labels();
-    ui.set_audio_labels(string_model(labels.clone()));
-    ui.set_subtitle_labels(string_model(labels));
+    ui.set_audio_labels(string_model(labels));
     match services.settings.preferred_audio() {
         Ok(Some(language)) => ui.set_audio_value(language.name.into()),
         Ok(None) => ui.set_audio_value("Stream default".into()),
@@ -67,19 +67,12 @@ fn apply_languages(ui: &CloudStream, services: &UiServices) {
         }
     }
     match services.settings.preferred_subtitles() {
-        Ok(languages) => ui.set_subtitle_chips(language_chips(&languages).into()),
-        Err(error) => tracing::warn!(%error, "could not read the subtitle languages"),
+        Ok(languages) => show_subtitle_languages(ui, &languages),
+        Err(error) => {
+            tracing::warn!(%error, "could not read the subtitle languages");
+            show_subtitle_languages(ui, &[]);
+        }
     }
-    ui.set_subtitle_add_value("English".into());
-}
-
-/// The chosen subtitle languages as one line, e.g. "English, French".
-pub(crate) fn language_chips(languages: &[player_api::Language]) -> String {
-    languages
-        .iter()
-        .map(|language| language.name)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// The label of the plugin worker limit drop-down.

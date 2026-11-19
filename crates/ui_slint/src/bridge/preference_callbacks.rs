@@ -6,7 +6,7 @@ use slint::SharedString;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
-use super::initial_settings::language_chips;
+use super::subtitle_languages::show_subtitle_languages;
 
 pub(crate) fn wire_preferences(ctx: &BridgeContext, ui: &CloudStream) {
     wire_switches(ctx, ui);
@@ -15,7 +15,17 @@ pub(crate) fn wire_preferences(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_set_subtitle_add(move |label| add_subtitle_language(&c, label));
     let c = ctx.clone();
-    ui.on_clear_subtitles(move || set_subtitle_languages(&c, &[]));
+    ui.on_remove_subtitle(move |at| {
+        let mut chosen = c
+            .services
+            .settings
+            .preferred_subtitles()
+            .unwrap_or_default();
+        if let Some(at) = usize::try_from(at).ok().filter(|at| *at < chosen.len()) {
+            chosen.remove(at);
+            set_subtitle_languages(&c, &chosen);
+        }
+    });
 }
 
 fn wire_switches(ctx: &BridgeContext, ui: &CloudStream) {
@@ -75,14 +85,12 @@ fn add_subtitle_language(ctx: &BridgeContext, label: SharedString) {
         .settings
         .preferred_subtitles()
         .unwrap_or_default();
-    if !chosen.iter().any(|known| known.code() == language.code()) {
-        chosen.push(language);
-        chosen.truncate(app_services::MAX_PREFERRED_SUBTITLES);
+    let known = chosen.iter().any(|c| c.code() == language.code());
+    if known || chosen.len() >= app_services::MAX_PREFERRED_SUBTITLES {
+        return;
     }
+    chosen.push(language);
     set_subtitle_languages(ctx, &chosen);
-    if let Some(ui) = ctx.window() {
-        ui.set_subtitle_add_value(label);
-    }
 }
 
 fn set_subtitle_languages(ctx: &BridgeContext, languages: &[Language]) {
@@ -94,7 +102,7 @@ fn set_subtitle_languages(ctx: &BridgeContext, languages: &[Language]) {
         playback.set_preferred_subtitles(languages);
     }
     if let Some(ui) = ctx.window() {
-        ui.set_subtitle_chips(language_chips(languages).into());
+        show_subtitle_languages(&ui, languages);
     }
 }
 

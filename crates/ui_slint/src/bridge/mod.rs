@@ -35,6 +35,7 @@ mod source_picker;
 mod storage_settings_callbacks;
 mod stream_events;
 mod stream_opening;
+mod subtitle_languages;
 mod title_search;
 mod update_callbacks;
 

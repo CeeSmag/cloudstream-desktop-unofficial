@@ -23,7 +23,9 @@ export component SettingsPage inherits Rectangle {
     in property <string> audio-value: "";
     in property <[string]> subtitle-labels: [];
     in property <string> subtitle-add-value: "";
-    in property <string> subtitle-chips: "";
+    /// The chosen subtitle languages ("EN  English"), in the viewer's order.
+    in property <[string]> subtitle-chosen: [];
+    in property <bool> subtitle-full: false;
     in property <bool> keep-video-ready: true;
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
@@ -45,7 +47,7 @@ export component SettingsPage inherits Rectangle {
     callback set-provider(string);
     callback set-audio(string);
     callback set-subtitle-add(string);
-    callback clear-subtitles();
+    callback remove-subtitle(int);
     callback set-keep-ready(bool);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
@@ -217,24 +219,62 @@ export component SettingsPage inherits Rectangle {
                                 }
                             }
                             SettingRow {
-                                label: "Add subtitle language";
-                                ComboBox {
-                                    model: root.subtitle-labels;
-                                    current-value: root.subtitle-add-value;
-                                    selected(value) => { root.set-subtitle-add(value); }
+                                label: "Preferred subtitles";
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    if root.subtitle-chosen.length == 0: Text {
+                                        text: "None: no language tags or subtitle filter in the player";
+                                        color: Theme.muted;
+                                        vertical-alignment: center;
+                                    }
+                                    for chip[i] in root.subtitle-chosen: Rectangle {
+                                        height: 32px;
+                                        width: chip-row.preferred-width;
+                                        border-radius: 8px;
+                                        background: #5b8cff26;
+                                        border-width: 1px;
+                                        border-color: #5b8cff66;
+                                        chip-row := HorizontalLayout {
+                                            padding-left: 10px;
+                                            padding-right: 4px;
+                                            spacing: 6px;
+                                            Text {
+                                                text: chip;
+                                                color: Theme.text;
+                                                font-size: 13px;
+                                                font-weight: 600;
+                                                vertical-alignment: center;
+                                            }
+                                            Rectangle {
+                                                width: 24px;
+                                                border-radius: 6px;
+                                                background: remove-touch.has-hover ? #ffffff26 : transparent;
+                                                accessible-role: AccessibleRole.button;
+                                                accessible-label: "Remove " + chip;
+                                                accessible-action-default => { root.remove-subtitle(i); }
+                                                Text {
+                                                    text: "✕";
+                                                    color: Theme.muted;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                                remove-touch := TouchArea {
+                                                    mouse-cursor: pointer;
+                                                    clicked => { root.remove-subtitle(i); }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             SettingRow {
-                                label: "Preferred subtitles";
-                                HorizontalLayout {
-                                    spacing: Theme.space-2;
-                                    Text {
-                                        text: root.subtitle-chips == "" ? "None" : root.subtitle-chips;
-                                        color: Theme.muted;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
-                                    }
-                                    Button { text: "Clear"; clicked => { root.clear-subtitles(); } }
+                                label: "Add a subtitle language";
+                                ComboBox {
+                                    enabled: !root.subtitle-full;
+                                    model: root.subtitle-labels;
+                                    current-value: root.subtitle-add-value;
+                                    selected(value) => { root.set-subtitle-add(value); }
                                 }
                             }
                             SettingRow {

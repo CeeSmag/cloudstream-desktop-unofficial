@@ -135,7 +135,8 @@ export component CloudStream inherits Window {
     in property <string> audio-value: "";
     in property <[string]> subtitle-labels: [];
     in property <string> subtitle-add-value: "";
-    in property <string> subtitle-chips: "";
+    in property <[string]> subtitle-chosen: [];
+    in property <bool> subtitle-full: false;
     in property <[string]> season-labels: [];
     in property <[TrackChoice]> audio-tracks: [];
     in property <[TrackChoice]> subtitle-tracks: [];
@@ -199,7 +200,7 @@ export component CloudStream inherits Window {
     callback set-worker-limit(string);
     callback set-audio(string);
     callback set-subtitle-add(string);
-    callback clear-subtitles();
+    callback remove-subtitle(int);
     callback clean-storage();
     callback wipe-data();
     callback confirm-wipe();
@@ -362,7 +363,8 @@ export component CloudStream inherits Window {
                 audio-value: root.audio-value;
                 subtitle-labels: root.subtitle-labels;
                 subtitle-add-value: root.subtitle-add-value;
-                subtitle-chips: root.subtitle-chips;
+                subtitle-chosen: root.subtitle-chosen;
+                subtitle-full: root.subtitle-full;
                 keep-video-ready: root.keep-video-ready;
                 autoplay-next: root.autoplay-next;
                 skip-lookup: root.skip-lookup;
@@ -383,7 +385,7 @@ export component CloudStream inherits Window {
                 set-provider(v) => { set-provider(v); }
                 set-audio(v) => { set-audio(v); }
                 set-subtitle-add(v) => { set-subtitle-add(v); }
-                clear-subtitles => { clear-subtitles(); }
+                remove-subtitle(i) => { remove-subtitle(i); }
                 set-keep-ready(v) => { set-keep-ready(v); }
                 set-autoplay(v) => { set-autoplay(v); }
                 set-skip-lookup(v) => { set-skip-lookup(v); }
