@@ -1,5 +1,7 @@
 //! The player's Sources menu on screen: its rows, its filters and their toggles.
 
+use app_services::{stream_kind, LinkHealth};
+use core_model::PlayableLink;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::source_menu::{abbreviation, source_menu, SourceList, SourceMenu, Tier};
@@ -52,8 +54,10 @@ pub(crate) fn show_sources(ctx: &BridgeContext) {
         preferred: &preferred,
     };
     let menu = source_menu(&list, &session.source_filter);
+    let badge = active_source_badge(&open.links, session.selected);
     let filter = session.source_filter.clone();
     drop(session);
+    ui.set_player_source_badge(badge.into());
     ui.set_sources(ModelRc::new(VecModel::from(
         menu.rows.iter().map(source_item).collect::<Vec<_>>(),
     )));
@@ -119,4 +123,51 @@ fn preferred_subtitles(ctx: &BridgeContext) -> Vec<player_api::Language> {
             tracing::warn!(%error, "cannot read the preferred subtitle languages");
             Vec::new()
         })
+}
+
+/// Compact quality/kind pill for the player header (e.g. `"1080p · HLS"`, `"HLS"`).
+pub(crate) fn active_source_badge(
+    links: &[(PlayableLink, Option<LinkHealth>)],
+    selected: usize,
+) -> String {
+    let Some((link, _)) = links.get(selected) else {
+        return String::new();
+    };
+    let kind = stream_kind(link);
+    match (link.quality > 0, kind.is_empty()) {
+        (true, false) => format!("{}p · {kind}", link.quality),
+        (true, true) => format!("{}p", link.quality),
+        (false, _) => kind,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn sample_link(quality: i32, link_type: &str) -> (PlayableLink, Option<LinkHealth>) {
+        (
+            PlayableLink {
+                source: "Test".into(),
+                name: "Test".into(),
+                url: "https://example.invalid/video.m3u8".into(),
+                referer: String::new(),
+                quality,
+                headers: HashMap::new(),
+                link_type: link_type.into(),
+                kid: None,
+                key: None,
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn active_source_badge_formats_quality_and_kind() {
+        let links = [sample_link(1080, "M3U8"), sample_link(0, "M3U8")];
+        assert_eq!(active_source_badge(&links, 0), "1080p · HLS");
+        assert_eq!(active_source_badge(&links, 1), "HLS");
+        assert_eq!(active_source_badge(&links, 9), "");
+    }
 }

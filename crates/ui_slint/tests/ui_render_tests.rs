@@ -11,8 +11,9 @@ use slint::{
     SharedPixelBuffer, SharedString, VecModel,
 };
 use ui_slint::{
-    AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, HomeExpanded, PaginationItem,
-    PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem, ShelfSection,
+    AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, FilterChip, HomeExpanded,
+    PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem,
+    SeekMark, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
 };
 
 const WIDTH: u32 = 1280;
@@ -369,20 +370,118 @@ fn verify_settings_and_browse(ui: &CloudStream, window: &MinimalSoftwareWindow) 
     assert_non_blank(&render_frame(window, "07_search"), "search");
 }
 
-fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
-    populate_details(ui);
-    assert_non_blank(&render_frame(window, "08_details"), "details");
-    ui.set_details_title("".into());
+fn sample_sources() -> ModelRc<SourceItem> {
+    ModelRc::new(VecModel::from(vec![
+        SourceItem {
+            index: 0,
+            label: "StreamFlix Primary · 1080p WEB-DL".into(),
+            kind: "HLS".into(),
+            size: "1.4 GB".into(),
+            flags: strings(&["EN", "AR"]),
+            checking: false,
+            working: true,
+            selected: true,
+        },
+        SourceItem {
+            index: 1,
+            label: "StreamFlix Backup · 2160p HDR".into(),
+            kind: "MKV".into(),
+            size: "4.2 GB".into(),
+            flags: strings(&["EN"]),
+            checking: false,
+            working: true,
+            selected: false,
+        },
+        SourceItem {
+            index: 2,
+            label: "Mirror CDN · 1080p".into(),
+            kind: "DASH".into(),
+            size: "".into(),
+            flags: strings(&[]),
+            checking: true,
+            working: false,
+            selected: false,
+        },
+    ]))
+}
+
+fn sample_source_menu_info() -> SourceMenuInfo {
+    let chip = |label: &str, count: &str| FilterChip {
+        label: label.into(),
+        count: count.into(),
+        on: false,
+    };
+    SourceMenuInfo {
+        total: 3,
+        resolution_shown: 3,
+        subtitle_shown: 3,
+        tiers: ModelRc::new(VecModel::from(vec![chip("1080p", "2"), chip("2160p", "1")])),
+        subtitles: ModelRc::new(VecModel::from(vec![chip("EN", ""), chip("AR", "")])),
+    }
+}
+
+fn sample_subtitle_tracks() -> ModelRc<TrackChoice> {
+    let track = |id: i32, label: &str, flag: &str, selected: bool| TrackChoice {
+        label: label.into(),
+        id,
+        flag: flag.into(),
+        selected,
+    };
+    ModelRc::new(VecModel::from(vec![
+        track(-1, "Off", "", false),
+        track(1, "English (CC)", "EN", true),
+        track(2, "Arabic", "AR", false),
+        track(3, "French", "", false),
+    ]))
+}
+
+fn populate_player(ui: &CloudStream) {
     ui.set_player_open(true);
     ui.set_player_title("Severance · S2 E4 — Woe's Hollow".into());
+    ui.set_player_source_badge("1080p · HLS".into());
     ui.set_duration_ms(3_120_000.0);
     ui.set_position_ms(1_310_000.0);
     ui.set_position_text("21:50".into());
     ui.set_duration_text("52:00".into());
     ui.set_buffered_fraction(0.62);
+    ui.set_chapter_notches(ModelRc::new(VecModel::from(vec![0.12, 0.48, 0.86])));
+    ui.set_skip_marks(ModelRc::new(VecModel::from(vec![
+        SeekMark {
+            start: 0.04,
+            width: 0.06,
+            kind: 0,
+        },
+        SeekMark {
+            start: 0.90,
+            width: 0.08,
+            kind: 2,
+        },
+    ])));
+    ui.set_has_previous_episode(true);
     ui.set_has_next_episode(true);
     ui.set_skip_label("Skip Intro".into());
-    assert_non_blank(&render_frame(window, "09_player"), "player");
+    ui.set_sources(sample_sources());
+    ui.set_source_info(sample_source_menu_info());
+    ui.set_subtitle_tracks(sample_subtitle_tracks());
+}
+
+fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    populate_details(ui);
+    assert_non_blank(&render_frame(window, "08_details"), "details");
+    ui.set_details_title("".into());
+    populate_player(ui);
+    assert_non_blank(&render_frame(window, "09a_player"), "player");
+    ui.set_show_sources(true);
+    assert_non_blank(
+        &render_frame(window, "09b_player_sources"),
+        "player_sources",
+    );
+    ui.set_show_sources(false);
+    ui.set_player_open_panel(2);
+    ui.set_player_waiting("Buffering 45%".into());
+    assert_non_blank(&render_frame(window, "09c_player_tracks"), "player_tracks");
+    ui.set_player_open_panel(0);
+    ui.set_player_waiting("".into());
     ui.set_player_open(false);
     ui.set_tab(4);
     ui.set_settings_page_index(0);
@@ -444,4 +543,10 @@ fn verify_callbacks(ui: &CloudStream, worker_seen: &Rc<RefCell<String>>) {
         .on_go_to_page(move |p| *page_ref.borrow_mut() = p);
     ui.global::<BrowseFilter>().invoke_go_to_page(5);
     assert_eq!(*browse_page.borrow(), 5);
+
+    let vol_seen = Rc::new(RefCell::new(-1.0_f32));
+    let vol_ref = vol_seen.clone();
+    ui.on_set_volume(move |v| *vol_ref.borrow_mut() = v);
+    ui.invoke_set_volume(65.0);
+    assert!((*vol_seen.borrow() - 65.0).abs() < 0.01);
 }

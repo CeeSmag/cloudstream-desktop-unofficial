@@ -55,6 +55,9 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
         report("stop", playback.stop());
     }
     super::player_polling::clear_video_frame(ctx, ui);
+    ui.set_show_sources(false);
+    ui.set_player_open_panel(0);
+    ui.set_player_source_badge("".into());
     ui.set_player_open(false);
     show_continue_watching(ctx, ui);
     if let Some(reason) = reason {

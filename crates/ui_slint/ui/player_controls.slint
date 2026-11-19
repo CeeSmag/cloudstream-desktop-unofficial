@@ -1,0 +1,501 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvBadge } from "controls.slint";
+import { SeekMark, TrackChoice } from "types.slint";
+
+/// Horizontal cinema scrubber / slider; follows `value` (0..1) until dragged and emits `committed`
+/// on release (avoids `std-widgets` Slider overwriting its own binding after the first seek).
+export component DragBar inherits Rectangle {
+    in property <float> value;
+    in property <brush> fill: @linear-gradient(90deg, #4b7cf5 0%, #7aa3ff 100%);
+    /// How much is loaded, 0..1 (seek bar); drawn lighter behind the position.
+    in property <float> buffered: 0;
+    /// Where chapters start, 0..1, drawn as hairline dividers.
+    in property <[float]> notches: [];
+    /// Intro, recap, credits and preview stretches along the bar.
+    in property <[SeekMark]> marks: [];
+    /// Preview label over the pointer while hovering or dragging; empty for none.
+    in property <string> hover-text: "";
+    /// Keep a subtle playhead thumb visible at rest (true for timeline, false for compact sliders).
+    in property <bool> show-resting-thumb: true;
+    out property <bool> dragging: touch.pressed;
+    out property <bool> hovering: touch.has-hover;
+    out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
+    callback committed(float);
+
+    height: 24px;
+    property <bool> active: touch.has-hover || root.dragging;
+    property <float> shown: root.dragging ? root.drag-value : clamp(root.value, 0, 1);
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: root.active ? 8px : 5px;
+        border-radius: self.height / 2;
+        background: #ffffff22;
+        animate height { duration: 110ms; }
+
+        for mark in root.marks: Rectangle {
+            x: parent.width * mark.start;
+            width: parent.width * mark.width;
+            height: 100%;
+            border-radius: 2px;
+            background: mark.kind == 0 ? #f5b942cc
+                : mark.kind == 1 ? #38bdf8cc
+                : mark.kind == 2 ? #3ecf8ecc
+                : #e879f9cc;
+        }
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(root.buffered, 0, 1);
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: #ffffff36;
+        }
+        Rectangle {
+            x: 0;
+            width: parent.width * root.shown;
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: root.fill;
+        }
+        if touch.has-hover && !root.dragging: Rectangle {
+            x: 0;
+            width: parent.width * root.drag-value;
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: #ffffff20;
+        }
+        for notch in root.notches: Rectangle {
+            x: parent.width * notch - 1px;
+            width: 2px;
+            height: 100%;
+            background: #080b12e6;
+        }
+    }
+
+    if root.show-resting-thumb || root.active: Rectangle {
+        property <length> thumb-size: root.active ? 16px : 11px;
+        x: clamp(parent.width * root.shown - self.width / 2, 0px, parent.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: self.thumb-size;
+        height: self.thumb-size;
+        border-radius: self.thumb-size / 2;
+        background: #ffffff;
+        border-width: root.active ? 2.5px : 2px;
+        border-color: Theme.accent;
+        drop-shadow-blur: root.active ? 12px : 6px;
+        drop-shadow-color: #5b8cffb3;
+        animate width, height { duration: 100ms; }
+    }
+
+    if root.active && root.hover-text != "": Rectangle {
+        x: clamp(parent.width * root.drag-value - self.width / 2, 0px, parent.width - self.width);
+        y: -self.height - 12px;
+        height: 30px;
+        width: tip.preferred-width + 22px;
+        border-radius: 9px;
+        background: Theme.panel-glass;
+        border-width: 1px;
+        border-color: Theme.accent-border;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: #000000b8;
+        tip := Text {
+            text: root.hover-text;
+            color: Theme.text;
+            font-size: 12px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                root.committed(root.drag-value);
+            }
+        }
+    }
+}
+
+/// Obsidian cinema button for the player HUD (`primary`, `glass`, `tonal`, `subtle`).
+export component PlayerActionButton inherits Rectangle {
+    in property <string> text: "";
+    in property <string> icon: "";
+    in property <bool> icon-filled: false;
+    in property <string> badge: "";
+    in property <string> accessible-name: "";
+    /// `"glass"` | `"primary"` | `"tonal"` | `"subtle"`
+    in property <string> kind: "glass";
+    in property <bool> compact: false;
+    callback clicked();
+
+    property <bool> is-primary: root.kind == "primary";
+    property <bool> is-tonal: root.kind == "tonal";
+    property <bool> is-subtle: root.kind == "subtle";
+
+    height: root.compact ? 34px : 38px;
+    width: max(self.height, btn-row.preferred-width);
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: root.is-primary ? 19px : 11px;
+    background: root.is-primary ? (touch.pressed ? #dbe4ff : (touch.has-hover ? #ffffff : #eef2ff))
+        : root.is-tonal ? (touch.pressed ? #5b8cff40 : (touch.has-hover ? #5b8cff36 : Theme.accent-soft))
+        : root.is-subtle ? (touch.pressed ? #ffffff22 : (touch.has-hover ? #ffffff16 : transparent))
+        : (touch.pressed ? #ffffff24 : (touch.has-hover ? #ffffff1a : #ffffff0d));
+    border-width: root.is-primary || root.is-subtle ? 0px : 1px;
+    border-color: root.is-tonal ? Theme.accent-border : (touch.has-hover ? Theme.border-hi : Theme.border);
+    drop-shadow-blur: root.is-primary && touch.has-hover ? 14px : 0px;
+    drop-shadow-color: Theme.focus-glow;
+    animate background, border-color { duration: 120ms; }
+
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.accessible-name != "" ? root.accessible-name : root.text;
+    accessible-action-default => { root.clicked(); }
+
+    btn-row := HorizontalLayout {
+        padding-left: root.text != "" ? (root.compact ? 11px : 14px) : 10px;
+        padding-right: root.text != "" ? (root.compact ? 11px : 14px) : 10px;
+        spacing: 7px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        if root.icon != "": TvIcon {
+            commands: root.icon;
+            filled: root.icon-filled;
+            size: root.compact ? 15px : 16px;
+            color: root.is-primary ? Theme.bg
+                : root.is-tonal ? Theme.accent-hi
+                : Theme.text;
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.is-primary ? Theme.bg
+                : root.is-tonal ? Theme.accent-hi
+                : Theme.text;
+            font-size: root.compact ? 13px : 13.5px;
+            font-weight: root.is-primary || root.is-tonal ? 700 : 600;
+            vertical-alignment: center;
+        }
+        if root.badge != "": Rectangle {
+            height: 19px;
+            width: badge-text.preferred-width + 10px;
+            border-radius: 9.5px;
+            background: root.is-tonal ? #5b8cff38 : #ffffff18;
+            badge-text := Text {
+                text: root.badge;
+                color: root.is-tonal ? Theme.accent-hi : Theme.text-secondary;
+                font-size: 10.5px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Recessed obsidian volume capsule: clickable mute button, CloudStream Blue slider, and % readout.
+export component VolumeCapsule inherits Rectangle {
+    in property <float> volume: 100;
+    out property <bool> dragging: vol-bar.dragging;
+    callback set-volume(float);
+    callback toggle-mute();
+
+    height: 38px;
+    width: cap-row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 12px;
+    background: #0a0e17b0;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    cap-row := HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: mute-touch.has-hover ? #ffffff18 : transparent;
+            animate background { duration: 110ms; }
+            accessible-role: AccessibleRole.button;
+            accessible-label: root.volume <= 0 ? "Unmute" : "Mute";
+            accessible-action-default => { root.toggle-mute(); }
+
+            TvIcon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                commands: root.volume <= 0 ? Icons.volume-muted
+                    : root.volume < 50 ? Icons.volume-low
+                    : Icons.volume;
+                size: 16px;
+                color: root.volume <= 0 ? Theme.danger : Theme.text-secondary;
+            }
+            mute-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.toggle-mute(); }
+            }
+        }
+
+        vol-bar := DragBar {
+            width: 88px;
+            show-resting-thumb: false;
+            value: root.volume / 130;
+            committed(v) => { root.set-volume(v * 130); }
+        }
+
+        Text {
+            text: Math.round(root.volume) + "%";
+            color: root.volume <= 0 ? Theme.danger : Theme.muted;
+            font-size: 11.5px;
+            font-weight: 600;
+            min-width: 34px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// Obsidian glass track chooser drawer (audio / subtitles) aligned with Settings cards & SourcePanel.
+export component ChoicePanel inherits Rectangle {
+    in property <string> title;
+    in property <string> icon: "";
+    in property <[TrackChoice]> choices;
+    callback picked(int);
+    callback close();
+
+    width: 336px;
+    height: min(max(132px, root.choices.length * 46px + 88px), 440px);
+    background: Theme.panel-glass;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border-hi;
+    drop-shadow-blur: 28px;
+    drop-shadow-color: #000000c8;
+    // Prevent clicks on the drawer from toggling playback underneath.
+    TouchArea { }
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            cross-axis-alignment: center;
+
+            if root.icon != "": Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 9px;
+                background: Theme.accent-soft;
+                border-width: 1px;
+                border-color: Theme.accent-border;
+                TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: root.icon;
+                    size: 15px;
+                    color: Theme.accent-hi;
+                }
+            }
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if root.choices.length > 0: TvBadge {
+                text: root.choices.length;
+                tone: "neutral";
+            }
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
+                background: close-touch.has-hover ? #ffffff18 : transparent;
+                animate background { duration: 110ms; }
+                accessible-role: AccessibleRole.button;
+                accessible-label: "Close " + root.title;
+                accessible-action-default => { root.close(); }
+                TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: Icons.close;
+                    size: 14px;
+                    color: close-touch.has-hover ? Theme.text : Theme.muted;
+                }
+                close-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.close(); }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.divider; }
+
+        if root.choices.length == 0: Text {
+            text: "None in this stream";
+            color: Theme.muted;
+            font-size: 13.5px;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+                for choice in root.choices: Rectangle {
+                    height: 42px;
+                    border-radius: 10px;
+                    background: choice.selected ? Theme.accent-soft : (row.has-hover ? #ffffff12 : transparent);
+                    border-width: choice.selected ? 1px : 0px;
+                    border-color: Theme.accent-border;
+                    animate background { duration: 110ms; }
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: choice.label;
+                    accessible-checked: choice.selected;
+                    accessible-action-default => { root.picked(choice.id); }
+
+                    if choice.selected: Rectangle {
+                        x: 4px;
+                        y: (parent.height - self.height) / 2;
+                        width: 3px;
+                        height: 20px;
+                        border-radius: 1.5px;
+                        background: Theme.accent;
+                    }
+
+                    row := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.picked(choice.id); }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        cross-axis-alignment: center;
+
+                        Text {
+                            text: choice.label;
+                            color: choice.selected ? Theme.accent-hi : Theme.text;
+                            font-size: 13.5px;
+                            font-weight: choice.selected ? 700 : 500;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        if choice.flag != "": TvBadge {
+                            text: choice.flag;
+                            tone: choice.selected ? "accent" : "neutral";
+                        }
+                        if choice.selected: TvIcon {
+                            commands: Icons.check;
+                            size: 15px;
+                            color: Theme.accent-hi;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Obsidian cinema skip CTA ("Skip Intro", "Next Episode") with CloudStream Blue countdown bar.
+export component SkipPromptPill inherits Rectangle {
+    in property <string> label;
+    in property <bool> countdown-active: false;
+    callback triggered();
+
+    height: 48px;
+    width: skip-row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 14px;
+    background: skip-touch.has-hover ? #1e2a45f5 : Theme.panel-glass;
+    border-width: 1.5px;
+    border-color: skip-touch.has-hover ? Theme.accent-hi : Theme.accent-border;
+    clip: true;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #000000c8;
+    animate background, border-color { duration: 120ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.label;
+    accessible-action-default => { root.triggered(); }
+
+    // Bottom CloudStream Blue countdown bar draining during the 5 s auto-show window.
+    Rectangle {
+        x: 0;
+        y: parent.height - 3px;
+        height: 3px;
+        width: root.countdown-active ? 0px : parent.width;
+        background: @linear-gradient(90deg, #4b7cf5 0%, #7aa3ff 100%);
+        visible: root.countdown-active;
+        animate width { duration: root.countdown-active ? 5s : 0ms; }
+    }
+
+    skip-row := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: Theme.accent;
+            TvIcon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                commands: Icons.skip-forward;
+                filled: true;
+                size: 14px;
+                color: Theme.bg;
+            }
+        }
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: 14.5px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            background: #ffffff14;
+            border-width: 1px;
+            border-color: Theme.border;
+            Text {
+                text: "S";
+                color: Theme.muted;
+                font-size: 11px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    skip-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.triggered(); }
+    }
+}

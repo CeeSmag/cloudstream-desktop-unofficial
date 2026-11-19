@@ -112,6 +112,15 @@ component SourceRow inherits Rectangle {
     accessible-label: root.source.label;
     accessible-action-default => { root.clicked(); }
 
+    if root.source.selected: Rectangle {
+        x: 4px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: 24px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+    }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -119,7 +128,7 @@ component SourceRow inherits Rectangle {
 
     HorizontalLayout {
         padding: 10px;
-        padding-left: 12px;
+        padding-left: 14px;
         spacing: 10px;
         body := VerticalLayout {
             spacing: 6px;
@@ -135,6 +144,11 @@ component SourceRow inherits Rectangle {
                 spacing: 5px;
                 alignment: start;
                 if root.source.kind != "": Tag { text: root.source.kind; }
+                if root.source.working && !root.source.checking: Tag {
+                    text: "verified";
+                    ink: Theme.ok;
+                    fill: Theme.ok-soft;
+                }
                 if root.source.checking: Tag { text: "checking…"; ink: Theme.muted; }
                 for flag in root.source.flags: Tag { text: flag; ink: Theme.text; fill: #ffffff24; }
             }
@@ -168,6 +182,7 @@ export component SourcePanel inherits Rectangle {
     callback pick(int);
     callback toggle-tier(int);
     callback toggle-subtitle(int);
+    callback close();
 
     width: 436px;
     background: Theme.panel-glass;
@@ -175,7 +190,7 @@ export component SourcePanel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border-hi;
     drop-shadow-blur: 28px;
-    drop-shadow-color: #000000b8;
+    drop-shadow-color: #000000c8;
     // Clicks on the panel never reach the video under it.
     TouchArea { }
 
@@ -183,12 +198,27 @@ export component SourcePanel inherits Rectangle {
         padding: 16px;
         spacing: 12px;
         HorizontalLayout {
-            spacing: 8px;
+            spacing: 10px;
             cross-axis-alignment: center;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 9px;
+                background: Theme.accent-soft;
+                border-width: 1px;
+                border-color: Theme.accent-border;
+                TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: Icons.layers;
+                    size: 15px;
+                    color: Theme.accent-hi;
+                }
+            }
             Text {
                 text: "Sources";
                 color: Theme.text;
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: 700;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
@@ -204,6 +234,27 @@ export component SourcePanel inherits Rectangle {
                 compact: true;
                 enabled: root.can-refresh;
                 clicked => { root.refresh(); }
+            }
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
+                background: close-touch.has-hover ? #ffffff18 : transparent;
+                animate background { duration: 110ms; }
+                accessible-role: AccessibleRole.button;
+                accessible-label: "Close Sources";
+                accessible-action-default => { root.close(); }
+                TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: Icons.close;
+                    size: 14px;
+                    color: close-touch.has-hover ? Theme.text : Theme.muted;
+                }
+                close-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.close(); }
+                }
             }
         }
         FilterRow {

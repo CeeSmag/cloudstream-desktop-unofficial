@@ -1,248 +1,16 @@
-import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
+import { TvBadge, TvProgressBar } from "controls.slint";
 import { SeekMark, SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
+import {
+    ChoicePanel, DragBar, PlayerActionButton, SkipPromptPill, VolumeCapsule
+} from "player_controls.slint";
 import { SourcePanel } from "source_panel.slint";
-
-/// A horizontal bar the viewer drags; the shown value follows `value` (0..1) until dragged, and
-/// `committed` reports the new value when the button is released. Not the std `Slider`: dragging
-/// a Slider writes its `value`, which replaces the binding, so the bar stopped following playback
-/// after the first seek.
-component DragBar inherits Rectangle {
-    in property <float> value;
-    in property <color> fill: Theme.accent;
-    /// How much is loaded, 0..1 (the seek bar); drawn lighter behind the position.
-    in property <float> buffered: 0;
-    /// Where chapters start, 0..1, drawn as dividers.
-    in property <[float]> notches: [];
-    /// Intro, recap, credits and preview, drawn in their colours.
-    in property <[SeekMark]> marks: [];
-    /// The text over the bar where the pointer is; empty for none.
-    in property <string> hover-text: "";
-    out property <bool> dragging: touch.pressed;
-    out property <bool> hovering: touch.has-hover;
-    out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
-    callback committed(float);
-
-    height: 22px;
-    property <float> shown: root.dragging ? root.drag-value : clamp(root.value, 0, 1);
-
-    Rectangle {
-        y: (parent.height - self.height) / 2;
-        height: touch.has-hover || root.dragging ? 7px : 4px;
-        border-radius: self.height / 2;
-        background: #ffffff2e;
-        animate height { duration: 100ms; }
-        for mark in root.marks: Rectangle {
-            x: parent.width * mark.start;
-            width: parent.width * mark.width;
-            height: 100%;
-            border-radius: 2px;
-            background: mark.kind == 0 ? #fbbf24b3 : mark.kind == 1 ? #38bdf8b3 : mark.kind == 2 ? #34d399b3 : #e879f9b3;
-        }
-        Rectangle {
-            x: 0;
-            width: parent.width * clamp(root.buffered, 0, 1);
-            height: 100%;
-            border-radius: parent.border-radius;
-            background: #ffffff3d;
-        }
-        Rectangle {
-            x: 0;
-            width: parent.width * root.shown;
-            height: 100%;
-            border-radius: parent.border-radius;
-            background: root.fill;
-        }
-        if touch.has-hover && !root.dragging: Rectangle {
-            x: 0;
-            width: parent.width * root.drag-value;
-            height: 100%;
-            border-radius: parent.border-radius;
-            background: #ffffff24;
-        }
-        for notch in root.notches: Rectangle {
-            x: parent.width * notch - 1px;
-            width: 2px;
-            height: 100%;
-            background: #080b12e6;
-        }
-    }
-    if touch.has-hover || root.dragging: Rectangle {
-        x: parent.width * root.shown - self.width / 2;
-        y: (parent.height - self.height) / 2;
-        width: 15px;
-        height: 15px;
-        border-radius: 7.5px;
-        background: white;
-        drop-shadow-blur: 10px;
-        drop-shadow-color: #5b8cffaa;
-    }
-    if (touch.has-hover || root.dragging) && root.hover-text != "": Rectangle {
-        x: clamp(parent.width * root.drag-value - self.width / 2, 0px, parent.width - self.width);
-        y: -self.height - 10px;
-        height: 30px;
-        width: tip.preferred-width + 22px;
-        border-radius: 9px;
-        background: Theme.panel-glass;
-        border-width: 1px;
-        border-color: Theme.border-hi;
-        drop-shadow-blur: 14px;
-        drop-shadow-color: #00000099;
-        tip := Text {
-            text: root.hover-text;
-            color: white;
-            font-size: 12px;
-            font-weight: 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        pointer-event(event) => {
-            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
-                root.committed(root.drag-value);
-            }
-        }
-    }
-}
-
-/// Sleek frosted icon/text pill button for the player bar.
-component BarButton inherits Rectangle {
-    in property <string> text: "";
-    in property <string> icon: "";
-    in property <bool> icon-filled: false;
-    in property <bool> active: false;
-    callback clicked();
-
-    height: 40px;
-    width: max(40px, btn-row.preferred-width + (root.text != "" ? 26px : 20px));
-    border-radius: 20px;
-    background: root.active ? #f4f6fb : (touch.has-hover ? #ffffff24 : #ffffff0e);
-    border-width: 1px;
-    border-color: root.active ? transparent : (touch.has-hover ? Theme.border-hi : #ffffff14);
-    animate background, border-color { duration: 120ms; }
-    accessible-role: AccessibleRole.button;
-    accessible-label: root.text;
-    accessible-action-default => { root.clicked(); }
-
-    btn-row := HorizontalLayout {
-        padding-left: root.text != "" ? 13px : 10px;
-        padding-right: root.text != "" ? 13px : 10px;
-        spacing: 7px;
-        alignment: center;
-        cross-axis-alignment: center;
-        if root.icon != "": TvIcon {
-            commands: root.icon;
-            filled: root.icon-filled;
-            size: 16px;
-            color: root.active ? Theme.bg : Theme.text;
-        }
-        if root.text != "": Text {
-            text: root.text;
-            color: root.active ? Theme.bg : Theme.text;
-            font-size: 14px;
-            font-weight: root.active ? 700 : 600;
-            vertical-alignment: center;
-        }
-    }
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
-/// Obsidian glass track chooser panel (audio / subtitles); preferred languages carry a badge.
-component ChoicePanel inherits Rectangle {
-    in property <string> title;
-    in property <[TrackChoice]> choices;
-    callback picked(int);
-
-    width: 320px;
-    background: Theme.panel-glass;
-    border-radius: Theme.radius-lg;
-    border-width: 1px;
-    border-color: Theme.border-hi;
-    drop-shadow-blur: 28px;
-    drop-shadow-color: #000000b8;
-    TouchArea { }
-
-    VerticalLayout {
-        padding: 14px;
-        spacing: 8px;
-        Text {
-            text: root.title;
-            color: Theme.muted;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 1.3px;
-        }
-        if root.choices.length == 0: Text {
-            text: "None in this stream";
-            color: Theme.muted;
-            font-size: 13.5px;
-        }
-        ScrollView {
-            max-height: 420px;
-            VerticalLayout {
-                spacing: 3px;
-                alignment: start;
-                for choice in root.choices: Rectangle {
-                    height: 40px;
-                    border-radius: Theme.radius-sm;
-                    background: choice.selected ? Theme.accent-soft : (row.has-hover ? #ffffff14 : transparent);
-                    animate background { duration: 110ms; }
-                    accessible-role: AccessibleRole.button;
-                    accessible-label: choice.label;
-                    accessible-checked: choice.selected;
-                    row := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.picked(choice.id); }
-                    }
-                    HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: 10px;
-                        spacing: 8px;
-                        cross-axis-alignment: center;
-                        Text {
-                            text: choice.label;
-                            color: choice.selected ? Theme.accent-hi : Theme.text;
-                            font-size: 13.5px;
-                            font-weight: choice.selected ? 700 : 400;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                        if choice.flag != "": Rectangle {
-                            height: 20px;
-                            width: flag.preferred-width + 12px;
-                            border-radius: 6px;
-                            background: #ffffff20;
-                            flag := Text {
-                                text: choice.flag;
-                                color: Theme.text;
-                                font-size: 11px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                        if choice.selected: TvIcon {
-                            commands: Icons.check;
-                            size: 15px;
-                            color: Theme.accent-hi;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 export component PlayerOverlay inherits Rectangle {
     in property <string> title: "";
+    /// Active stream quality/kind badge shown in the top-right header (e.g. "1080p · HLS").
+    in property <string> source-badge: "";
     in property <image> video-frame;
     in property <float> position-ms: 0;
     in property <float> duration-ms: 1;
@@ -271,6 +39,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <float> volume: 100;
     in property <bool> fullscreen: false;
     in-out property <bool> show-sources: false;
+    /// Open track chooser drawer: 0 none, 1 audio, 2 subtitles.
+    in-out property <int> open-panel: 0;
     in-out property <bool> chrome-visible: true;
     in property <[SourceItem]> sources: [];
     in property <SourceMenuInfo> source-info;
@@ -300,13 +70,30 @@ export component PlayerOverlay inherits Rectangle {
     callback select-subtitle(int);
     callback toggle-fullscreen();
 
-    property <int> open-panel: 0; // 0 none, 1 audio, 2 subtitles
+    property <float> last-nonzero-volume: 100;
+    property <bool> any-drawer-open: root.open-panel != 0 || root.show-sources;
+    property <bool> seek-dragging: false;
+    property <bool> vol-dragging: false;
+    property <bool> dragging-slider: root.seek-dragging || root.vol-dragging;
 
     background: #000000;
     accessible-role: AccessibleRole.main;
     forward-focus: keys;
 
-    /// Shows the controls and starts their 3 s hide countdown again.
+    changed chrome-visible => {
+        if !root.chrome-visible {
+            root.seek-dragging = false;
+            root.vol-dragging = false;
+        }
+    }
+
+    changed volume => {
+        if root.volume > 0 {
+            root.last-nonzero-volume = root.volume;
+        }
+    }
+
+    /// Shows the controls and restarts their 3 s hide countdown.
     function show-chrome() {
         root.chrome-visible = true;
         if hide-timer.running {
@@ -319,6 +106,26 @@ export component PlayerOverlay inherits Rectangle {
         root.seek-by(delta-ms);
     }
 
+    function toggle-mute() {
+        root.show-chrome();
+        if root.volume > 0 {
+            root.last-nonzero-volume = root.volume;
+            root.set-volume(0);
+        } else {
+            root.set-volume(root.last-nonzero-volume > 0 ? root.last-nonzero-volume : 100);
+        }
+    }
+
+    function toggle-track-panel(panel: int) {
+        root.show-chrome();
+        if root.open-panel == panel {
+            root.open-panel = 0;
+        } else {
+            root.show-sources = false;
+            root.open-panel = panel;
+        }
+    }
+
     keys := FocusScope {
         key-pressed(event) => {
             if event.text == " " || event.text == "k" { root.show-chrome(); root.toggle-pause(); return accept; }
@@ -326,12 +133,16 @@ export component PlayerOverlay inherits Rectangle {
             if event.text == Key.RightArrow { root.nudge(10000); return accept; }
             if event.text == Key.UpArrow { root.show-chrome(); root.set-volume(min(root.volume + 5, 130)); return accept; }
             if event.text == Key.DownArrow { root.show-chrome(); root.set-volume(max(root.volume - 5, 0)); return accept; }
-            if event.text == "m" { root.show-chrome(); root.set-volume(root.volume > 0 ? 0 : 100); return accept; }
+            if event.text == "m" { root.toggle-mute(); return accept; }
             if event.text == "f" { root.toggle-fullscreen(); return accept; }
             if event.text == "s" && root.skip-label != "" { root.skip-segment(); return accept; }
             if event.text == "N" && root.has-next-episode { root.next-episode(); return accept; }
             if event.text == Key.Escape {
-                if root.open-panel != 0 || root.show-sources { root.open-panel = 0; root.show-sources = false; return accept; }
+                if root.any-drawer-open {
+                    root.open-panel = 0;
+                    root.show-sources = false;
+                    return accept;
+                }
                 if root.fullscreen { root.toggle-fullscreen(); return accept; }
                 root.leave-player();
                 return accept;
@@ -340,12 +151,19 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
+    // Video frame surface
     video-area := TouchArea {
         mouse-cursor: root.chrome-visible ? MouseCursor.default : MouseCursor.none;
         changed mouse-x => { root.show-chrome(); }
         changed mouse-y => { root.show-chrome(); }
         clicked => {
-            root.open-panel = 0;
+            if root.any-drawer-open {
+                root.open-panel = 0;
+                root.show-sources = false;
+                keys.focus();
+                root.show-chrome();
+                return;
+            }
             keys.focus();
             root.show-chrome();
             root.toggle-pause();
@@ -367,70 +185,115 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
-    if root.waiting-text != "": Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: 26px;
-        height: 42px;
-        width: waiting.preferred-width + 64px;
-        border-radius: 21px;
-        background: Theme.panel-glass;
-        border-width: 1px;
-        border-color: Theme.border-hi;
-        drop-shadow-blur: 18px;
-        drop-shadow-color: #00000088;
-        HorizontalLayout {
-            padding-left: 16px;
-            padding-right: 18px;
-            spacing: 10px;
+    // Audio-only obsidian cinema backdrop & card
+    if root.audio-only: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.bg-ambient;
+        VerticalLayout {
             alignment: center;
             cross-axis-alignment: center;
-            Spinner { width: 18px; height: 18px; indeterminate: true; }
-            waiting := Text {
+            Rectangle {
+                width: 340px;
+                background: Theme.panel-glass;
+                border-radius: Theme.radius-lg;
+                border-width: 1px;
+                border-color: Theme.border-hi;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #000000b8;
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    alignment: center;
+                    cross-axis-alignment: center;
+                    Rectangle {
+                        width: 72px;
+                        height: 72px;
+                        border-radius: 36px;
+                        background: Theme.accent-soft;
+                        border-width: 1px;
+                        border-color: Theme.accent-border;
+                        drop-shadow-blur: 18px;
+                        drop-shadow-color: #5b8cff55;
+                        TvIcon {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            commands: Icons.audio;
+                            size: 32px;
+                            color: Theme.accent-hi;
+                        }
+                    }
+                    if root.title != "": Text {
+                        text: root.title;
+                        color: Theme.text;
+                        font-size: 16px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    TvBadge {
+                        text: "Audio only";
+                        tone: "accent";
+                    }
+                }
+            }
+        }
+    }
+
+    // Non-colliding obsidian loading / buffering pill with indeterminate CloudStream Blue bar
+    if root.waiting-text != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: root.chrome-visible ? 86px : 26px;
+        height: 44px;
+        width: max(188px, waiting-text.preferred-width + 48px);
+        border-radius: 14px;
+        background: Theme.panel-glass;
+        border-width: 1px;
+        border-color: Theme.accent-border;
+        clip: true;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #000000a8;
+        animate y { duration: 180ms; easing: ease-out; }
+
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-bottom: 3px;
+            alignment: center;
+            cross-axis-alignment: center;
+            waiting-text := Text {
                 text: root.waiting-text;
                 color: Theme.text;
-                font-size: 14px;
+                font-size: 13.5px;
                 font-weight: 600;
                 vertical-alignment: center;
             }
         }
-    }
-
-    if root.audio-only: VerticalLayout {
-        alignment: center;
-        cross-axis-alignment: center;
-        spacing: 12px;
-        Rectangle {
-            width: 72px;
-            height: 72px;
-            border-radius: 36px;
-            background: Theme.accent-soft;
-            border-width: 1px;
-            border-color: Theme.accent-border;
-            TvIcon {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                commands: Icons.audio;
-                size: 32px;
-                color: Theme.accent-hi;
-            }
+        TvProgressBar {
+            x: 0;
+            y: parent.height - 3px;
+            width: 100%;
+            bar-height: 3px;
+            indeterminate: true;
+            fill: Theme.accent;
         }
-        Text { text: "Audio only"; color: Theme.muted; font-size: 15px; horizontal-alignment: center; }
     }
 
+    // Center action feedback OSD (volume, seek, track switch, fullscreen)
     feedback := Rectangle {
         property <bool> shown: false;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         height: 58px;
         width: feedback-row.preferred-width + 44px;
-        border-radius: 18px;
-        background: #0a0e17cc;
+        border-radius: 16px;
+        background: Theme.panel-glass;
         border-width: 1px;
         border-color: Theme.border-hi;
-        drop-shadow-blur: 22px;
-        drop-shadow-color: #00000099;
+        drop-shadow-blur: 26px;
+        drop-shadow-color: #000000b8;
         opacity: self.shown ? 1 : 0;
-        animate opacity { duration: 220ms; }
+        animate opacity { duration: 200ms; }
         feedback-row := HorizontalLayout {
             padding-left: 22px;
             padding-right: 22px;
@@ -439,23 +302,23 @@ export component PlayerOverlay inherits Rectangle {
             cross-axis-alignment: center;
             Text {
                 text: root.feedback-text;
-                color: white;
-                font-size: 19px;
+                color: Theme.text;
+                font-size: 18px;
                 font-weight: 700;
                 vertical-alignment: center;
             }
             if root.feedback-level >= 0: Rectangle {
-                width: 112px;
+                width: 116px;
                 height: 6px;
                 border-radius: 3px;
-                background: #ffffff38;
+                background: #ffffff28;
                 clip: true;
                 Rectangle {
                     x: 0;
                     width: parent.width * clamp(root.feedback-level, 0, 1);
                     height: 100%;
                     border-radius: 3px;
-                    background: Theme.accent;
+                    background: @linear-gradient(90deg, #4b7cf5 0%, #7aa3ff 100%);
                 }
             }
         }
@@ -474,138 +337,261 @@ export component PlayerOverlay inherits Rectangle {
         feedback-timer.restart();
     }
 
+    // Top Header HUD (obsidian vignette + Back pill + accented title + active source badge)
     if root.chrome-visible: Rectangle {
         y: 0;
-        height: 100px;
-        background: @linear-gradient(180deg, #000000d9 0%, #00000000 100%);
+        height: 96px;
+        background: @linear-gradient(180deg, #080b12e6 0%, #080b1280 58%, #080b1200 100%);
         HorizontalLayout {
-            padding: 24px;
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 20px;
+            padding-bottom: 20px;
             spacing: 14px;
-            alignment: start;
             cross-axis-alignment: center;
-            BarButton {
+
+            PlayerActionButton {
+                text: "Back";
                 icon: Icons.back;
+                kind: "glass";
                 clicked => { root.leave-player(); }
             }
+
+            Rectangle {
+                width: 3.5px;
+                height: 22px;
+                border-radius: 2px;
+                background: Theme.accent;
+            }
+
             Text {
                 text: root.title;
-                color: white;
-                font-size: 20px;
+                color: Theme.text;
+                font-size: 19px;
                 font-weight: 700;
                 vertical-alignment: center;
                 overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            if root.source-badge != "": TvBadge {
+                text: root.source-badge;
+                tone: "accent";
             }
         }
     }
 
+    // Bottom Cinema Vignette + Floating Obsidian Glass Control Dock
     if root.chrome-visible: Rectangle {
         y: parent.height - self.height;
-        height: 158px;
-        background: @linear-gradient(0deg, #000000eb 0%, #00000066 60%, #00000000 100%);
-        VerticalLayout {
-            padding-left: 28px;
-            padding-right: 28px;
-            padding-bottom: 22px;
-            spacing: 10px;
-            alignment: end;
-            HorizontalLayout {
-                spacing: 14px;
-                cross-axis-alignment: center;
-                Text { text: root.position-text; color: white; font-size: 13.5px; font-weight: 600; vertical-alignment: center; }
-                seek-bar := DragBar {
-                    horizontal-stretch: 1;
-                    buffered: root.buffered-fraction;
-                    notches: root.chapter-notches;
-                    marks: root.skip-marks;
-                    hover-text: self.hovering && root.duration-ms > 1
-                        ? root.describe-seek(self.drag-value * root.duration-ms) : "";
-                    value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
-                    committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
-                }
-                Text { text: root.duration-text; color: Theme.muted; font-size: 13.5px; font-weight: 600; vertical-alignment: center; }
+        height: 164px;
+        background: @linear-gradient(0deg, #080b12eb 0%, #080b1280 65%, #080b1200 100%);
+
+        // Floating glass dock echoing the TopBar & Settings Card surfaces
+        Rectangle {
+            x: 24px;
+            y: parent.height - self.height - 20px;
+            width: parent.width - 48px;
+            height: 118px;
+            border-radius: 18px;
+            background: Theme.panel-glass;
+            border-width: 1px;
+            border-color: Theme.border-hi;
+            drop-shadow-blur: 28px;
+            drop-shadow-color: #000000cc;
+            // Clicks on the dock itself never toggle playback underneath.
+            TouchArea {
+                changed mouse-x => { root.show-chrome(); }
+                changed mouse-y => { root.show-chrome(); }
             }
-            HorizontalLayout {
-                spacing: 8px;
-                cross-axis-alignment: center;
-                BarButton {
-                    text: root.paused ? "Play" : "Pause";
-                    icon: root.paused ? Icons.play : Icons.pause;
-                    icon-filled: true;
-                    active: true;
-                    clicked => { root.toggle-pause(); }
+
+            VerticalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 14px;
+                padding-bottom: 14px;
+                spacing: 12px;
+                alignment: center;
+
+                // Row 1: Scrubber timeline
+                HorizontalLayout {
+                    spacing: 14px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: root.position-text;
+                        color: Theme.text;
+                        font-size: 13px;
+                        font-weight: 700;
+                        min-width: 44px;
+                        horizontal-alignment: left;
+                        vertical-alignment: center;
+                    }
+                    seek-bar := DragBar {
+                        horizontal-stretch: 1;
+                        buffered: root.buffered-fraction;
+                        notches: root.chapter-notches;
+                        marks: root.skip-marks;
+                        hover-text: self.hovering && root.duration-ms > 1
+                            ? root.describe-seek(self.drag-value * root.duration-ms) : "";
+                        value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
+                        changed dragging => { root.seek-dragging = self.dragging; }
+                        committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
+                    }
+                    Text {
+                        text: root.duration-text;
+                        color: Theme.muted;
+                        font-size: 13px;
+                        font-weight: 600;
+                        min-width: 44px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
                 }
-                BarButton { text: "−10s"; clicked => { root.nudge(-10000); } }
-                BarButton { text: "+10s"; clicked => { root.nudge(10000); } }
-                if root.has-previous-episode: BarButton {
-                    text: "Prev";
-                    icon: Icons.skip-back;
-                    icon-filled: true;
-                    clicked => { root.previous-episode(); }
-                }
-                if root.has-next-episode: BarButton {
-                    text: "Next";
-                    icon: Icons.skip-forward;
-                    icon-filled: true;
-                    clicked => { root.next-episode(); }
-                }
-                Rectangle { horizontal-stretch: 1; }
-                TvIcon {
-                    commands: Icons.volume;
-                    size: 17px;
-                    color: Theme.text-secondary;
-                }
-                DragBar {
-                    width: 108px;
-                    fill: white;
-                    value: root.volume / 130;
-                    committed(v) => { root.set-volume(v * 130); }
-                }
-                BarButton {
-                    text: "Audio";
-                    icon: Icons.audio;
-                    active: root.open-panel == 1;
-                    clicked => { root.open-panel = root.open-panel == 1 ? 0 : 1; }
-                }
-                BarButton {
-                    text: "Subtitles";
-                    icon: Icons.subtitles;
-                    active: root.open-panel == 2;
-                    clicked => { root.open-panel = root.open-panel == 2 ? 0 : 2; }
-                }
-                BarButton {
-                    text: "Sources";
-                    icon: Icons.layers;
-                    active: root.show-sources;
-                    clicked => { root.toggle-sources(); }
-                }
-                BarButton {
-                    icon: root.fullscreen ? Icons.minimize : Icons.maximize;
-                    clicked => { root.toggle-fullscreen(); }
+
+                // Row 2: Grouped transport & utility controls
+                HorizontalLayout {
+                    spacing: 10px;
+                    cross-axis-alignment: center;
+
+                    PlayerActionButton {
+                        text: root.paused ? "Play" : "Pause";
+                        icon: root.paused ? Icons.play : Icons.pause;
+                        icon-filled: true;
+                        kind: "primary";
+                        clicked => { root.show-chrome(); root.toggle-pause(); }
+                    }
+
+                    // Recessed obsidian transport capsule (−10s, +10s, optional Prev/Next episode)
+                    Rectangle {
+                        height: 38px;
+                        width: transport-row.preferred-width;
+                        horizontal-stretch: 0;
+                        vertical-stretch: 0;
+                        border-radius: 12px;
+                        background: #0a0e17b0;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        transport-row := HorizontalLayout {
+                            padding: 3px;
+                            spacing: 2px;
+                            cross-axis-alignment: center;
+                            PlayerActionButton {
+                                text: "10s";
+                                icon: Icons.rotate-ccw;
+                                accessible-name: "Rewind 10 seconds";
+                                kind: "subtle";
+                                compact: true;
+                                clicked => { root.nudge(-10000); }
+                            }
+                            PlayerActionButton {
+                                text: "10s";
+                                icon: Icons.rotate-cw;
+                                accessible-name: "Forward 10 seconds";
+                                kind: "subtle";
+                                compact: true;
+                                clicked => { root.nudge(10000); }
+                            }
+                            if root.has-previous-episode || root.has-next-episode: Rectangle {
+                                width: 1px;
+                                height: 20px;
+                                background: Theme.divider;
+                            }
+                            if root.has-previous-episode: PlayerActionButton {
+                                text: "Prev";
+                                icon: Icons.skip-back;
+                                icon-filled: true;
+                                kind: "subtle";
+                                compact: true;
+                                clicked => { root.show-chrome(); root.previous-episode(); }
+                            }
+                            if root.has-next-episode: PlayerActionButton {
+                                text: "Next";
+                                icon: Icons.skip-forward;
+                                icon-filled: true;
+                                kind: "subtle";
+                                compact: true;
+                                clicked => { root.show-chrome(); root.next-episode(); }
+                            }
+                        }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    vol-capsule := VolumeCapsule {
+                        volume: root.volume;
+                        changed dragging => { root.vol-dragging = self.dragging; }
+                        set-volume(v) => { root.show-chrome(); root.set-volume(v); }
+                        toggle-mute => { root.toggle-mute(); }
+                    }
+
+                    Rectangle {
+                        width: 1px;
+                        height: 22px;
+                        background: Theme.divider;
+                    }
+
+                    PlayerActionButton {
+                        text: "Audio";
+                        icon: Icons.audio;
+                        kind: root.open-panel == 1 ? "tonal" : "glass";
+                        clicked => { root.toggle-track-panel(1); }
+                    }
+                    PlayerActionButton {
+                        text: "Subtitles";
+                        icon: Icons.subtitles;
+                        kind: root.open-panel == 2 ? "tonal" : "glass";
+                        clicked => { root.toggle-track-panel(2); }
+                    }
+                    PlayerActionButton {
+                        text: "Sources";
+                        icon: Icons.layers;
+                        badge: root.source-info.total > 0 ? root.source-info.total : "";
+                        kind: root.show-sources ? "tonal" : "glass";
+                        clicked => {
+                            root.show-chrome();
+                            root.open-panel = 0;
+                            root.toggle-sources();
+                        }
+                    }
+                    PlayerActionButton {
+                        icon: root.fullscreen ? Icons.minimize : Icons.maximize;
+                        accessible-name: root.fullscreen ? "Exit fullscreen" : "Fullscreen";
+                        kind: root.fullscreen ? "tonal" : "glass";
+                        clicked => { root.show-chrome(); root.toggle-fullscreen(); }
+                    }
                 }
             }
         }
     }
 
+    // Audio Track Drawer
     if root.open-panel == 1: ChoicePanel {
-        x: parent.width - self.width - 28px;
-        y: parent.height - self.height - 144px;
-        title: "AUDIO TRACK";
+        x: parent.width - self.width - 24px;
+        y: parent.height - self.height - 152px;
+        title: "Audio";
+        icon: Icons.audio;
         choices: root.audio-tracks;
         picked(v) => { root.select-audio(v); root.open-panel = 0; }
+        close => { root.open-panel = 0; }
     }
 
+    // Subtitles Track Drawer
     if root.open-panel == 2: ChoicePanel {
-        x: parent.width - self.width - 28px;
-        y: parent.height - self.height - 144px;
-        title: "SUBTITLES";
+        x: parent.width - self.width - 24px;
+        y: parent.height - self.height - 152px;
+        title: "Subtitles";
+        icon: Icons.subtitles;
         choices: root.subtitle-tracks;
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
+        close => { root.open-panel = 0; }
     }
 
+    // Sources Drawer
     if root.show-sources: SourcePanel {
         x: parent.width - self.width - 24px;
         y: 84px;
-        height: parent.height - 252px;
+        height: parent.height - 236px;
         sources: root.sources;
         info: root.source-info;
         can-refresh: root.can-refresh;
@@ -613,9 +599,11 @@ export component PlayerOverlay inherits Rectangle {
         pick(index) => { root.select-source(index); }
         toggle-tier(i) => { root.toggle-tier(i); }
         toggle-subtitle(i) => { root.toggle-source-subtitle(i); }
+        close => { root.show-sources = false; }
     }
 
-    // The skip button shows by itself for the first 5 s of its part, then with the controls.
+    // The skip button shows by itself for the first 5 s of its part, then with the controls,
+    // and yields cleanly while any drawer is open so overlays never overlap.
     property <bool> skip-window: false;
     changed skip-key => {
         root.skip-window = root.skip-key != "";
@@ -630,56 +618,17 @@ export component PlayerOverlay inherits Rectangle {
             self.running = false;
         }
     }
-    if root.skip-label != "" && (root.skip-window || root.chrome-visible): Rectangle {
-        x: parent.width - self.width - 32px;
-        y: parent.height - self.height - 174px;
-        height: 48px;
-        width: skip-row.preferred-width + 44px;
-        border-radius: 24px;
-        background: skip-touch.has-hover ? #ffffff : #f4f6fbf2;
-        clip: true;
-        drop-shadow-blur: 22px;
-        drop-shadow-color: #000000aa;
-        accessible-role: AccessibleRole.button;
-        accessible-label: root.skip-label;
-        accessible-action-default => { root.skip-segment(); }
-        // A shade drains across the button while its 5 s run.
-        Rectangle {
-            x: 0;
-            width: root.skip-window ? 0px : parent.width;
-            background: #00000024;
-            visible: root.skip-window;
-            animate width { duration: root.skip-window ? 5s : 0ms; }
-        }
-        skip-row := HorizontalLayout {
-            padding-left: 22px;
-            padding-right: 22px;
-            spacing: 8px;
-            alignment: center;
-            cross-axis-alignment: center;
-            TvIcon {
-                commands: Icons.skip-forward;
-                filled: true;
-                size: 16px;
-                color: Theme.bg;
-            }
-            Text {
-                text: root.skip-label;
-                color: Theme.bg;
-                font-size: 15px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-        }
-        skip-touch := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.skip-segment(); }
-        }
+    if root.skip-label != "" && !root.any-drawer-open && (root.skip-window || root.chrome-visible): SkipPromptPill {
+        x: parent.width - self.width - 24px;
+        y: parent.height - self.height - (root.chrome-visible ? 154px : 28px);
+        label: root.skip-label;
+        countdown-active: root.skip-window;
+        triggered => { root.skip-segment(); }
     }
 
     hide-timer := Timer {
         interval: 3s;
-        running: root.chrome-visible && !root.paused && root.open-panel == 0 && !root.show-sources;
+        running: root.chrome-visible && !root.paused && !root.any-drawer-open && !root.dragging-slider;
         triggered => { root.chrome-visible = false; }
     }
 }

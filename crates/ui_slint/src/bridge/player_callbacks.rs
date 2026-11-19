@@ -59,7 +59,11 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
     let weak = ctx.ui.clone();
     ui.on_toggle_sources(move || {
         if let Some(ui) = weak.upgrade() {
-            ui.set_show_sources(!ui.get_show_sources());
+            let open = !ui.get_show_sources();
+            if open {
+                ui.set_player_open_panel(0);
+            }
+            ui.set_show_sources(open);
         }
     });
     let c = ctx.clone();
@@ -105,8 +109,7 @@ fn close_player(ctx: &BridgeContext) {
         report("stop", playback.stop());
     }
     if let Some(ui) = ctx.window() {
-        clear_video_frame(ctx, &ui);
-        ui.set_player_open(false);
+        reset_player_ui(ctx, &ui);
         show_continue_watching(ctx, &ui);
     }
 }
@@ -119,10 +122,17 @@ fn leave_player(ctx: &BridgeContext) {
         report("stop", playback.stop());
     }
     if let Some(ui) = ctx.window() {
-        clear_video_frame(ctx, &ui);
-        ui.set_player_open(false);
+        reset_player_ui(ctx, &ui);
         show_continue_watching(ctx, &ui);
     }
+}
+
+fn reset_player_ui(ctx: &BridgeContext, ui: &CloudStream) {
+    clear_video_frame(ctx, ui);
+    ui.set_show_sources(false);
+    ui.set_player_open_panel(0);
+    ui.set_player_source_badge("".into());
+    ui.set_player_open(false);
 }
 
 /// Logs a player command that failed; the screen keeps showing the player's real state.

@@ -84,6 +84,8 @@ export component CloudStream inherits Window {
     in-out property <string> resume-label: "";
     in-out property <bool> player-open: false;
     in-out property <string> player-title: "";
+    in-out property <string> player-source-badge: "";
+    in-out property <int> player-open-panel: 0;
     in-out property <float> position-ms: 0;
     in-out property <float> duration-ms: 1;
     in-out property <bool> paused: false;
@@ -487,6 +489,7 @@ export component CloudStream inherits Window {
         if player-open: PlayerOverlay {
             init => { self.focus(); }
             title: player-title;
+            source-badge: player-source-badge;
             video-frame: video-frame;
             position-ms: position-ms;
             duration-ms: duration-ms;
@@ -504,6 +507,7 @@ export component CloudStream inherits Window {
             volume: volume;
             fullscreen: fullscreen;
             show-sources <=> show-sources;
+            open-panel <=> player-open-panel;
             chrome-visible <=> player-chrome-visible;
             sources: sources;
             source-info: source-info;
