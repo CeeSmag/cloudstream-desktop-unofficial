@@ -8,6 +8,8 @@ use std::sync::{Mutex, PoisonError};
 
 use player_api::SubtitleSource;
 
+use crate::subtitle_activity::SubtitleActivity;
+
 /// The waiting files and the stream generation they belong to.
 #[derive(Debug, Default)]
 pub(crate) struct PendingSubtitles {
@@ -27,9 +29,18 @@ impl PendingSubtitles {
         self.files.extend_from_slice(files);
     }
 
-    /// How many files wait.
+    /// How many files wait for any stream.
     pub(crate) fn len(&self) -> usize {
         self.files.len()
+    }
+
+    /// How many files wait for stream `generation`.
+    pub(crate) fn len_for(&self, generation: u64) -> usize {
+        if self.generation == generation {
+            self.files.len()
+        } else {
+            0
+        }
     }
 
     /// Hands over the waiting files when they belong to stream `generation`; files queued for
@@ -49,27 +60,42 @@ impl PendingSubtitles {
 pub(crate) fn queue_for_new_stream(
     pending: &Mutex<PendingSubtitles>,
     generation: &AtomicU64,
+    activity: &SubtitleActivity,
     files: Vec<SubtitleSource>,
 ) -> u64 {
     let mut pending = pending.lock().unwrap_or_else(PoisonError::into_inner);
     let next = generation.fetch_add(1, Ordering::SeqCst) + 1;
     pending.replace(next, files);
+    activity.reset(next);
     next
 }
 
+/// Stops the current stream: bumps the generation and drops waiting/attaching subtitle counts.
+pub(crate) fn clear_for_stop(
+    pending: &Mutex<PendingSubtitles>,
+    generation: &AtomicU64,
+    activity: &SubtitleActivity,
+) -> u64 {
+    queue_for_new_stream(pending, generation, activity, Vec::new())
+}
+
 /// The files to attach now: those waiting for stream `loaded`, provided it is still the current
-/// stream. `None` when nothing waits, or when the stream was replaced meanwhile.
+/// stream. Reserves their attaching slots in `activity` before releasing the queue lock so the
+/// total pending count never drops to zero during handoff.
 pub(crate) fn take_when_loaded(
     pending: &Mutex<PendingSubtitles>,
     generation: &AtomicU64,
+    activity: &SubtitleActivity,
     loaded: Option<u64>,
 ) -> Option<(u64, Vec<SubtitleSource>)> {
     let stream = loaded.filter(|stream| *stream == generation.load(Ordering::SeqCst))?;
-    let files = pending
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .take_for(stream);
-    (!files.is_empty()).then_some((stream, files))
+    let mut pending = pending.lock().unwrap_or_else(PoisonError::into_inner);
+    let files = pending.take_for(stream);
+    if files.is_empty() {
+        return None;
+    }
+    activity.begin(stream, files.len());
+    Some((stream, files))
 }
 
 #[cfg(test)]
@@ -114,20 +140,22 @@ mod tests {
     type Shared = (
         Arc<Mutex<PendingSubtitles>>,
         Arc<AtomicU64>,
+        Arc<SubtitleActivity>,
         Arc<Mutex<std::collections::HashMap<u64, usize>>>,
     );
 
     /// A viewer who switches source over and over; remembers which switch started which stream.
     fn spawn_switcher(shared: &Shared) -> std::thread::JoinHandle<()> {
-        let (pending, generation, queued) = (
+        let (pending, generation, activity, queued) = (
             Arc::clone(&shared.0),
             Arc::clone(&shared.1),
             Arc::clone(&shared.2),
+            Arc::clone(&shared.3),
         );
         std::thread::spawn(move || {
             for switch in 0..SWITCHES {
                 let files = vec![file(&format!("switch-{switch}"))];
-                let stream = queue_for_new_stream(&pending, &generation, files);
+                let stream = queue_for_new_stream(&pending, &generation, &activity, files);
                 queued.lock().expect("lock").insert(stream, switch);
             }
         })
@@ -135,12 +163,16 @@ mod tests {
 
     /// The event thread: keeps attaching whatever waits for the stream that is current.
     fn spawn_attacher(shared: &Shared) -> std::thread::JoinHandle<Vec<(u64, Vec<SubtitleSource>)>> {
-        let (pending, generation) = (Arc::clone(&shared.0), Arc::clone(&shared.1));
+        let (pending, generation, activity) = (
+            Arc::clone(&shared.0),
+            Arc::clone(&shared.1),
+            Arc::clone(&shared.2),
+        );
         std::thread::spawn(move || {
             let mut taken = Vec::new();
             for _ in 0..SWITCHES * 4 {
                 let loaded = Some(generation.load(Ordering::SeqCst));
-                if let Some(batch) = take_when_loaded(&pending, &generation, loaded) {
+                if let Some(batch) = take_when_loaded(&pending, &generation, &activity, loaded) {
                     taken.push(batch);
                 }
                 std::thread::yield_now();
@@ -156,13 +188,14 @@ mod tests {
         let shared: Shared = (
             Arc::new(Mutex::new(PendingSubtitles::default())),
             Arc::new(AtomicU64::new(0)),
+            Arc::new(SubtitleActivity::default()),
             Arc::default(),
         );
         let switcher = spawn_switcher(&shared);
         let attachers: Vec<_> = (0..3).map(|_| spawn_attacher(&shared)).collect();
         switcher.join().expect("switcher");
 
-        let queued = shared.2.lock().expect("lock");
+        let queued = shared.3.lock().expect("lock");
         let mut handed_over = 0;
         for attacher in attachers {
             for (stream, files) in attacher.join().expect("attacher") {
@@ -183,11 +216,26 @@ mod tests {
     fn a_stream_that_was_replaced_before_it_loaded_gets_nothing() {
         let pending = Mutex::new(PendingSubtitles::default());
         let generation = AtomicU64::new(0);
-        let first = queue_for_new_stream(&pending, &generation, vec![file("Arabic")]);
-        let second = queue_for_new_stream(&pending, &generation, vec![file("English")]);
-        assert!(take_when_loaded(&pending, &generation, Some(first)).is_none());
-        let (stream, files) = take_when_loaded(&pending, &generation, Some(second)).expect("files");
+        let activity = SubtitleActivity::default();
+        let first = queue_for_new_stream(&pending, &generation, &activity, vec![file("Arabic")]);
+        let second = queue_for_new_stream(&pending, &generation, &activity, vec![file("English")]);
+        assert!(take_when_loaded(&pending, &generation, &activity, Some(first)).is_none());
+        let (stream, files) =
+            take_when_loaded(&pending, &generation, &activity, Some(second)).expect("files");
         assert_eq!((stream, files.len()), (second, 1));
-        assert!(take_when_loaded(&pending, &generation, None).is_none());
+        assert_eq!(activity.count_for(second), 1);
+        assert!(take_when_loaded(&pending, &generation, &activity, None).is_none());
+    }
+
+    #[test]
+    fn stop_clears_waiting_and_attaching_counts() {
+        let pending = Mutex::new(PendingSubtitles::default());
+        let generation = AtomicU64::new(0);
+        let activity = SubtitleActivity::default();
+        let stream = queue_for_new_stream(&pending, &generation, &activity, vec![file("English")]);
+        assert_eq!(pending.lock().expect("lock").len_for(stream), 1);
+        let stopped = clear_for_stop(&pending, &generation, &activity);
+        assert_eq!(pending.lock().expect("lock").len_for(stopped), 0);
+        assert_eq!(activity.count_for(stopped), 0);
     }
 }

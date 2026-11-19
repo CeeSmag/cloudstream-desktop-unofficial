@@ -1,4 +1,38 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use player_api::{MediaTrack, TrackKind};
+
+/// Logs the subtitle tracks the player lists whenever their number changes, so a language
+/// that never shows up can be told from one that was attached and then lost.
+pub(crate) fn report_subtitle_tracks(tracks: &[MediaTrack], reported: &AtomicUsize) {
+    let languages: Vec<&str> = tracks
+        .iter()
+        .filter(|track| track.kind == TrackKind::Subtitle)
+        .map(|track| track.language.as_str())
+        .collect();
+    if reported.swap(languages.len(), Ordering::Relaxed) == languages.len() {
+        return;
+    }
+    let mut counts = std::collections::BTreeMap::new();
+    for language in &languages {
+        *counts
+            .entry(if language.is_empty() {
+                "unknown"
+            } else {
+                language
+            })
+            .or_insert(0usize) += 1;
+    }
+    let tally: Vec<String> = counts
+        .iter()
+        .map(|(language, count)| format!("{language}={count}"))
+        .collect();
+    tracing::info!(
+        subtitle_tracks = languages.len(),
+        languages = %tally.join(", "),
+        "the subtitle tracks in the player changed"
+    );
+}
 
 /// Builds the track list from mpv's `track-list/N/...` properties. `get` returns a property as text.
 pub(crate) fn read_tracks(get: impl Fn(&str) -> Option<String>) -> Vec<MediaTrack> {

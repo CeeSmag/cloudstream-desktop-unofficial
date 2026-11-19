@@ -154,6 +154,48 @@ fn run(context: &MpvRenderContext, signal: &FrameSignal, shared: &FrameShared, s
     }
 }
 
+/// Size used for the first frames, before the UI reports its real picture area.
+const INITIAL_SURFACE: (u32, u32) = (1280, 720);
+
+/// Whether frames are rendered into memory for the app window rather than in mpv's own window.
+pub(crate) fn wants_embedding(
+    api: &crate::mpv_api::MpvApi,
+    options: &crate::player_configuration::PlayerOptions,
+) -> bool {
+    let embedded = options.embedded
+        && !options.headless
+        && options.wid.is_none()
+        && api.render_api().is_some();
+    if options.embedded && !embedded && !options.headless {
+        tracing::warn!("this libmpv has no render API; using mpv's own window");
+    }
+    embedded
+}
+
+/// Starts frame rendering; on failure falls back to mpv's own window.
+#[tracing::instrument(level = "debug", skip_all)]
+pub(crate) fn start_embedding(
+    handle: &Arc<crate::mpv_api::MpvHandle>,
+) -> (Option<FrameRenderer>, Option<Arc<FrameShared>>) {
+    let signal = Arc::new(FrameSignal::default());
+    let started =
+        MpvRenderContext::create(Arc::clone(handle), Arc::clone(&signal)).and_then(|context| {
+            let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
+            FrameRenderer::start(context, signal, Arc::clone(&shared))
+                .map(|renderer| (renderer, shared))
+        });
+    match started {
+        Ok((renderer, shared)) => (Some(renderer), Some(shared)),
+        Err(error) => {
+            tracing::warn!(%error, "embedded rendering failed; using mpv's own window");
+            if let Err(error) = handle.set_property("vo", "gpu") {
+                tracing::warn!(%error, "could not switch to a window");
+            }
+            (None, None)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

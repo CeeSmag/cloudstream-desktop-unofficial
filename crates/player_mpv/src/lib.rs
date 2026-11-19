@@ -22,6 +22,7 @@ mod player_configuration;
 mod preferred_audio;
 mod preferred_subtitles;
 mod status_tracker;
+mod subtitle_activity;
 mod subtitle_attacher;
 mod track_reader;
 mod track_refresh;

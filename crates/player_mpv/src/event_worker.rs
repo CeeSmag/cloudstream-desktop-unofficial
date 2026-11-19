@@ -14,8 +14,9 @@ use crate::playback_diagnostics::read_diagnostics;
 use crate::preferred_audio::{preferred_audio_choice, AudioChoice, AudioPreference};
 use crate::preferred_subtitles::{preferred_subtitle_choice, SubtitleChoice, SubtitlePreference};
 use crate::status_tracker::{Reading, StatusTracker};
-use crate::subtitle_attacher::{attach_in_background, StreamGeneration};
-use crate::track_reader::{has_video_track, read_tracks};
+use crate::subtitle_activity::SubtitleActivity;
+use crate::subtitle_attacher::{attach_in_background, AttachContext, StreamGeneration};
+use crate::track_reader::{has_video_track, read_tracks, report_subtitle_tracks};
 
 /// How long the event thread waits per iteration; also its stop-latency and how old the position
 /// the app shows can get.
@@ -26,6 +27,7 @@ pub(crate) struct EventWorker {
     pub(crate) handle: Arc<MpvHandle>,
     pub(crate) tracker: Arc<StatusTracker>,
     pub(crate) pending_subtitles: Arc<Mutex<PendingSubtitles>>,
+    pub(crate) subtitle_activity: Arc<SubtitleActivity>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stream_generation: StreamGeneration,
     pub(crate) audio_preference: Arc<AudioPreference>,
@@ -65,8 +67,11 @@ impl EventWorker {
             }
             self.poll_progress();
             ticks += 1;
-            if crate::track_refresh::due(ticks, &self.tracker.snapshot().state) {
+            let periodic = crate::track_refresh::due(ticks, &self.tracker.snapshot().state);
+            if periodic || self.subtitle_activity.take_tracks_dirty() {
                 self.refresh_tracks();
+            }
+            if periodic {
                 self.refresh_chapters();
             }
         }
@@ -107,9 +112,12 @@ impl EventWorker {
 
     /// Hands the stream's external subtitles to background workers; nothing here waits on a download.
     fn attach_subtitles(&self, loaded: Option<u64>) {
-        let Some((generation, subtitles)) =
-            take_when_loaded(&self.pending_subtitles, &self.stream_generation, loaded)
-        else {
+        let Some((generation, subtitles)) = take_when_loaded(
+            &self.pending_subtitles,
+            &self.stream_generation,
+            &self.subtitle_activity,
+            loaded,
+        ) else {
             return;
         };
         tracing::debug!(
@@ -117,7 +125,12 @@ impl EventWorker {
             files = subtitles.len(),
             "attaching subtitle files"
         );
-        attach_in_background(&self.handle, &self.stream_generation, generation, subtitles);
+        let ctx = AttachContext {
+            handle: Arc::clone(&self.handle),
+            current: Arc::clone(&self.stream_generation),
+            activity: Arc::clone(&self.subtitle_activity),
+        };
+        attach_in_background(ctx, generation, subtitles);
     }
 
     /// Plays the audio track in the viewer's preferred language when the stream has one.
@@ -172,29 +185,35 @@ impl EventWorker {
         if self.apply_subtitle_preference(&tracks) {
             tracks = read_tracks(get);
         }
-        self.report_subtitle_tracks(&tracks);
+        report_subtitle_tracks(&tracks, &self.reported_subtitle_tracks);
         self.tracker.set_tracks(tracks);
         self.tracker.set_has_video(has_video_track(get));
     }
 
-    /// Shows the subtitle in the viewer's preferred language, once per stream, as soon as one is
-    /// there and unless the viewer has chosen by hand. Returns whether a track was switched.
+    /// Shows the subtitle in the viewer's preferred language as soon as one is there, upgrading
+    /// if a higher-priority language arrives late, and never against the viewer's own choice.
     fn apply_subtitle_preference(&self, tracks: &[MediaTrack]) -> bool {
         let generation = self.stream_generation.load(Ordering::SeqCst);
-        if !self.subtitle_preference.may_choose(generation) {
+        let languages = self.subtitle_preference.languages();
+        if languages.is_empty() {
             return false;
         }
-        match preferred_subtitle_choice(tracks, &self.subtitle_preference.languages()) {
+        match preferred_subtitle_choice(tracks, &languages) {
             SubtitleChoice::NotYet => false,
-            SubtitleChoice::Keep => {
-                self.subtitle_preference.mark_chosen(generation);
+            SubtitleChoice::Keep { rank } => {
+                if self.subtitle_preference.may_choose(generation, rank) {
+                    self.subtitle_preference.mark_chosen(generation, rank);
+                }
                 false
             }
-            SubtitleChoice::Switch { id } => {
-                self.subtitle_preference.mark_chosen(generation);
+            SubtitleChoice::Switch { id, rank } => {
+                if !self.subtitle_preference.may_choose(generation, rank) {
+                    return false;
+                }
+                self.subtitle_preference.mark_chosen(generation, rank);
                 match self.handle.set_property("sid", &id.to_string()) {
                     Ok(()) => {
-                        tracing::info!(id, "showing the subtitle in the preferred language");
+                        tracing::info!(id, rank, "showing the subtitle in the preferred language");
                         true
                     }
                     Err(error) => {
@@ -204,42 +223,6 @@ impl EventWorker {
                 }
             }
         }
-    }
-
-    /// Logs the subtitle tracks the player lists whenever their number changes, so a language
-    /// that never shows up can be told from one that was attached and then lost.
-    fn report_subtitle_tracks(&self, tracks: &[MediaTrack]) {
-        let languages: Vec<&str> = tracks
-            .iter()
-            .filter(|track| track.kind == TrackKind::Subtitle)
-            .map(|track| track.language.as_str())
-            .collect();
-        if self
-            .reported_subtitle_tracks
-            .swap(languages.len(), Ordering::Relaxed)
-            == languages.len()
-        {
-            return;
-        }
-        let mut counts = std::collections::BTreeMap::new();
-        for language in &languages {
-            *counts
-                .entry(if language.is_empty() {
-                    "unknown"
-                } else {
-                    language
-                })
-                .or_insert(0usize) += 1;
-        }
-        let tally: Vec<String> = counts
-            .iter()
-            .map(|(language, count)| format!("{language}={count}"))
-            .collect();
-        tracing::info!(
-            subtitle_tracks = languages.len(),
-            languages = %tally.join(", "),
-            "the subtitle tracks in the player changed"
-        );
     }
 
     fn core_idle(&self) -> bool {

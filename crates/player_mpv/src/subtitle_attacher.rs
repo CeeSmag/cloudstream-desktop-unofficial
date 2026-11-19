@@ -14,12 +14,20 @@ use player_api::{describe_languages, PlayerError, SubtitleSource};
 
 use crate::mpv_api::MpvHandle;
 use crate::mpv_option_format::subtitle_label;
+use crate::subtitle_activity::SubtitleActivity;
 
 /// How many subtitle files are downloaded at the same time.
 const WORKERS: usize = 4;
 
 /// Which stream is current; bumped every time a new stream starts so late workers stop.
 pub(crate) type StreamGeneration = Arc<AtomicU64>;
+
+/// Shared handles needed by background subtitle attachers.
+pub(crate) struct AttachContext {
+    pub(crate) handle: Arc<MpvHandle>,
+    pub(crate) current: StreamGeneration,
+    pub(crate) activity: Arc<SubtitleActivity>,
+}
 
 /// How the files of each language fared: (attached, failed).
 type Outcomes = BTreeMap<String, (usize, usize)>;
@@ -37,8 +45,7 @@ struct Batch {
 /// soon as another stream has started, so a slow download can never land on the wrong stream.
 #[tracing::instrument(level = "debug", skip_all)]
 pub(crate) fn attach_in_background(
-    handle: &Arc<MpvHandle>,
-    current: &StreamGeneration,
+    ctx: AttachContext,
     generation: u64,
     subtitles: Vec<SubtitleSource>,
 ) {
@@ -60,8 +67,9 @@ pub(crate) fn attach_in_background(
     let queue = Arc::new(Mutex::new(VecDeque::from(subtitles)));
     for index in 0..worker_count {
         let job = Job {
-            handle: Arc::clone(handle),
-            current: Arc::clone(current),
+            handle: Arc::clone(&ctx.handle),
+            current: Arc::clone(&ctx.current),
+            activity: Arc::clone(&ctx.activity),
             batch: Arc::clone(&batch),
             queue: Arc::clone(&queue),
             worker: index,
@@ -70,8 +78,11 @@ pub(crate) fn attach_in_background(
             .name(format!("mpv-subtitles-{index}"))
             .spawn(move || job.run());
         if let Err(error) = spawned {
-            batch.workers_left.fetch_sub(1, Ordering::SeqCst);
             tracing::warn!(%error, "cannot start a subtitle worker");
+            if batch.workers_left.fetch_sub(1, Ordering::SeqCst) == 1 {
+                let remaining = queue.lock().unwrap_or_else(PoisonError::into_inner).len();
+                ctx.activity.finish_remaining(generation, remaining);
+            }
         }
     }
 }
@@ -79,6 +90,7 @@ pub(crate) fn attach_in_background(
 struct Job {
     handle: Arc<MpvHandle>,
     current: StreamGeneration,
+    activity: Arc<SubtitleActivity>,
     batch: Arc<Batch>,
     queue: Arc<Mutex<VecDeque<SubtitleSource>>>,
     worker: usize,
@@ -100,6 +112,8 @@ impl Job {
         let result = self
             .handle
             .command(&["sub-add", &subtitle.url, "auto", label]);
+        self.activity
+            .finish_one(self.batch.generation, result.is_ok());
         self.log_outcome(subtitle, &result, started.elapsed().as_millis());
         let mut outcomes = self
             .batch
@@ -159,6 +173,8 @@ impl Job {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .len();
+        self.activity
+            .finish_remaining(self.batch.generation, not_tried);
         let outcomes = self
             .batch
             .outcomes

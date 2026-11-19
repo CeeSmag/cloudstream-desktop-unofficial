@@ -9,30 +9,28 @@ use player_api::{
 };
 
 use crate::event_worker::EventWorker;
-use crate::frame_renderer::{FrameRenderer, FrameShared};
+use crate::frame_renderer::{start_embedding, wants_embedding, FrameRenderer, FrameShared};
 use crate::loadfile_log::log_loadfile;
 use crate::mpv_api::{MpvApi, MpvHandle};
 use crate::mpv_log::log_level;
 use crate::mpv_option_format::apply_request_options;
-use crate::mpv_render_api::{FrameSignal, MpvRenderContext};
-use crate::pending_subtitles::{queue_for_new_stream, PendingSubtitles};
+use crate::pending_subtitles::{clear_for_stop, queue_for_new_stream, PendingSubtitles};
 use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
 use crate::preferred_audio::{alang_value, AudioPreference};
 use crate::preferred_subtitles::SubtitlePreference;
 use crate::status_tracker::StatusTracker;
+use crate::subtitle_activity::SubtitleActivity;
 use crate::track_reader::read_tracks;
 
 /// Highest volume accepted; mpv itself allows amplifying up to 130.
 const MAX_VOLUME_PERCENT: u8 = 130;
 
-/// Size used for the first frames, before the UI reports its real picture area.
-const INITIAL_SURFACE: (u32, u32) = (1280, 720);
-
 /// `VideoPlayer` backed by libmpv: embedded (pictures handed to the app) or in mpv's own window.
 pub struct MpvPlayer {
     tracker: Arc<StatusTracker>,
     pending_subtitles: Arc<Mutex<PendingSubtitles>>,
+    subtitle_activity: Arc<SubtitleActivity>,
     stop_flag: Arc<AtomicBool>,
     stream_generation: Arc<AtomicU64>,
     audio_preference: Arc<AudioPreference>,
@@ -72,8 +70,17 @@ impl MpvPlayer {
         } else {
             (None, None)
         };
+        Self::assemble(handle, renderer, frames)
+    }
+
+    fn assemble(
+        handle: Arc<MpvHandle>,
+        renderer: Option<FrameRenderer>,
+        frames: Option<Arc<FrameShared>>,
+    ) -> Result<Self, PlayerError> {
         let tracker = Arc::new(StatusTracker::default());
         let pending_subtitles = Arc::new(Mutex::new(PendingSubtitles::default()));
+        let subtitle_activity = Arc::new(SubtitleActivity::default());
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stream_generation = Arc::new(AtomicU64::new(0));
         let audio_preference = Arc::new(AudioPreference::default());
@@ -82,6 +89,7 @@ impl MpvPlayer {
             handle: Arc::clone(&handle),
             tracker: Arc::clone(&tracker),
             pending_subtitles: Arc::clone(&pending_subtitles),
+            subtitle_activity: Arc::clone(&subtitle_activity),
             stop_flag: Arc::clone(&stop_flag),
             stream_generation: Arc::clone(&stream_generation),
             audio_preference: Arc::clone(&audio_preference),
@@ -91,6 +99,7 @@ impl MpvPlayer {
         Ok(Self {
             tracker,
             pending_subtitles,
+            subtitle_activity,
             stop_flag,
             stream_generation,
             audio_preference,
@@ -103,18 +112,6 @@ impl MpvPlayer {
     }
 }
 
-/// Whether frames are rendered into memory for the app window rather than in mpv's own window.
-fn wants_embedding(api: &MpvApi, options: &PlayerOptions) -> bool {
-    let embedded = options.embedded
-        && !options.headless
-        && options.wid.is_none()
-        && api.render_api().is_some();
-    if options.embedded && !embedded && !options.headless {
-        tracing::warn!("this libmpv has no render API; using mpv's own window");
-    }
-    embedded
-}
-
 /// Runs the worker that turns mpv events into status updates on its own thread.
 #[tracing::instrument(level = "debug", skip_all, err)]
 fn start_event_thread(worker: EventWorker) -> Result<JoinHandle<()>, PlayerError> {
@@ -122,28 +119,6 @@ fn start_event_thread(worker: EventWorker) -> Result<JoinHandle<()>, PlayerError
         .name("mpv-events".to_owned())
         .spawn(move || worker.run())
         .map_err(|error| PlayerError::Unavailable(format!("cannot start event thread: {error}")))
-}
-
-/// Starts frame rendering; on failure falls back to mpv's own window.
-#[tracing::instrument(level = "debug", skip_all)]
-fn start_embedding(handle: &Arc<MpvHandle>) -> (Option<FrameRenderer>, Option<Arc<FrameShared>>) {
-    let signal = Arc::new(FrameSignal::default());
-    let started =
-        MpvRenderContext::create(Arc::clone(handle), Arc::clone(&signal)).and_then(|context| {
-            let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
-            FrameRenderer::start(context, signal, Arc::clone(&shared))
-                .map(|renderer| (renderer, shared))
-        });
-    match started {
-        Ok((renderer, shared)) => (Some(renderer), Some(shared)),
-        Err(error) => {
-            tracing::warn!(%error, "embedded rendering failed; using mpv's own window");
-            if let Err(error) = handle.set_property("vo", "gpu") {
-                tracing::warn!(%error, "could not switch to a window");
-            }
-            (None, None)
-        }
-    }
 }
 
 impl VideoPlayer for MpvPlayer {
@@ -164,6 +139,7 @@ impl VideoPlayer for MpvPlayer {
         queue_for_new_stream(
             &self.pending_subtitles,
             &self.stream_generation,
+            &self.subtitle_activity,
             request.subtitles.clone(),
         );
         self.unpause_before_new_stream();
@@ -189,6 +165,16 @@ impl VideoPlayer for MpvPlayer {
             .extend(subtitles);
     }
 
+    fn pending_subtitles(&self) -> usize {
+        let generation = self.stream_generation.load(Ordering::SeqCst);
+        let queued = self
+            .pending_subtitles
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len_for(generation);
+        queued + self.subtitle_activity.count_for(generation)
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     fn set_paused(&self, paused: bool) -> Result<(), PlayerError> {
         self.handle
@@ -206,7 +192,11 @@ impl VideoPlayer for MpvPlayer {
 
     #[tracing::instrument(level = "debug", skip_all, err)]
     fn stop(&self) -> Result<(), PlayerError> {
-        self.stream_generation.fetch_add(1, Ordering::SeqCst);
+        clear_for_stop(
+            &self.pending_subtitles,
+            &self.stream_generation,
+            &self.subtitle_activity,
+        );
         let outcome = self.handle.command(&["stop"]);
         // mpv keeps `pause` across files, so a stream stopped while paused would make the next one
         // start paused; the status and picture are reset here instead of waiting for mpv's event.
