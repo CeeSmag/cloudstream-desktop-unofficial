@@ -1,8 +1,11 @@
-import { Button, ComboBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
 import { ExtensionsPage } from "extensions_page.slint";
-import { Card, SideNav, SettingRow, SectionTitle, MutedLabel } from "widgets.slint";
+import { SettingsGeneralPage } from "settings_general.slint";
+import { SettingsPreferencesPage } from "settings_preferences.slint";
+import { SideNav } from "widgets.slint";
 
 export component SettingsPage inherits Rectangle {
     in-out property <int> page-index: 0;
@@ -73,251 +76,75 @@ export component SettingsPage inherits Rectangle {
 
     HorizontalLayout {
         padding: Theme.page-pad;
-        spacing: Theme.space-3;
+        padding-top: Theme.space-3;
+        spacing: 28px;
 
         menu := SideNav {
-            title: "Settings";
+            title: "SETTINGS";
             model: ["General", "Preferences", "Extensions"];
+            icons: [Icons.settings, Icons.sparkles, Icons.puzzle];
+            subtitles: ["Cache, storage & system", "Playback & languages", "Repositories & plugins"];
             current-item <=> root.page-index;
         }
 
-        ScrollView {
+        scroll := ScrollView {
             horizontal-stretch: 1;
+
             VerticalLayout {
-                padding: Theme.space-2;
-                spacing: Theme.space-3;
+                width: min(max(scroll.visible-width - 16px, 420px), 920px);
+                padding-left: 4px;
+                padding-right: 16px;
+                padding-bottom: 120px;
+                alignment: start;
 
-                SectionTitle { text: "Settings"; }
-
-                if root.page-index == 0: VerticalLayout {
-                    spacing: Theme.space-3;
-
-                    Card {
-                        title: "Video cache";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Size";
-                                ComboBox {
-                                    model: root.cache-size-labels;
-                                    current-value: root.cache-size-value;
-                                    selected(value) => { root.set-video-cache(value); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Read-ahead";
-                                ComboBox {
-                                    model: root.ahead-labels;
-                                    current-value: root.ahead-value;
-                                    selected(value) => { root.set-ahead(value); }
-                                }
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: "Storage";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Limit";
-                                ComboBox {
-                                    model: root.storage-labels;
-                                    current-value: root.storage-value;
-                                    selected(value) => { root.set-storage-cap(value); }
-                                }
-                            }
-                            Rectangle {
-                                height: 8px;
-                                border-radius: 4px;
-                                background: #ffffff1a;
-                                Rectangle {
-                                    x: 0;
-                                    width: parent.width * clamp(root.storage-fraction, 0, 1);
-                                    border-radius: 4px;
-                                    background: root.storage-over ? Theme.danger : Theme.accent;
-                                    animate width { duration: 250ms; }
-                                }
-                            }
-                            Text {
-                                text: root.storage-label;
-                                color: root.storage-over ? Theme.danger : Theme.muted;
-                                wrap: word-wrap;
-                            }
-                            for line in root.storage-rows: MutedLabel { text: line; }
-                            Button { text: "Clean up storage now"; clicked => { root.clean-storage(); } }
-                        }
-                    }
-
-                    Card {
-                        title: "Plugin processes";
-                        SettingRow {
-                            label: "Resident workers";
-                            ComboBox {
-                                model: root.worker-labels;
-                                current-value: root.worker-value;
-                                selected(value) => { root.set-worker-limit(value); }
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: "Debug logging";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Write detailed logs";
-                                Switch {
-                                    checked: root.debug-logging;
-                                    toggled => { root.set-debug-logging(self.checked); }
-                                }
-                            }
-                            MutedLabel {
-                                text: "Writes step-by-step logs to separate files (logs/debug), one for each part of the app and the plugins, so odd behaviour can be traced. Leave it off normally: the files grow quickly.";
-                                wrap: word-wrap;
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: "Updates & data";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            MutedLabel { text: root.update-label; }
-                            HorizontalLayout {
-                                spacing: Theme.space-2;
-                                Button { text: "Check for updates"; clicked => { root.check-updates(); } }
-                                Button { text: "Apply update"; clicked => { root.apply-update(); } }
-                                Button { text: "Open logs"; clicked => { root.open-logs(); } }
-                            }
-                            Button {
-                                text: "Delete all saved data";
-                                clicked => { root.wipe-data(); }
-                            }
-                        }
-                    }
+                if root.page-index == 0: SettingsGeneralPage {
+                    cache-size-labels: root.cache-size-labels;
+                    cache-size-value: root.cache-size-value;
+                    ahead-labels: root.ahead-labels;
+                    ahead-value: root.ahead-value;
+                    storage-labels: root.storage-labels;
+                    storage-value: root.storage-value;
+                    storage-fraction: root.storage-fraction;
+                    storage-over: root.storage-over;
+                    storage-rows: root.storage-rows;
+                    storage-label: root.storage-label;
+                    worker-labels: root.worker-labels;
+                    worker-value: root.worker-value;
+                    debug-logging: root.debug-logging;
+                    update-label: root.update-label;
+                    set-video-cache(v) => { root.set-video-cache(v); }
+                    set-ahead(v) => { root.set-ahead(v); }
+                    set-storage-cap(v) => { root.set-storage-cap(v); }
+                    set-worker-limit(v) => { root.set-worker-limit(v); }
+                    clean-storage => { root.clean-storage(); }
+                    set-debug-logging(v) => { root.set-debug-logging(v); }
+                    open-logs => { root.open-logs(); }
+                    check-updates => { root.check-updates(); }
+                    apply-update => { root.apply-update(); }
+                    wipe-data => { root.wipe-data(); }
                 }
 
-                if root.page-index == 1: VerticalLayout {
-                    spacing: Theme.space-3;
-
-                    Card {
-                        title: "Playback";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Autoplay next episode";
-                                Switch {
-                                    checked: root.autoplay-next;
-                                    toggled => { root.set-autoplay(self.checked); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Skip intro lookup";
-                                Switch {
-                                    checked: root.skip-lookup;
-                                    toggled => { root.set-skip-lookup(self.checked); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Local HLS helper (stream proxy)";
-                                Switch {
-                                    checked: root.stream-proxy;
-                                    toggled => { root.set-stream-proxy(self.checked); }
-                                }
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: "Home provider";
-                        ComboBox {
-                            model: root.provider-labels;
-                            current-value: root.selected-provider;
-                            selected(value) => { root.set-provider(value); }
-                        }
-                    }
-
-                    Card {
-                        title: "Languages";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Preferred audio";
-                                ComboBox {
-                                    model: root.audio-labels;
-                                    current-value: root.audio-value;
-                                    selected(value) => { root.set-audio(value); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Preferred subtitles";
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    if root.subtitle-chosen.length == 0: Text {
-                                        text: "None: no language tags or subtitle filter in the player";
-                                        color: Theme.muted;
-                                        vertical-alignment: center;
-                                    }
-                                    for chip[i] in root.subtitle-chosen: Rectangle {
-                                        height: 32px;
-                                        width: chip-row.preferred-width;
-                                        border-radius: 8px;
-                                        background: #5b8cff26;
-                                        border-width: 1px;
-                                        border-color: #5b8cff66;
-                                        chip-row := HorizontalLayout {
-                                            padding-left: 10px;
-                                            padding-right: 4px;
-                                            spacing: 6px;
-                                            Text {
-                                                text: chip;
-                                                color: Theme.text;
-                                                font-size: 13px;
-                                                font-weight: 600;
-                                                vertical-alignment: center;
-                                            }
-                                            Rectangle {
-                                                width: 24px;
-                                                border-radius: 6px;
-                                                background: remove-touch.has-hover ? #ffffff26 : transparent;
-                                                accessible-role: AccessibleRole.button;
-                                                accessible-label: "Remove " + chip;
-                                                accessible-action-default => { root.remove-subtitle(i); }
-                                                Text {
-                                                    text: "✕";
-                                                    color: Theme.muted;
-                                                    horizontal-alignment: center;
-                                                    vertical-alignment: center;
-                                                }
-                                                remove-touch := TouchArea {
-                                                    mouse-cursor: pointer;
-                                                    clicked => { root.remove-subtitle(i); }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            SettingRow {
-                                label: "Add a subtitle language";
-                                ComboBox {
-                                    enabled: !root.subtitle-full;
-                                    model: root.subtitle-labels;
-                                    current-value: root.subtitle-add-value;
-                                    selected(value) => { root.set-subtitle-add(value); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Auto-select subtitles";
-                                Switch {
-                                    checked: root.auto-subtitles;
-                                    toggled => { root.set-auto-subtitles(self.checked); }
-                                }
-                            }
-                        }
-                    }
+                if root.page-index == 1: SettingsPreferencesPage {
+                    autoplay-next: root.autoplay-next;
+                    skip-lookup: root.skip-lookup;
+                    stream-proxy: root.stream-proxy;
+                    auto-subtitles: root.auto-subtitles;
+                    provider-labels: root.provider-labels;
+                    selected-provider: root.selected-provider;
+                    audio-labels: root.audio-labels;
+                    audio-value: root.audio-value;
+                    subtitle-labels: root.subtitle-labels;
+                    subtitle-add-value: root.subtitle-add-value;
+                    subtitle-chosen: root.subtitle-chosen;
+                    subtitle-full: root.subtitle-full;
+                    set-autoplay(v) => { root.set-autoplay(v); }
+                    set-skip-lookup(v) => { root.set-skip-lookup(v); }
+                    set-stream-proxy(v) => { root.set-stream-proxy(v); }
+                    set-provider(v) => { root.set-provider(v); }
+                    set-audio(v) => { root.set-audio(v); }
+                    set-subtitle-add(v) => { root.set-subtitle-add(v); }
+                    remove-subtitle(i) => { root.remove-subtitle(i); }
+                    set-auto-subtitles(v) => { root.set-auto-subtitles(v); }
                 }
 
                 if root.page-index == 2: ExtensionsPage {

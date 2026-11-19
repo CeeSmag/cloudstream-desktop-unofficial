@@ -1,0 +1,556 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+
+/// Modern TV action button (`primary`, `secondary`, `tonal`, `danger`, `ghost`).
+export component TvButton inherits Rectangle {
+    in property <string> text;
+    in property <string> icon: "";
+    in property <bool> icon-filled: false;
+    /// `"secondary"` | `"primary"` | `"tonal"` | `"danger"` | `"ghost"`
+    in property <string> kind: "secondary";
+    in property <bool> compact: false;
+    in property <bool> enabled: true;
+    in property <bool> focused: false;
+    callback clicked();
+
+    property <bool> is-primary: root.kind == "primary";
+    property <bool> is-tonal: root.kind == "tonal";
+    property <bool> is-danger: root.kind == "danger";
+    property <bool> is-ghost: root.kind == "ghost";
+    property <bool> active-hover: root.enabled && (touch.has-hover || fs.has-focus || root.focused);
+
+    height: root.compact ? 34px : 40px;
+    min-width: content.preferred-width + (root.compact ? 26px : 34px);
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: root.compact ? 10px : 12px;
+    background: !root.enabled ? #ffffff0d
+        : root.is-primary ? (touch.pressed ? #dbe4ff : (root.active-hover ? #ffffff : #eef2ff))
+        : root.is-tonal ? (touch.pressed ? #5b8cff40 : (root.active-hover ? #5b8cff36 : Theme.accent-soft))
+        : root.is-danger ? (touch.pressed ? #ef5f6d4d : (root.active-hover ? #ef5f6d38 : Theme.danger-soft))
+        : root.is-ghost ? (touch.pressed ? #ffffff22 : (root.active-hover ? #ffffff14 : transparent))
+        : (touch.pressed ? #ffffff26 : (root.active-hover ? #ffffff1c : #ffffff11));
+    border-width: (fs.has-focus || root.focused) ? 2px : (root.is-primary || root.is-ghost ? 0px : 1px);
+    border-color: (fs.has-focus || root.focused) ? Theme.focus-ring
+        : root.is-tonal ? Theme.accent-border
+        : root.is-danger ? Theme.danger-border
+        : Theme.border;
+    drop-shadow-blur: (fs.has-focus || root.focused) ? 14px : 0px;
+    drop-shadow-color: root.is-danger ? Theme.danger-soft : Theme.focus-glow;
+    opacity: root.enabled ? 1 : 0.45;
+    animate background, border-color { duration: 120ms; }
+    forward-focus: fs;
+
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled { root.clicked(); }
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    content := HorizontalLayout {
+        padding-left: root.compact ? 12px : 16px;
+        padding-right: root.compact ? 12px : 16px;
+        spacing: 8px;
+        alignment: center;
+        cross-axis-alignment: center;
+        if root.icon != "": TvIcon {
+            commands: root.icon;
+            filled: root.icon-filled;
+            size: root.compact ? 14px : 16px;
+            color: root.is-primary && root.enabled ? Theme.bg
+                : root.is-tonal ? Theme.accent-hi
+                : root.is-danger ? Theme.danger
+                : Theme.text;
+        }
+        Text {
+            text: root.text;
+            color: root.is-primary && root.enabled ? Theme.bg
+                : root.is-tonal ? Theme.accent-hi
+                : root.is-danger ? Theme.danger
+                : Theme.text;
+            font-size: root.compact ? 13px : 14px;
+            font-weight: root.is-primary ? 700 : 600;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Modern TV toggle switch with smooth animated pill thumb.
+export component TvSwitch inherits Rectangle {
+    in-out property <bool> checked: false;
+    in property <bool> enabled: true;
+    callback toggled();
+
+    width: 52px;
+    height: 28px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 14px;
+    background: root.checked ? Theme.accent : (touch.has-hover ? #ffffff2e : #ffffff1c);
+    border-width: fs.has-focus ? 2px : 1px;
+    border-color: fs.has-focus ? Theme.focus-ring : (root.checked ? Theme.accent-hi : Theme.border);
+    drop-shadow-blur: root.checked || fs.has-focus ? 12px : 0px;
+    drop-shadow-color: #5b8cff55;
+    opacity: root.enabled ? 1 : 0.45;
+    animate background, border-color { duration: 150ms; }
+    forward-focus: fs;
+
+    accessible-role: AccessibleRole.switch;
+    accessible-checkable: true;
+    accessible-checked <=> root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.flip(); }
+
+    function flip() {
+        if !root.enabled { return; }
+        root.checked = !root.checked;
+        root.toggled();
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.flip();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: (parent.height - self.height) / 2;
+        width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        background: #ffffff;
+        drop-shadow-blur: 6px;
+        drop-shadow-color: #00000055;
+        animate x { duration: 160ms; easing: ease-out; }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.flip(); }
+    }
+}
+
+/// Custom obsidian glass dropdown selector replacing Fluent `ComboBox`.
+export component TvSelect inherits Rectangle {
+    in property <[string]> model: [];
+    in-out property <string> current-value: "";
+    in property <string> placeholder: "Select…";
+    in property <bool> enabled: true;
+    callback selected(string);
+
+    min-width: 156px;
+    height: 40px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 11px;
+    background: popup.is-open ? Theme.panel-hi : (touch.has-hover ? #ffffff1a : #ffffff0f);
+    border-width: fs.has-focus || popup.is-open ? 2px : 1px;
+    border-color: fs.has-focus ? Theme.focus-ring : (popup.is-open ? Theme.accent : Theme.border);
+    opacity: root.enabled ? 1 : 0.45;
+    animate background, border-color { duration: 120ms; }
+    forward-focus: fs;
+
+    accessible-role: AccessibleRole.combobox;
+    accessible-enabled: root.enabled;
+    accessible-expandable: true;
+    accessible-expanded: popup.is-open;
+    accessible-value: root.current-value;
+    accessible-action-expand => {
+        if root.enabled { popup.show(); }
+    }
+
+    function pick(value: string) {
+        root.current-value = value;
+        popup.close();
+        root.selected(value);
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " || event.text == Key.DownArrow {
+                popup.show();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 8px;
+        cross-axis-alignment: center;
+        Text {
+            text: root.current-value != "" ? root.current-value : root.placeholder;
+            color: root.current-value != "" ? Theme.text : Theme.muted;
+            font-size: 13.5px;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        TvIcon {
+            commands: Icons.chevron-down;
+            size: 15px;
+            color: popup.is-open ? Theme.accent-hi : Theme.muted;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if root.model.length > 0 {
+                popup.show();
+            }
+        }
+    }
+
+    popup := PopupWindow {
+        x: min(0px, root.width - self.width);
+        y: root.height + 6px;
+        width: max(root.width, 210px);
+        height: min(max(48px, root.model.length * 40px + 12px), 268px);
+        close-policy: close-on-click-outside;
+        forward-focus: popup-keys;
+
+        popup-keys := FocusScope {
+            property <int> highlight: 0;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    popup.close();
+                    return accept;
+                }
+                if event.text == Key.UpArrow {
+                    self.highlight = max(0, self.highlight - 1);
+                    return accept;
+                }
+                if event.text == Key.DownArrow {
+                    self.highlight = min(root.model.length - 1, self.highlight + 1);
+                    return accept;
+                }
+                if event.text == Key.Return && self.highlight >= 0 && self.highlight < root.model.length {
+                    root.pick(root.model[self.highlight]);
+                    return accept;
+                }
+                return reject;
+            }
+
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: Theme.panel-glass;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border-hi;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #000000b8;
+
+                ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    VerticalLayout {
+                        padding: 6px;
+                        spacing: 2px;
+                        alignment: start;
+                        for item[idx] in root.model: Rectangle {
+                            property <bool> is-selected: item == root.current-value;
+                            height: 38px;
+                            border-radius: Theme.radius-sm;
+                            background: is-selected ? Theme.accent-soft
+                                : (row-touch.has-hover || (popup-keys.has-focus && popup-keys.highlight == idx) ? #ffffff14 : transparent);
+                            accessible-role: AccessibleRole.list-item;
+                            accessible-label: item;
+                            accessible-item-selected: is-selected;
+                            accessible-action-default => { root.pick(item); }
+
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+                                Text {
+                                    text: item;
+                                    color: is-selected ? Theme.accent-hi : Theme.text;
+                                    font-size: 13.5px;
+                                    font-weight: is-selected ? 600 : 400;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                if is-selected: TvIcon {
+                                    commands: Icons.check;
+                                    size: 15px;
+                                    color: Theme.accent-hi;
+                                }
+                            }
+                            row-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.pick(item); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Sleek segmented pill control for compact 2–4 option groups.
+export component TvSegmented inherits Rectangle {
+    in property <[string]> model: [];
+    in property <string> current-value: "";
+    callback selected(string);
+
+    height: 38px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 19px;
+    background: Theme.input-bg;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        for option in root.model: Rectangle {
+            property <bool> active: option == root.current-value;
+            height: 30px;
+            min-width: seg-label.preferred-width + 26px;
+            border-radius: 15px;
+            background: active ? Theme.accent : (seg-touch.has-hover ? #ffffff14 : transparent);
+            animate background { duration: 130ms; }
+            accessible-role: AccessibleRole.button;
+            accessible-label: option;
+            accessible-checked: active;
+            accessible-action-default => { root.selected(option); }
+
+            seg-label := Text {
+                text: option;
+                color: active ? Theme.bg : (seg-touch.has-hover ? Theme.text : Theme.muted);
+                font-size: 13px;
+                font-weight: active ? 700 : 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            seg-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.selected(option); }
+            }
+        }
+    }
+}
+
+/// Recessed dark glass text input replacing Fluent `LineEdit`.
+export component TvTextInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder-text: "";
+    in property <string> leading-icon: "";
+    in property <bool> enabled: true;
+    in property <bool> focused-ring: false;
+    out property <bool> has-focus: input.has-focus;
+    callback accepted(string);
+    callback edited(string);
+
+    height: 44px;
+    min-width: 180px;
+    vertical-stretch: 0;
+    border-radius: 12px;
+    property <length> computed-x: 0px;
+    background: input.has-focus ? #101626 : Theme.input-bg;
+    border-width: input.has-focus || root.focused-ring ? 2px : 1px;
+    border-color: root.focused-ring ? Theme.focus-ring : (input.has-focus ? Theme.accent : Theme.border);
+    drop-shadow-blur: input.has-focus || root.focused-ring ? 14px : 0px;
+    drop-shadow-color: Theme.focus-glow;
+    opacity: root.enabled ? 1 : 0.5;
+    animate background, border-color { duration: 130ms; }
+    forward-focus: input;
+
+    accessible-role: AccessibleRole.text-input;
+    accessible-enabled: root.enabled;
+    accessible-value <=> root.text;
+    accessible-placeholder-text: root.placeholder-text;
+    accessible-action-set-value(v) => { root.text = v; root.edited(v); }
+
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 10px;
+        cross-axis-alignment: center;
+
+        if root.leading-icon != "": TvIcon {
+            commands: root.leading-icon;
+            size: 17px;
+            color: input.has-focus ? Theme.accent-hi : Theme.muted;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            height: 100%;
+            clip: true;
+
+            if root.text == "" && root.placeholder-text != "": Text {
+                width: 100%;
+                height: 100%;
+                text: root.placeholder-text;
+                color: Theme.muted;
+                font-size: 14px;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: AccessibleRole.none;
+            }
+
+            input := TextInput {
+                x: min(0px, max(parent.width - self.width - self.text-cursor-width, root.computed-x));
+                width: max(parent.width - self.text-cursor-width, self.preferred-width);
+                height: 100%;
+                color: Theme.text;
+                font-size: 14px;
+                single-line: true;
+                vertical-alignment: center;
+                selection-background-color: #5b8cff66;
+                selection-foreground-color: #ffffff;
+                enabled: root.enabled;
+                accessible-role: AccessibleRole.none;
+                cursor-position-changed(pos) => {
+                    if pos.x + root.computed-x < 0px {
+                        root.computed-x = -pos.x;
+                    } else if pos.x + root.computed-x > parent.width - self.text-cursor-width {
+                        root.computed-x = parent.width - pos.x - self.text-cursor-width;
+                    }
+                }
+                accepted => { root.accepted(self.text); }
+                edited => { root.edited(self.text); }
+            }
+        }
+
+        if root.text != "" && root.enabled: Rectangle {
+            width: 26px;
+            height: 26px;
+            border-radius: 13px;
+            background: clear-touch.has-hover ? #ffffff22 : transparent;
+            accessible-role: AccessibleRole.button;
+            accessible-label: "Clear";
+            accessible-action-default => {
+                input.text = "";
+                root.edited("");
+                input.focus();
+            }
+            TvIcon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                commands: Icons.close;
+                size: 13px;
+                color: Theme.muted;
+            }
+            clear-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    input.text = "";
+                    root.edited("");
+                    input.focus();
+                }
+            }
+        }
+    }
+}
+
+/// Compact rounded status / metadata badge (`neutral`, `accent`, `ok`, `warn`, `danger`).
+export component TvBadge inherits Rectangle {
+    in property <string> text;
+    in property <string> tone: "neutral";
+
+    height: 24px;
+    width: badge-label.preferred-width + 18px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 12px;
+    background: root.tone == "accent" ? Theme.accent-soft
+        : root.tone == "ok" ? Theme.ok-soft
+        : root.tone == "warn" ? Theme.warn-soft
+        : root.tone == "danger" ? Theme.danger-soft
+        : #ffffff12;
+    border-width: 1px;
+    border-color: root.tone == "accent" ? Theme.accent-border
+        : root.tone == "ok" ? #3ecf8e4d
+        : root.tone == "warn" ? #f5b9424d
+        : root.tone == "danger" ? Theme.danger-border
+        : #ffffff18;
+
+    badge-label := Text {
+        text: root.text;
+        color: root.tone == "accent" ? Theme.accent-hi
+            : root.tone == "ok" ? Theme.ok
+            : root.tone == "warn" ? Theme.warn
+            : root.tone == "danger" ? Theme.danger
+            : Theme.text-secondary;
+        font-size: 11.5px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+/// Smooth rounded progress bar with optional indeterminate pulse.
+export component TvProgressBar inherits Rectangle {
+    in property <float> progress: 0;
+    in property <bool> indeterminate: false;
+    in property <color> fill: Theme.accent;
+    in property <length> bar-height: 6px;
+
+    height: root.bar-height;
+    vertical-stretch: 0;
+    border-radius: root.bar-height / 2;
+    background: #ffffff18;
+    clip: true;
+
+    if !root.indeterminate: Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.progress, 0, 1);
+        height: 100%;
+        border-radius: parent.border-radius;
+        background: root.fill;
+        animate width { duration: 220ms; easing: ease-out; }
+    }
+
+    if root.indeterminate: Rectangle {
+        property <float> phase: mod(animation-tick() / 1400ms + 0.35, 1.0);
+        x: (parent.width + self.width) * phase - self.width;
+        width: parent.width * 0.34;
+        height: 100%;
+        border-radius: parent.border-radius;
+        background: @linear-gradient(90deg, transparent 0%, root.fill 50%, transparent 100%);
+    }
+}

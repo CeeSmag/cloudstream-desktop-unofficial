@@ -1,30 +1,52 @@
-import { ProgressIndicator, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvProgressBar } from "controls.slint";
 
-/// One tab of the top bar; `focused` draws the remote's focus ring.
+/// One tab of the floating glass top navigation bar; `focused` draws the bright TV focus ring.
 component NavTab inherits Rectangle {
     in property <string> text;
+    in property <string> icon;
     in property <bool> selected;
     in property <bool> focused;
     callback clicked();
-    height: 40px;
-    width: label.preferred-width + 28px;
-    border-radius: 20px;
-    background: root.selected ? Theme.text : (touch.has-hover ? Theme.panel-hi : transparent);
-    border-width: root.focused ? 3px : 0px;
-    border-color: Theme.accent;
-    animate background { duration: 150ms; }
+
+    height: 38px;
+    width: tab-row.preferred-width + 28px;
+    border-radius: 19px;
+    background: root.selected ? #f4f6fb : (touch.has-hover ? #ffffff18 : transparent);
+    border-width: root.focused ? 2.5px : 0px;
+    border-color: Theme.focus-ring;
+    drop-shadow-blur: root.focused ? 16px : (root.selected ? 10px : 0px);
+    drop-shadow-color: root.focused ? Theme.focus-glow : #ffffff26;
+    animate background, border-color { duration: 140ms; }
+
     accessible-role: AccessibleRole.tab;
     accessible-label: root.text;
     accessible-item-selected: root.selected;
-    label := Text {
-        text: root.text;
-        color: root.selected ? Theme.bg : (root.focused ? Theme.text : Theme.muted);
-        font-size: 15px;
-        font-weight: root.selected ? 700 : 500;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    accessible-action-default => { root.clicked(); }
+
+    tab-row := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 7px;
+        alignment: center;
+        cross-axis-alignment: center;
+        TvIcon {
+            commands: root.icon;
+            size: 15px;
+            stroke-width: root.selected ? 2.1px : 1.7px;
+            color: root.selected ? Theme.bg : (root.focused || touch.has-hover ? Theme.text : Theme.muted);
+        }
+        Text {
+            text: root.text;
+            color: root.selected ? Theme.bg : (root.focused || touch.has-hover ? Theme.text : Theme.muted);
+            font-size: 14px;
+            font-weight: root.selected ? 700 : 500;
+            vertical-alignment: center;
+        }
     }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -36,42 +58,44 @@ component ProviderMenuRow inherits Rectangle {
     in property <string> name;
     in property <bool> selected;
     callback clicked();
-    height: 34px;
-    background: touch.has-hover ? Theme.panel-hi : (root.selected ? #5b8cff1a : transparent);
+
+    height: 38px;
+    border-radius: Theme.radius-sm;
+    background: root.selected ? Theme.accent-soft : (touch.has-hover ? #ffffff14 : transparent);
+    animate background { duration: 110ms; }
     accessible-role: AccessibleRole.list-item;
     accessible-label: root.name;
     accessible-item-selected: root.selected;
     accessible-action-default => { root.clicked(); }
+
     HorizontalLayout {
         padding-left: 12px;
-        padding-right: 12px;
+        padding-right: 10px;
         spacing: 8px;
-        alignment: space-between;
+        cross-axis-alignment: center;
         Text {
             text: root.name;
-            color: root.selected ? Theme.accent : Theme.text;
-            font-size: 13px;
-            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.accent-hi : Theme.text;
+            font-size: 13.5px;
+            font-weight: root.selected ? 600 : 400;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.selected: Rectangle {
-            width: 6px;
-            height: 6px;
-            border-radius: 3px;
-            background: Theme.accent;
-            vertical-stretch: 0;
-            y: (parent.height - self.height) / 2;
+        if root.selected: TvIcon {
+            commands: Icons.check;
+            size: 15px;
+            color: Theme.accent-hi;
         }
     }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 }
 
-/// Logo, tabs, the Home provider and an activity strip that moves while anything loads.
+/// Sleek floating TV Top Bar: brand mark, frosted pill navigation, update pill, and provider switcher.
 export component TopBar inherits Rectangle {
     in property <int> tab;
     in property <int> focused-tab: -1;
@@ -88,86 +112,155 @@ export component TopBar inherits Rectangle {
     callback set-provider(string);
     callback update-clicked();
 
-    height: 68px;
-    background: Theme.bg;
+    property <[string]> nav-icons: [Icons.home, Icons.compass, Icons.search, Icons.bookmark, Icons.settings];
+
+    height: 74px;
+    background: @linear-gradient(180deg, #0b101df0 0%, #080b12cc 100%);
     accessible-role: AccessibleRole.banner;
 
     HorizontalLayout {
         padding-left: Theme.page-pad;
         padding-right: Theme.page-pad;
-        spacing: 6px;
+        spacing: 14px;
         alignment: start;
         cross-axis-alignment: center;
-        Text {
-            text: root.compact ? "CS" : "CloudStream";
-            color: Theme.accent;
-            font-size: 22px;
-            font-weight: 800;
+
+        // Brand emblem + wordmark
+        HorizontalLayout {
+            spacing: 10px;
+            cross-axis-alignment: center;
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 10px;
+                background: @linear-gradient(135deg, #6d9bff 0%, #3d6ee8 100%);
+                drop-shadow-blur: 14px;
+                drop-shadow-color: #5b8cff55;
+                TvIcon {
+                    x: (parent.width - self.width) / 2 + 1px;
+                    y: (parent.height - self.height) / 2;
+                    commands: Icons.play;
+                    filled: true;
+                    size: 16px;
+                    color: #ffffff;
+                }
+            }
+            Text {
+                text: root.compact ? "CS" : "CloudStream";
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 800;
+                letter-spacing: -0.3px;
+                vertical-alignment: center;
+            }
         }
-        Rectangle { width: Theme.space-2; }
-        for label[index] in ["Home", "Browse", "Search", "Library", "Settings"]: NavTab {
-            text: label;
-            selected: root.tab == index;
-            focused: root.focused-tab == index;
-            clicked => { root.select-tab(index); }
+
+        Rectangle { width: 6px; }
+
+        // Floating frosted pill navigation track
+        Rectangle {
+            height: 46px;
+            border-radius: 23px;
+            background: #ffffff09;
+            border-width: 1px;
+            border-color: Theme.border;
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                cross-axis-alignment: center;
+                for label[index] in ["Home", "Browse", "Search", "Library", "Settings"]: NavTab {
+                    text: label;
+                    icon: root.nav-icons[index];
+                    selected: root.tab == index;
+                    focused: root.focused-tab == index;
+                    clicked => { root.select-tab(index); }
+                }
+            }
         }
+
         Rectangle { horizontal-stretch: 1; }
+
         if root.status != "" && root.wide: Text {
             text: root.status;
             color: Theme.muted;
             font-size: Theme.caption-size;
             overflow: elide;
-            max-width: 320px;
+            max-width: 280px;
+            vertical-alignment: center;
         }
+
         if root.update != "": Rectangle {
-            height: 34px;
-            width: update-text.preferred-width + 28px;
-            border-radius: 17px;
-            background: update-touch.has-hover ? #5b8cff4d : #5b8cff26;
+            height: 36px;
+            width: update-row.preferred-width + 24px;
+            border-radius: 18px;
+            background: update-touch.has-hover ? #5b8cff40 : Theme.accent-soft;
             border-width: 1px;
-            border-color: #5b8cff80;
+            border-color: Theme.accent-border;
+            animate background { duration: 120ms; }
             accessible-role: AccessibleRole.button;
             accessible-label: root.update;
             accessible-action-default => { root.update-clicked(); }
-            update-text := Text {
-                text: "⬆  " + root.update;
-                color: Theme.accent;
-                font-size: 13px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            update-row := HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 6px;
+                alignment: center;
+                cross-axis-alignment: center;
+                TvIcon {
+                    commands: Icons.download;
+                    size: 14px;
+                    color: Theme.accent-hi;
+                }
+                Text {
+                    text: root.update;
+                    color: Theme.accent-hi;
+                    font-size: 13px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
             }
             update-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { root.update-clicked(); }
             }
         }
+
         if root.provider != "" && !root.compact: provider-chip := Rectangle {
-            height: 34px;
-            width: chip-row.preferred-width + 28px;
-            border-radius: 17px;
-            background: chip-touch.has-hover || provider-menu.is-open ? Theme.panel-hi : Theme.panel;
+            height: 38px;
+            width: chip-row.preferred-width + 26px;
+            border-radius: 19px;
+            background: chip-touch.has-hover || provider-menu.is-open ? Theme.panel-hi : #ffffff0e;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: provider-menu.is-open ? Theme.accent-border : Theme.border;
+            animate background, border-color { duration: 120ms; }
             accessible-role: AccessibleRole.button;
             accessible-label: "Provider " + root.provider;
             accessible-action-default => { provider-menu.show(); }
             chip-row := HorizontalLayout {
-                spacing: 6px;
+                padding-left: 13px;
+                padding-right: 11px;
+                spacing: 8px;
                 alignment: center;
+                cross-axis-alignment: center;
+                Rectangle {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: Theme.ok;
+                }
                 Text {
-                    text: "● " + root.provider;
+                    text: root.provider;
                     color: Theme.text;
                     font-size: 13px;
+                    font-weight: 600;
                     vertical-alignment: center;
                     overflow: elide;
                     max-width: 144px;
                 }
-                Text {
-                    text: "▾";
+                TvIcon {
+                    commands: Icons.chevron-down;
+                    size: 14px;
                     color: Theme.muted;
-                    font-size: 11px;
-                    vertical-alignment: center;
                 }
             }
             chip-touch := TouchArea {
@@ -176,35 +269,35 @@ export component TopBar inherits Rectangle {
             }
             provider-menu := PopupWindow {
                 x: min(0px, provider-chip.width - self.width);
-                y: provider-chip.height + 4px;
-                width: 192px;
-                height: min(menu-body.preferred-height, 280px);
+                y: provider-chip.height + 6px;
+                width: 216px;
+                height: min(menu-body.preferred-height, 300px);
                 close-policy: close-on-click-outside;
                 Rectangle {
-                    background: Theme.panel;
-                    border-radius: Theme.radius-sm;
+                    background: Theme.panel-glass;
+                    border-radius: Theme.radius;
                     border-width: 1px;
-                    border-color: Theme.border;
-                    drop-shadow-blur: 18px;
-                    drop-shadow-color: #00000088;
+                    border-color: Theme.border-hi;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #000000b8;
                     ScrollView {
                         width: 100%;
                         height: 100%;
                         menu-body := VerticalLayout {
-                            padding-top: 8px;
-                            padding-bottom: 8px;
+                            padding: 6px;
                             spacing: 2px;
                             alignment: start;
                             HorizontalLayout {
-                                padding-left: 12px;
-                                padding-right: 12px;
-                                padding-bottom: 4px;
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                padding-top: 4px;
+                                padding-bottom: 6px;
                                 Text {
-                                    text: "Active Provider";
+                                    text: "ACTIVE PROVIDER";
                                     color: Theme.muted;
-                                    font-size: 10px;
+                                    font-size: 10.5px;
                                     font-weight: 700;
-                                    letter-spacing: 1px;
+                                    letter-spacing: 1.2px;
                                     horizontal-alignment: left;
                                 }
                             }
@@ -223,9 +316,19 @@ export component TopBar inherits Rectangle {
         }
     }
 
-    if root.busy: ProgressIndicator {
-        y: parent.height - self.height;
-        height: 2px;
+    // Hairline bottom divider
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: 100%;
+        background: Theme.divider;
+    }
+
+    if root.busy: TvProgressBar {
+        y: parent.height - 2px;
+        width: 100%;
+        bar-height: 2px;
         indeterminate: true;
+        fill: Theme.accent;
     }
 }

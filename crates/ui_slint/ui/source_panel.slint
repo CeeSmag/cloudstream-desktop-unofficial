@@ -1,15 +1,18 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
 import { FilterChip, SourceItem, SourceMenuInfo } from "types.slint";
+import { TvBadge, TvButton } from "controls.slint";
 
-/// A small rounded label (the kind of stream, "checking…", a subtitle language).
+/// Small rounded metadata tag (stream kind, checking state, subtitle language, file size).
 component Tag inherits Rectangle {
     in property <string> text;
-    in property <color> ink: #d4d8e1;
-    in property <color> fill: #ffffff1a;
-    height: 20px;
-    width: label.preferred-width + 12px;
-    border-radius: 5px;
+    in property <color> ink: Theme.text-secondary;
+    in property <color> fill: #ffffff18;
+
+    height: 21px;
+    width: label.preferred-width + 14px;
+    border-radius: 6px;
     background: root.fill;
     label := Text {
         text: root.text;
@@ -21,24 +24,28 @@ component Tag inherits Rectangle {
     }
 }
 
-/// One toggle of a filter row.
+/// One toggle pill of a filter row.
 component ChipButton inherits Rectangle {
     in property <FilterChip> chip;
     callback clicked();
-    height: 30px;
-    width: label.preferred-width + 22px;
-    border-radius: 8px;
+
+    height: 31px;
+    width: label.preferred-width + 24px;
+    border-radius: 15.5px;
     border-width: 1px;
-    border-color: root.chip.on ? Theme.accent : #ffffff1f;
-    background: root.chip.on ? #5b8cff33 : (touch.has-hover ? #ffffff1f : #ffffff0d);
+    border-color: root.chip.on ? Theme.accent-border : Theme.border;
+    background: root.chip.on ? Theme.accent-soft : (touch.has-hover ? #ffffff1c : #ffffff0b);
     opacity: !root.chip.on && root.chip.count == "0" ? 0.45 : 1;
+    animate background, border-color { duration: 120ms; }
     accessible-role: AccessibleRole.button;
     accessible-label: root.chip.label;
     accessible-checked: root.chip.on;
+    accessible-action-default => { root.clicked(); }
+
     label := Text {
         text: root.chip.count == "" ? root.chip.label : root.chip.label + "  " + root.chip.count;
-        color: root.chip.on ? Theme.accent : Theme.text;
-        font-size: 13px;
+        color: root.chip.on ? Theme.accent-hi : Theme.text;
+        font-size: 12.5px;
         font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -49,7 +56,7 @@ component ChipButton inherits Rectangle {
     }
 }
 
-/// A heading with "shown of total", a row of toggles and a hint when nothing matches.
+/// A heading with "shown of total", a row of toggles, and a hint when nothing matches.
 component FilterRow inherits VerticalLayout {
     in property <string> title;
     in property <[FilterChip]> chips;
@@ -57,20 +64,25 @@ component FilterRow inherits VerticalLayout {
     in property <int> total;
     in property <string> empty-hint;
     callback toggled(int);
-    spacing: 6px;
+
+    spacing: 7px;
     HorizontalLayout {
         Text {
             text: root.title;
             color: Theme.muted;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 700;
-            letter-spacing: 1px;
+            letter-spacing: 1.2px;
             horizontal-stretch: 1;
         }
-        Text { text: root.shown + " of " + root.total; color: Theme.muted; font-size: 11px; }
+        Text {
+            text: root.shown + " of " + root.total;
+            color: Theme.muted;
+            font-size: 11px;
+        }
     }
     HorizontalLayout {
-        spacing: 8px;
+        spacing: 7px;
         alignment: start;
         for chip[i] in root.chips: ChipButton {
             chip: chip;
@@ -80,65 +92,74 @@ component FilterRow inherits VerticalLayout {
     if root.shown == 0 && root.total > 0: Text {
         text: root.empty-hint;
         color: Theme.muted;
-        font-size: 11px;
+        font-size: 11.5px;
         wrap: word-wrap;
     }
 }
 
-/// One stream: full name, tags, subtitle languages, size; the playing one is marked.
+/// One stream row: full name, tags, subtitle languages, size; the playing one is marked.
 component SourceRow inherits Rectangle {
     in property <SourceItem> source;
     callback clicked();
-    min-height: body.preferred-height + 16px;
-    border-radius: Theme.radius-sm;
-    background: root.source.selected ? #5b8cff26 : (touch.has-hover ? #ffffff12 : transparent);
+
+    min-height: body.preferred-height + 18px;
+    border-radius: 10px;
+    background: root.source.selected ? Theme.accent-soft : (touch.has-hover ? #ffffff12 : #ffffff05);
+    border-width: 1px;
+    border-color: root.source.selected ? Theme.accent-border : #ffffff0c;
+    animate background, border-color { duration: 110ms; }
     accessible-role: AccessibleRole.button;
     accessible-label: root.source.label;
+    accessible-action-default => { root.clicked(); }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+
     HorizontalLayout {
-        padding: 8px;
-        padding-left: 10px;
+        padding: 10px;
+        padding-left: 12px;
         spacing: 10px;
         body := VerticalLayout {
-            spacing: 5px;
+            spacing: 6px;
             horizontal-stretch: 1;
             Text {
                 text: root.source.label;
-                color: root.source.selected ? Theme.accent : Theme.text;
+                color: root.source.selected ? Theme.accent-hi : Theme.text;
                 font-size: 13px;
                 font-weight: root.source.selected ? 700 : 500;
                 wrap: word-wrap;
             }
             HorizontalLayout {
-                spacing: 4px;
+                spacing: 5px;
                 alignment: start;
                 if root.source.kind != "": Tag { text: root.source.kind; }
                 if root.source.checking: Tag { text: "checking…"; ink: Theme.muted; }
-                for flag in root.source.flags: Tag { text: flag; ink: Theme.text; fill: #ffffff26; }
+                for flag in root.source.flags: Tag { text: flag; ink: Theme.text; fill: #ffffff24; }
             }
         }
         VerticalLayout {
-            alignment: start;
+            alignment: center;
             spacing: 6px;
             if root.source.size != "": Tag {
                 text: root.source.size;
-                ink: Theme.accent;
-                fill: #5b8cff1f;
+                ink: Theme.accent-hi;
+                fill: Theme.accent-soft;
             }
-            if root.source.selected: Rectangle {
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: Theme.accent;
+            if root.source.selected: HorizontalLayout {
+                alignment: center;
+                TvIcon {
+                    commands: Icons.check;
+                    size: 15px;
+                    color: Theme.accent-hi;
+                }
             }
         }
     }
 }
 
-/// The player's Sources menu: Refresh, the resolution and subtitle filters, then the streams.
+/// The player's obsidian glass Sources drawer: Refresh, resolution & subtitle filters, then streams.
 export component SourcePanel inherits Rectangle {
     in property <[SourceItem]> sources;
     in property <SourceMenuInfo> info;
@@ -148,19 +169,22 @@ export component SourcePanel inherits Rectangle {
     callback toggle-tier(int);
     callback toggle-subtitle(int);
 
-    width: 420px;
-    background: #141824f5;
-    border-radius: Theme.radius;
-    drop-shadow-blur: 24px;
-    drop-shadow-color: #00000099;
+    width: 436px;
+    background: Theme.panel-glass;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border-hi;
+    drop-shadow-blur: 28px;
+    drop-shadow-color: #000000b8;
     // Clicks on the panel never reach the video under it.
     TouchArea { }
 
     VerticalLayout {
-        padding: 14px;
+        padding: 16px;
         spacing: 12px;
         HorizontalLayout {
             spacing: 8px;
+            cross-axis-alignment: center;
             Text {
                 text: "Sources";
                 color: Theme.text;
@@ -169,33 +193,17 @@ export component SourcePanel inherits Rectangle {
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
-            Text {
+            TvBadge {
                 text: root.sources.length + " of " + root.info.total;
-                color: Theme.muted;
-                font-size: 12px;
-                vertical-alignment: center;
+                tone: "neutral";
             }
-            refresh := Rectangle {
-                height: 32px;
-                width: refresh-label.preferred-width + 24px;
-                border-radius: 8px;
-                background: refresh-touch.has-hover && root.can-refresh ? #ffffff26 : #ffffff14;
-                opacity: root.can-refresh ? 1 : 0.4;
-                accessible-role: AccessibleRole.button;
-                accessible-label: "Refresh sources";
-                refresh-label := Text {
-                    text: "⟳  Refresh";
-                    color: Theme.text;
-                    font-size: 13px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                refresh-touch := TouchArea {
-                    enabled: root.can-refresh;
-                    mouse-cursor: root.can-refresh ? MouseCursor.pointer : MouseCursor.default;
-                    clicked => { root.refresh(); }
-                }
+            TvButton {
+                text: "Refresh";
+                icon: Icons.refresh;
+                kind: "secondary";
+                compact: true;
+                enabled: root.can-refresh;
+                clicked => { root.refresh(); }
             }
         }
         FilterRow {
@@ -203,7 +211,7 @@ export component SourcePanel inherits Rectangle {
             chips: root.info.tiers;
             shown: root.info.resolution-shown;
             total: root.info.total;
-            empty-hint: "No source has this resolution yet. Sources still being checked show up here once they are.";
+            empty-hint: "No source has this resolution yet. Sources still being checked appear here once verified.";
             toggled(i) => { root.toggle-tier(i); }
         }
         if root.info.subtitles.length > 0: FilterRow {
@@ -211,10 +219,10 @@ export component SourcePanel inherits Rectangle {
             chips: root.info.subtitles;
             shown: root.info.subtitle-shown;
             total: root.info.total;
-            empty-hint: "No source has these subtitles yet. Sources still being checked show up here once they are.";
+            empty-hint: "No source has these subtitles yet. Sources still being checked appear here once verified.";
             toggled(i) => { root.toggle-subtitle(i); }
         }
-        Rectangle { height: 1px; background: #ffffff14; }
+        Rectangle { height: 1px; background: Theme.divider; }
         if root.sources.length == 0: Text {
             text: root.info.total == 0 ? "Looking for sources…" : "No source matches these filters.";
             color: Theme.muted;
@@ -223,7 +231,7 @@ export component SourcePanel inherits Rectangle {
         ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 4px;
+                spacing: 6px;
                 alignment: start;
                 for source in root.sources: SourceRow {
                     source: source;

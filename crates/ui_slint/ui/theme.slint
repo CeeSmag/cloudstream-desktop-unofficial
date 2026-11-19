@@ -1,23 +1,59 @@
 export global Theme {
-    out property <color> bg: #0c0f17;
-    out property <color> panel: #141824;
-    out property <color> panel-hi: #1c2233;
-    out property <color> text: #f2f4f8;
-    out property <color> muted: #9aa3b5;
+    // Deep Obsidian Cinema canvas & atmospheric background
+    out property <color> bg: #080b12;
+    out property <brush> bg-ambient: @linear-gradient(180deg, #0f1628 0%, #090d16 30%, #080b12 100%);
+
+    // Elevated glass & surface hierarchy
+    out property <color> panel: #121723;
+    out property <color> panel-glass: #131926eb;
+    out property <color> panel-hi: #1b2336;
+    out property <color> panel-hover: #222c42;
+    out property <color> card: #0f141f;
+    out property <color> input-bg: #0a0e17;
+    out property <color> overlay-scrim: #05070cc8;
+
+    // Typography inks
+    out property <color> text: #f4f6fb;
+    out property <color> text-secondary: #cfd6e6;
+    out property <color> muted: #8c96ab;
+
+    // CloudStream electric blue accent & semantic tones
     out property <color> accent: #5b8cff;
-    out property <color> danger: #e85d6a;
+    out property <color> accent-hi: #7aa3ff;
+    out property <color> accent-soft: #5b8cff24;
+    out property <color> accent-border: #5b8cff66;
+    out property <color> danger: #ef5f6d;
+    out property <color> danger-soft: #ef5f6d24;
+    out property <color> danger-border: #ef5f6d66;
     out property <color> ok: #3ecf8e;
-    out property <color> focus: #5b8cffaa;
-    out property <color> border: #2a3144;
-    out property <color> card: #121722;
+    out property <color> ok-soft: #3ecf8e22;
+    out property <color> warn: #f5b942;
+    out property <color> warn-soft: #f5b94224;
+
+    // TV focus rings & subtle glass hairlines
+    out property <color> focus: #5b8cffcc;
+    out property <color> focus-ring: #ffffffeb;
+    out property <color> focus-glow: #5b8cff77;
+    out property <color> border: #ffffff16;
+    out property <color> border-hi: #ffffff29;
+    out property <color> divider: #ffffff0e;
+
+    // Radii
+    out property <length> radius-lg: 16px;
     out property <length> radius: 12px;
     out property <length> radius-sm: 8px;
+
+    // Spacing
     out property <length> space-1: 6px;
     out property <length> space-2: 12px;
     out property <length> space-3: 20px;
     out property <length> space-4: 32px;
     out property <length> page-pad: 36px;
-    out property <length> title-size: 22px;
+
+    // Type scale
+    out property <length> hero-size: 42px;
+    out property <length> title-size: 24px;
+    out property <length> section-size: 18px;
     out property <length> body-size: 14px;
     out property <length> caption-size: 12px;
 }

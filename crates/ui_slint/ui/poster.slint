@@ -1,7 +1,9 @@
-import { ProgressIndicator, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
 import { PosterItem } from "types.slint";
 
+/// Full-bleed cinema poster tile with bright TV focus ring and ambient glow.
 export component PosterTile inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
@@ -16,69 +18,91 @@ export component PosterTile inherits Rectangle {
     callback remove-requested();
 
     width: 160px;
-    height: 248px;
+    height: 274px;
     background: transparent;
-    border-radius: Theme.radius;
 
-    // Hover / focus zoom by growing the card's geometry. Not `transform-scale`: FemtoVG (the
-    // default renderer) drew nothing for a card whose `transform-scale` a state sets, so every
-    // tile on Home was invisible while the software renderer showed them.
-    property <length> grow: root.focused ? 8px : (touch.has-hover ? 5px : 0px);
-    animate grow { duration: 140ms; easing: ease-out; }
+    // Hover / focus zoom by growing geometry (never `transform-scale`: FemtoVG skips it).
+    property <length> grow: root.focused ? 7px : (touch.has-hover ? 4px : 0px);
+    animate grow { duration: 150ms; easing: ease-out; }
 
-    card := Rectangle {
-        x: -root.grow;
-        y: -root.grow;
-        width: parent.width + 2 * root.grow;
-        height: parent.height + 2 * root.grow;
-        background: root.focused ? Theme.panel-hi : Theme.card;
-        border-radius: Theme.radius;
-        border-width: root.focused ? 3px : (touch.has-hover ? 1px : 0px);
-        border-color: root.focused ? Theme.accent : Theme.border;
-        drop-shadow-blur: touch.has-hover || root.focused ? 18px : 0px;
-        drop-shadow-color: #00000088;
+    VerticalLayout {
+        spacing: 8px;
+        alignment: start;
 
-        VerticalLayout {
-            padding: 8px;
-            spacing: 6px;
+        // Full-bleed artwork frame
+        Rectangle {
+            width: 160px;
+            height: 224px;
+            background: transparent;
 
-            Rectangle {
-                height: 188px;
-                background: #0a0d14;
-                border-radius: Theme.radius-sm;
+            poster-frame := Rectangle {
+                x: -root.grow;
+                y: -root.grow;
+                width: parent.width + 2 * root.grow;
+                height: parent.height + 2 * root.grow;
+                border-radius: Theme.radius;
+                background: Theme.card;
                 clip: true;
+                border-width: root.focused ? 2.5px : (touch.has-hover ? 1.5px : 1px);
+                border-color: root.focused ? Theme.focus-ring : (touch.has-hover ? Theme.border-hi : #ffffff14);
+                drop-shadow-blur: root.focused ? 22px : (touch.has-hover ? 16px : 8px);
+                drop-shadow-color: root.focused ? Theme.focus-glow : #00000099;
 
-                if artwork.width > 1: Image {
+                if root.artwork.width > 1: Image {
                     width: 100%;
                     height: 100%;
                     source: root.artwork;
                     image-fit: cover;
                 }
-                if artwork.width <= 1: Text {
-                    text: "▶";
-                    color: Theme.muted;
-                    font-size: 32px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                if root.artwork.width <= 1: Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: @linear-gradient(155deg, #161d2e 0%, #0c101a 100%);
+                    TvIcon {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        commands: Icons.film;
+                        size: 36px;
+                        color: #ffffff30;
+                    }
                 }
 
+                // Bottom vignette + sleek progress bar for partially watched titles
                 if root.progress > 0.01: Rectangle {
-                    y: parent.height - 6px;
-                    height: 6px;
+                    y: parent.height - 34px;
+                    height: 34px;
                     width: 100%;
-                    background: #000000aa;
-                    ProgressIndicator {
-                        width: 100%;
+                    background: @linear-gradient(0deg, #000000cc 0%, transparent 100%);
+                }
+                if root.progress > 0.01: Rectangle {
+                    x: 8px;
+                    y: parent.height - 10px;
+                    width: parent.width - 16px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: #ffffff38;
+                    clip: true;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * clamp(root.progress, 0, 1);
                         height: 100%;
-                        progress: root.progress;
+                        border-radius: 2px;
+                        background: Theme.accent;
                     }
                 }
             }
+        }
 
+        // Clean title & subtitle below the poster
+        VerticalLayout {
+            padding-left: 2px;
+            padding-right: 2px;
+            spacing: 2px;
             Text {
                 text: root.title;
-                color: Theme.text;
-                font-size: 13px;
+                color: root.focused || touch.has-hover ? #ffffff : Theme.text;
+                font-size: 13.5px;
+                font-weight: root.focused ? 700 : 600;
                 overflow: elide;
             }
             Text {
@@ -91,6 +115,7 @@ export component PosterTile inherits Rectangle {
     }
 
     touch := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 
@@ -108,10 +133,10 @@ export component PosterTile inherits Rectangle {
     }
 }
 
-/// The width a tile takes in a row or grid, gap included.
+/// The width and height a tile takes in a row or grid, gap included.
 export global TileMetrics {
     out property <length> step: 172px;
-    out property <length> row-step: 260px;
+    out property <length> row-step: 286px;
 }
 
 export component PosterRow inherits Flickable {
@@ -126,7 +151,7 @@ export component PosterRow inherits Flickable {
     /// The row got the focus; its position in the window, to scroll it into view.
     callback focus-arrived(length, length);
 
-    height: 264px;
+    height: 294px;
 
     changed focused-index => {
         if self.focused-index >= 0 {
@@ -140,7 +165,7 @@ export component PosterRow inherits Flickable {
     animate content-x { duration: 180ms; easing: ease-out; }
 
     HorizontalLayout {
-        padding: 8px;
+        padding: 10px;
         spacing: Theme.space-2;
         for item[i] in root.items: PosterTile {
             title: item.title;
@@ -172,17 +197,18 @@ export component PosterGrid inherits ScrollView {
     changed focused-index => {
         if self.focused-index >= 0 {
             self.content-y = clamp(
-                -(floor(self.focused-index / max(1, root.columns)) * TileMetrics.row-step) + 8px,
+                -(floor(self.focused-index / max(1, root.columns)) * TileMetrics.row-step) + 10px,
                 min(0px, self.visible-height - self.content-height),
                 0px);
         }
     }
 
     FlexboxLayout {
+        x: 0px;
         width: root.columns * TileMetrics.step + 16px;
         height: max(self.preferred-height, root.visible-height);
         cross-axis-line-alignment: start;
-        padding: 8px;
+        padding: 10px;
         spacing: Theme.space-2;
         for item[i] in root.items: PosterTile {
             title: item.title;

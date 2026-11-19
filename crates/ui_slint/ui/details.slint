@@ -1,24 +1,36 @@
 import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
 import { EpisodeItem } from "types.slint";
+import { TvBadge, TvProgressBar } from "controls.slint";
 import { MutedLabel, PillButton } from "widgets.slint";
 
-/// One season chip.
+/// Season selector pill.
 component SeasonChip inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
     in property <bool> focused;
     callback clicked();
+
     height: 36px;
-    width: label.preferred-width + 32px;
+    width: label.preferred-width + 30px;
     border-radius: 18px;
-    background: root.selected ? Theme.text : (touch.has-hover ? #ffffff26 : #ffffff14);
-    border-width: root.focused ? 3px : 0px;
-    border-color: Theme.accent;
+    background: root.selected ? #f4f6fb : (touch.has-hover ? #ffffff22 : #ffffff10);
+    border-width: root.focused ? 2.5px : (root.selected ? 0px : 1px);
+    border-color: root.focused ? Theme.focus-ring : Theme.border;
+    drop-shadow-blur: root.focused ? 14px : 0px;
+    drop-shadow-color: Theme.focus-glow;
+    animate background, border-color { duration: 120ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+
     label := Text {
         text: root.text;
         color: root.selected ? Theme.bg : Theme.text;
-        font-weight: 600;
+        font-size: 13.5px;
+        font-weight: root.selected ? 700 : 600;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -28,29 +40,44 @@ component SeasonChip inherits Rectangle {
     }
 }
 
-/// One episode line.
+/// Elevated TV episode row card.
 component EpisodeRow inherits Rectangle {
     in property <EpisodeItem> episode;
     in property <bool> focused;
     in property <bool> resume-here;
     callback clicked();
-    height: root.episode.description != "" ? 78px : 64px;
+
+    height: root.episode.description != "" ? 80px : 64px;
     clip: true;
-    border-radius: Theme.radius-sm;
-    background: root.focused ? Theme.panel-hi : (touch.has-hover ? #ffffff10 : #ffffff08);
-    border-width: root.focused ? 3px : 0px;
-    border-color: Theme.accent;
+    border-radius: Theme.radius;
+    background: root.focused ? Theme.panel-hi : (touch.has-hover ? #ffffff12 : #ffffff08);
+    border-width: root.focused ? 2.5px : 1px;
+    border-color: root.focused ? Theme.focus-ring : (root.resume-here ? Theme.accent-border : #ffffff10);
+    drop-shadow-blur: root.focused ? 16px : 0px;
+    drop-shadow-color: Theme.focus-glow;
+    animate background, border-color { duration: 130ms; }
+
     HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
-        spacing: Theme.space-2;
+        spacing: 14px;
         cross-axis-alignment: center;
-        Text {
-            text: root.episode.code;
-            color: Theme.accent;
-            font-weight: 700;
-            min-width: 64px;
+
+        Rectangle {
+            width: max(62px, code-text.preferred-width + 18px);
+            height: 30px;
+            border-radius: 8px;
+            background: root.resume-here ? Theme.accent-soft : #ffffff10;
+            code-text := Text {
+                text: root.episode.code;
+                color: Theme.accent-hi;
+                font-size: 13px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
+
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -59,28 +86,45 @@ component EpisodeRow inherits Rectangle {
                 text: root.episode.name;
                 color: Theme.text;
                 font-size: 15px;
+                font-weight: 600;
                 overflow: elide;
             }
             if root.episode.description != "": Text {
                 text: root.episode.description;
                 color: Theme.muted;
-                font-size: 12px;
+                font-size: 12.5px;
                 overflow: elide;
             }
         }
-        if root.resume-here: Text { text: "Continue here"; color: Theme.accent; font-size: 13px; }
-        if root.episode.watched: Text { text: "✓ Watched"; color: Theme.ok; font-size: 13px; }
-        if !root.episode.watched && root.episode.progress > 0: Text {
+
+        if root.resume-here: TvBadge { text: "Continue"; tone: "accent"; }
+        if root.episode.watched: TvBadge { text: "Watched"; tone: "ok"; }
+        if !root.episode.watched && root.episode.progress > 0: TvBadge {
             text: Math.round(root.episode.progress * 100) + "%";
-            color: Theme.muted;
-            font-size: 13px;
+            tone: "neutral";
         }
-        Text { text: "▶"; color: root.focused ? Theme.text : Theme.muted; font-size: 18px; }
+
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: 17px;
+            background: root.focused || touch.has-hover ? Theme.accent : #ffffff12;
+            TvIcon {
+                x: (parent.width - self.width) / 2 + 1px;
+                y: (parent.height - self.height) / 2;
+                commands: Icons.play;
+                filled: true;
+                size: 14px;
+                color: root.focused || touch.has-hover ? Theme.bg : Theme.text;
+            }
+        }
     }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+
     if !root.episode.watched && root.episode.progress > 0: Rectangle {
         x: 0;
         y: parent.height - self.height;
@@ -90,7 +134,7 @@ component EpisodeRow inherits Rectangle {
     }
 }
 
-/// A title's page: artwork, plot, actions, how the opening goes, seasons and episodes.
+/// Full-screen cinematic title details overlay.
 export component DetailsOverlay inherits Rectangle {
     in property <string> title: "";
     in property <bool> loading: false;
@@ -139,23 +183,26 @@ export component DetailsOverlay inherits Rectangle {
     background: Theme.bg;
     accessible-role: AccessibleRole.main;
 
-    // Ambient background: the poster, blurred and darkened.
+    // Ambient backdrop: blurred poster with multi-stop cinema vignette
     if root.poster.width > 1: Image {
         width: 100%;
         height: 100%;
         source: root.poster;
         image-fit: cover;
-        opacity: 0.35;
+        opacity: 0.34;
     }
     Rectangle {
-        background: @linear-gradient(90deg, #0c0f17f5 0%, #0c0f17d9 55%, #0c0f17a6 100%);
-        backdrop-blur: 30px;
+        background: @linear-gradient(90deg, #080b12fa 0%, #080b12de 52%, #080b12a6 100%);
+        backdrop-blur: 32px;
+    }
+    Rectangle {
+        background: @linear-gradient(0deg, #080b12f2 0%, transparent 45%);
     }
 
     changed focus-row => {
         if root.focus-row >= root.episodes-row {
             episodes-view.content-y = clamp(
-                episodes-view.visible-height / 2 - (root.focus-row - root.episodes-row) * 70px,
+                episodes-view.visible-height / 2 - (root.focus-row - root.episodes-row) * 74px,
                 min(0px, episodes-view.visible-height - episodes-view.content-height),
                 0px);
         }
@@ -163,91 +210,103 @@ export component DetailsOverlay inherits Rectangle {
 
     VerticalLayout {
         padding: Theme.page-pad;
-        spacing: Theme.space-3;
+        spacing: 22px;
 
         HorizontalLayout {
-            spacing: Theme.space-4;
+            spacing: 32px;
             alignment: start;
+
+            // Floating poster cover
             Rectangle {
-                width: 200px;
-                height: 300px;
-                border-radius: Theme.radius;
+                width: 204px;
+                height: 304px;
+                border-radius: Theme.radius-lg;
                 clip: true;
                 background: Theme.card;
-                drop-shadow-blur: 30px;
-                drop-shadow-color: #000000aa;
+                border-width: 1px;
+                border-color: Theme.border-hi;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #000000cc;
                 if root.poster.width > 1: Image {
                     width: 100%;
                     height: 100%;
                     source: root.poster;
                     image-fit: cover;
                 }
+                if root.poster.width <= 1: TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: Icons.film;
+                    size: 42px;
+                    color: #ffffff30;
+                }
             }
+
             VerticalLayout {
-                spacing: Theme.space-2;
+                spacing: 12px;
                 alignment: start;
                 horizontal-stretch: 1;
+
                 Text {
                     text: root.title;
                     color: Theme.text;
-                    font-size: 40px;
+                    font-size: Theme.hero-size;
                     font-weight: 800;
                     wrap: word-wrap;
                 }
+
                 if root.loading: HorizontalLayout {
-                    spacing: Theme.space-2;
+                    spacing: 10px;
                     alignment: start;
-                    Spinner { width: 22px; height: 22px; indeterminate: true; }
+                    cross-axis-alignment: center;
+                    Spinner { width: 20px; height: 20px; indeterminate: true; }
                     MutedLabel {
                         text: root.plot == "" ? "Loading the title…" : root.plot;
                         font-size: 15px;
                         vertical-alignment: center;
                     }
                 }
+
                 if !root.loading && root.meta != "": Text {
                     text: root.meta;
-                    color: Theme.muted;
-                    font-size: 15px;
+                    color: Theme.text-secondary;
+                    font-size: 14.5px;
+                    font-weight: 500;
                 }
+
                 if !root.loading && root.tags.length > 0: HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
-                    for tag in root.tags: Rectangle {
-                        height: 26px;
-                        width: tag-text.preferred-width + 20px;
-                        border-radius: 13px;
-                        background: #ffffff12;
-                        border-width: 1px;
-                        border-color: #ffffff1a;
-                        tag-text := Text {
-                            text: tag;
-                            color: #d6dae3;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
+                    for tag in root.tags: TvBadge {
+                        text: tag;
+                        tone: "neutral";
                     }
                 }
-                if !root.loading: Text {
+
+                if !root.loading && root.plot != "": Text {
                     text: root.plot;
-                    color: #d6dae3;
-                    font-size: 16px;
+                    color: Theme.text-secondary;
+                    font-size: 15.5px;
                     wrap: word-wrap;
                     max-height: 110px;
                     overflow: elide;
                 }
+
                 if !root.loading && root.cast != "": Text {
-                    text: "Cast:  " + root.cast;
+                    text: "Cast · " + root.cast;
                     color: Theme.muted;
                     font-size: 13px;
                     overflow: elide;
                 }
+
                 HorizontalLayout {
-                    spacing: Theme.space-2;
+                    spacing: 12px;
                     alignment: start;
-                    padding-top: Theme.space-1;
+                    padding-top: 6px;
                     if !root.loading: PillButton {
-                        text: root.open-busy ? "Opening…" : "▶  " + root.play-label;
+                        text: root.open-busy ? "Opening…" : root.play-label;
+                        icon: Icons.play;
+                        icon-filled: true;
                         primary: true;
                         enabled: !root.open-busy;
                         focused: root.action-focused(0);
@@ -255,52 +314,58 @@ export component DetailsOverlay inherits Rectangle {
                     }
                     if !root.loading && root.resume-label != "": PillButton {
                         text: root.resume-label;
+                        icon: Icons.play;
+                        icon-filled: true;
                         focused: root.action-focused(root.resume-index);
                         clicked => { root.resume(); }
                     }
                     if !root.loading: PillButton {
-                        text: root.bookmarked ? "✓  In library" : "+  Library";
+                        text: root.bookmarked ? "In library" : "Library";
+                        icon: root.bookmarked ? Icons.check : Icons.plus;
                         focused: root.action-focused(root.bookmark-index);
                         clicked => { root.toggle-bookmark(); }
                     }
                     PillButton {
                         text: root.loading ? "Cancel" : "Back";
+                        icon: Icons.back;
                         focused: root.action-focused(root.back-index);
                         clicked => { root.close(); }
                     }
                 }
+
                 if root.open-busy: Rectangle {
-                    background: #ffffff10;
+                    background: Theme.panel-glass;
                     border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: Theme.accent-border;
                     HorizontalLayout {
-                        padding: Theme.space-2;
-                        spacing: Theme.space-2;
+                        padding: 14px;
+                        spacing: 14px;
                         cross-axis-alignment: center;
                         Spinner { width: 22px; height: 22px; indeterminate: true; }
                         VerticalLayout {
                             horizontal-stretch: 1;
                             spacing: 6px;
-                            Text { text: root.open-title; color: Theme.text; font-weight: 600; }
-                            Rectangle {
-                                height: 6px;
-                                border-radius: 3px;
-                                background: #ffffff1a;
-                                Rectangle {
-                                    x: 0;
-                                    width: parent.width * clamp(root.open-fraction, 0, 1);
-                                    border-radius: 3px;
-                                    background: Theme.accent;
-                                    animate width { duration: 200ms; }
-                                }
+                            Text {
+                                text: root.open-title;
+                                color: Theme.text;
+                                font-size: 14px;
+                                font-weight: 600;
+                            }
+                            TvProgressBar {
+                                progress: root.open-fraction;
+                                bar-height: 6px;
                             }
                             if root.open-status != "": MutedLabel { text: root.open-status; }
                             if root.can-skip-checks: MutedLabel {
                                 text: "Play now starts the best working source found so far; otherwise we finish checking and pick the best.";
-                                font-size: 11px;
+                                font-size: 11.5px;
                             }
                         }
                         PillButton {
                             text: "Play now";
+                            icon: Icons.play;
+                            icon-filled: true;
                             enabled: root.can-skip-checks;
                             focused: root.action-focused(root.back-index + 1);
                             clicked => { root.skip-checks(); }
@@ -311,7 +376,7 @@ export component DetailsOverlay inherits Rectangle {
         }
 
         if root.season-labels.length > 1: HorizontalLayout {
-            spacing: Theme.space-1;
+            spacing: 8px;
             alignment: start;
             for label[i] in root.season-labels: SeasonChip {
                 text: label;
@@ -324,7 +389,7 @@ export component DetailsOverlay inherits Rectangle {
         episodes-view := ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 6px;
+                spacing: 8px;
                 alignment: start;
                 for episode[row] in root.episodes: EpisodeRow {
                     episode: episode;

@@ -1,5 +1,7 @@
-import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvButton, TvProgressBar } from "controls.slint";
 import {
     PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
     RepositoryItem, AvailablePlugin
@@ -246,26 +248,51 @@ export component CloudStream inherits Window {
             return reject;
         }
 
+        // Atmospheric obsidian gradient canvas
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.bg-ambient;
+        }
+
         // Startup overlay: shown until the plugins and the first Home shelves have loaded.
         if starting: Rectangle {
-            background: Theme.bg;
+            background: Theme.bg-ambient;
             VerticalLayout {
                 alignment: center;
                 cross-axis-alignment: center;
-                spacing: 16px;
+                spacing: 18px;
+                Rectangle {
+                    width: 68px;
+                    height: 68px;
+                    border-radius: 20px;
+                    background: @linear-gradient(135deg, #6d9bff 0%, #3d6ee8 100%);
+                    drop-shadow-blur: 28px;
+                    drop-shadow-color: #5b8cff66;
+                    TvIcon {
+                        x: (parent.width - self.width) / 2 + 2px;
+                        y: (parent.height - self.height) / 2;
+                        commands: Icons.play;
+                        filled: true;
+                        size: 32px;
+                        color: #ffffff;
+                    }
+                }
                 Text {
                     text: "CloudStream";
                     color: Theme.text;
-                    font-size: 36px;
-                    font-weight: 700;
+                    font-size: 34px;
+                    font-weight: 800;
+                    letter-spacing: -0.4px;
                 }
                 Text {
                     text: startup-status;
                     color: Theme.muted;
+                    font-size: 14px;
                 }
-                ProgressIndicator {
+                TvProgressBar {
                     width: 320px;
-                    height: 6px;
+                    bar-height: 6px;
                     progress: startup-progress;
                     indeterminate: startup-indeterminate;
                 }
@@ -310,13 +337,13 @@ export component CloudStream inherits Window {
                 hero-title: root.hero-title;
                 hero-subtitle: root.hero-subtitle;
                 hero-image: root.hero-image;
-            focus-visible: root.focus-visible;
-            focus-row: root.focus-row;
-            focus-col: root.focus-col;
-            hero-row: root.hero-row;
-            continue-row: root.continue-row;
-            shelf-row-base: root.shelf-row-base;
-            hero-index: root.hero-index;
+                focus-visible: root.focus-visible;
+                focus-row: root.focus-row;
+                focus-col: root.focus-col;
+                hero-row: root.hero-row;
+                continue-row: root.continue-row;
+                shelf-row-base: root.shelf-row-base;
+                hero-index: root.hero-index;
                 open-continue(i) => { open-library-hit(i); }
                 open-shelf(s, i) => { open-shelf-item(s, i); }
                 resume-hero => { resume-hero(); }
@@ -504,41 +531,82 @@ export component CloudStream inherits Window {
         }
 
         if show-wipe-confirm: Rectangle {
-            background: #000000aa;
+            background: Theme.overlay-scrim;
+            TouchArea { }
             VerticalLayout {
                 alignment: center;
+                cross-axis-alignment: center;
                 Rectangle {
-                    width: 420px;
-                    background: Theme.panel;
-                    border-radius: Theme.radius;
+                    width: 460px;
+                    background: Theme.panel-glass;
+                    border-radius: Theme.radius-lg;
+                    border-width: 1px;
+                    border-color: Theme.danger-border;
+                    drop-shadow-blur: 32px;
+                    drop-shadow-color: #000000c8;
                     VerticalLayout {
-                        padding: 20px;
-                        spacing: 12px;
-                        Text {
-                            text: "Delete all saved data?";
-                            color: Theme.text;
-                            font-size: 18px;
-                            font-weight: 600;
+                        padding: 24px;
+                        spacing: 16px;
+                        HorizontalLayout {
+                            spacing: 14px;
+                            cross-axis-alignment: center;
+                            Rectangle {
+                                width: 42px;
+                                height: 42px;
+                                border-radius: 12px;
+                                background: Theme.danger-soft;
+                                border-width: 1px;
+                                border-color: Theme.danger-border;
+                                TvIcon {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    commands: Icons.alert;
+                                    size: 20px;
+                                    color: Theme.danger;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text {
+                                    text: "Delete all saved data?";
+                                    color: Theme.text;
+                                    font-size: 18px;
+                                    font-weight: 700;
+                                }
+                                Text {
+                                    text: "This action cannot be undone.";
+                                    color: Theme.danger;
+                                    font-size: 12.5px;
+                                    font-weight: 600;
+                                }
+                            }
                         }
                         Text {
-                            text: "This schedules a full wipe on the next restart. Plugins, settings, and history will be removed.";
-                            color: Theme.muted;
+                            text: "This schedules a full wipe on the next restart. Installed plugins, repositories, settings, library bookmarks, and watch history will be removed.";
+                            color: Theme.text-secondary;
+                            font-size: 13.5px;
                             wrap: word-wrap;
                         }
                         HorizontalLayout {
-                            spacing: 8px;
-                            Button {
-                                text: "Delete everything";
-                                clicked => {
-                                    show-wipe-confirm = false;
-                                    confirm-wipe();
-                                }
-                            }
-                            Button {
+                            spacing: 10px;
+                            alignment: end;
+                            padding-top: 4px;
+                            TvButton {
                                 text: "Cancel";
+                                kind: "secondary";
                                 clicked => {
                                     show-wipe-confirm = false;
                                     cancel-wipe();
+                                }
+                            }
+                            TvButton {
+                                text: "Delete everything";
+                                icon: Icons.trash;
+                                kind: "danger";
+                                clicked => {
+                                    show-wipe-confirm = false;
+                                    confirm-wipe();
                                 }
                             }
                         }

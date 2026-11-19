@@ -1,6 +1,7 @@
 # ui_slint
 
-The product UI (Slint 1.19, edition 1.19, Fluent dark style). `.slint` files in `ui/` draw; Rust in
+The product UI (Slint 1.19, edition 1.19, Deep Obsidian Cinema theme + custom TV controls in
+`ui/controls.slint` and vector `Path` icons in `ui/icons.slint`). `.slint` files in `ui/` draw; Rust in
 `src/bridge/` connects them to `app_services` and never blocks the window: every slow call runs on a
 worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_events.rs`), drained by a
 200 ms timer.

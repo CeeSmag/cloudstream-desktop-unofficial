@@ -1,5 +1,6 @@
 import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
 import { SeekMark, SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
 import { SourcePanel } from "source_panel.slint";
 
@@ -23,14 +24,14 @@ component DragBar inherits Rectangle {
     out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
     callback committed(float);
 
-    height: 20px;
+    height: 22px;
     property <float> shown: root.dragging ? root.drag-value : clamp(root.value, 0, 1);
 
     Rectangle {
         y: (parent.height - self.height) / 2;
-        height: touch.has-hover || root.dragging ? 6px : 4px;
+        height: touch.has-hover || root.dragging ? 7px : 4px;
         border-radius: self.height / 2;
-        background: #ffffff33;
+        background: #ffffff2e;
         animate height { duration: 100ms; }
         for mark in root.marks: Rectangle {
             x: parent.width * mark.start;
@@ -44,7 +45,7 @@ component DragBar inherits Rectangle {
             width: parent.width * clamp(root.buffered, 0, 1);
             height: 100%;
             border-radius: parent.border-radius;
-            background: #ffffff40;
+            background: #ffffff3d;
         }
         Rectangle {
             x: 0;
@@ -58,32 +59,36 @@ component DragBar inherits Rectangle {
             width: parent.width * root.drag-value;
             height: 100%;
             border-radius: parent.border-radius;
-            background: #ffffff26;
+            background: #ffffff24;
         }
         for notch in root.notches: Rectangle {
             x: parent.width * notch - 1px;
             width: 2px;
             height: 100%;
-            background: #0c0f17e6;
+            background: #080b12e6;
         }
     }
     if touch.has-hover || root.dragging: Rectangle {
         x: parent.width * root.shown - self.width / 2;
         y: (parent.height - self.height) / 2;
-        width: 14px;
-        height: 14px;
-        border-radius: 7px;
+        width: 15px;
+        height: 15px;
+        border-radius: 7.5px;
         background: white;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #5b8cffaa;
     }
     if (touch.has-hover || root.dragging) && root.hover-text != "": Rectangle {
         x: clamp(parent.width * root.drag-value - self.width / 2, 0px, parent.width - self.width);
-        y: -self.height - 8px;
-        height: 28px;
-        width: tip.preferred-width + 20px;
-        border-radius: 8px;
-        background: #000000d9;
+        y: -self.height - 10px;
+        height: 30px;
+        width: tip.preferred-width + 22px;
+        border-radius: 9px;
+        background: Theme.panel-glass;
         border-width: 1px;
-        border-color: #ffffff1a;
+        border-color: Theme.border-hi;
+        drop-shadow-blur: 14px;
+        drop-shadow-color: #00000099;
         tip := Text {
             text: root.hover-text;
             color: white;
@@ -103,64 +108,92 @@ component DragBar inherits Rectangle {
     }
 }
 
-/// A round icon-like text button for the player bar.
+/// Sleek frosted icon/text pill button for the player bar.
 component BarButton inherits Rectangle {
-    in property <string> text;
-    in property <bool> active;
+    in property <string> text: "";
+    in property <string> icon: "";
+    in property <bool> icon-filled: false;
+    in property <bool> active: false;
     callback clicked();
-    width: max(40px, label.preferred-width + 24px);
+
     height: 40px;
+    width: max(40px, btn-row.preferred-width + (root.text != "" ? 26px : 20px));
     border-radius: 20px;
-    background: root.active ? Theme.accent : (touch.has-hover ? #ffffff26 : transparent);
-    animate background { duration: 120ms; }
-    label := Text {
-        text: root.text;
-        color: root.active ? #0c0f17 : Theme.text;
-        font-size: 15px;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    background: root.active ? #f4f6fb : (touch.has-hover ? #ffffff24 : #ffffff0e);
+    border-width: 1px;
+    border-color: root.active ? transparent : (touch.has-hover ? Theme.border-hi : #ffffff14);
+    animate background, border-color { duration: 120ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+
+    btn-row := HorizontalLayout {
+        padding-left: root.text != "" ? 13px : 10px;
+        padding-right: root.text != "" ? 13px : 10px;
+        spacing: 7px;
+        alignment: center;
+        cross-axis-alignment: center;
+        if root.icon != "": TvIcon {
+            commands: root.icon;
+            filled: root.icon-filled;
+            size: 16px;
+            color: root.active ? Theme.bg : Theme.text;
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.active ? Theme.bg : Theme.text;
+            font-size: 14px;
+            font-weight: root.active ? 700 : 600;
+            vertical-alignment: center;
+        }
     }
+
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 }
 
-/// A list of tracks in a panel (audio, subtitles); preferred languages carry a tag.
+/// Obsidian glass track chooser panel (audio / subtitles); preferred languages carry a badge.
 component ChoicePanel inherits Rectangle {
     in property <string> title;
     in property <[TrackChoice]> choices;
     callback picked(int);
-    width: 300px;
-    background: #141824f5;
-    border-radius: Theme.radius;
-    drop-shadow-blur: 24px;
-    drop-shadow-color: #00000099;
+
+    width: 320px;
+    background: Theme.panel-glass;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border-hi;
+    drop-shadow-blur: 28px;
+    drop-shadow-color: #000000b8;
     TouchArea { }
+
     VerticalLayout {
-        padding: 12px;
-        spacing: 4px;
+        padding: 14px;
+        spacing: 8px;
         Text {
             text: root.title;
             color: Theme.muted;
             font-size: 11px;
             font-weight: 700;
-            letter-spacing: 1px;
+            letter-spacing: 1.3px;
         }
         if root.choices.length == 0: Text {
             text: "None in this stream";
             color: Theme.muted;
+            font-size: 13.5px;
         }
         ScrollView {
             max-height: 420px;
             VerticalLayout {
-                spacing: 2px;
+                spacing: 3px;
                 alignment: start;
                 for choice in root.choices: Rectangle {
-                    height: 38px;
+                    height: 40px;
                     border-radius: Theme.radius-sm;
-                    background: choice.selected ? #5b8cff26 : (row.has-hover ? #ffffff14 : transparent);
+                    background: choice.selected ? Theme.accent-soft : (row.has-hover ? #ffffff14 : transparent);
+                    animate background { duration: 110ms; }
                     accessible-role: AccessibleRole.button;
                     accessible-label: choice.label;
                     accessible-checked: choice.selected;
@@ -169,23 +202,24 @@ component ChoicePanel inherits Rectangle {
                         clicked => { root.picked(choice.id); }
                     }
                     HorizontalLayout {
-                        padding-left: 10px;
+                        padding-left: 12px;
                         padding-right: 10px;
                         spacing: 8px;
+                        cross-axis-alignment: center;
                         Text {
                             text: choice.label;
-                            color: choice.selected ? Theme.accent : Theme.text;
+                            color: choice.selected ? Theme.accent-hi : Theme.text;
+                            font-size: 13.5px;
                             font-weight: choice.selected ? 700 : 400;
                             vertical-alignment: center;
                             overflow: elide;
                             horizontal-stretch: 1;
                         }
                         if choice.flag != "": Rectangle {
-                            y: (parent.height - self.height) / 2;
                             height: 20px;
                             width: flag.preferred-width + 12px;
-                            border-radius: 5px;
-                            background: #ffffff26;
+                            border-radius: 6px;
+                            background: #ffffff20;
                             flag := Text {
                                 text: choice.flag;
                                 color: Theme.text;
@@ -195,12 +229,10 @@ component ChoicePanel inherits Rectangle {
                                 vertical-alignment: center;
                             }
                         }
-                        if choice.selected: Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            width: 8px;
-                            height: 8px;
-                            border-radius: 4px;
-                            background: Theme.accent;
+                        if choice.selected: TvIcon {
+                            commands: Icons.check;
+                            size: 15px;
+                            color: Theme.accent-hi;
                         }
                     }
                 }
@@ -337,19 +369,22 @@ export component PlayerOverlay inherits Rectangle {
 
     if root.waiting-text != "": Rectangle {
         x: (parent.width - self.width) / 2;
-        y: 24px;
-        height: 40px;
+        y: 26px;
+        height: 42px;
         width: waiting.preferred-width + 64px;
-        border-radius: 20px;
-        background: #0c0f17e6;
+        border-radius: 21px;
+        background: Theme.panel-glass;
         border-width: 1px;
-        border-color: #ffffff26;
+        border-color: Theme.border-hi;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: #00000088;
         HorizontalLayout {
             padding-left: 16px;
             padding-right: 18px;
             spacing: 10px;
             alignment: center;
-            Spinner { width: 18px; height: 18px; y: 11px; indeterminate: true; }
+            cross-axis-alignment: center;
+            Spinner { width: 18px; height: 18px; indeterminate: true; }
             waiting := Text {
                 text: root.waiting-text;
                 color: Theme.text;
@@ -362,8 +397,23 @@ export component PlayerOverlay inherits Rectangle {
 
     if root.audio-only: VerticalLayout {
         alignment: center;
-        spacing: 8px;
-        Text { text: "♪"; color: Theme.accent; font-size: 48px; horizontal-alignment: center; }
+        cross-axis-alignment: center;
+        spacing: 12px;
+        Rectangle {
+            width: 72px;
+            height: 72px;
+            border-radius: 36px;
+            background: Theme.accent-soft;
+            border-width: 1px;
+            border-color: Theme.accent-border;
+            TvIcon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                commands: Icons.audio;
+                size: 32px;
+                color: Theme.accent-hi;
+            }
+        }
         Text { text: "Audio only"; color: Theme.muted; font-size: 15px; horizontal-alignment: center; }
     }
 
@@ -371,19 +421,22 @@ export component PlayerOverlay inherits Rectangle {
         property <bool> shown: false;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        height: 56px;
-        width: feedback-row.preferred-width + 40px;
-        border-radius: 16px;
-        background: #00000059;
+        height: 58px;
+        width: feedback-row.preferred-width + 44px;
+        border-radius: 18px;
+        background: #0a0e17cc;
         border-width: 1px;
-        border-color: #ffffff1a;
+        border-color: Theme.border-hi;
+        drop-shadow-blur: 22px;
+        drop-shadow-color: #00000099;
         opacity: self.shown ? 1 : 0;
-        animate opacity { duration: 250ms; }
+        animate opacity { duration: 220ms; }
         feedback-row := HorizontalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
+            padding-left: 22px;
+            padding-right: 22px;
             spacing: 14px;
             alignment: center;
+            cross-axis-alignment: center;
             Text {
                 text: root.feedback-text;
                 color: white;
@@ -392,14 +445,15 @@ export component PlayerOverlay inherits Rectangle {
                 vertical-alignment: center;
             }
             if root.feedback-level >= 0: Rectangle {
-                y: (parent.height - self.height) / 2;
                 width: 112px;
                 height: 6px;
                 border-radius: 3px;
-                background: #ffffff40;
+                background: #ffffff38;
+                clip: true;
                 Rectangle {
                     x: 0;
                     width: parent.width * clamp(root.feedback-level, 0, 1);
+                    height: 100%;
                     border-radius: 3px;
                     background: Theme.accent;
                 }
@@ -422,18 +476,22 @@ export component PlayerOverlay inherits Rectangle {
 
     if root.chrome-visible: Rectangle {
         y: 0;
-        height: 96px;
-        background: @linear-gradient(180deg, #000000cc 0%, #00000000 100%);
+        height: 100px;
+        background: @linear-gradient(180deg, #000000d9 0%, #00000000 100%);
         HorizontalLayout {
             padding: 24px;
-            spacing: 12px;
+            spacing: 14px;
             alignment: start;
-            BarButton { text: "←"; clicked => { root.leave-player(); } }
+            cross-axis-alignment: center;
+            BarButton {
+                icon: Icons.back;
+                clicked => { root.leave-player(); }
+            }
             Text {
                 text: root.title;
                 color: white;
                 font-size: 20px;
-                font-weight: 600;
+                font-weight: 700;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -442,17 +500,18 @@ export component PlayerOverlay inherits Rectangle {
 
     if root.chrome-visible: Rectangle {
         y: parent.height - self.height;
-        height: 150px;
-        background: @linear-gradient(0deg, #000000e6 0%, #00000000 100%);
+        height: 158px;
+        background: @linear-gradient(0deg, #000000eb 0%, #00000066 60%, #00000000 100%);
         VerticalLayout {
             padding-left: 28px;
             padding-right: 28px;
-            padding-bottom: 20px;
-            spacing: 8px;
+            padding-bottom: 22px;
+            spacing: 10px;
             alignment: end;
             HorizontalLayout {
                 spacing: 14px;
-                Text { text: root.position-text; color: white; vertical-alignment: center; }
+                cross-axis-alignment: center;
+                Text { text: root.position-text; color: white; font-size: 13.5px; font-weight: 600; vertical-alignment: center; }
                 seek-bar := DragBar {
                     horizontal-stretch: 1;
                     buffered: root.buffered-fraction;
@@ -463,51 +522,90 @@ export component PlayerOverlay inherits Rectangle {
                     value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
                     committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
                 }
-                Text { text: root.duration-text; color: Theme.muted; vertical-alignment: center; }
+                Text { text: root.duration-text; color: Theme.muted; font-size: 13.5px; font-weight: 600; vertical-alignment: center; }
             }
             HorizontalLayout {
                 spacing: 8px;
-                BarButton { text: root.paused ? "▶  Play" : "❚❚  Pause"; active: true; clicked => { root.toggle-pause(); } }
+                cross-axis-alignment: center;
+                BarButton {
+                    text: root.paused ? "Play" : "Pause";
+                    icon: root.paused ? Icons.play : Icons.pause;
+                    icon-filled: true;
+                    active: true;
+                    clicked => { root.toggle-pause(); }
+                }
                 BarButton { text: "−10s"; clicked => { root.nudge(-10000); } }
                 BarButton { text: "+10s"; clicked => { root.nudge(10000); } }
-                if root.has-previous-episode: BarButton { text: "⏮  Previous"; clicked => { root.previous-episode(); } }
-                if root.has-next-episode: BarButton { text: "Next  ⏭"; clicked => { root.next-episode(); } }
+                if root.has-previous-episode: BarButton {
+                    text: "Prev";
+                    icon: Icons.skip-back;
+                    icon-filled: true;
+                    clicked => { root.previous-episode(); }
+                }
+                if root.has-next-episode: BarButton {
+                    text: "Next";
+                    icon: Icons.skip-forward;
+                    icon-filled: true;
+                    clicked => { root.next-episode(); }
+                }
                 Rectangle { horizontal-stretch: 1; }
-                Text { text: "Vol"; color: Theme.muted; vertical-alignment: center; }
+                TvIcon {
+                    commands: Icons.volume;
+                    size: 17px;
+                    color: Theme.text-secondary;
+                }
                 DragBar {
-                    width: 110px;
+                    width: 108px;
                     fill: white;
                     value: root.volume / 130;
                     committed(v) => { root.set-volume(v * 130); }
                 }
-                BarButton { text: "Audio"; active: root.open-panel == 1; clicked => { root.open-panel = root.open-panel == 1 ? 0 : 1; } }
-                BarButton { text: "Subtitles"; active: root.open-panel == 2; clicked => { root.open-panel = root.open-panel == 2 ? 0 : 2; } }
-                BarButton { text: "Sources"; active: root.show-sources; clicked => { root.toggle-sources(); } }
-                BarButton { text: root.fullscreen ? "Exit full" : "Full"; clicked => { root.toggle-fullscreen(); } }
+                BarButton {
+                    text: "Audio";
+                    icon: Icons.audio;
+                    active: root.open-panel == 1;
+                    clicked => { root.open-panel = root.open-panel == 1 ? 0 : 1; }
+                }
+                BarButton {
+                    text: "Subtitles";
+                    icon: Icons.subtitles;
+                    active: root.open-panel == 2;
+                    clicked => { root.open-panel = root.open-panel == 2 ? 0 : 2; }
+                }
+                BarButton {
+                    text: "Sources";
+                    icon: Icons.layers;
+                    active: root.show-sources;
+                    clicked => { root.toggle-sources(); }
+                }
+                BarButton {
+                    icon: root.fullscreen ? Icons.minimize : Icons.maximize;
+                    clicked => { root.toggle-fullscreen(); }
+                }
             }
         }
     }
 
     if root.open-panel == 1: ChoicePanel {
         x: parent.width - self.width - 28px;
-        y: parent.height - self.height - 140px;
-        title: "Audio";
+        y: parent.height - self.height - 144px;
+        title: "AUDIO TRACK";
         choices: root.audio-tracks;
         picked(v) => { root.select-audio(v); root.open-panel = 0; }
     }
 
     if root.open-panel == 2: ChoicePanel {
         x: parent.width - self.width - 28px;
-        y: parent.height - self.height - 140px;
-        title: "Subtitles";
+        y: parent.height - self.height - 144px;
+        title: "SUBTITLES";
         choices: root.subtitle-tracks;
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
     }
 
     if root.show-sources: SourcePanel {
-        x: parent.width - self.width - 20px;
-        y: 80px;
-        height: parent.height - 250px;
+        x: parent.width - self.width - 24px;
+        y: 84px;
+        height: parent.height - 252px;
         sources: root.sources;
         info: root.source-info;
         can-refresh: root.can-refresh;
@@ -534,14 +632,14 @@ export component PlayerOverlay inherits Rectangle {
     }
     if root.skip-label != "" && (root.skip-window || root.chrome-visible): Rectangle {
         x: parent.width - self.width - 32px;
-        y: parent.height - self.height - 170px;
+        y: parent.height - self.height - 174px;
         height: 48px;
-        width: skip-text.preferred-width + 48px;
-        border-radius: 12px;
-        background: skip-touch.has-hover ? #ffffff : #fffffff2;
+        width: skip-row.preferred-width + 44px;
+        border-radius: 24px;
+        background: skip-touch.has-hover ? #ffffff : #f4f6fbf2;
         clip: true;
-        drop-shadow-blur: 20px;
-        drop-shadow-color: #00000099;
+        drop-shadow-blur: 22px;
+        drop-shadow-color: #000000aa;
         accessible-role: AccessibleRole.button;
         accessible-label: root.skip-label;
         accessible-action-default => { root.skip-segment(); }
@@ -549,17 +647,29 @@ export component PlayerOverlay inherits Rectangle {
         Rectangle {
             x: 0;
             width: root.skip-window ? 0px : parent.width;
-            background: #00000026;
+            background: #00000024;
             visible: root.skip-window;
             animate width { duration: root.skip-window ? 5s : 0ms; }
         }
-        skip-text := Text {
-            text: "⏭  " + root.skip-label;
-            color: Theme.bg;
-            font-size: 15px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+        skip-row := HorizontalLayout {
+            padding-left: 22px;
+            padding-right: 22px;
+            spacing: 8px;
+            alignment: center;
+            cross-axis-alignment: center;
+            TvIcon {
+                commands: Icons.skip-forward;
+                filled: true;
+                size: 16px;
+                color: Theme.bg;
+            }
+            Text {
+                text: root.skip-label;
+                color: Theme.bg;
+                font-size: 15px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
         }
         skip-touch := TouchArea {
             mouse-cursor: pointer;

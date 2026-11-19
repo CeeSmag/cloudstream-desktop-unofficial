@@ -1,34 +1,73 @@
-import { ComboBox, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
 
-export component SettingRow inherits HorizontalLayout {
+/// Subtle hairline separator between rows inside a grouped Settings card.
+export component SettingDivider inherits Rectangle {
+    height: 1px;
+    background: Theme.divider;
+}
+
+/// Modern TV preference row with title, optional description, hover highlight, and right-aligned control.
+export component SettingRow inherits Rectangle {
     in property <string> label;
-    spacing: Theme.space-2;
-    padding-top: Theme.space-1;
-    padding-bottom: Theme.space-1;
-    Text {
-        text: root.label;
-        color: Theme.text;
-        font-size: Theme.body-size;
-        vertical-alignment: center;
-        horizontal-stretch: 1;
+    in property <string> description: "";
+
+    min-height: root.description != "" ? 58px : 46px;
+    vertical-stretch: 0;
+    border-radius: 10px;
+    background: row-hover.has-hover ? #ffffff08 : transparent;
+    animate background { duration: 120ms; }
+
+    row-hover := TouchArea { }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: Theme.space-3;
+        cross-axis-alignment: center;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 3px;
+            alignment: center;
+            Text {
+                text: root.label;
+                color: Theme.text;
+                font-size: Theme.body-size;
+                font-weight: 500;
+            }
+            if root.description != "": Text {
+                text: root.description;
+                color: Theme.muted;
+                font-size: Theme.caption-size;
+                wrap: word-wrap;
+            }
+        }
+        @children
     }
-    @children
 }
 
-export component ChoiceCombo inherits ComboBox {
-    // Thin wrapper so call sites stay consistent as we restyle later.
-}
-
+/// One category item in the Settings TV left rail.
 component SideNavItem inherits Rectangle {
     in property <int> tab-index;
     in property <bool> selected;
     in property <bool> has-focus;
+    in property <string> icon;
+    in property <string> subtitle;
     in-out property <string> text <=> label.text;
     callback clicked <=> touch.clicked;
 
-    min-height: 40px;
-    border-radius: Theme.radius-sm;
+    min-height: 58px;
+    border-radius: Theme.radius;
+    background: root.selected ? Theme.panel-hi : (touch.has-hover ? #ffffff0c : transparent);
+    border-width: root.has-focus ? 2px : (root.selected ? 1px : 0px);
+    border-color: root.has-focus ? Theme.focus-ring : (root.selected ? Theme.border-hi : transparent);
+    drop-shadow-blur: root.has-focus ? 14px : 0px;
+    drop-shadow-color: Theme.focus-glow;
+    animate background, border-color { duration: 140ms; }
+
     accessible-role: AccessibleRole.tab;
     accessible-label: root.text;
     accessible-item-index: root.tab-index;
@@ -36,48 +75,77 @@ component SideNavItem inherits Rectangle {
     accessible-item-selected: root.selected;
     accessible-action-default => { self.clicked(); }
 
-    states [
-        pressed when touch.pressed: { state.opacity: 0.85; }
-        hover when touch.has-hover: { state.opacity: 0.55; }
-        selected when root.selected: { state.opacity: 1; }
-        focused when root.has-focus: {
-            state.opacity: 0.9;
-            root.border-width: 2px;
-            root.border-color: Theme.focus;
+    // Left accent indicator pill on the active category
+    if root.selected: Rectangle {
+        x: 4px;
+        y: (parent.height - self.height) / 2;
+        width: 3.5px;
+        height: 26px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        if root.icon != "": Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: root.selected ? Theme.accent-soft : #ffffff0c;
+            TvIcon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                commands: root.icon;
+                size: 17px;
+                color: root.selected ? Theme.accent-hi : Theme.muted;
+            }
         }
-    ]
 
-    state := Rectangle {
-        opacity: 0;
-        background: Theme.panel-hi;
-        border-radius: Theme.radius-sm;
-        animate opacity { duration: 150ms; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: center;
+            label := Text {
+                color: root.selected || root.has-focus ? Theme.text : Theme.text-secondary;
+                font-size: 14.5px;
+                font-weight: root.selected ? 700 : 500;
+                overflow: elide;
+                accessible-role: AccessibleRole.none;
+            }
+            if root.subtitle != "": Text {
+                text: root.subtitle;
+                color: Theme.muted;
+                font-size: 11.5px;
+                overflow: elide;
+                accessible-role: AccessibleRole.none;
+            }
+        }
     }
 
-    label := Text {
-        color: root.selected ? Theme.text : Theme.muted;
-        font-size: Theme.body-size;
-        vertical-alignment: center;
-        horizontal-alignment: left;
-        x: 12px;
-        width: parent.width - 24px;
-        height: 100%;
-        accessible-role: AccessibleRole.none;
+    touch := TouchArea {
+        mouse-cursor: pointer;
     }
-
-    touch := TouchArea { }
 }
 
-/// Settings left rail — gallery SideBar pattern (FocusScope + Up/Down).
+/// Settings left navigation rail (FocusScope + Up/Down/Enter/Space).
 export component SideNav inherits Rectangle {
     in property <[string]> model: [];
+    in property <[string]> icons: [];
+    in property <[string]> subtitles: [];
     in property <string> title <=> title-label.text;
     in-out property <int> current-item: 0;
     out property <int> current-focused: fs.has-focus ? fs.focused-tab : -1;
 
-    width: 180px;
-    background: Theme.panel;
-    border-radius: Theme.radius;
+    width: 248px;
+    horizontal-stretch: 0;
+    background: Theme.panel-glass;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border;
     forward-focus: fs;
     accessible-role: AccessibleRole.navigation;
 
@@ -86,19 +154,26 @@ export component SideNav inherits Rectangle {
     }
 
     VerticalLayout {
-        padding: Theme.space-2;
-        spacing: Theme.space-1;
+        padding: 14px;
+        spacing: 10px;
         alignment: start;
 
-        title-label := Text {
-            color: Theme.muted;
-            font-size: Theme.caption-size;
-            horizontal-alignment: left;
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            title-label := Text {
+                color: Theme.muted;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 1.4px;
+                horizontal-alignment: left;
+            }
         }
 
         navigation := VerticalLayout {
             alignment: start;
-            spacing: 4px;
+            spacing: 6px;
             accessible-role: AccessibleRole.tab-list;
             accessible-orientation: Orientation.vertical;
             accessible-delegate-focus: root.current-focused >= 0 ? root.current-focused : root.current-item;
@@ -111,7 +186,7 @@ export component SideNav inherits Rectangle {
                 height: 0px;
 
                 key-pressed(event) => {
-                    if (event.text == "\n") {
+                    if (event.text == "\n" || event.text == Key.Return) {
                         root.current-item = root.current-focused;
                         return accept;
                     }
@@ -143,6 +218,8 @@ export component SideNav inherits Rectangle {
                 tab-index: index;
                 has-focus: index == root.current-focused;
                 text: item;
+                icon: index < root.icons.length ? root.icons[index] : "";
+                subtitle: index < root.subtitles.length ? root.subtitles[index] : "";
                 selected: index == root.current-item;
             }
         }
@@ -152,7 +229,7 @@ export component SideNav inherits Rectangle {
 export component SectionTitle inherits Text {
     color: Theme.text;
     font-size: Theme.title-size;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 export component MutedLabel inherits Text {
@@ -160,36 +237,57 @@ export component MutedLabel inherits Text {
     font-size: Theme.caption-size;
 }
 
-/// A large rounded button for TV screens; `focused` draws the remote's focus ring.
+/// Large cinema pill button for Hero & Details; `focused` draws the bright TV focus ring.
 export component PillButton inherits Rectangle {
     in property <string> text;
+    in property <string> icon: "";
+    in property <bool> icon-filled: false;
     in property <bool> primary;
     in property <bool> focused;
     in property <bool> enabled: true;
     callback clicked();
+
     height: 48px;
-    min-width: label.preferred-width + 48px;
+    min-width: row.preferred-width + 44px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
     border-radius: 24px;
-    background: !root.enabled ? #ffffff14
-        : root.primary ? (touch.has-hover || root.focused ? #ffffff : #f2f4f8)
-        : (touch.has-hover || root.focused ? #ffffff2e : #ffffff1a);
-    border-width: root.focused ? 3px : 0px;
-    border-color: Theme.accent;
-    drop-shadow-blur: root.focused ? 16px : 0px;
-    drop-shadow-color: #5b8cff66;
-    opacity: root.enabled ? 1 : 0.5;
-    animate background { duration: 120ms; }
+    background: !root.enabled ? #ffffff12
+        : root.primary ? (touch.has-hover || root.focused ? #ffffff : #edf1fa)
+        : (touch.has-hover || root.focused ? #ffffff2e : #ffffff18);
+    border-width: root.focused ? 2.5px : (root.primary ? 0px : 1px);
+    border-color: root.focused ? Theme.focus-ring : Theme.border-hi;
+    drop-shadow-blur: root.focused ? 20px : (root.primary && touch.has-hover ? 14px : 0px);
+    drop-shadow-color: Theme.focus-glow;
+    opacity: root.enabled ? 1 : 0.45;
+    animate background, border-color { duration: 130ms; }
     accessible-role: AccessibleRole.button;
     accessible-label: root.text;
-    accessible-action-default => { root.clicked(); }
-    label := Text {
-        text: root.text;
-        color: root.primary && root.enabled ? Theme.bg : Theme.text;
-        font-size: 16px;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    accessible-action-default => {
+        if root.enabled { root.clicked(); }
     }
+
+    row := HorizontalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        spacing: 9px;
+        alignment: center;
+        cross-axis-alignment: center;
+        if root.icon != "": TvIcon {
+            commands: root.icon;
+            filled: root.icon-filled;
+            size: 16px;
+            color: root.primary && root.enabled ? Theme.bg : Theme.text;
+        }
+        Text {
+            text: root.text;
+            color: root.primary && root.enabled ? Theme.bg : Theme.text;
+            font-size: 15.5px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+
     touch := TouchArea {
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         enabled: root.enabled;
@@ -197,36 +295,95 @@ export component PillButton inherits Rectangle {
     }
 }
 
-/// A row of grey tiles that pulse while a shelf loads.
+/// Pulsing skeleton poster cards while a shelf or grid loads.
 export component SkeletonRow inherits HorizontalLayout {
     in property <int> count: 6;
     spacing: Theme.space-2;
     padding: 8px;
     alignment: start;
-    for index in root.count: Rectangle {
+    for index in root.count: VerticalLayout {
         width: 160px;
-        height: 248px;
-        border-radius: Theme.radius;
-        background: Theme.card;
-        opacity: 0.45 + 0.35 * abs(sin(animation-tick() / 900ms * 180deg + index * 25deg));
+        spacing: 8px;
+        Rectangle {
+            height: 224px;
+            border-radius: Theme.radius;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff0c;
+            opacity: 0.45 + 0.32 * abs(sin(animation-tick() / 950ms * 180deg + index * 28deg));
+        }
+        Rectangle {
+            width: 118px;
+            height: 12px;
+            border-radius: 6px;
+            background: Theme.panel;
+            opacity: 0.45 + 0.25 * abs(sin(animation-tick() / 950ms * 180deg + index * 28deg));
+        }
+        Rectangle {
+            width: 76px;
+            height: 10px;
+            border-radius: 5px;
+            background: Theme.panel;
+            opacity: 0.35 + 0.2 * abs(sin(animation-tick() / 950ms * 180deg + index * 28deg));
+        }
     }
 }
 
-/// A titled card (Settings pages).
+/// Elevated glass card for Settings & Extensions sections.
 export component Card inherits Rectangle {
     in property <string> title;
-    background: Theme.panel;
-    border-radius: Theme.radius;
+    in property <string> subtitle: "";
+    in property <string> icon: "";
+    in property <bool> danger: false;
+
+    background: root.danger ? #1d1218eb : Theme.panel-glass;
+    vertical-stretch: 0;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: root.danger ? Theme.danger-border : Theme.border;
+    drop-shadow-blur: 18px;
+    drop-shadow-color: #00000044;
+
     VerticalLayout {
-        padding: Theme.space-3;
-        spacing: Theme.space-2;
-        Text {
-            text: root.title;
-            color: Theme.text;
-            font-size: 17px;
-            font-weight: 600;
+        padding: 20px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+            if root.icon != "": Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 10px;
+                background: root.danger ? Theme.danger-soft : Theme.accent-soft;
+                border-width: 1px;
+                border-color: root.danger ? Theme.danger-border : Theme.accent-border;
+                TvIcon {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    commands: root.icon;
+                    size: 16px;
+                    color: root.danger ? Theme.danger : Theme.accent-hi;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                alignment: center;
+                Text {
+                    text: root.title;
+                    color: root.danger ? Theme.danger : Theme.text;
+                    font-size: 16.5px;
+                    font-weight: 700;
+                }
+                if root.subtitle != "": Text {
+                    text: root.subtitle;
+                    color: Theme.muted;
+                    font-size: Theme.caption-size;
+                    wrap: word-wrap;
+                }
+            }
         }
         @children
     }
 }
-

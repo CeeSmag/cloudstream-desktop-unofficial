@@ -1,45 +1,26 @@
-import { Button, ComboBox, LineEdit, Spinner } from "std-widgets.slint";
+import { Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 import { FilterChip, PosterItem } from "types.slint";
+import { TvBadge, TvButton, TvSegmented, TvSelect, TvTextInput } from "controls.slint";
 import { PosterGrid } from "poster.slint";
 import { SectionTitle, MutedLabel, SkeletonRow } from "widgets.slint";
 
 /// A spinner with a line of text: something is loading.
 export component LoadingLine inherits HorizontalLayout {
     in property <string> text;
-    spacing: Theme.space-2;
+    spacing: 10px;
     alignment: start;
+    cross-axis-alignment: center;
     Spinner {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         indeterminate: true;
     }
     MutedLabel {
         text: root.text;
+        font-size: 13.5px;
         vertical-alignment: center;
-    }
-}
-
-/// Two-choice switch for "Movies" / "TV shows".
-component KindChip inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected;
-    callback clicked();
-    height: 34px;
-    width: label.preferred-width + 32px;
-    border-radius: 17px;
-    background: root.selected ? Theme.accent : (touch.has-hover ? Theme.panel-hi : Theme.panel);
-    animate background { duration: 120ms; }
-    label := Text {
-        text: root.text;
-        color: root.selected ? #0c0f17 : Theme.text;
-        font-weight: 600;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -56,22 +37,26 @@ export global BrowseFilter {
     callback more();
 }
 
-/// A genre toggle.
+/// Frosted genre filter pill.
 component GenreChip inherits Rectangle {
     in property <FilterChip> chip;
     callback clicked();
-    height: 30px;
-    width: genre-label.preferred-width + 22px;
-    border-radius: 15px;
+
+    height: 32px;
+    width: genre-label.preferred-width + 24px;
+    border-radius: 16px;
     border-width: 1px;
-    border-color: root.chip.on ? Theme.accent : #ffffff1f;
-    background: root.chip.on ? #5b8cff33 : (genre-touch.has-hover ? #ffffff1f : #ffffff0d);
+    border-color: root.chip.on ? Theme.accent-border : Theme.border;
+    background: root.chip.on ? Theme.accent-soft : (genre-touch.has-hover ? #ffffff18 : #ffffff0b);
+    animate background, border-color { duration: 120ms; }
     accessible-role: AccessibleRole.button;
     accessible-label: root.chip.label;
     accessible-checked: root.chip.on;
+    accessible-action-default => { root.clicked(); }
+
     genre-label := Text {
         text: root.chip.label;
-        color: root.chip.on ? Theme.accent : Theme.text;
+        color: root.chip.on ? Theme.accent-hi : Theme.text-secondary;
         font-size: 13px;
         font-weight: 600;
         horizontal-alignment: center;
@@ -94,43 +79,41 @@ export component BrowsePage inherits VerticalLayout {
     callback open-at(int);
 
     padding: Theme.page-pad;
-    spacing: Theme.space-2;
+    padding-top: Theme.space-3;
+    spacing: 14px;
     accessible-role: AccessibleRole.main;
 
     HorizontalLayout {
-        spacing: Theme.space-2;
+        spacing: 12px;
         alignment: start;
+        cross-axis-alignment: center;
         SectionTitle {
             text: "Browse";
             vertical-alignment: center;
         }
-        Rectangle { width: Theme.space-2; }
-        KindChip {
-            text: "Movies";
-            selected: root.kind == "movie";
-            clicked => { root.load-kind("movie"); }
+        Rectangle { width: 8px; }
+        TvSegmented {
+            model: ["Movies", "TV shows"];
+            current-value: root.kind == "tv" ? "TV shows" : "Movies";
+            selected(choice) => { root.load-kind(choice == "TV shows" ? "tv" : "movie"); }
         }
-        KindChip {
-            text: "TV shows";
-            selected: root.kind == "tv";
-            clicked => { root.load-kind("tv"); }
-        }
-        Rectangle { width: Theme.space-2; }
-        ComboBox {
-            width: 140px;
+        Rectangle { width: 6px; }
+        TvSelect {
+            width: 152px;
             model: BrowseFilter.years;
             current-value <=> BrowseFilter.year;
             selected => { BrowseFilter.changed(); }
         }
-        ComboBox {
-            width: 140px;
+        TvSelect {
+            width: 156px;
             model: BrowseFilter.sorts;
             current-value <=> BrowseFilter.sort;
             selected => { BrowseFilter.changed(); }
         }
     }
-    Flickable {
-        height: 34px;
+
+    if BrowseFilter.genres.length > 0: Flickable {
+        height: 36px;
         content-width: genre-row.preferred-width;
         genre-row := HorizontalLayout {
             spacing: 8px;
@@ -141,12 +124,14 @@ export component BrowsePage inherits VerticalLayout {
             }
         }
     }
+
     MutedLabel {
-        text: (BrowseFilter.sort == "Popular" ? "Popular" : "Best rated") + " on TMDB. Pick a title to find it on your providers.";
+        text: (BrowseFilter.sort == "Popular" ? "Popular" : "Best rated") + " on TMDB · pick any title to match it on your providers.";
+        font-size: 13px;
     }
     if root.loading: LoadingLine { text: "Loading titles…"; }
     if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
-    if !root.loading && root.message != "": MutedLabel { text: root.message; }
+    if !root.loading && root.message != "": MutedLabel { text: root.message; font-size: 13.5px; }
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
@@ -158,8 +143,10 @@ export component BrowsePage inherits VerticalLayout {
     }
     if BrowseFilter.has-more && !root.loading: HorizontalLayout {
         alignment: center;
-        Button {
+        padding-top: 4px;
+        TvButton {
             text: "Load more";
+            kind: "secondary";
             clicked => { BrowseFilter.more(); }
         }
     }
@@ -181,7 +168,8 @@ export component SearchPage inherits VerticalLayout {
     callback open-at(int);
 
     padding: Theme.page-pad;
-    spacing: Theme.space-2;
+    padding-top: Theme.space-3;
+    spacing: 16px;
     accessible-role: AccessibleRole.search;
 
     SectionTitle { text: "Search"; }
@@ -190,29 +178,30 @@ export component SearchPage inherits VerticalLayout {
     public function focus-box() {
         search-box.focus();
     }
+
     HorizontalLayout {
-        spacing: Theme.space-2;
-        Rectangle {
-            width: 4px;
-            border-radius: 2px;
-            background: root.search-focused ? Theme.accent : transparent;
-        }
-        search-box := LineEdit {
+        spacing: 12px;
+        cross-axis-alignment: center;
+        search-box := TvTextInput {
             text <=> root.query;
-            placeholder-text: "Search titles…";
+            placeholder-text: "Search movies, series, and anime across your providers…";
+            leading-icon: Icons.search;
+            focused-ring: root.search-focused;
             horizontal-stretch: 1;
             accepted => { root.search(root.query); }
         }
-        Button {
+        TvButton {
             text: root.loading ? "Searching…" : "Search";
+            icon: Icons.search;
+            kind: "primary";
             enabled: !root.loading;
-            primary: true;
             clicked => { root.search(root.query); }
         }
     }
+
     if root.loading: LoadingLine { text: "Searching your providers for “" + root.query + "”…"; }
     if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
-    if !root.loading && root.message != "": MutedLabel { text: root.message; }
+    if !root.loading && root.message != "": MutedLabel { text: root.message; font-size: 13.5px; }
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
@@ -232,14 +221,25 @@ export component LibraryPage inherits VerticalLayout {
     callback remove-at(int);
 
     padding: Theme.page-pad;
-    spacing: Theme.space-2;
+    padding-top: Theme.space-3;
+    spacing: 12px;
     accessible-role: AccessibleRole.main;
 
-    SectionTitle { text: "Library"; }
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+        cross-axis-alignment: center;
+        SectionTitle { text: "Library"; }
+        if root.items.length > 0: TvBadge {
+            text: root.items.length + " saved";
+            tone: "accent";
+        }
+    }
     MutedLabel {
         text: root.items.length == 0
-            ? "Titles you add with “+ Library” on their page show up here."
-            : root.items.length + " saved · right-click or press Delete on a title to remove it";
+            ? "Titles you save with “Library” on their details page appear here."
+            : "Right-click or press Delete on a focused title to remove it from your library.";
+        font-size: 13px;
     }
     PosterGrid {
         vertical-stretch: 1;

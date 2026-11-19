@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 
-/// A message at the bottom of the screen that goes away by itself (or when clicked).
+/// Floating obsidian glass notification pill at the bottom of the screen.
 export component Toast inherits Rectangle {
     in property <string> text;
     /// The size of the area the toast sits in.
@@ -8,29 +8,44 @@ export component Toast inherits Rectangle {
     in property <length> area-height;
     callback dismissed();
 
-    width: min(root.area-width - 2 * Theme.page-pad, label.preferred-width + 48px);
+    width: min(root.area-width - 2 * Theme.page-pad, label.preferred-width + 64px);
     height: max(48px, label.preferred-height + 24px);
     x: (root.area-width - self.width) / 2;
     y: root.area-height - self.height - 32px;
-    border-radius: Theme.radius;
-    background: #1f2638f2;
+    border-radius: 24px;
+    background: Theme.panel-glass;
     border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-blur: 24px;
-    drop-shadow-color: #00000099;
+    border-color: Theme.border-hi;
+    drop-shadow-blur: 28px;
+    drop-shadow-color: #000000b8;
     accessible-role: AccessibleRole.text;
     accessible-label: root.text;
 
-    label := Text {
-        x: 24px;
-        width: parent.width - 48px;
-        text: root.text;
-        color: Theme.text;
-        wrap: word-wrap;
-        vertical-alignment: center;
-        horizontal-alignment: center;
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 22px;
+        spacing: 10px;
+        alignment: center;
+        cross-axis-alignment: center;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: Theme.accent;
+        }
+        label := Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: 13.5px;
+            font-weight: 500;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
     }
+
     TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.dismissed(); }
     }
     changed text => { hide.restart(); }

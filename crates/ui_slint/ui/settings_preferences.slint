@@ -1,0 +1,194 @@
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvSelect, TvSwitch } from "controls.slint";
+import { Card, MutedLabel, SectionTitle, SettingDivider, SettingRow } from "widgets.slint";
+
+/// Settings > Preferences: playback toggles, Home provider, audio & subtitle languages.
+export component SettingsPreferencesPage inherits VerticalLayout {
+    in property <bool> autoplay-next: true;
+    in property <bool> skip-lookup: true;
+    in property <bool> stream-proxy: true;
+    in property <bool> auto-subtitles: true;
+    in property <[string]> provider-labels: [];
+    in property <string> selected-provider: "";
+    in property <[string]> audio-labels: [];
+    in property <string> audio-value: "";
+    in property <[string]> subtitle-labels: [];
+    in property <string> subtitle-add-value: "";
+    in property <[string]> subtitle-chosen: [];
+    in property <bool> subtitle-full: false;
+
+    callback set-autoplay(bool);
+    callback set-skip-lookup(bool);
+    callback set-stream-proxy(bool);
+    callback set-provider(string);
+    callback set-audio(string);
+    callback set-subtitle-add(string);
+    callback remove-subtitle(int);
+    callback set-auto-subtitles(bool);
+
+    spacing: Theme.space-3;
+    alignment: start;
+
+    VerticalLayout {
+        spacing: 4px;
+        SectionTitle { text: "Preferences"; }
+        MutedLabel {
+            text: "Playback automation, active Home provider, and preferred audio and subtitle languages.";
+            font-size: 13.5px;
+            wrap: word-wrap;
+        }
+    }
+
+    Card {
+        title: "Playback";
+        subtitle: "Behavior while watching movies and TV episodes";
+        icon: Icons.play;
+
+        VerticalLayout {
+            spacing: 4px;
+            SettingRow {
+                label: "Autoplay next episode";
+                description: "Automatically advance to the next episode when the current one finishes";
+                TvSwitch {
+                    checked: root.autoplay-next;
+                    toggled => { root.set-autoplay(self.checked); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Skip intro & credits lookup";
+                description: "Query community skip databases (AniSkip, IntroDB) for chapter skip prompts";
+                TvSwitch {
+                    checked: root.skip-lookup;
+                    toggled => { root.set-skip-lookup(self.checked); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Local HLS helper (stream proxy)";
+                description: "Relay HLS manifests and custom provider headers locally for smoother mpv playback";
+                TvSwitch {
+                    checked: root.stream-proxy;
+                    toggled => { root.set-stream-proxy(self.checked); }
+                }
+            }
+        }
+    }
+
+    Card {
+        title: "Home provider";
+        subtitle: "Select which installed extension supplies your Home shelves";
+        icon: Icons.globe;
+
+        SettingRow {
+            label: "Active provider";
+            description: "You can also switch providers anytime from the top bar";
+            TvSelect {
+                width: 240px;
+                model: root.provider-labels;
+                current-value: root.selected-provider;
+                placeholder: "No provider selected";
+                selected(value) => { root.set-provider(value); }
+            }
+        }
+    }
+
+    Card {
+        title: "Languages & subtitles";
+        subtitle: "Preferred audio track and ordered subtitle priority";
+        icon: Icons.subtitles;
+
+        VerticalLayout {
+            spacing: 4px;
+            SettingRow {
+                label: "Preferred audio";
+                description: "Automatically select this audio language when available";
+                TvSelect {
+                    width: 220px;
+                    model: root.audio-labels;
+                    current-value: root.audio-value;
+                    selected(value) => { root.set-audio(value); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Preferred subtitles";
+                description: "Ordered priority for auto-selection and player subtitle filters";
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    if root.subtitle-chosen.length == 0: Text {
+                        text: "None selected";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    for chip[i] in root.subtitle-chosen: Rectangle {
+                        height: 34px;
+                        width: chip-row.preferred-width;
+                        border-radius: 17px;
+                        background: Theme.accent-soft;
+                        border-width: 1px;
+                        border-color: Theme.accent-border;
+                        chip-row := HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            cross-axis-alignment: center;
+                            Text {
+                                text: chip;
+                                color: Theme.text;
+                                font-size: 13px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            Rectangle {
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: remove-touch.has-hover ? #ffffff2b : #ffffff14;
+                                accessible-role: AccessibleRole.button;
+                                accessible-label: "Remove " + chip;
+                                accessible-action-default => { root.remove-subtitle(i); }
+                                TvIcon {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    commands: Icons.close;
+                                    size: 11px;
+                                    color: Theme.text;
+                                }
+                                remove-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.remove-subtitle(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Add subtitle language";
+                description: root.subtitle-full ? "Maximum number of preferred languages reached" : "Append another language to your priority list";
+                TvSelect {
+                    width: 220px;
+                    enabled: !root.subtitle-full;
+                    model: root.subtitle-labels;
+                    current-value: root.subtitle-add-value;
+                    placeholder: "Add language…";
+                    selected(value) => { root.set-subtitle-add(value); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Auto-select subtitles";
+                description: "Turn on your highest-priority matching subtitle track automatically";
+                TvSwitch {
+                    checked: root.auto-subtitles;
+                    toggled => { root.set-auto-subtitles(self.checked); }
+                }
+            }
+        }
+    }
+}
