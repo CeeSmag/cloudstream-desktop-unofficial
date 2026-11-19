@@ -25,6 +25,8 @@ pub(crate) enum UiEvent {
     OpenReady(Ticket, usize),
     OpenUpdate(Ticket, playback_session::CheckedOpen),
     OpenFailed(Ticket, String),
+    /// Online skip times for the stream the ticket was issued for.
+    SkipTimesFound(Ticket, Vec<crate::skip_segments::Segment>),
     Notice(String),
     UpdateLabel(String),
     /// A plugin or repository change finished; the message says how.
@@ -45,7 +47,8 @@ impl UiEvent {
             | Self::OpenProgress(ticket, _)
             | Self::OpenReady(ticket, _)
             | Self::OpenUpdate(ticket, _)
-            | Self::OpenFailed(ticket, _) => Some(*ticket),
+            | Self::OpenFailed(ticket, _)
+            | Self::SkipTimesFound(ticket, _) => Some(*ticket),
             _ => None,
         }
     }
@@ -66,6 +69,9 @@ pub(crate) struct DetailsPage {
     pub url: String,
     pub data: String,
     pub media_key: String,
+    /// The title's ids in the skip-time databases, and the provider's kind of title.
+    pub skip_ids: skip_times::ExternalIds,
+    pub media_type: String,
     /// The provider's genres and tags.
     pub tags: Vec<String>,
     /// "Name (role)" of each cast member, in the provider's order.

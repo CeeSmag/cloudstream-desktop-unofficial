@@ -12,6 +12,7 @@ use extension_runtime::PluginWorkerPool;
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
 use poster_artwork::{ArtworkLoader, ArtworkLoaderConfig, DiskCache, UreqArtworkFetcher};
+use skip_times::{SkipLookup, UreqSkipFetcher};
 use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
@@ -73,6 +74,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
             title_cache::CacheLimits::default(),
         )),
         artwork: build_artwork(&paths.data_dir().join("artwork")),
+        skips: Arc::new(SkipLookup::new(Arc::new(UreqSkipFetcher::default()))),
     })
 }
 

@@ -45,6 +45,11 @@ pub(crate) fn details_page(
         url: target.url,
         data,
         media_key: target.media_key,
+        skip_ids: skip_times::ExternalIds::from_sync(
+            &details.sync_data,
+            details.unique_url.as_deref(),
+        ),
+        media_type: details.media_type.clone().unwrap_or_default(),
         tags: details.tags.clone().unwrap_or_default(),
         cast: details.actors.iter().map(cast_text).collect(),
     }

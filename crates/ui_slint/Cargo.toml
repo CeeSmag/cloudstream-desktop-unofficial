@@ -15,6 +15,7 @@ open = "5"
 playback_session = { path = "../playback_session" }
 poster_artwork = { path = "../poster_artwork" }
 player_api = { path = "../player_api" }
+skip_times = { path = "../skip_times" }
 # Slint's defaults minus `system-tray`: the app has no tray icon, and the tray pulls in `ksni`
 # (Unlicense, not on the license list).
 slint = { version = "1.19", default-features = false, features = [

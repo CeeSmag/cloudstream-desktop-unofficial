@@ -199,6 +199,8 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
             media_key: page.media_key,
             poster_url,
             resume_media_key: page.resume_media_key.clone(),
+            skip_ids: page.skip_ids,
+            media_type: page.media_type,
         };
         session.episodes.clone_from(&page.episodes);
     }

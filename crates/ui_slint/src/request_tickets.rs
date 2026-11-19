@@ -14,6 +14,8 @@ pub(crate) enum RequestKind {
     Browse,
     Details,
     Open,
+    /// Online skip times of the playing stream.
+    Skips,
 }
 
 /// Names one request; answers carry it back.
@@ -38,6 +40,7 @@ pub(crate) struct RequestTickets {
     browse: u64,
     details: u64,
     open: u64,
+    skips: u64,
 }
 
 impl RequestTickets {
@@ -48,6 +51,7 @@ impl RequestTickets {
             RequestKind::Browse => &mut self.browse,
             RequestKind::Details => &mut self.details,
             RequestKind::Open => &mut self.open,
+            RequestKind::Skips => &mut self.skips,
         }
     }
 
@@ -58,6 +62,7 @@ impl RequestTickets {
             RequestKind::Browse => self.browse,
             RequestKind::Details => self.details,
             RequestKind::Open => self.open,
+            RequestKind::Skips => self.skips,
         }
     }
 
@@ -113,6 +118,20 @@ mod tests {
         tickets.issue(RequestKind::Search);
         tickets.cancel(RequestKind::Open);
         assert!(tickets.is_current(home));
+    }
+
+    #[test]
+    fn is_current_skip_times_of_a_replaced_stream_are_dropped() {
+        // Stream A's lookup is slow; the viewer switches to stream B, whose lookup starts.
+        let mut tickets = RequestTickets::default();
+        let stream_a = tickets.issue(RequestKind::Skips);
+        let stream_b = tickets.issue(RequestKind::Skips);
+        tickets.issue(RequestKind::Open);
+        assert!(!tickets.is_current(stream_a), "A's late answer is dropped");
+        assert!(
+            tickets.is_current(stream_b),
+            "opening steps do not touch skip lookups"
+        );
     }
 
     #[test]

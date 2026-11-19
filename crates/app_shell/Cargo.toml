@@ -21,6 +21,7 @@ extension_runtime = { path = "../extension_runtime" }
 player_api = { path = "../player_api" }
 player_mpv = { path = "../player_mpv" }
 poster_artwork = { path = "../poster_artwork" }
+skip_times = { path = "../skip_times" }
 storage = { path = "../storage" }
 stream_proxy = { path = "../stream_proxy" }
 title_cache = { path = "../title_cache" }

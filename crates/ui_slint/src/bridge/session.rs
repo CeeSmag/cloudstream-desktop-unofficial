@@ -85,6 +85,9 @@ pub(crate) struct DetailsTarget {
     pub(crate) poster_url: Option<String>,
     /// The episode (or movie) the viewer left off at.
     pub(crate) resume_media_key: Option<String>,
+    /// The title's ids in the skip-time databases, and the provider's kind of title.
+    pub(crate) skip_ids: skip_times::ExternalIds,
+    pub(crate) media_type: String,
 }
 
 impl Default for Session {

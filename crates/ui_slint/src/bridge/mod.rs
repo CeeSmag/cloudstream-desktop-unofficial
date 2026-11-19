@@ -34,6 +34,7 @@ mod plugin_list;
 mod poster_hydrate;
 mod preference_callbacks;
 mod session;
+mod skip_lookup_start;
 mod source_picker;
 mod storage_settings_callbacks;
 mod stream_events;

@@ -13,6 +13,7 @@ player_api = { path = "../player_api" }
 poster_artwork = { path = "../poster_artwork" }
 serde.workspace = true
 serde_json.workspace = true
+skip_times = { path = "../skip_times" }
 storage = { path = "../storage" }
 thiserror.workspace = true
 title_cache = { path = "../title_cache" }

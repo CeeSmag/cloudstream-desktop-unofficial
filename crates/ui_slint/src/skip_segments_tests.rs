@@ -119,3 +119,50 @@ fn skip_prompt_without_parts_offers_next_from_ninety_percent() {
     assert_eq!(skip_prompt(&[], 950_000, 1_000_000, false), None);
     assert_eq!(skip_prompt(&[], 950_000, 0, true), None);
 }
+
+#[test]
+fn merge_segments_chapters_win_for_the_kinds_they_name() {
+    let chapters = [segment(SkipKind::Intro, 0, 90_000)];
+    let online = [
+        segment(SkipKind::Intro, 5_000, 80_000),
+        segment(SkipKind::Recap, 100_000, 130_000),
+        segment(SkipKind::Credits, 1_300_000, 1_400_000),
+    ];
+    assert_eq!(
+        merge_segments(&chapters, &online),
+        [
+            segment(SkipKind::Intro, 0, 90_000),
+            segment(SkipKind::Recap, 100_000, 130_000),
+            segment(SkipKind::Credits, 1_300_000, 1_400_000)
+        ]
+    );
+    assert_eq!(merge_segments(&[], &online).len(), 3);
+}
+
+#[test]
+fn from_online_maps_kinds_and_drops_empty_parts() {
+    let found = [
+        skip_times::SkipSegment {
+            kind: skip_times::SkipKind::Credits,
+            start_ms: 1_000,
+            end_ms: 9_000,
+        },
+        skip_times::SkipSegment {
+            kind: skip_times::SkipKind::Intro,
+            start_ms: 5_000,
+            end_ms: 5_000,
+        },
+    ];
+    assert_eq!(
+        from_online(&found),
+        [segment(SkipKind::Credits, 1_000, 9_000)]
+    );
+}
+
+#[test]
+fn title_kind_films_anime_and_series() {
+    assert_eq!(title_kind("Anime", true), skip_times::TitleKind::Movie);
+    assert_eq!(title_kind("Anime", false), skip_times::TitleKind::Anime);
+    assert_eq!(title_kind("OVA", false), skip_times::TitleKind::Anime);
+    assert_eq!(title_kind("TvSeries", false), skip_times::TitleKind::Series);
+}

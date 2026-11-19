@@ -35,4 +35,6 @@ pub struct UiServices {
     pub title_cache: Arc<TitleCache>,
     /// Poster and artwork images, downloaded and decoded off the UI thread.
     pub artwork: Arc<ArtworkLoader>,
+    /// Intro / recap / credits times from online databases (setting `skip_lookup`).
+    pub skips: Arc<skip_times::SkipLookup>,
 }

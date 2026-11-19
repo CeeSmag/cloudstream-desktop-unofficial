@@ -11,6 +11,7 @@ use super::catalog_events::{
 use super::details_loading::show_details_failed;
 use super::extension_catalog::show_catalog;
 use super::extension_changes::show_change_done;
+use super::player_timeline::show_online_parts;
 use super::stream_events::{show_open_progress, show_open_update, start_ready_stream};
 
 /// Shows everything the workers finished since the last tick.
@@ -44,6 +45,7 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         UiEvent::OpenProgress(_, progress) => show_open_progress(ui, progress),
         UiEvent::OpenReady(_, index) => start_ready_stream(ctx, ui, index),
         UiEvent::OpenUpdate(_, open) => show_open_update(ctx, ui, open),
+        UiEvent::SkipTimesFound(_, parts) => show_online_parts(ctx, ui, parts),
         UiEvent::OpenFailed(_, error) => {
             ui.set_open_busy(false);
             ui.set_notice(error.into());

@@ -7,7 +7,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::seek_bar::{buffered_fraction, chapter_notches, hover_text};
 use crate::skip_segments::{
-    segment_at, segments_from_chapters, skip_prompt, PromptAction, Segment, SkipPrompt,
+    merge_segments, segment_at, segments_from_chapters, skip_prompt, PromptAction, Segment,
+    SkipPrompt,
 };
 use crate::{CloudStream, SeekMark};
 
@@ -15,11 +16,16 @@ use super::bridge_context::BridgeContext;
 use super::details_callbacks::play_episode;
 use super::playback_reactions::play_next_episode;
 use super::player_callbacks::report;
+use super::skip_lookup_start::start_online_lookup;
 
 /// What the player knows about the playing stream's parts.
 #[derive(Debug, Default)]
 pub(crate) struct Timeline {
     chapters: Vec<Chapter>,
+    /// The parts the chapters name, and those an online database knows.
+    chapter_parts: Vec<Segment>,
+    online: Vec<Segment>,
+    /// Both merged: what the bar and the skip button use.
     segments: Vec<Segment>,
     /// The stream length the chapters were read for (-1: not yet).
     read_for: Option<i64>,
@@ -89,10 +95,31 @@ fn read_parts(ctx: &BridgeContext, ui: &CloudStream, duration_ms: i64) {
     if !segments.is_empty() {
         tracing::info!(parts = segments.len(), "skip parts found in the chapters");
     }
-    let mut session = ctx.session.borrow_mut();
-    session.timeline.chapters = chapters;
-    session.timeline.segments = segments;
-    session.timeline.read_for = Some(duration_ms);
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.timeline.chapters = chapters;
+        session.timeline.chapter_parts.clone_from(&segments);
+        session.timeline.online.clear();
+        session.timeline.segments = segments;
+        session.timeline.read_for = Some(duration_ms);
+    }
+    if duration_ms > 0 {
+        start_online_lookup(ctx, duration_ms);
+    }
+}
+
+/// Online skip times arrived for the playing stream: they fill the kinds the chapters miss.
+pub(crate) fn show_online_parts(ctx: &BridgeContext, ui: &CloudStream, online: Vec<Segment>) {
+    tracing::info!(parts = online.len(), "online skip times found");
+    let duration_ms = {
+        let mut session = ctx.session.borrow_mut();
+        let timeline = &mut session.timeline;
+        timeline.segments = merge_segments(&timeline.chapter_parts, &online);
+        timeline.online = online;
+        timeline.read_for.unwrap_or(0)
+    };
+    let segments = ctx.session.borrow().timeline.segments.clone();
+    ui.set_skip_marks(ModelRc::new(VecModel::from(marks(&segments, duration_ms))));
 }
 
 /// The coloured stretches on the bar, as shares of its length.

@@ -200,6 +200,49 @@ pub(crate) fn skip_prompt(
     (has_next && late).then_some(NEXT)
 }
 
+/// The parts an online database knows, in this module's terms.
+pub(crate) fn from_online(found: &[skip_times::SkipSegment]) -> Vec<Segment> {
+    found
+        .iter()
+        .map(|segment| Segment {
+            kind: match segment.kind {
+                skip_times::SkipKind::Intro => SkipKind::Intro,
+                skip_times::SkipKind::Recap => SkipKind::Recap,
+                skip_times::SkipKind::Credits => SkipKind::Credits,
+                skip_times::SkipKind::Preview => SkipKind::Preview,
+            },
+            start_ms: i64::try_from(segment.start_ms).unwrap_or(i64::MAX),
+            end_ms: i64::try_from(segment.end_ms).unwrap_or(i64::MAX),
+        })
+        .filter(|segment| segment.end_ms > segment.start_ms)
+        .collect()
+}
+
+/// The parts to offer: the chapters decide for every kind they name (they describe this very
+/// file), the online times fill in the kinds the chapters do not cover; in time order.
+pub(crate) fn merge_segments(from_chapters: &[Segment], online: &[Segment]) -> Vec<Segment> {
+    let mut merged: Vec<Segment> = from_chapters.to_vec();
+    merged.extend(
+        online
+            .iter()
+            .filter(|segment| !from_chapters.iter().any(|c| c.kind == segment.kind)),
+    );
+    merged.sort_by_key(|segment| segment.start_ms);
+    merged
+}
+
+/// Which databases fit the title: films, anime (by the provider's kind) or other series.
+pub(crate) fn title_kind(media_type: &str, is_movie: bool) -> skip_times::TitleKind {
+    let kind = media_type.to_ascii_lowercase();
+    if is_movie {
+        skip_times::TitleKind::Movie
+    } else if kind.contains("anime") || kind.contains("ova") {
+        skip_times::TitleKind::Anime
+    } else {
+        skip_times::TitleKind::Series
+    }
+}
+
 #[cfg(test)]
 #[path = "skip_segments_tests.rs"]
 mod tests;

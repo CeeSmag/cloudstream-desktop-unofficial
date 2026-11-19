@@ -20,6 +20,7 @@ pub(crate) fn load_details(ctx: &BridgeContext, item: &PosterItem) {
         media_key: item.media_key.to_string(),
         poster_url: Some(item.poster.to_string()).filter(|poster| !poster.is_empty()),
         resume_media_key: None,
+        ..DetailsTarget::default()
     };
     ctx.session.borrow_mut().details = target.clone();
     let ticket = ctx.issue_ticket(RequestKind::Details);
