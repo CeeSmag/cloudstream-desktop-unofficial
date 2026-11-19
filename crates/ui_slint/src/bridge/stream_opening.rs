@@ -8,12 +8,13 @@ use playback_session::{
 };
 
 use crate::background_work::{spawn_work, UiSender};
-use crate::posters::source_rows;
 use crate::request_tickets::{RequestKind, Ticket};
+use crate::source_menu::SourceFilter;
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::source_picker::show_sources;
 
 /// What a worker needs to open one video.
 struct OpenJob {
@@ -49,6 +50,7 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         session.links.clear();
         session.selected = 0;
         session.watch.reset();
+        session.source_filter = SourceFilter::default();
         session.away_key = None;
         (session.control.clone(), session.live.clone(), ticket)
     };
@@ -240,8 +242,7 @@ pub(crate) fn switch_source(ctx: &BridgeContext, index: usize) {
     match play_stream(ctx, index, position) {
         Ok(()) => {
             ctx.session.borrow_mut().selected = index;
-            let snapshot = ctx.session.borrow().live.snapshot();
-            ui.set_sources(source_rows(&snapshot.links, Some(index)));
+            show_sources(ctx);
         }
         Err(error) => {
             tracing::warn!(%error, index, "switching the source failed");

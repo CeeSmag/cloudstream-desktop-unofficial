@@ -12,6 +12,7 @@ use super::home_callbacks::wire_home;
 use super::player_callbacks::wire_player;
 use super::player_track_callbacks::wire_player_tracks;
 use super::preference_callbacks::wire_preferences;
+use super::source_picker::wire_source_picker;
 use super::storage_settings_callbacks::wire_storage_settings;
 use super::update_callbacks::wire_updates;
 
@@ -22,6 +23,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_details(ctx, ui);
     wire_player(ctx, ui);
     wire_player_tracks(ctx, ui);
+    wire_source_picker(ctx, ui);
     wire_preferences(ctx, ui);
     wire_storage_settings(ctx, ui);
     wire_extension_settings(ctx, ui);

@@ -3,10 +3,10 @@
 use playback_session::{CheckedOpen, OpenProgress};
 
 use crate::playback_watch::SourceCheck;
-use crate::posters::source_rows;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::source_picker::show_sources;
 use super::stream_opening::start_selected;
 
 pub(crate) fn show_open_progress(ui: &CloudStream, progress: OpenProgress) {
@@ -51,6 +51,5 @@ pub(crate) fn show_open_update(ctx: &BridgeContext, ui: &CloudStream, open: Chec
             .collect();
         session.live.publish(open.clone());
     }
-    let selected = ctx.session.borrow().selected;
-    ui.set_sources(source_rows(&open.links, Some(selected)));
+    show_sources(ctx);
 }

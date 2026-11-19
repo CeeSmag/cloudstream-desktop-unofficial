@@ -17,11 +17,37 @@ export struct ShelfSection {
     items: [PosterItem],
 }
 
+/// One stream of the player's Sources menu.
 export struct SourceItem {
+    /// Its place in the open list (what switching takes).
+    index: int,
     label: string,
-    detail: string,
+    /// `HLS`, `DASH`, `MKV`, `Video`.
+    kind: string,
+    /// `1.3 GB`; empty when unknown.
+    size: string,
+    /// The preferred subtitle languages it offers (`EN`).
+    flags: [string],
+    checking: bool,
     working: bool,
     selected: bool,
+}
+
+/// A toggle of a filter row (`1080p` with its count, or a subtitle language).
+export struct FilterChip {
+    label: string,
+    count: string,
+    on: bool,
+}
+
+/// The counts and toggles above the Sources list.
+export struct SourceMenuInfo {
+    /// Streams before any filter.
+    total: int,
+    resolution-shown: int,
+    subtitle-shown: int,
+    tiers: [FilterChip],
+    subtitles: [FilterChip],
 }
 
 export struct EpisodeItem {

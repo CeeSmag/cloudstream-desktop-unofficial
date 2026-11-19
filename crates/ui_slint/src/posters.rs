@@ -3,7 +3,7 @@
 use core_model::{Bookmark, SearchResult, WatchProgress};
 use slint::{Image, ModelRc, VecModel};
 
-use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection, SourceItem};
+use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection};
 
 fn empty_image() -> Image {
     Image::default()
@@ -130,33 +130,6 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
                 data: item.detail_url.clone().into(),
                 image: empty_image(),
                 progress,
-            }
-        })
-        .collect();
-    ModelRc::new(VecModel::from(rows))
-}
-
-pub(crate) fn source_rows(
-    links: &[(core_model::PlayableLink, Option<app_services::LinkHealth>)],
-    selected: Option<usize>,
-) -> ModelRc<SourceItem> {
-    let rows: Vec<SourceItem> = links
-        .iter()
-        .enumerate()
-        .map(|(index, (link, health))| {
-            let working = health
-                .as_ref()
-                .is_some_and(app_services::LinkHealth::is_working);
-            let detail = match health {
-                Some(h) if h.is_working() => "Working".to_owned(),
-                Some(_) => "Broken".to_owned(),
-                None => "Checking…".to_owned(),
-            };
-            SourceItem {
-                label: app_services::full_label(link).into(),
-                detail: detail.into(),
-                working,
-                selected: selected == Some(index),
             }
         })
         .collect();

@@ -1,6 +1,7 @@
 import { Button } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { SourceItem } from "types.slint";
+import { SourceItem, SourceMenuInfo } from "types.slint";
+import { SourcePanel } from "source_panel.slint";
 
 /// A horizontal bar the viewer drags; the shown value follows `value` (0..1) until dragged, and
 /// `committed` reports the new value when the button is released. Not the std `Slider`: dragging
@@ -128,6 +129,8 @@ export component PlayerOverlay inherits Rectangle {
     in-out property <bool> show-sources: false;
     in-out property <bool> chrome-visible: true;
     in property <[SourceItem]> sources: [];
+    in property <SourceMenuInfo> source-info;
+    in property <bool> can-refresh: true;
     in property <[string]> audio-track-labels: [];
     in property <[string]> subtitle-track-labels: [];
     in property <string> audio-track-value: "";
@@ -142,6 +145,8 @@ export component PlayerOverlay inherits Rectangle {
     callback refresh-sources();
     callback skip-segment();
     callback select-source(int);
+    callback toggle-tier(int);
+    callback toggle-source-subtitle(int);
     callback select-audio(string);
     callback select-subtitle(string);
     callback toggle-fullscreen();
@@ -300,57 +305,17 @@ export component PlayerOverlay inherits Rectangle {
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
     }
 
-    if root.show-sources: Rectangle {
+    if root.show-sources: SourcePanel {
         x: parent.width - self.width - 20px;
         y: 80px;
-        width: 360px;
         height: parent.height - 250px;
-        background: #141824f2;
-        border-radius: Theme.radius;
-        drop-shadow-blur: 24px;
-        drop-shadow-color: #00000099;
-        VerticalLayout {
-            padding: 12px;
-            spacing: 8px;
-            HorizontalLayout {
-                Text {
-                    text: "Sources (" + root.sources.length + ")";
-                    color: Theme.text;
-                    font-size: 16px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                }
-                Button { text: "Refresh"; clicked => { root.refresh-sources(); } }
-            }
-            Flickable {
-                list := VerticalLayout {
-                    spacing: 4px;
-                    alignment: start;
-                    for src[i] in root.sources: Rectangle {
-                        height: 52px;
-                        background: src.selected ? Theme.panel-hi : (pick.has-hover ? #ffffff14 : transparent);
-                        border-radius: Theme.radius-sm;
-                        HorizontalLayout {
-                            padding: 8px;
-                            spacing: 8px;
-                            Rectangle {
-                                width: 8px;
-                                height: 8px;
-                                y: (parent.height - self.height) / 2;
-                                border-radius: 4px;
-                                background: src.working ? Theme.ok : (src.detail == "Checking…" ? Theme.muted : Theme.danger);
-                            }
-                            VerticalLayout {
-                                Text { text: src.label; color: Theme.text; overflow: elide; }
-                                Text { text: src.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
-                            }
-                        }
-                        pick := TouchArea { clicked => { root.select-source(i); } }
-                    }
-                }
-            }
-        }
+        sources: root.sources;
+        info: root.source-info;
+        can-refresh: root.can-refresh;
+        refresh => { root.refresh-sources(); }
+        pick(index) => { root.select-source(index); }
+        toggle-tier(i) => { root.toggle-tier(i); }
+        toggle-subtitle(i) => { root.toggle-source-subtitle(i); }
     }
 
     hide-timer := Timer {

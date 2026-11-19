@@ -1,7 +1,7 @@
 import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
+    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
     RepositoryItem, AvailablePlugin
 } from "types.slint";
 import { HomePage } from "home.slint";
@@ -13,7 +13,7 @@ import { CloudflareBanner } from "cloudflare_banner.slint";
 import { TopBar } from "top_bar.slint";
 import { Toast } from "toast.slint";
 
-export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
+export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -97,6 +97,7 @@ export component CloudStream inherits Window {
     in property <[PosterItem]> continue-items: [];
     in property <[EpisodeItem]> episodes: [];
     in property <[SourceItem]> sources: [];
+    in property <SourceMenuInfo> source-info;
     in property <[PluginItem]> plugins: [];
     in property <[RepositoryItem]> repositories: [];
     in property <[AvailablePlugin]> available-plugins: [];
@@ -150,6 +151,8 @@ export component CloudStream inherits Window {
     callback skip-checks();
     callback refresh-sources();
     callback select-source(int);
+    callback toggle-source-tier(int);
+    callback toggle-source-subtitle(int);
     callback toggle-pause();
     callback seek-to(float);
     callback set-volume(float);
@@ -417,6 +420,10 @@ export component CloudStream inherits Window {
             show-sources <=> show-sources;
             chrome-visible <=> player-chrome-visible;
             sources: sources;
+            source-info: source-info;
+            can-refresh: !open-busy;
+            toggle-tier(i) => { toggle-source-tier(i); }
+            toggle-source-subtitle(i) => { toggle-source-subtitle(i); }
             audio-track-labels: audio-track-labels;
             subtitle-track-labels: subtitle-track-labels;
             audio-track-value: audio-track-value;

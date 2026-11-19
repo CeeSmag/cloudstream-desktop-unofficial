@@ -5,6 +5,7 @@ use playback_session::{LiveSources, OpenControl};
 
 use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
+use crate::source_menu::SourceFilter;
 
 use super::focus_screens::FocusScreen;
 use crate::request_tickets::RequestTickets;
@@ -46,6 +47,8 @@ pub(crate) struct Session {
     pub(crate) episodes: Vec<EpisodeRow>,
     /// What to do when the playing stream fails or ends.
     pub(crate) watch: PlaybackWatch,
+    /// The filters of the Sources menu (reset for every new video).
+    pub(crate) source_filter: SourceFilter,
     /// How each source of the open list fared in its check.
     pub(crate) source_checks: Vec<SourceCheck>,
     /// The video the viewer left (still loaded, paused) by its media key.
@@ -86,6 +89,7 @@ impl Default for Session {
             browse_items: Vec::new(),
             episodes: Vec::new(),
             watch: PlaybackWatch::default(),
+            source_filter: SourceFilter::default(),
             source_checks: Vec::new(),
             away_key: None,
             available: Vec::new(),

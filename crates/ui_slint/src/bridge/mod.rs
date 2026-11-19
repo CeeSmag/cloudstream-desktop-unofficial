@@ -28,6 +28,7 @@ mod player_track_callbacks;
 mod poster_hydrate;
 mod preference_callbacks;
 mod session;
+mod source_picker;
 mod storage_settings_callbacks;
 mod stream_events;
 mod stream_opening;
