@@ -54,6 +54,7 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         session.watch.reset();
         session.source_filter = SourceFilter::default();
         session.away_key = None;
+        session.reset_for_new_open();
         (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {

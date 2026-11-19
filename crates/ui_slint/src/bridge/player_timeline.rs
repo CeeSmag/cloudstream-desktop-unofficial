@@ -21,14 +21,14 @@ use super::skip_lookup_start::start_online_lookup;
 /// What the player knows about the playing stream's parts.
 #[derive(Debug, Default)]
 pub(crate) struct Timeline {
-    chapters: Vec<Chapter>,
+    pub(crate) chapters: Vec<Chapter>,
     /// The parts the chapters name, and those an online database knows.
     chapter_parts: Vec<Segment>,
     online: Vec<Segment>,
     /// Both merged: what the bar and the skip button use.
     segments: Vec<Segment>,
-    /// The stream length the chapters were read for (-1: not yet).
-    read_for: Option<i64>,
+    /// The stream length the chapters were read for (None: not yet).
+    pub(crate) read_for: Option<i64>,
     prompt: Option<SkipPrompt>,
 }
 

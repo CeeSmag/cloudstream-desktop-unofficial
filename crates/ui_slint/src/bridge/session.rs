@@ -138,6 +138,15 @@ impl Session {
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
     }
+
+    /// Clears per-stream UI state when a different video starts opening.
+    pub(crate) fn reset_for_new_open(&mut self) {
+        self.tickets.cancel(RequestKind::Skips);
+        self.seeks.cancel();
+        self.timeline = Timeline::default();
+        self.source_checks.clear();
+        self.shown_tracks.clear();
+    }
 }
 
 #[cfg(test)]
@@ -160,5 +169,20 @@ mod tests {
             .control
             .cancel
             .load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn reset_for_new_open_clears_timeline_skips_seeks_and_checks() {
+        let mut session = Session::default();
+        let skips = session.tickets.issue(RequestKind::Skips);
+        session.timeline.read_for = Some(1_400_000);
+        session.source_checks = vec![crate::playback_watch::SourceCheck::Working];
+        let _ = session.seeks.press(1_000, std::time::Instant::now());
+        let _ = session.seeks.press(2_000, std::time::Instant::now());
+        session.reset_for_new_open();
+        assert!(!session.tickets.is_current(skips));
+        assert_eq!(session.timeline.read_for, None);
+        assert!(session.source_checks.is_empty());
+        assert!(session.seeks.pending().is_none());
     }
 }
