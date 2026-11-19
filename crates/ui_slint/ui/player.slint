@@ -1,6 +1,6 @@
-import { Button } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { SourceItem, SourceMenuInfo } from "types.slint";
+import { SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
 import { SourcePanel } from "source_panel.slint";
 
 /// A horizontal bar the viewer drags; the shown value follows `value` (0..1) until dragged, and
@@ -73,43 +73,83 @@ component BarButton inherits Rectangle {
     }
 }
 
-/// A list of choices in a panel (audio tracks, subtitles).
+/// A list of tracks in a panel (audio, subtitles); preferred languages carry a tag.
 component ChoicePanel inherits Rectangle {
     in property <string> title;
-    in property <[string]> choices;
-    in property <string> current;
-    callback picked(string);
-    width: 280px;
-    background: #141824f2;
+    in property <[TrackChoice]> choices;
+    callback picked(int);
+    width: 300px;
+    background: #141824f5;
     border-radius: Theme.radius;
     drop-shadow-blur: 24px;
     drop-shadow-color: #00000099;
+    TouchArea { }
     VerticalLayout {
         padding: 12px;
         spacing: 4px;
         Text {
             text: root.title;
             color: Theme.muted;
-            font-size: Theme.caption-size;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
         }
         if root.choices.length == 0: Text {
             text: "None in this stream";
             color: Theme.muted;
         }
-        for choice in root.choices: Rectangle {
-            height: 36px;
-            border-radius: Theme.radius-sm;
-            background: choice == root.current ? Theme.panel-hi : (row.has-hover ? #ffffff14 : transparent);
-            Text {
-                x: 10px;
-                text: (choice == root.current ? "✓  " : "    ") + choice;
-                color: Theme.text;
-                vertical-alignment: center;
-                overflow: elide;
-                width: parent.width - 20px;
-            }
-            row := TouchArea {
-                clicked => { root.picked(choice); }
+        ScrollView {
+            max-height: 420px;
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+                for choice in root.choices: Rectangle {
+                    height: 38px;
+                    border-radius: Theme.radius-sm;
+                    background: choice.selected ? #5b8cff26 : (row.has-hover ? #ffffff14 : transparent);
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: choice.label;
+                    accessible-checked: choice.selected;
+                    row := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.picked(choice.id); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 8px;
+                        Text {
+                            text: choice.label;
+                            color: choice.selected ? Theme.accent : Theme.text;
+                            font-weight: choice.selected ? 700 : 400;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        if choice.flag != "": Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            height: 20px;
+                            width: flag.preferred-width + 12px;
+                            border-radius: 5px;
+                            background: #ffffff26;
+                            flag := Text {
+                                text: choice.flag;
+                                color: Theme.text;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        if choice.selected: Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: Theme.accent;
+                        }
+                    }
+                }
             }
         }
     }
@@ -131,10 +171,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <[SourceItem]> sources: [];
     in property <SourceMenuInfo> source-info;
     in property <bool> can-refresh: true;
-    in property <[string]> audio-track-labels: [];
-    in property <[string]> subtitle-track-labels: [];
-    in property <string> audio-track-value: "";
-    in property <string> subtitle-track-value: "";
+    in property <[TrackChoice]> audio-tracks: [];
+    in property <[TrackChoice]> subtitle-tracks: [];
 
     callback toggle-pause();
     callback seek-to(float);
@@ -147,8 +185,8 @@ export component PlayerOverlay inherits Rectangle {
     callback select-source(int);
     callback toggle-tier(int);
     callback toggle-source-subtitle(int);
-    callback select-audio(string);
-    callback select-subtitle(string);
+    callback select-audio(int);
+    callback select-subtitle(int);
     callback toggle-fullscreen();
 
     property <int> open-panel: 0; // 0 none, 1 audio, 2 subtitles
@@ -291,8 +329,7 @@ export component PlayerOverlay inherits Rectangle {
         x: parent.width - self.width - 28px;
         y: parent.height - self.height - 140px;
         title: "Audio";
-        choices: root.audio-track-labels;
-        current: root.audio-track-value;
+        choices: root.audio-tracks;
         picked(v) => { root.select-audio(v); root.open-panel = 0; }
     }
 
@@ -300,8 +337,7 @@ export component PlayerOverlay inherits Rectangle {
         x: parent.width - self.width - 28px;
         y: parent.height - self.height - 140px;
         title: "Subtitles";
-        choices: root.subtitle-track-labels;
-        current: root.subtitle-track-value;
+        choices: root.subtitle-tracks;
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
     }
 

@@ -13,6 +13,7 @@ mod posters;
 mod request_tickets;
 mod source_menu;
 mod startup_progress;
+mod track_menu;
 mod ui_events;
 
 pub use app_services::UiServices;

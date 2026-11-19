@@ -5,10 +5,10 @@
 //! They now have their own 16 ms timer and are copied only when a new one exists.
 
 use player_api::{MediaTrack, PlaybackState, TrackKind};
-use slint::{ComponentHandle, Image, SharedPixelBuffer};
+use slint::{ComponentHandle, Image, ModelRc, SharedPixelBuffer, VecModel};
 
-use crate::posters::string_model;
-use crate::CloudStream;
+use crate::track_menu::{track_rows, TrackRow};
+use crate::{CloudStream, TrackChoice};
 
 use super::bridge_context::BridgeContext;
 use super::playback_reactions::react_to_status;
@@ -56,27 +56,37 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
 
 /// Rebuilding the track menus every tick reset them while open; now only when the tracks change.
 fn show_tracks_if_changed(ctx: &BridgeContext, ui: &CloudStream, tracks: &[MediaTrack]) {
-    let labels = track_labels(tracks);
-    if ctx.session.borrow().shown_tracks == labels {
+    if ctx.session.borrow().shown_tracks == tracks {
         return;
     }
-    ui.set_audio_track_labels(string_model(labels.0.iter().cloned()));
-    ui.set_subtitle_track_labels(string_model(labels.1.iter().cloned()));
-    ctx.session.borrow_mut().shown_tracks = labels;
+    let preferred = ctx
+        .services
+        .settings
+        .preferred_subtitles()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "cannot read the preferred subtitle languages");
+            Vec::new()
+        });
+    ui.set_audio_tracks(track_model(&track_rows(tracks, TrackKind::Audio, &[])));
+    ui.set_subtitle_tracks(track_model(&track_rows(
+        tracks,
+        TrackKind::Subtitle,
+        &preferred,
+    )));
+    ctx.session.borrow_mut().shown_tracks = tracks.to_vec();
 }
 
-/// Audio labels, and subtitle labels starting with "Off".
-pub(crate) fn track_labels(tracks: &[MediaTrack]) -> (Vec<String>, Vec<String>) {
-    let of = |kind: TrackKind| -> Vec<String> {
-        tracks
-            .iter()
-            .filter(|track| track.kind == kind)
-            .map(MediaTrack::label)
-            .collect()
-    };
-    let mut subtitles = vec!["Off".to_owned()];
-    subtitles.extend(of(TrackKind::Subtitle));
-    (of(TrackKind::Audio), subtitles)
+fn track_model(rows: &[TrackRow]) -> ModelRc<TrackChoice> {
+    ModelRc::new(VecModel::from(
+        rows.iter()
+            .map(|row| TrackChoice {
+                label: row.label.clone().into(),
+                id: i32::try_from(row.id).unwrap_or(-1),
+                flag: row.flag.clone().into(),
+                selected: row.selected,
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 /// The player renders at the window's size (it was never told, so it rendered at its default).
@@ -113,12 +123,5 @@ mod tests {
         assert_eq!(format_time(-5), "0:00");
         assert_eq!(format_time(65_400), "1:05");
         assert_eq!(format_time(3_725_000), "1:02:05");
-    }
-
-    #[test]
-    fn track_labels_subtitles_start_with_off() {
-        let (audio, subtitles) = track_labels(&[]);
-        assert!(audio.is_empty());
-        assert_eq!(subtitles, ["Off"]);
     }
 }

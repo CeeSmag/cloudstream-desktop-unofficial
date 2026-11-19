@@ -72,9 +72,14 @@ export struct SettingChoice {
     value: string,
 }
 
+/// One row of the player's Audio or Subtitles menu.
 export struct TrackChoice {
     label: string,
+    /// The player's id of the track; -1 for "Off".
     id: int,
+    /// The preferred language it is in (`EN`); empty for the rest.
+    flag: string,
+    selected: bool,
 }
 
 export struct RepositoryItem {

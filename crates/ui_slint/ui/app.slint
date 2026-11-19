@@ -120,10 +120,8 @@ export component CloudStream inherits Window {
     in property <string> subtitle-add-value: "";
     in property <string> subtitle-chips: "";
     in property <[string]> season-labels: [];
-    in property <[string]> audio-track-labels: [];
-    in property <[string]> subtitle-track-labels: [];
-    in property <string> audio-track-value: "";
-    in property <string> subtitle-track-value: "";
+    in property <[TrackChoice]> audio-tracks: [];
+    in property <[TrackChoice]> subtitle-tracks: [];
     in property <string> selected-provider: "";
     in property <string> video-cache-label: "";
     in property <bool> keep-video-ready: true;
@@ -196,8 +194,8 @@ export component CloudStream inherits Window {
     callback bookmark-continue(int);
     callback remove-continue(int);
     callback season-chosen(string);
-    callback select-audio-track(string);
-    callback select-subtitle-track(string);
+    callback select-audio-track(int);
+    callback select-subtitle-track(int);
     callback bookmark-item(string, string, string);
     callback toggle-fullscreen();
 
@@ -424,10 +422,8 @@ export component CloudStream inherits Window {
             can-refresh: !open-busy;
             toggle-tier(i) => { toggle-source-tier(i); }
             toggle-source-subtitle(i) => { toggle-source-subtitle(i); }
-            audio-track-labels: audio-track-labels;
-            subtitle-track-labels: subtitle-track-labels;
-            audio-track-value: audio-track-value;
-            subtitle-track-value: subtitle-track-value;
+            audio-tracks: audio-tracks;
+            subtitle-tracks: subtitle-tracks;
             toggle-pause => { toggle-pause(); }
             seek-to(v) => { seek-to(v); }
             set-volume(v) => { set-volume(v); }
