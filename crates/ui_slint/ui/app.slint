@@ -283,11 +283,12 @@ export component CloudStream inherits Window {
                 wide: root.wide-window;
                 focused-tab: root.focus-visible && root.focus-row == -1 ? root.focus-col : -1;
                 provider: root.selected-provider;
+                providers: root.providers;
                 busy: root.home-loading || root.search-loading || root.browse-loading || root.details-loading
                     || root.open-busy || root.plugins-loading || root.extensions-busy != "";
                 status: root.open-busy ? root.status-line : "";
                 select-tab(i) => { select-tab(i); }
-                provider-clicked => { root.settings-page-index = 1; select-tab(4); }
+                set-provider(name) => { set-provider(name); }
                 update: root.update-badge;
                 update-clicked => { root.settings-page-index = 0; select-tab(4); }
             }

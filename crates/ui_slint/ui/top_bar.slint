@@ -1,4 +1,4 @@
-import { ProgressIndicator } from "std-widgets.slint";
+import { ProgressIndicator, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
 /// One tab of the top bar; `focused` draws the remote's focus ring.
@@ -31,11 +31,52 @@ component NavTab inherits Rectangle {
     }
 }
 
+/// One row in the Home-provider dropdown.
+component ProviderMenuRow inherits Rectangle {
+    in property <string> name;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    background: touch.has-hover ? Theme.panel-hi : (root.selected ? #5b8cff1a : transparent);
+    accessible-role: AccessibleRole.list-item;
+    accessible-label: root.name;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: space-between;
+        Text {
+            text: root.name;
+            color: root.selected ? Theme.accent : Theme.text;
+            font-size: 13px;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.selected: Rectangle {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.accent;
+            vertical-stretch: 0;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 /// Logo, tabs, the Home provider and an activity strip that moves while anything loads.
 export component TopBar inherits Rectangle {
     in property <int> tab;
     in property <int> focused-tab: -1;
     in property <string> provider;
+    in property <[string]> providers: [];
     in property <bool> busy;
     in property <string> status;
     /// "Update v0.5.0" when a newer release can be installed; empty for none.
@@ -44,7 +85,7 @@ export component TopBar inherits Rectangle {
     in property <bool> compact;
     in property <bool> wide;
     callback select-tab(int);
-    callback provider-clicked();
+    callback set-provider(string);
     callback update-clicked();
 
     height: 68px;
@@ -101,21 +142,83 @@ export component TopBar inherits Rectangle {
                 clicked => { root.update-clicked(); }
             }
         }
-        if root.provider != "" && !root.compact: Rectangle {
+        if root.provider != "" && !root.compact: provider-chip := Rectangle {
             height: 34px;
-            width: chip.preferred-width + 28px;
+            width: chip-row.preferred-width + 28px;
             border-radius: 17px;
-            background: chip-touch.has-hover ? Theme.panel-hi : Theme.panel;
-            chip := Text {
-                text: "● " + root.provider;
-                color: Theme.text;
-                font-size: 13px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            background: chip-touch.has-hover || provider-menu.is-open ? Theme.panel-hi : Theme.panel;
+            border-width: 1px;
+            border-color: Theme.border;
+            accessible-role: AccessibleRole.button;
+            accessible-label: "Provider " + root.provider;
+            accessible-action-default => { provider-menu.show(); }
+            chip-row := HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+                Text {
+                    text: "● " + root.provider;
+                    color: Theme.text;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    max-width: 144px;
+                }
+                Text {
+                    text: "▾";
+                    color: Theme.muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
             }
             chip-touch := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { root.provider-clicked(); }
+                clicked => { provider-menu.show(); }
+            }
+            provider-menu := PopupWindow {
+                x: min(0px, provider-chip.width - self.width);
+                y: provider-chip.height + 4px;
+                width: 192px;
+                height: min(menu-body.preferred-height, 280px);
+                close-policy: close-on-click-outside;
+                Rectangle {
+                    background: Theme.panel;
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    drop-shadow-blur: 18px;
+                    drop-shadow-color: #00000088;
+                    ScrollView {
+                        width: 100%;
+                        height: 100%;
+                        menu-body := VerticalLayout {
+                            padding-top: 8px;
+                            padding-bottom: 8px;
+                            spacing: 2px;
+                            alignment: start;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                padding-bottom: 4px;
+                                Text {
+                                    text: "Active Provider";
+                                    color: Theme.muted;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    letter-spacing: 1px;
+                                    horizontal-alignment: left;
+                                }
+                            }
+                            for name in root.providers: ProviderMenuRow {
+                                name: name;
+                                selected: name == root.provider;
+                                clicked => {
+                                    root.set-provider(name);
+                                    provider-menu.close();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
