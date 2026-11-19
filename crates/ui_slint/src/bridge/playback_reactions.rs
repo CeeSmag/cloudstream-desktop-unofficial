@@ -56,6 +56,10 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
     }
     super::player_polling::clear_video_frame(ctx, ui);
     ui.set_show_sources(false);
+    ui.set_sources_loading(false);
+    ui.set_sources_status("".into());
+    ui.set_subtitles_loading(false);
+    ui.set_subtitles_status("".into());
     ui.set_player_open_panel(0);
     ui.set_player_source_badge("".into());
     ui.set_player_open(false);

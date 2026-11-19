@@ -14,7 +14,9 @@ use super::extension_changes::show_change_done;
 use super::home_expanded::show_home_section_page;
 use super::player_timeline::show_online_parts;
 use super::storage_usage_view::show_storage_usage;
-use super::stream_events::{show_open_progress, show_open_update, start_ready_stream};
+use super::stream_events::{
+    on_open_finished, on_subtitle_ready, show_open_progress, show_open_update, start_ready_stream,
+};
 
 /// Shows everything the workers finished since the last tick.
 pub(crate) fn drain_events(ctx: &BridgeContext, ui: &CloudStream) {
@@ -45,16 +47,25 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         UiEvent::BrowseLoaded(_, result) => show_browse(ctx, ui, result),
         UiEvent::BrowseMatched(_, matched) => show_browse_match(ctx, matched),
         UiEvent::DetailsLoaded(_, page) => show_details(ctx, ui, *page),
-        UiEvent::OpenProgress(_, progress) => show_open_progress(ui, progress),
-        UiEvent::OpenReady(_, index) => start_ready_stream(ctx, ui, index),
-        UiEvent::OpenUpdate(_, open) => show_open_update(ctx, ui, open),
-        UiEvent::SkipTimesFound(_, parts) => show_online_parts(ctx, ui, parts),
-        UiEvent::OpenFailed(_, error) => {
-            ui.set_open_busy(false);
-            ui.set_notice(error.into());
-        }
         UiEvent::DetailsFailed(_, error) => {
             show_details_failed(ctx, &format!("The title could not be loaded: {error}"));
+        }
+        other => apply_player_or_system_event(ctx, ui, other),
+    }
+}
+
+fn apply_player_or_system_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
+    match event {
+        UiEvent::OpenProgress(_, progress) => show_open_progress(ctx, ui, progress),
+        UiEvent::OpenReady(_, index) => start_ready_stream(ctx, ui, index),
+        UiEvent::OpenUpdate(_, open) => show_open_update(ctx, ui, open),
+        UiEvent::OpenFinished(_) => on_open_finished(ctx, ui),
+        UiEvent::SubtitleReady(_, ready) => on_subtitle_ready(ctx, ui, ready),
+        UiEvent::SkipTimesFound(_, parts) => show_online_parts(ctx, ui, parts),
+        UiEvent::OpenFailed(_, error) => {
+            on_open_finished(ctx, ui);
+            ui.set_open_busy(false);
+            ui.set_notice(error.into());
         }
         UiEvent::Notice(text) => ui.set_notice(text.into()),
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
@@ -62,5 +73,6 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         UiEvent::UpdateBadge(badge) => ui.set_update_badge(badge.into()),
         UiEvent::ExtensionChanged(message) => show_change_done(ctx, ui, message),
         UiEvent::ExtensionsLoaded(catalog) => show_catalog(ctx, ui, *catalog),
+        _ => {}
     }
 }

@@ -7,6 +7,7 @@
 use player_api::{MediaTrack, PlaybackState, TrackKind};
 use slint::{ComponentHandle, Image, ModelRc, SharedPixelBuffer, VecModel};
 
+use crate::check_text::subtitles_loading_text;
 use crate::feedback_text::{audio_only, waiting_text};
 use crate::seek_bar::format_time;
 use crate::track_menu::{track_rows, TrackRow};
@@ -36,9 +37,45 @@ pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_player_audio_only(audio_only(&status));
     ui.set_fullscreen(ui.window().is_fullscreen());
     show_tracks_if_changed(ctx, ui, &playback.tracks());
+    sync_subtitles_indicator(ctx, ui);
     show_timeline(ctx, ui, &status);
     follow_window_size(ctx, ui);
     react_to_status(ctx, ui, &status.state);
+}
+
+/// Clears cached track menus immediately when switching sources so stale tracks never linger.
+pub(crate) fn reset_tracks_ui(ctx: &BridgeContext, ui: &CloudStream) {
+    ctx.session.borrow_mut().shown_tracks.clear();
+    ui.set_audio_tracks(track_model(&[]));
+    ui.set_subtitle_tracks(track_model(&track_rows(&[], TrackKind::Subtitle, &[])));
+}
+
+/// Updates the player's Subtitles loading indicator from search, downloads, and mpv attachment.
+pub(crate) fn sync_subtitles_indicator(ctx: &BridgeContext, ui: &CloudStream) {
+    let (searching, downloads) = {
+        let session = ctx.session.borrow();
+        let snapshot = session
+            .subtitle_delivery
+            .as_ref()
+            .map(super::subtitle_delivery::SubtitleDeliveryHandle::snapshot)
+            .unwrap_or_default();
+        (session.sources_searching, snapshot)
+    };
+    let mpv_pending = ctx
+        .services
+        .playback
+        .as_ref()
+        .map_or(0, |playback| playback.pending_subtitles());
+    match subtitles_loading_text(searching, downloads, mpv_pending) {
+        Some(text) => {
+            ui.set_subtitles_loading(true);
+            ui.set_subtitles_status(text.into());
+        }
+        None => {
+            ui.set_subtitles_loading(false);
+            ui.set_subtitles_status("".into());
+        }
+    }
 }
 
 /// Shows the newest video frame, if there is one the screen has not shown yet.

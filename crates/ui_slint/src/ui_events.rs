@@ -25,7 +25,10 @@ pub(crate) enum UiEvent {
     OpenProgress(Ticket, playback_session::OpenProgress),
     OpenReady(Ticket, usize),
     OpenUpdate(Ticket, playback_session::CheckedOpen),
+    OpenFinished(Ticket),
     OpenFailed(Ticket, String),
+    /// A downloaded, normalized local subtitle file ready for the player.
+    SubtitleReady(Ticket, ReadySubtitleEvent),
     /// Online skip times for the stream the ticket was issued for.
     SkipTimesFound(Ticket, Vec<crate::skip_segments::Segment>),
     Notice(String),
@@ -53,7 +56,9 @@ impl UiEvent {
             | Self::OpenProgress(ticket, _)
             | Self::OpenReady(ticket, _)
             | Self::OpenUpdate(ticket, _)
+            | Self::OpenFinished(ticket)
             | Self::OpenFailed(ticket, _)
+            | Self::SubtitleReady(ticket, _)
             | Self::SkipTimesFound(ticket, _) => Some(*ticket),
             _ => None,
         }
@@ -115,6 +120,13 @@ pub(crate) struct HomeSectionPage {
     pub(crate) shelf_index: usize,
     pub(crate) page: u32,
     pub(crate) result: Result<(Vec<core_model::SearchResult>, bool), String>,
+}
+
+/// A normalized local subtitle ready to hand to the player, paired with its original remote URL.
+#[derive(Debug, Clone)]
+pub(crate) struct ReadySubtitleEvent {
+    pub(crate) remote_url: String,
+    pub(crate) track: core_model::SubtitleTrack,
 }
 
 /// Which poster model an artwork result belongs to.

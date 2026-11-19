@@ -44,6 +44,64 @@ pub(crate) fn can_skip_check(progress: &OpenProgress) -> bool {
     progress.working > 0
 }
 
+/// Compact status line shown inside the player's Sources panel while sources load or refresh.
+pub(crate) fn sources_loading_text(progress: &OpenProgress, refreshing: bool) -> String {
+    if progress.found == 0 {
+        return if refreshing {
+            "Refreshing sources…"
+        } else {
+            "Finding sources…"
+        }
+        .to_owned();
+    }
+    if !progress.search_done {
+        let verb = if refreshing {
+            "Refreshing sources"
+        } else {
+            "Finding sources"
+        };
+        return format!(
+            "{verb} · {} of {} checked",
+            progress.checked, progress.found
+        );
+    }
+    if progress.checked < progress.found {
+        format!(
+            "Checking sources… {} of {}",
+            progress.checked, progress.found
+        )
+    } else {
+        "Finishing sources…".to_owned()
+    }
+}
+
+/// Compact status line shown inside the player's Subtitles panel while subtitles load in.
+/// Returns `None` once search, download, and player attachment have all finished.
+pub(crate) fn subtitles_loading_text(
+    searching: bool,
+    downloads: crate::bridge::SubtitleLoadSnapshot,
+    mpv_pending: usize,
+) -> Option<String> {
+    if downloads.busy {
+        let done = downloads.ready + downloads.failed;
+        return if downloads.submitted > 0 {
+            Some(format!(
+                "Loading subtitles… ({done} of {})",
+                downloads.submitted
+            ))
+        } else {
+            Some("Loading subtitles…".to_owned())
+        };
+    }
+    if mpv_pending > 0 {
+        return Some("Attaching subtitles…".to_owned());
+    }
+    if searching {
+        return Some("Searching for subtitles…".to_owned());
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +137,49 @@ mod tests {
         assert!((check_fraction(&progress(4, 1, 0, false)) - 0.25).abs() < 1e-6);
         assert!(!can_skip_check(&progress(4, 1, 0, false)));
         assert!(can_skip_check(&progress(4, 2, 1, false)));
+    }
+
+    #[test]
+    fn sources_loading_text_distinguishes_initial_and_refresh() {
+        assert_eq!(
+            sources_loading_text(&progress(0, 0, 0, false), false),
+            "Finding sources…"
+        );
+        assert_eq!(
+            sources_loading_text(&progress(0, 0, 0, false), true),
+            "Refreshing sources…"
+        );
+        assert_eq!(
+            sources_loading_text(&progress(10, 4, 2, false), true),
+            "Refreshing sources · 4 of 10 checked"
+        );
+        assert_eq!(
+            sources_loading_text(&progress(10, 6, 3, true), false),
+            "Checking sources… 6 of 10"
+        );
+    }
+
+    #[test]
+    fn subtitles_loading_text_covers_download_attach_search_and_idle() {
+        let idle = crate::bridge::SubtitleLoadSnapshot::default();
+        assert_eq!(subtitles_loading_text(false, idle, 0), None);
+        assert_eq!(
+            subtitles_loading_text(true, idle, 0).as_deref(),
+            Some("Searching for subtitles…")
+        );
+        assert_eq!(
+            subtitles_loading_text(false, idle, 2).as_deref(),
+            Some("Attaching subtitles…")
+        );
+        let busy = crate::bridge::SubtitleLoadSnapshot {
+            submitted: 5,
+            ready: 2,
+            failed: 1,
+            busy: true,
+        };
+        assert_eq!(
+            subtitles_loading_text(true, busy, 1).as_deref(),
+            Some("Loading subtitles… (3 of 5)")
+        );
     }
 }

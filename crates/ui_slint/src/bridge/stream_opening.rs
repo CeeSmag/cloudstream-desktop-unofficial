@@ -1,11 +1,12 @@
 //! Opens a video: search and check its streams, play one, refresh or switch the source.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use app_services::{full_label, PlaybackItem, StreamSelection, UiServices};
 use playback_session::{
     run_open, title_key, CheckedOpen, LiveSources, OpenControl, OpenProgress, OpenRequest,
-    RefreshRequest,
 };
 
 use crate::background_work::{spawn_work, UiSender};
@@ -17,17 +18,18 @@ use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::player_feedback::show_feedback;
-use super::player_polling::clear_video_frame;
+use super::player_polling::{clear_video_frame, reset_tracks_ui, sync_subtitles_indicator};
 use super::source_picker::show_sources;
+use super::subtitle_delivery::{DeliveryRequest, SubtitleDeliveryHandle};
 
-/// What a worker needs to open one video.
-struct OpenJob {
-    ticket: Ticket,
-    services: UiServices,
-    item: PlaybackItem,
-    data: String,
-    control: OpenControl,
-    live: LiveSources,
+/// What a worker needs to open or refresh one video.
+pub(crate) struct OpenJob {
+    pub(crate) ticket: Ticket,
+    pub(crate) services: UiServices,
+    pub(crate) item: PlaybackItem,
+    pub(crate) data: String,
+    pub(crate) control: OpenControl,
+    pub(crate) live: LiveSources,
 }
 
 /// Starts finding streams for `item` (`data` is the provider's episode or movie payload);
@@ -55,6 +57,8 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         session.watch.reset();
         session.source_filter = SourceFilter::default();
         session.reset_for_new_open();
+        let delivery = start_subtitle_delivery(ctx, &item, ticket, HashSet::new());
+        session.subtitle_delivery = Some(delivery);
         (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {
@@ -81,6 +85,31 @@ fn claim_title_caches(ctx: &BridgeContext, item: &PlaybackItem) {
     ctx.session.borrow_mut().kept_sources = Some(kept);
 }
 
+/// Starts background subtitle downloading/caching for `item` under `ticket`.
+fn start_subtitle_delivery(
+    ctx: &BridgeContext,
+    item: &PlaybackItem,
+    ticket: Ticket,
+    already_delivered: HashSet<String>,
+) -> SubtitleDeliveryHandle {
+    let preferred = ctx
+        .services
+        .settings
+        .preferred_subtitles()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "cannot read preferred subtitle languages");
+            Vec::new()
+        });
+    SubtitleDeliveryHandle::start(DeliveryRequest {
+        loader: Arc::clone(&ctx.services.subtitle_loader),
+        title_key: title_key(&item.provider, &item.media_key),
+        preferred,
+        already_delivered,
+        ticket,
+        sender: ctx.sender(),
+    })
+}
+
 /// The opening panel starts empty: nothing found, nothing to play yet.
 fn show_opening_started(ui: &CloudStream, shown_title: &str) {
     ui.set_open_busy(true);
@@ -88,6 +117,10 @@ fn show_opening_started(ui: &CloudStream, shown_title: &str) {
     ui.set_open_status("".into());
     ui.set_open_fraction(0.0);
     ui.set_can_skip_checks(false);
+    ui.set_sources_loading(true);
+    ui.set_sources_status("Finding sources…".into());
+    ui.set_subtitles_loading(true);
+    ui.set_subtitles_status("Searching for subtitles…".into());
     ui.set_player_title(shown_title.into());
 }
 
@@ -128,60 +161,35 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
         }
         Err(error) => sender.send(UiEvent::OpenFailed(ticket, error.to_string())),
     }
+    sender.send(UiEvent::OpenFinished(ticket));
 }
 
-/// Searches the playing title's streams again while the current one keeps playing.
-pub(crate) fn refresh_playing(ctx: &BridgeContext) {
-    let (job, playing_link) = prepare_refresh(ctx);
-    let sender = ctx.sender();
-    spawn_work("refresh-sources", move || {
-        run_refresh_job(&job, playing_link, &sender)
-    });
-}
-
-/// New ticket and control so the still-running open cannot race this refresh.
-fn prepare_refresh(ctx: &BridgeContext) -> (OpenJob, Option<core_model::PlayableLink>) {
+/// New ticket, control, and subtitle delivery handle so the still-running open cannot race refresh.
+pub(crate) fn build_refresh_job(
+    ctx: &BridgeContext,
+) -> (OpenJob, Option<core_model::PlayableLink>) {
     let mut session = ctx.session.borrow_mut();
     let (control, ticket) = session.begin_source_refresh();
     let playing_link = session.links.get(session.selected).cloned();
+    let item = session
+        .target
+        .clone()
+        .unwrap_or_else(|| empty_item(&session.details.provider));
+    let delivery =
+        start_subtitle_delivery(ctx, &item, ticket, session.delivered_subtitle_urls.clone());
+    if !session.provider_subtitles.is_empty() {
+        delivery.submit(&session.provider_subtitles);
+    }
+    session.subtitle_delivery = Some(delivery);
     let job = OpenJob {
         ticket,
         services: ctx.owned_services(),
-        item: session
-            .target
-            .clone()
-            .unwrap_or_else(|| empty_item(&session.details.provider)),
+        item,
         data: session.episode_data.clone(),
         control,
         live: session.live.clone(),
     };
     (job, playing_link)
-}
-
-fn run_refresh_job(
-    job: &OpenJob,
-    playing_link: Option<core_model::PlayableLink>,
-    sender: &UiSender,
-) {
-    let ticket = job.ticket;
-    let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
-    let on_update = |open: &CheckedOpen| sender.send(UiEvent::OpenUpdate(ticket, open.clone()));
-    let request = RefreshRequest {
-        streams: &job.services.streams,
-        provider: &job.item.provider,
-        data: &job.data,
-        media_key: &job.item.media_key,
-        playing_link: playing_link.as_ref(),
-        cache: Some(&job.services.title_cache),
-        live: &job.live,
-        control: &job.control,
-        on_progress: &on_progress,
-        on_update: &on_update,
-    };
-    match playback_session::refresh_sources(request) {
-        Ok(opened) => sender.send(UiEvent::OpenUpdate(ticket, opened)),
-        Err(error) => sender.notice(format!("Refresh failed: {error}")),
-    }
 }
 
 fn empty_item(provider: &str) -> PlaybackItem {
@@ -210,7 +218,7 @@ fn play_stream(ctx: &BridgeContext, index: usize, start_position_ms: i64) -> Res
             .get(index)
             .cloned()
             .ok_or("that source is gone")?;
-        (item, link, session.subtitles.clone())
+        (item, link, session.ready_subtitles.clone())
     };
     let stream = StreamSelection {
         link: &link,
@@ -261,6 +269,8 @@ pub(crate) fn switch_source(ctx: &BridgeContext, index: usize) {
     match play_stream(ctx, index, position) {
         Ok(()) => {
             ctx.session.borrow_mut().selected = index;
+            reset_tracks_ui(ctx, &ui);
+            sync_subtitles_indicator(ctx, &ui);
             show_sources(ctx);
             let label = ctx.session.borrow().links.get(index).map(full_label);
             if let Some(label) = label {

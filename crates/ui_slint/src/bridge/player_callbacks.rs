@@ -14,7 +14,8 @@ use super::player_feedback::show_feedback;
 use super::player_polling::clear_video_frame;
 use super::player_seeking::wire_seeking;
 use super::source_persist::persist_playing_sources;
-use super::stream_opening::{refresh_playing, switch_source};
+use super::stream_opening::switch_source;
+use super::stream_refresh::refresh_playing;
 
 pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -148,6 +149,10 @@ fn leave_player(ctx: &BridgeContext) {
 fn reset_player_ui(ctx: &BridgeContext, ui: &CloudStream) {
     clear_video_frame(ctx, ui);
     ui.set_show_sources(false);
+    ui.set_sources_loading(false);
+    ui.set_sources_status("".into());
+    ui.set_subtitles_loading(false);
+    ui.set_subtitles_status("".into());
     ui.set_player_open_panel(0);
     ui.set_player_source_badge("".into());
     ui.set_player_open(false);

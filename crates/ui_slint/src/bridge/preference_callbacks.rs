@@ -1,5 +1,6 @@
 //! Settings > Preferences: playback switches and languages.
 
+use app_services::UiServices;
 use player_api::{all_languages, Language};
 use slint::SharedString;
 
@@ -7,6 +8,30 @@ use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::subtitle_languages::show_subtitle_languages;
+
+/// Sends the saved audio and subtitle preferences (honoring the auto-select toggle) to the player.
+pub(crate) fn apply_player_language_preferences(services: &UiServices) {
+    let Some(playback) = &services.playback else {
+        return;
+    };
+    match services.settings.preferred_audio() {
+        Ok(audio) => playback.set_preferred_audio(audio),
+        Err(error) => tracing::warn!(%error, "could not read preferred audio language"),
+    }
+    let auto = services.settings.auto_select_subtitles().unwrap_or(true);
+    let subtitles = if auto {
+        services
+            .settings
+            .preferred_subtitles()
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "could not read preferred subtitle languages");
+                Vec::new()
+            })
+    } else {
+        Vec::new()
+    };
+    playback.set_preferred_subtitles(&subtitles);
+}
 
 pub(crate) fn wire_preferences(ctx: &BridgeContext, ui: &CloudStream) {
     wire_switches(ctx, ui);
@@ -50,6 +75,7 @@ fn wire_switches(ctx: &BridgeContext, ui: &CloudStream) {
             "auto subtitles",
             c.services.settings.set_auto_select_subtitles(on),
         );
+        apply_player_language_preferences(&c.services);
         c.window().inspect(|ui| ui.set_auto_subtitles(on));
     });
 }
@@ -90,9 +116,7 @@ fn set_subtitle_languages(ctx: &BridgeContext, languages: &[Language]) {
         "subtitle languages",
         ctx.services.settings.set_preferred_subtitles(languages),
     );
-    if let Some(playback) = &ctx.services.playback {
-        playback.set_preferred_subtitles(languages);
-    }
+    apply_player_language_preferences(&ctx.services);
     if let Some(ui) = ctx.window() {
         show_subtitle_languages(&ui, languages);
     }

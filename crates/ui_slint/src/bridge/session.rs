@@ -13,6 +13,7 @@ use super::focus_screens::FocusScreen;
 use super::home_expanded::ExpandedShelfState;
 use super::home_loading::HomeShelf;
 use super::player_timeline::Timeline;
+use super::subtitle_delivery::SubtitleDeliveryHandle;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
 
@@ -40,7 +41,20 @@ pub(crate) struct Session {
     pub(crate) control: OpenControl,
     pub(crate) live: LiveSources,
     pub(crate) links: Vec<core_model::PlayableLink>,
-    pub(crate) subtitles: Vec<core_model::SubtitleTrack>,
+    /// Downloaded, normalized local subtitle files ready to pass to mpv.
+    pub(crate) ready_subtitles: Vec<core_model::SubtitleTrack>,
+    /// Remote URLs already delivered as ready local subtitles (dedup across refresh).
+    pub(crate) delivered_subtitle_urls: std::collections::HashSet<String>,
+    /// Union of provider-advertised subtitles for the open title (preserved across refresh).
+    pub(crate) provider_subtitles: Vec<core_model::SubtitleTrack>,
+    /// Background downloader/normalizer for the open video's external subtitles.
+    pub(crate) subtitle_delivery: Option<SubtitleDeliveryHandle>,
+    /// True while initial open or Refresh Sources is still searching/checking streams.
+    pub(crate) sources_loading: bool,
+    /// True while the provider's link/subtitle search has not finished yet.
+    pub(crate) sources_searching: bool,
+    /// True when the active background source pass was triggered by Refresh Sources.
+    pub(crate) sources_refreshing: bool,
     pub(crate) selected: usize,
     pub(crate) target: Option<PlaybackItem>,
     pub(crate) episode_data: String,
@@ -113,7 +127,13 @@ impl Default for Session {
             control: OpenControl::default(),
             live: LiveSources::new(),
             links: Vec::new(),
-            subtitles: Vec::new(),
+            ready_subtitles: Vec::new(),
+            delivered_subtitle_urls: std::collections::HashSet::new(),
+            provider_subtitles: Vec::new(),
+            subtitle_delivery: None,
+            sources_loading: false,
+            sources_searching: false,
+            sources_refreshing: false,
             selected: 0,
             target: None,
             episode_data: String::new(),
@@ -151,6 +171,12 @@ impl Session {
     /// Used when leaving or closing the player so `OpenReady` cannot reopen it.
     pub(crate) fn abandon_open(&mut self) {
         self.control.cancel_open();
+        if let Some(delivery) = self.subtitle_delivery.take() {
+            delivery.stop();
+        }
+        self.sources_loading = false;
+        self.sources_searching = false;
+        self.sources_refreshing = false;
         self.tickets.cancel(RequestKind::Open);
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
@@ -158,6 +184,15 @@ impl Session {
 
     /// Clears per-stream UI state when a different video starts opening.
     pub(crate) fn reset_for_new_open(&mut self) {
+        if let Some(delivery) = self.subtitle_delivery.take() {
+            delivery.stop();
+        }
+        self.ready_subtitles.clear();
+        self.delivered_subtitle_urls.clear();
+        self.provider_subtitles.clear();
+        self.sources_loading = true;
+        self.sources_searching = true;
+        self.sources_refreshing = false;
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
         self.timeline = Timeline::default();
@@ -168,10 +203,30 @@ impl Session {
     /// Stops the in-flight open/refresh and starts a new one under a fresh ticket and control.
     pub(crate) fn begin_source_refresh(&mut self) -> (OpenControl, crate::request_tickets::Ticket) {
         self.control.cancel_open();
+        if let Some(delivery) = self.subtitle_delivery.take() {
+            delivery.stop();
+        }
         self.control = OpenControl::default();
+        self.sources_loading = true;
+        self.sources_searching = true;
+        self.sources_refreshing = true;
         let ticket = self.tickets.issue(RequestKind::Open);
         (self.control.clone(), ticket)
     }
+}
+
+/// Keeps the playing stream selected by URL after `links` is replaced during open or refresh.
+pub(crate) fn resolve_selected_index(
+    links: &[core_model::PlayableLink],
+    playing_url: Option<&str>,
+    fallback: Option<usize>,
+) -> usize {
+    if let Some(url) = playing_url {
+        if let Some(index) = links.iter().position(|link| link.url == url) {
+            return index;
+        }
+    }
+    fallback.filter(|index| *index < links.len()).unwrap_or(0)
 }
 
 #[cfg(test)]
