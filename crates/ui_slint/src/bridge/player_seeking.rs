@@ -1,5 +1,5 @@
 //! Jumps in the video: a click on the bar goes at once, the arrow keys and ±10 s are spaced out
-//! ([`crate::seek_scheduler`]) and the bar shows where they go before the player gets there.
+//! ([`crate::seek_scheduler`]) and the bar holds the jump target while the player catches up.
 
 use std::time::Instant;
 
@@ -18,15 +18,24 @@ pub(crate) fn wire_seeking(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_seek_by(move |delta| seek_by(&c, delta as i64));
 }
 
-/// A click or drag on the bar: goes at once, and any waiting key jump is forgotten.
+/// A click or drag on the bar: goes at once, holds the target briefly, and forgets queued keys.
 fn jump_to(ctx: &BridgeContext, target_ms: i64) {
     let Some(playback) = &ctx.services.playback else {
         return;
     };
-    ctx.session.borrow_mut().seeks.cancel();
+    ctx.session
+        .borrow_mut()
+        .seeks
+        .send_now(target_ms, Instant::now());
     report("seek", playback.seek_to(target_ms));
     if let Some(ui) = ctx.window() {
-        show_feedback(&ui, format!("Jump to {}", format_time(target_ms)), None);
+        show_position(&ui, target_ms);
+        show_feedback(
+            &ui,
+            "jump",
+            format!("Jump to {}", format_time(target_ms)),
+            None,
+        );
     }
 }
 
@@ -35,21 +44,22 @@ fn seek_by(ctx: &BridgeContext, delta_ms: i64) {
     let Some(playback) = &ctx.services.playback else {
         return;
     };
+    let now = Instant::now();
     let status = playback.tick();
     let base = ctx
         .session
         .borrow()
         .seeks
-        .pending()
-        .unwrap_or(status.position_ms);
+        .seek_base(status.position_ms, now);
     let target = (base + delta_ms).clamp(0, status.duration_ms.max(0));
-    let send = ctx.session.borrow_mut().seeks.press(target, Instant::now());
+    let send = ctx.session.borrow_mut().seeks.press(target, now);
     if let Some(target) = send {
         report("seek", playback.seek_to(target));
     }
     if let Some(ui) = ctx.window() {
         show_position(&ui, target);
-        show_feedback(&ui, seek_text(delta_ms), None);
+        let icon = if delta_ms < 0 { "back" } else { "forward" };
+        show_feedback(&ui, icon, seek_text(delta_ms), None);
     }
 }
 
@@ -61,9 +71,12 @@ pub(crate) fn send_due_seek(ctx: &BridgeContext) {
     }
 }
 
-/// Where the bar and the time say the video is: the waiting jump's target while one waits.
+/// Where the bar and the time say the video is: the jump's target while settling, else `playing_ms`.
 pub(crate) fn shown_position(ctx: &BridgeContext, playing_ms: i64) -> i64 {
-    ctx.session.borrow().seeks.pending().unwrap_or(playing_ms)
+    ctx.session
+        .borrow_mut()
+        .seeks
+        .shown_position(playing_ms, Instant::now())
 }
 
 fn show_position(ui: &CloudStream, position_ms: i64) {

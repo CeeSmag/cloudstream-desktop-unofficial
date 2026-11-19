@@ -47,17 +47,32 @@ pub(crate) fn chapter_at(chapters: &[Chapter], position_ms: i64) -> Option<&Chap
         .max_by_key(|chapter| chapter.time_ms)
 }
 
+/// Structured parts for the seek bar tooltip: `(time, chapter, part)`.
+pub(crate) fn hover_parts(
+    position_ms: i64,
+    chapters: &[Chapter],
+    part: Option<&str>,
+) -> (String, String, String) {
+    let time = format_time(position_ms);
+    let chapter = chapter_at(chapters, position_ms)
+        .map(|chapter| chapter.title.clone())
+        .unwrap_or_default();
+    let part = part.unwrap_or_default().to_owned();
+    (time, chapter, part)
+}
+
 /// The text over the bar for the point at `position_ms`: its time, then the chapter and the part
 /// of the video (`Intro`) when known.
+#[cfg(test)]
 pub(crate) fn hover_text(position_ms: i64, chapters: &[Chapter], part: Option<&str>) -> String {
-    let mut text = format_time(position_ms);
-    if let Some(chapter) = chapter_at(chapters, position_ms) {
+    let (mut text, chapter, part) = hover_parts(position_ms, chapters, part);
+    if !chapter.is_empty() {
         text.push_str("  ");
-        text.push_str(&chapter.title);
+        text.push_str(&chapter);
     }
-    if let Some(part) = part {
+    if !part.is_empty() {
         text.push_str(" · ");
-        text.push_str(part);
+        text.push_str(&part);
     }
     text
 }

@@ -3,14 +3,14 @@
 //! buttons.
 
 use player_api::{Chapter, PlaybackStatus};
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{ModelRc, VecModel};
 
-use crate::seek_bar::{buffered_fraction, chapter_notches, hover_text};
+use crate::seek_bar::{buffered_fraction, chapter_notches, hover_parts};
 use crate::skip_segments::{
     merge_segments, segment_at, segments_from_chapters, skip_prompt, PromptAction, Segment,
     SkipPrompt,
 };
-use crate::{CloudStream, SeekMark};
+use crate::{CloudStream, SeekMark, SeekPreview};
 
 use super::bridge_context::BridgeContext;
 use super::details_callbacks::play_episode;
@@ -34,11 +34,16 @@ pub(crate) struct Timeline {
 
 pub(crate) fn wire_timeline(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
-    ui.on_describe_seek(move |ms| {
+    ui.on_preview_seek(move |ms| {
         let session = c.session.borrow();
         let timeline = &session.timeline;
         let part = segment_at(&timeline.segments, ms as i64).map(|s| s.kind.name());
-        SharedString::from(hover_text(ms as i64, &timeline.chapters, part))
+        let (time, chapter, part) = hover_parts(ms as i64, &timeline.chapters, part);
+        SeekPreview {
+            time: time.into(),
+            chapter: chapter.into(),
+            part: part.into(),
+        }
     });
     let c = ctx.clone();
     ui.on_skip_segment(move || take_prompt(&c));

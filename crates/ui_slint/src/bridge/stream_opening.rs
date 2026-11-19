@@ -261,7 +261,7 @@ pub(crate) fn switch_source(ctx: &BridgeContext, index: usize) {
             show_sources(ctx);
             let label = ctx.session.borrow().links.get(index).map(full_label);
             if let Some(label) = label {
-                show_feedback(&ui, source_text(&label), None);
+                show_feedback(&ui, "source", source_text(&label), None);
             }
         }
         Err(error) => {

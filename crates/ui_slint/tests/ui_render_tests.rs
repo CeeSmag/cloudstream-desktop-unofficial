@@ -5,15 +5,15 @@ use std::path::Path;
 use std::rc::Rc;
 
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::platform::{Platform, WindowAdapter};
+use slint::platform::{Platform, WindowAdapter, WindowEvent};
 use slint::{
-    ComponentHandle, Image, Model, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel,
-    SharedPixelBuffer, SharedString, VecModel,
+    ComponentHandle, Image, LogicalPosition, Model, ModelRc, PhysicalSize, PlatformError,
+    Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel,
 };
 use ui_slint::{
     AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, FilterChip, HomeExpanded,
     PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem,
-    SeekMark, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
+    SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
 };
 
 const WIDTH: u32 = 1280;
@@ -435,8 +435,35 @@ fn sample_subtitle_tracks() -> ModelRc<TrackChoice> {
     ]))
 }
 
+fn sample_video_frame() -> Image {
+    let (w, h) = (320u32, 200u32);
+    let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(w, h);
+    for (idx, px) in buf.make_mut_slice().iter_mut().enumerate() {
+        let x = (idx as u32) % w;
+        let y = (idx as u32) / w;
+        let horizon = y > 118;
+        px.r = if horizon {
+            (40 + x / 6).min(255) as u8
+        } else {
+            (32 + (y * 140 / 118)).min(255) as u8
+        };
+        px.g = if horizon {
+            (62 + (y - 118) / 2).min(255) as u8
+        } else {
+            (58 + (x / 5)).min(255) as u8
+        };
+        px.b = if horizon {
+            (108 + x / 4).min(255) as u8
+        } else {
+            (116 + (118 - y) / 2).min(255) as u8
+        };
+    }
+    Image::from_rgb8(buf)
+}
+
 fn populate_player(ui: &CloudStream) {
     ui.set_player_open(true);
+    ui.set_video_frame(sample_video_frame());
     ui.set_player_title("Severance · S2 E4 — Woe's Hollow".into());
     ui.set_player_source_badge("1080p · HLS".into());
     ui.set_duration_ms(3_120_000.0);
@@ -465,21 +492,82 @@ fn populate_player(ui: &CloudStream) {
     ui.set_subtitle_tracks(sample_subtitle_tracks());
 }
 
-fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
-    populate_details(ui);
-    assert_non_blank(&render_frame(window, "08_details"), "details");
-    ui.set_details_title("".into());
-    populate_player(ui);
+fn dispatch_scroll(window: &MinimalSoftwareWindow, x: f32, y: f32) {
+    let pos = LogicalPosition::new(x, y);
+    window.dispatch_event(WindowEvent::PointerMoved { position: pos });
+    window.dispatch_event(WindowEvent::PointerScrolled {
+        position: pos,
+        delta_x: 0.0,
+        delta_y: 60.0,
+    });
+}
+
+fn verify_player_scroll_isolation(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    let wheel_hits = Rc::new(RefCell::new(0usize));
+    let hits_ref = wheel_hits.clone();
+    ui.on_wheel_volume(move |_| *hits_ref.borrow_mut() += 1);
+    ui.on_preview_seek(|_| SeekPreview {
+        time: "28:15".into(),
+        chapter: "Woe's Hollow".into(),
+        part: "Credits".into(),
+    });
+
+    ui.set_show_sources(false);
+    ui.set_player_open_panel(0);
+    // Hover over the seek bar so 09a_player captures the vertical cursor line, thumb & tooltip.
+    window.dispatch_event(WindowEvent::PointerMoved {
+        position: LogicalPosition::new(720.0, 706.0),
+    });
     assert_non_blank(&render_frame(window, "09a_player"), "player");
+    dispatch_scroll(window, 400.0, 400.0);
+    assert_eq!(*wheel_hits.borrow(), 1, "scrolling video adjusts volume");
+
     ui.set_show_sources(true);
     assert_non_blank(
         &render_frame(window, "09b_player_sources"),
         "player_sources",
     );
+    dispatch_scroll(window, 1040.0, 300.0);
+    assert_eq!(*wheel_hits.borrow(), 1, "Sources hover blocks wheel volume");
+    dispatch_scroll(window, 400.0, 400.0);
+    assert_eq!(*wheel_hits.borrow(), 2, "video outside Sources still works");
+
+    verify_track_drawer_scroll(ui, window, &wheel_hits);
+}
+
+fn verify_track_drawer_scroll(
+    ui: &CloudStream,
+    window: &MinimalSoftwareWindow,
+    wheel_hits: &Rc<RefCell<usize>>,
+) {
     ui.set_show_sources(false);
     ui.set_player_open_panel(2);
     ui.set_player_waiting("Buffering 45%".into());
+    ui.set_player_feedback_icon("volume".into());
+    ui.set_player_feedback("Volume 75%".into());
+    ui.set_player_feedback_level(0.75);
+    ui.set_player_feedback_count(1);
     assert_non_blank(&render_frame(window, "09c_player_tracks"), "player_tracks");
+    dispatch_scroll(window, 1080.0, 560.0);
+    assert_eq!(
+        *wheel_hits.borrow(),
+        2,
+        "Subtitles hover blocks wheel volume"
+    );
+    dispatch_scroll(window, 400.0, 400.0);
+    assert_eq!(
+        *wheel_hits.borrow(),
+        3,
+        "video outside Subtitles still works"
+    );
+}
+
+fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    populate_details(ui);
+    assert_non_blank(&render_frame(window, "08_details"), "details");
+    ui.set_details_title("".into());
+    populate_player(ui);
+    verify_player_scroll_isolation(ui, window);
     ui.set_player_open_panel(0);
     ui.set_player_waiting("".into());
     ui.set_player_open(false);

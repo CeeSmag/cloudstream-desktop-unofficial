@@ -25,7 +25,7 @@ fn select_track(ctx: &BridgeContext, kind: TrackKind, id: i32) {
     let id = i64::from(id);
     if kind == TrackKind::Subtitle && id == OFF_ID {
         report("subtitles off", playback.select_track(kind, None));
-        tell(ctx, subtitle_text(None));
+        tell(ctx, "subtitles", subtitle_text(None));
         return;
     }
     let picked = playback
@@ -37,17 +37,15 @@ fn select_track(ctx: &BridgeContext, kind: TrackKind, id: i32) {
         return;
     };
     report("select track", playback.select_track(kind, Some(id)));
-    tell(
-        ctx,
-        match kind {
-            TrackKind::Subtitle => subtitle_text(Some(&track.label())),
-            TrackKind::Audio => audio_text(&track.label()),
-        },
-    );
+    let (icon, text) = match kind {
+        TrackKind::Subtitle => ("subtitles", subtitle_text(Some(&track.label()))),
+        TrackKind::Audio => ("audio", audio_text(&track.label())),
+    };
+    tell(ctx, icon, text);
 }
 
-fn tell(ctx: &BridgeContext, text: String) {
+fn tell(ctx: &BridgeContext, icon: &str, text: String) {
     if let Some(ui) = ctx.window() {
-        show_feedback(&ui, text, None);
+        show_feedback(&ui, icon, text, None);
     }
 }

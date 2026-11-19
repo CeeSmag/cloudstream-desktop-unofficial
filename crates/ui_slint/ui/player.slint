@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvBadge, TvProgressBar } from "controls.slint";
-import { SeekMark, SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
+import { SeekMark, SeekPreview, SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
 import {
     ChoicePanel, DragBar, PlayerActionButton, SkipPromptPill, VolumeCapsule
 } from "player_controls.slint";
@@ -22,6 +22,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <bool> audio-only: false;
     /// The pop-up confirming the viewer's last action; a new count shows it again.
     in property <string> feedback-text: "";
+    /// Action icon key for the pop-up ("play", "pause", "volume", "mute", "back", "forward", ...).
+    in property <string> feedback-icon: "";
     /// A level bar under the pop-up (volume), 0..1; below 0 for none.
     in property <float> feedback-level: -1;
     in property <int> feedback-count: 0;
@@ -49,8 +51,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <[TrackChoice]> subtitle-tracks: [];
 
     callback toggle-pause();
-    /// The text over the seek bar for a point of the video (time, chapter, part).
-    pure callback describe-seek(float) -> string;
+    /// Structured hover/drag preview over the seek bar (time, chapter, skip part).
+    pure callback preview-seek(float) -> SeekPreview;
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
@@ -75,6 +77,26 @@ export component PlayerOverlay inherits Rectangle {
     property <bool> seek-dragging: false;
     property <bool> vol-dragging: false;
     property <bool> dragging-slider: root.seek-dragging || root.vol-dragging;
+
+    pure function feedback-icon-path(name: string) -> string {
+        if name == "play" { return Icons.play; }
+        if name == "pause" { return Icons.pause; }
+        if name == "volume" { return Icons.volume; }
+        if name == "mute" { return Icons.volume-muted; }
+        if name == "back" { return Icons.rotate-ccw; }
+        if name == "forward" { return Icons.rotate-cw; }
+        if name == "jump" { return Icons.skip-forward; }
+        if name == "fullscreen" { return Icons.maximize; }
+        if name == "windowed" { return Icons.minimize; }
+        if name == "audio" { return Icons.audio; }
+        if name == "subtitles" { return Icons.subtitles; }
+        if name == "source" { return Icons.layers; }
+        return "";
+    }
+
+    pure function feedback-icon-filled(name: string) -> bool {
+        return name == "play" || name == "pause" || name == "jump";
+    }
 
     background: #000000;
     accessible-role: AccessibleRole.main;
@@ -195,12 +217,12 @@ export component PlayerOverlay inherits Rectangle {
             cross-axis-alignment: center;
             Rectangle {
                 width: 340px;
-                background: Theme.panel-glass;
+                background: #0b101cc4;
                 border-radius: Theme.radius-lg;
                 border-width: 1px;
-                border-color: Theme.border-hi;
-                drop-shadow-blur: 32px;
-                drop-shadow-color: #000000b8;
+                border-color: #ffffff20;
+                drop-shadow-blur: 28px;
+                drop-shadow-color: #00000099;
                 VerticalLayout {
                     padding: 28px;
                     spacing: 14px;
@@ -240,31 +262,31 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
-    // Non-colliding obsidian loading / buffering pill with indeterminate CloudStream Blue bar
+    // Non-colliding translucent loading / buffering pill with indeterminate CloudStream Blue bar
     if root.waiting-text != "": Rectangle {
         x: (parent.width - self.width) / 2;
-        y: root.chrome-visible ? 86px : 26px;
-        height: 44px;
-        width: max(188px, waiting-text.preferred-width + 48px);
-        border-radius: 14px;
-        background: Theme.panel-glass;
+        y: root.chrome-visible ? 82px : 24px;
+        height: 40px;
+        width: max(180px, waiting-text.preferred-width + 44px);
+        border-radius: 13px;
+        background: #0b101c80;
         border-width: 1px;
-        border-color: Theme.accent-border;
+        border-color: #5b8cff55;
         clip: true;
-        drop-shadow-blur: 20px;
-        drop-shadow-color: #000000a8;
+        drop-shadow-blur: 14px;
+        drop-shadow-color: #00000055;
         animate y { duration: 180ms; easing: ease-out; }
 
         HorizontalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
+            padding-left: 18px;
+            padding-right: 18px;
             padding-bottom: 3px;
             alignment: center;
             cross-axis-alignment: center;
             waiting-text := Text {
                 text: root.waiting-text;
                 color: Theme.text;
-                font-size: 13.5px;
+                font-size: 13px;
                 font-weight: 600;
                 vertical-alignment: center;
             }
@@ -279,39 +301,46 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
-    // Center action feedback OSD (volume, seek, track switch, fullscreen)
+    // Ultra-translucent center action feedback OSD (matches old repo's see-through pop-up + icons)
     feedback := Rectangle {
         property <bool> shown: false;
+        property <string> icon-cmd: root.feedback-icon-path(root.feedback-icon);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        height: 58px;
-        width: feedback-row.preferred-width + 44px;
+        height: 54px;
+        width: feedback-row.preferred-width;
         border-radius: 16px;
-        background: Theme.panel-glass;
+        background: #080b1270;
         border-width: 1px;
-        border-color: Theme.border-hi;
-        drop-shadow-blur: 26px;
-        drop-shadow-color: #000000b8;
+        border-color: #ffffff22;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: #00000088;
         opacity: self.shown ? 1 : 0;
-        animate opacity { duration: 200ms; }
+        animate opacity { duration: 220ms; }
         feedback-row := HorizontalLayout {
-            padding-left: 22px;
-            padding-right: 22px;
-            spacing: 14px;
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 12px;
             alignment: center;
             cross-axis-alignment: center;
+            if feedback.icon-cmd != "": TvIcon {
+                commands: feedback.icon-cmd;
+                filled: root.feedback-icon-filled(root.feedback-icon);
+                size: 22px;
+                color: root.feedback-icon == "mute" ? Theme.danger : Theme.accent-hi;
+            }
             Text {
                 text: root.feedback-text;
-                color: Theme.text;
-                font-size: 18px;
+                color: #ffffff;
+                font-size: 17px;
                 font-weight: 700;
                 vertical-alignment: center;
             }
             if root.feedback-level >= 0: Rectangle {
-                width: 116px;
+                width: 108px;
                 height: 6px;
                 border-radius: 3px;
-                background: #ffffff28;
+                background: #ffffff2c;
                 clip: true;
                 Rectangle {
                     x: 0;
@@ -324,7 +353,7 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
     feedback-timer := Timer {
-        interval: 1200ms;
+        interval: 1000ms;
         running: false;
         triggered => {
             feedback.shown = false;
@@ -337,17 +366,17 @@ export component PlayerOverlay inherits Rectangle {
         feedback-timer.restart();
     }
 
-    // Top Header HUD (obsidian vignette + Back pill + accented title + active source badge)
+    // Translucent Top Header HUD
     if root.chrome-visible: Rectangle {
         y: 0;
-        height: 96px;
-        background: @linear-gradient(180deg, #080b12e6 0%, #080b1280 58%, #080b1200 100%);
+        height: 86px;
+        background: @linear-gradient(180deg, #080b128c 0%, #080b1230 62%, #080b1200 100%);
         HorizontalLayout {
             padding-left: 24px;
             padding-right: 24px;
-            padding-top: 20px;
-            padding-bottom: 20px;
-            spacing: 14px;
+            padding-top: 18px;
+            padding-bottom: 18px;
+            spacing: 13px;
             cross-axis-alignment: center;
 
             PlayerActionButton {
@@ -358,16 +387,16 @@ export component PlayerOverlay inherits Rectangle {
             }
 
             Rectangle {
-                width: 3.5px;
-                height: 22px;
-                border-radius: 2px;
+                width: 3px;
+                height: 20px;
+                border-radius: 1.5px;
                 background: Theme.accent;
             }
 
             Text {
                 text: root.title;
                 color: Theme.text;
-                font-size: 19px;
+                font-size: 18px;
                 font-weight: 700;
                 vertical-alignment: center;
                 overflow: elide;
@@ -381,24 +410,23 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
-    // Bottom Cinema Vignette + Floating Obsidian Glass Control Dock
+    // Soft Bottom Vignette + Airy Translucent Obsidian Glass Control Dock
     if root.chrome-visible: Rectangle {
         y: parent.height - self.height;
-        height: 164px;
-        background: @linear-gradient(0deg, #080b12eb 0%, #080b1280 65%, #080b1200 100%);
+        height: 144px;
+        background: @linear-gradient(0deg, #080b126e 0%, #080b1228 65%, #080b1200 100%);
 
-        // Floating glass dock echoing the TopBar & Settings Card surfaces
         Rectangle {
             x: 24px;
-            y: parent.height - self.height - 20px;
+            y: parent.height - self.height - 18px;
             width: parent.width - 48px;
-            height: 118px;
-            border-radius: 18px;
-            background: Theme.panel-glass;
+            height: 104px;
+            border-radius: 16px;
+            background: #0b101c66;
             border-width: 1px;
-            border-color: Theme.border-hi;
-            drop-shadow-blur: 28px;
-            drop-shadow-color: #000000cc;
+            border-color: #ffffff20;
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000048;
             // Clicks on the dock itself never toggle playback underneath.
             TouchArea {
                 changed mouse-x => { root.show-chrome(); }
@@ -406,22 +434,22 @@ export component PlayerOverlay inherits Rectangle {
             }
 
             VerticalLayout {
-                padding-left: 20px;
-                padding-right: 20px;
-                padding-top: 14px;
-                padding-bottom: 14px;
-                spacing: 12px;
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 10px;
+                padding-bottom: 12px;
+                spacing: 9px;
                 alignment: center;
 
                 // Row 1: Scrubber timeline
                 HorizontalLayout {
-                    spacing: 14px;
+                    spacing: 12px;
                     cross-axis-alignment: center;
 
                     Text {
                         text: root.position-text;
                         color: Theme.text;
-                        font-size: 13px;
+                        font-size: 12.5px;
                         font-weight: 700;
                         min-width: 44px;
                         horizontal-alignment: left;
@@ -432,16 +460,17 @@ export component PlayerOverlay inherits Rectangle {
                         buffered: root.buffered-fraction;
                         notches: root.chapter-notches;
                         marks: root.skip-marks;
-                        hover-text: self.hovering && root.duration-ms > 1
-                            ? root.describe-seek(self.drag-value * root.duration-ms) : "";
+                        preview: (self.hovering || self.dragging) && root.duration-ms > 1
+                            ? root.preview-seek(self.drag-value * root.duration-ms)
+                            : { time: "", chapter: "", part: "" };
                         value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
                         changed dragging => { root.seek-dragging = self.dragging; }
                         committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
                     }
                     Text {
                         text: root.duration-text;
-                        color: Theme.muted;
-                        font-size: 13px;
+                        color: Theme.text-secondary;
+                        font-size: 12.5px;
                         font-weight: 600;
                         min-width: 44px;
                         horizontal-alignment: right;
@@ -451,7 +480,7 @@ export component PlayerOverlay inherits Rectangle {
 
                 // Row 2: Grouped transport & utility controls
                 HorizontalLayout {
-                    spacing: 10px;
+                    spacing: 9px;
                     cross-axis-alignment: center;
 
                     PlayerActionButton {
@@ -462,18 +491,18 @@ export component PlayerOverlay inherits Rectangle {
                         clicked => { root.show-chrome(); root.toggle-pause(); }
                     }
 
-                    // Recessed obsidian transport capsule (−10s, +10s, optional Prev/Next episode)
+                    // Translucent transport capsule (−10s, +10s, optional Prev/Next episode)
                     Rectangle {
-                        height: 38px;
+                        height: 36px;
                         width: transport-row.preferred-width;
                         horizontal-stretch: 0;
                         vertical-stretch: 0;
-                        border-radius: 12px;
-                        background: #0a0e17b0;
+                        border-radius: 10px;
+                        background: #080b1255;
                         border-width: 1px;
-                        border-color: Theme.border;
+                        border-color: #ffffff18;
                         transport-row := HorizontalLayout {
-                            padding: 3px;
+                            padding: 2px;
                             spacing: 2px;
                             cross-axis-alignment: center;
                             PlayerActionButton {
@@ -494,8 +523,8 @@ export component PlayerOverlay inherits Rectangle {
                             }
                             if root.has-previous-episode || root.has-next-episode: Rectangle {
                                 width: 1px;
-                                height: 20px;
-                                background: Theme.divider;
+                                height: 18px;
+                                background: #ffffff1c;
                             }
                             if root.has-previous-episode: PlayerActionButton {
                                 text: "Prev";
@@ -527,8 +556,8 @@ export component PlayerOverlay inherits Rectangle {
 
                     Rectangle {
                         width: 1px;
-                        height: 22px;
-                        background: Theme.divider;
+                        height: 20px;
+                        background: #ffffff1c;
                     }
 
                     PlayerActionButton {
@@ -568,7 +597,7 @@ export component PlayerOverlay inherits Rectangle {
     // Audio Track Drawer
     if root.open-panel == 1: ChoicePanel {
         x: parent.width - self.width - 24px;
-        y: parent.height - self.height - 152px;
+        y: parent.height - self.height - 138px;
         title: "Audio";
         icon: Icons.audio;
         choices: root.audio-tracks;
@@ -579,7 +608,7 @@ export component PlayerOverlay inherits Rectangle {
     // Subtitles Track Drawer
     if root.open-panel == 2: ChoicePanel {
         x: parent.width - self.width - 24px;
-        y: parent.height - self.height - 152px;
+        y: parent.height - self.height - 138px;
         title: "Subtitles";
         icon: Icons.subtitles;
         choices: root.subtitle-tracks;
@@ -590,8 +619,8 @@ export component PlayerOverlay inherits Rectangle {
     // Sources Drawer
     if root.show-sources: SourcePanel {
         x: parent.width - self.width - 24px;
-        y: 84px;
-        height: parent.height - 236px;
+        y: 80px;
+        height: parent.height - 218px;
         sources: root.sources;
         info: root.source-info;
         can-refresh: root.can-refresh;
@@ -620,7 +649,7 @@ export component PlayerOverlay inherits Rectangle {
     }
     if root.skip-label != "" && !root.any-drawer-open && (root.skip-window || root.chrome-visible): SkipPromptPill {
         x: parent.width - self.width - 24px;
-        y: parent.height - self.height - (root.chrome-visible ? 154px : 28px);
+        y: parent.height - self.height - (root.chrome-visible ? 138px : 26px);
         label: root.skip-label;
         countdown-active: root.skip-window;
         triggered => { root.skip-segment(); }

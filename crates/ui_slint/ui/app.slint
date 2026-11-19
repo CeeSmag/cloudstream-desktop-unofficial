@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvButton, TvProgressBar } from "controls.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
+    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
     RepositoryItem, AvailablePlugin, PaginationItem
 } from "types.slint";
 import { HomePage } from "home.slint";
@@ -19,7 +19,7 @@ export { PluginList } from "extensions_plugins.slint";
 export { RepoList, RepoDetail } from "extensions_repos.slint";
 export { HomeExpanded } from "home.slint";
 export { BrowseFilter } from "browse.slint";
-export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
+export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -92,6 +92,7 @@ export component CloudStream inherits Window {
     in-out property <string> player-waiting: "";
     in-out property <bool> player-audio-only: false;
     in-out property <string> player-feedback: "";
+    in-out property <string> player-feedback-icon: "";
     in-out property <float> player-feedback-level: -1;
     in-out property <int> player-feedback-count: 0;
     in-out property <float> buffered-fraction: 0;
@@ -180,7 +181,7 @@ export component CloudStream inherits Window {
     callback toggle-source-tier(int);
     callback toggle-source-subtitle(int);
     callback toggle-pause();
-    pure callback describe-seek(float) -> string;
+    pure callback preview-seek(float) -> SeekPreview;
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
@@ -499,11 +500,12 @@ export component CloudStream inherits Window {
             waiting-text: player-waiting;
             audio-only: player-audio-only;
             feedback-text: player-feedback;
+            feedback-icon: player-feedback-icon;
             feedback-level: player-feedback-level;
             feedback-count: player-feedback-count;
             buffered-fraction: buffered-fraction;
             chapter-notches: chapter-notches;
-            describe-seek(ms) => { return root.describe-seek(ms); }
+            preview-seek(ms) => { return root.preview-seek(ms); }
             volume: volume;
             fullscreen: fullscreen;
             show-sources <=> show-sources;

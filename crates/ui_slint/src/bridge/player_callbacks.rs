@@ -38,7 +38,8 @@ fn wire_volume(ctx: &BridgeContext, ui: &CloudStream) {
         }
         if let Some(ui) = c.window() {
             ui.set_volume(volume);
-            show_feedback(&ui, volume_text(volume), Some(volume / 100.0));
+            let icon = if volume <= 0.0 { "mute" } else { "volume" };
+            show_feedback(&ui, icon, volume_text(volume), Some(volume / 100.0));
         }
     });
     let c = ctx.clone();
@@ -70,7 +71,12 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_refresh_sources(move || {
         refresh_playing(&c);
         if let Some(ui) = c.window() {
-            show_feedback(&ui, "Searching for sources again".to_owned(), None);
+            show_feedback(
+                &ui,
+                "source",
+                "Searching for sources again".to_owned(),
+                None,
+            );
         }
     });
     let c = ctx.clone();
@@ -82,13 +88,21 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
     let weak = ctx.ui.clone();
     ui.on_toggle_fullscreen(move || {
         if let Some(ui) = weak.upgrade() {
-            let fullscreen = !ui.window().is_fullscreen();
-            ui.window().set_fullscreen(fullscreen);
-            ui.set_fullscreen(fullscreen);
-            let text = if fullscreen { "Fullscreen" } else { "Windowed" };
-            show_feedback(&ui, text.to_owned(), None);
+            toggle_fullscreen(&ui);
         }
     });
+}
+
+fn toggle_fullscreen(ui: &CloudStream) {
+    let fullscreen = !ui.window().is_fullscreen();
+    ui.window().set_fullscreen(fullscreen);
+    ui.set_fullscreen(fullscreen);
+    let (icon, text) = if fullscreen {
+        ("fullscreen", "Fullscreen")
+    } else {
+        ("windowed", "Windowed")
+    };
+    show_feedback(ui, icon, text.to_owned(), None);
 }
 
 fn toggle_pause(ctx: &BridgeContext) {
@@ -96,8 +110,12 @@ fn toggle_pause(ctx: &BridgeContext) {
         let paused = playback.tick().state == PlaybackState::Paused;
         report("pause", playback.set_paused(!paused));
         if let Some(ui) = ctx.window() {
-            let text = if paused { "Playing" } else { "Paused" };
-            show_feedback(&ui, text.to_owned(), None);
+            let (icon, text) = if paused {
+                ("play", "Playing")
+            } else {
+                ("pause", "Paused")
+            };
+            show_feedback(&ui, icon, text.to_owned(), None);
         }
     }
 }

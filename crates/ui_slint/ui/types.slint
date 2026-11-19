@@ -41,6 +41,13 @@ export struct SeekMark {
     kind: int,
 }
 
+/// Structured hover/drag preview shown above the seek bar.
+export struct SeekPreview {
+    time: string,
+    chapter: string,
+    part: string,
+}
+
 /// A toggle of a filter row (`1080p` with its count, or a subtitle language).
 export struct FilterChip {
     label: string,
