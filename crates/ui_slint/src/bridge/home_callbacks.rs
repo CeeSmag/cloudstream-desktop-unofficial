@@ -31,8 +31,8 @@ pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
     let weak = ctx.ui.clone();
     ui.on_resume_hero(move || {
         if let Some(ui) = weak.upgrade() {
-            if ui.get_continue_items().row_count() > 0 {
-                ui.invoke_open_library_hit(0);
+            if ui.get_hero_index() >= 0 {
+                ui.invoke_open_library_hit(ui.get_hero_index());
             }
         }
     });

@@ -7,6 +7,7 @@ use crate::playback_watch::{WatchAction, WatchInput};
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::catalog_events::show_continue_watching;
 use super::details_callbacks::play_episode;
 use super::player_callbacks::report;
 use super::stream_opening::{begin_open, switch_source};
@@ -47,6 +48,7 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
         report("stop", playback.stop());
     }
     ui.set_player_open(false);
+    show_continue_watching(ctx, ui);
     if let Some(reason) = reason {
         tracing::warn!(%reason, "playback gave up");
         ui.set_notice(reason.into());

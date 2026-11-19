@@ -83,12 +83,15 @@ pub(crate) fn screen_rows(ui: &CloudStream, screen: FocusScreen) -> Vec<usize> {
 fn home_rows(ui: &CloudStream) -> Vec<usize> {
     let mut rows = Vec::new();
     let continue_count = ui.get_continue_items().row_count();
+    let has_hero = !ui.get_hero_title().is_empty();
+    ui.set_hero_row(if has_hero { 0 } else { -1 });
+    if has_hero {
+        rows.push(1);
+    }
     if continue_count > 0 {
-        ui.set_hero_row(0);
-        ui.set_continue_row(1);
-        rows.extend([1, continue_count]);
+        ui.set_continue_row(i32::try_from(rows.len()).unwrap_or(0));
+        rows.push(continue_count);
     } else {
-        ui.set_hero_row(-1);
         ui.set_continue_row(-1);
     }
     ui.set_shelf_row_base(i32::try_from(rows.len()).unwrap_or(0));

@@ -113,6 +113,8 @@ export component HomePage inherits ScrollView {
     in property <int> focus-col: 0;
     in property <int> hero-row: -1;
     in property <int> continue-row: -1;
+    /// The banner's title in the continue-watching row (-1 for no banner).
+    in property <int> hero-index: -1;
     in property <int> shelf-row-base: 0;
     callback open-continue(int);
     callback open-shelf(int, int);
@@ -153,14 +155,14 @@ export component HomePage inherits ScrollView {
         padding-top: Theme.space-2;
         spacing: Theme.space-3;
 
-        if root.continue-items.length > 0: Hero {
+        if root.hero-title != "": Hero {
             height: clamp(root.visible-height * 0.5, 300px, 460px);
             title: root.hero-title;
             subtitle: root.hero-subtitle;
             artwork: root.hero-image;
             focused: root.focus-in(root.hero-row) >= 0;
             resume => { root.resume-hero(); }
-            info => { root.open-continue(0); }
+            info => { root.open-continue(root.hero-index); }
         }
 
         if root.continue-items.length > 0: VerticalLayout {

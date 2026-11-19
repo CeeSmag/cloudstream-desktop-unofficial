@@ -8,6 +8,7 @@ use slint::SharedString;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::catalog_events::show_continue_watching;
 use super::extension_catalog::load_extensions_catalog;
 use super::extension_changes::{
     add_repository, install_plugin, remove_repository, set_trusted, uninstall,
@@ -42,6 +43,7 @@ pub(crate) fn wire_extension_settings(ctx: &BridgeContext, ui: &CloudStream) {
 fn set_provider(ctx: &BridgeContext, name: SharedString) {
     if let Some(ui) = ctx.window() {
         ui.set_selected_provider(name.clone());
+        show_continue_watching(ctx, &ui);
     }
     saved(
         "home provider",

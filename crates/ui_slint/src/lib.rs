@@ -15,6 +15,7 @@ mod playback_watch;
 mod plugin_filter;
 mod posters;
 mod request_tickets;
+mod resume_hero;
 mod seek_bar;
 mod skip_segments;
 mod source_menu;

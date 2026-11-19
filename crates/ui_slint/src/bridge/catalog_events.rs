@@ -6,6 +6,7 @@ use crate::posters::{
     posters_from_bookmarks, posters_from_browse, posters_from_continue, posters_from_search,
     shelves_from_sections, string_model,
 };
+use crate::resume_hero::{pick_resume_hero, resume_facts};
 use crate::startup_progress::{home_loading_view, plugin_loading_view, StartupView};
 use crate::ui_events::{DetailsPage, PosterKind};
 use crate::{BrowseFilter, CloudStream};
@@ -84,7 +85,8 @@ pub(crate) fn show_library(ctx: &BridgeContext, ui: &CloudStream) {
     }
 }
 
-/// Shows the continue-watching row and the hero for its newest title.
+/// Shows the continue-watching row and the banner for the selected provider's newest
+/// unfinished title (none when that provider has none).
 pub(crate) fn show_continue_watching(ctx: &BridgeContext, ui: &CloudStream) {
     let list = match ctx.services.library.continue_watching() {
         Ok(list) => list,
@@ -94,37 +96,27 @@ pub(crate) fn show_continue_watching(ctx: &BridgeContext, ui: &CloudStream) {
         }
     };
     ui.set_continue_items(posters_from_continue(&list));
-    if let Some(first) = list.first() {
-        ui.set_hero_title(first.title.clone().into());
-        let subtitle = match (first.season, first.episode) {
-            (Some(season), Some(episode)) => format!("S{season} E{episode}"),
-            _ => first.provider.clone(),
-        };
-        let left = watched_left(first.position_ms, first.duration_ms);
-        ui.set_hero_subtitle(format!("{subtitle}{left}").into());
-        ui.set_hero_image(slint::Image::default());
-        let title = first.title.clone();
-        request_artwork(
-            ctx,
-            first.poster_url.as_deref().unwrap_or_default(),
-            move |ui, image| {
-                if ui.get_hero_title() == title.as_str() {
-                    ui.set_hero_image(image);
-                }
-            },
-        );
-    }
+    let hero = pick_resume_hero(&list, &ui.get_selected_provider());
+    ui.set_hero_index(hero.and_then(|at| i32::try_from(at).ok()).unwrap_or(-1));
+    let Some(item) = hero.and_then(|at| list.get(at)) else {
+        ui.set_hero_title("".into());
+        hydrate_poster_images(ctx, PosterKind::Continue);
+        return;
+    };
+    ui.set_hero_title(item.title.clone().into());
+    ui.set_hero_subtitle(resume_facts(item).into());
+    ui.set_hero_image(slint::Image::default());
+    let title = item.title.clone();
+    request_artwork(
+        ctx,
+        item.poster_url.as_deref().unwrap_or_default(),
+        move |ui, image| {
+            if ui.get_hero_title() == title.as_str() {
+                ui.set_hero_image(image);
+            }
+        },
+    );
     hydrate_poster_images(ctx, PosterKind::Continue);
-}
-
-/// "  ·  23 min left" when the length is known.
-fn watched_left(position_ms: i64, duration_ms: i64) -> String {
-    let minutes = (duration_ms - position_ms) / 60_000;
-    if duration_ms > 0 && minutes > 0 {
-        format!("  ·  {minutes} min left")
-    } else {
-        String::new()
-    }
 }
 
 pub(crate) fn show_home(

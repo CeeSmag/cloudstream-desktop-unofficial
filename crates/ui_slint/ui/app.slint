@@ -66,6 +66,7 @@ export component CloudStream inherits Window {
     in-out property <string> browse-kind: "movie";
     in-out property <bool> browse-loading: false;
     in-out property <string> browse-message: "";
+    in-out property <int> hero-index: -1;
     in-out property <[string]> details-tags: [];
     in-out property <string> details-cast: "";
     in-out property <string> play-label: "Play";
@@ -309,6 +310,7 @@ export component CloudStream inherits Window {
             hero-row: root.hero-row;
             continue-row: root.continue-row;
             shelf-row-base: root.shelf-row-base;
+            hero-index: root.hero-index;
                 open-continue(i) => { open-library-hit(i); }
                 open-shelf(s, i) => { open-shelf-item(s, i); }
                 resume-hero => { resume-hero(); }

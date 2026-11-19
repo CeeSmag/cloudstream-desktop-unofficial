@@ -11,6 +11,7 @@ use crate::feedback_text::{seek_text, volume_text};
 use crate::seek_bar::format_time;
 
 use super::bridge_context::BridgeContext;
+use super::catalog_events::show_continue_watching;
 use super::player_feedback::show_feedback;
 use super::stream_opening::{refresh_playing, switch_source};
 
@@ -116,6 +117,8 @@ fn close_player(ctx: &BridgeContext) {
     }
     if let Some(ui) = ctx.window() {
         ui.set_player_open(false);
+        // The saved place changed: Continue watching and the banner follow it.
+        show_continue_watching(ctx, &ui);
     }
 }
 
@@ -133,6 +136,8 @@ fn leave_player(ctx: &BridgeContext) {
     }
     if let Some(ui) = ctx.window() {
         ui.set_player_open(false);
+        // The saved place changed: Continue watching and the banner follow it.
+        show_continue_watching(ctx, &ui);
     }
 }
 
