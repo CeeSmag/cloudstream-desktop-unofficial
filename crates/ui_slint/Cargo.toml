@@ -8,16 +8,13 @@ build = "build.rs"
 
 [dependencies]
 app_services = { path = "../app_services" }
+app_updater = { path = "../app_updater" }
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 core_model = { path = "../core_model" }
-extension_api = { path = "../extension_api" }
 open = "5"
 playback_session = { path = "../playback_session" }
 poster_artwork = { path = "../poster_artwork" }
 player_api = { path = "../player_api" }
-semver = "1"
-serde.workspace = true
-serde_json.workspace = true
 # Slint's defaults minus `system-tray`: the app has no tray icon, and the tray pulls in `ksni`
 # (Unlicense, not on the license list).
 slint = { version = "1.19", default-features = false, features = [
@@ -28,10 +25,7 @@ slint = { version = "1.19", default-features = false, features = [
     "accessibility",
     "compat-1-2",
 ] }
-thiserror.workspace = true
-title_cache = { path = "../title_cache" }
 tracing.workspace = true
-ureq = "3"
 
 [build-dependencies]
 slint-build = "1.19"

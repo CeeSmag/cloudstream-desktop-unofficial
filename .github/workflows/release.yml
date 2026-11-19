@@ -105,7 +105,7 @@ jobs:
 
       # The app installs an update only when SHA256SUMS is signed with the owner's key
       # (signed SHA256SUMS for the egui updater). The script fails when a secret is missing or
-      # does not match crates/app_shell/update_signing_key.pub, so no unsigned draft is made.
+      # does not match crates/app_updater/update_signing_key.pub, so no unsigned draft is made.
       - name: Write and sign SHA256SUMS
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}

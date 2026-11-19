@@ -8,6 +8,7 @@ pub const PROBLEMS_FILE: &str = "warnings-and-errors.txt";
 pub const OWN_TARGETS: &[&str] = &[
     "app_services",
     "app_shell",
+    "app_updater",
     "cloudflare_bridge",
     "cloudflare_window",
     "cloudstream",

@@ -12,7 +12,6 @@ mod posters;
 mod request_tickets;
 mod startup_progress;
 mod ui_events;
-mod update;
 
 pub use app_services::UiServices;
 pub use bridge::{run_desktop_app, run_desktop_app_with, AppExtras, WipeRequest};

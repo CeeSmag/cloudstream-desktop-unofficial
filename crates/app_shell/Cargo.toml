@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 app_services = { path = "../app_services" }
+app_updater = { path = "../app_updater" }
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }

@@ -21,7 +21,7 @@ if [[ "${1:-}" == "--require-signature" ]]; then
 fi
 folder="${1:?usage: sign_release.sh [--require-signature] <folder with the release files>}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-public_key="${SIGN_RELEASE_PUBLIC_KEY:-$repo_root/crates/app_shell/update_signing_key.pub}"
+public_key="${SIGN_RELEASE_PUBLIC_KEY:-$repo_root/crates/app_updater/update_signing_key.pub}"
 minisign_bin="${MINISIGN:-minisign}"
 
 if [[ -n "${MINISIGN_SECRET_KEY_FILE:-}" ]]; then

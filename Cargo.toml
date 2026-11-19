@@ -13,6 +13,7 @@ members = [
     "crates/stream_proxy",
     "crates/title_cache",
     "crates/app_services",
+    "crates/app_updater",
     "crates/playback_session",
     "crates/poster_artwork",
     "crates/ui_slint",

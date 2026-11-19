@@ -16,6 +16,13 @@ fn main() -> anyhow::Result<()> {
     wipe.log();
     tracing::info!(data_dir = %paths.data_dir().display(), "cloudstream starting");
     let services = build_services(&paths, &ServiceOptions::default())?;
+    let updates_dir = paths.data_dir().to_path_buf();
+    if let Err(error) = std::thread::Builder::new()
+        .name("update-cleanup".into())
+        .spawn(move || app_updater::remove_stale_downloads(&updates_dir))
+    {
+        tracing::warn!(%error, "old update downloads are kept this run");
+    }
     // Verification windows open only for sites the viewer allowed (Verify in the app).
     let cloudflare = Some(start_cloudflare_watch(paths.data_dir(), &services.settings));
     let extras = AppExtras {

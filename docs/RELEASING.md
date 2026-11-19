@@ -16,7 +16,7 @@ The in-app updater (when ported) still picks files by name (`*-setup.exe`, `*_po
 
 From the version after 0.4.2 the app installs an update only when the release carries `SHA256SUMS`
 (`sha256sum` of every release file) and `SHA256SUMS.minisig` (its minisign signature), the signature
-is valid for the public key in `crates/app_shell/update_signing_key.pub`, and the downloaded file's
+is valid for the public key in `crates/app_updater/update_signing_key.pub`, and the downloaded file's
 SHA-256 is the one in the list. Otherwise it shows why and installs nothing.
 
 The key is the owner's minisign key `D09F1A068C469C6B`. Its secret half is kept offline by the owner
@@ -31,7 +31,7 @@ it on every tagged build and makes no draft when a secret is missing.
 
 Before pressing **Publish**, check the draft lists `SHA256SUMS` and `SHA256SUMS.minisig` next to the
 three files. To check by hand: download all of them into one folder and run
-`minisign -Vm SHA256SUMS -p crates/app_shell/update_signing_key.pub` and `sha256sum -c SHA256SUMS`.
+`minisign -Vm SHA256SUMS -p crates/app_updater/update_signing_key.pub` and `sha256sum -c SHA256SUMS`.
 
 ## The normal way: let GitHub build it
 

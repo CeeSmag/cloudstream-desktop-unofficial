@@ -6,7 +6,6 @@ use playback_session::{LiveSources, OpenControl};
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
 use crate::request_tickets::RequestTickets;
 use crate::ui_events::EpisodeRow;
-use crate::update::UpdateInfo;
 
 /// Asks for "delete all saved data" at the next start (built by the shell, which runs the wipe).
 pub type WipeRequest = Box<dyn Fn() -> std::io::Result<()>>;
@@ -37,7 +36,6 @@ pub(crate) struct Session {
     pub(crate) shown_tracks: (Vec<String>, Vec<String>),
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
-    pub(crate) update: Option<UpdateInfo>,
     pub(crate) tickets: RequestTickets,
     /// The TMDB titles Browse shows, in the grid's order.
     pub(crate) browse_items: Vec<app_services::BrowseItem>,
@@ -79,7 +77,6 @@ impl Default for Session {
             last_frame: 0,
             shown_tracks: (Vec::new(), Vec::new()),
             surface_size: (0, 0),
-            update: None,
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),
             episodes: Vec::new(),
