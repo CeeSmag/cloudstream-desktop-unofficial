@@ -1,126 +1,262 @@
-import { Button, ComboBox, ScrollView, Spinner } from "std-widgets.slint";
+import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { EpisodeItem } from "types.slint";
-import { MutedLabel } from "widgets.slint";
+import { MutedLabel, PillButton } from "widgets.slint";
 
+/// One season chip.
+component SeasonChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> focused;
+    callback clicked();
+    height: 36px;
+    width: label.preferred-width + 32px;
+    border-radius: 18px;
+    background: root.selected ? Theme.text : (touch.has-hover ? #ffffff26 : #ffffff14);
+    border-width: root.focused ? 3px : 0px;
+    border-color: Theme.accent;
+    label := Text {
+        text: root.text;
+        color: root.selected ? Theme.bg : Theme.text;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// One episode line.
+component EpisodeRow inherits Rectangle {
+    in property <EpisodeItem> episode;
+    in property <bool> focused;
+    in property <bool> resume-here;
+    callback clicked();
+    height: 64px;
+    border-radius: Theme.radius-sm;
+    background: root.focused ? Theme.panel-hi : (touch.has-hover ? #ffffff10 : #ffffff08);
+    border-width: root.focused ? 3px : 0px;
+    border-color: Theme.accent;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: Theme.space-2;
+        cross-axis-alignment: center;
+        Text {
+            text: root.episode.code;
+            color: Theme.accent;
+            font-weight: 700;
+            min-width: 64px;
+        }
+        Text {
+            text: root.episode.name;
+            color: Theme.text;
+            font-size: 15px;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.resume-here: Text { text: "Continue here"; color: Theme.accent; font-size: 13px; }
+        if root.episode.watched: Text { text: "✓ Watched"; color: Theme.ok; font-size: 13px; }
+        Text { text: "▶"; color: root.focused ? Theme.text : Theme.muted; font-size: 18px; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// A title's page: artwork, plot, actions, how the opening goes, seasons and episodes.
 export component DetailsOverlay inherits Rectangle {
     in property <string> title: "";
     in property <bool> loading: false;
     in property <bool> bookmarked: false;
-    callback toggle-bookmark();
     in property <string> plot: "";
     in property <string> meta: "";
     in property <string> resume-label: "";
+    in property <string> resume-key: "";
+    in property <image> poster;
     in property <bool> open-busy: false;
     in property <string> open-status: "";
     in property <[EpisodeItem]> episodes: [];
     in property <[string]> season-labels: [];
     in-out property <int> season-filter: -1;
+    in property <bool> focus-visible: false;
+    in property <int> focus-row: 0;
+    in property <int> focus-col: 0;
     callback play();
     callback resume();
     callback close();
     callback skip-checks();
     callback play-episode(int);
     callback season-chosen(string);
+    callback toggle-bookmark();
 
-    background: #0c0f17f2;
+    // Rows for the remote: 0 the buttons, then the seasons (when there are several), then episodes.
+    out property <int> seasons-row: root.season-labels.length > 1 ? 1 : -1;
+    out property <int> episodes-row: root.season-labels.length > 1 ? 2 : 1;
+    // The buttons' places in row 0 (the app moves by the same rule).
+    property <int> resume-index: root.resume-label != "" ? 1 : -1;
+    property <int> bookmark-index: root.resume-label != "" ? 2 : 1;
+    property <int> back-index: root.bookmark-index + 1;
+
+    pure function action-focused(index: int) -> bool {
+        return root.focus-visible && root.focus-row == 0 && root.focus-col == index;
+    }
+
+    background: Theme.bg;
     accessible-role: AccessibleRole.main;
+
+    // Ambient background: the poster, blurred and darkened.
+    if root.poster.width > 1: Image {
+        width: 100%;
+        height: 100%;
+        source: root.poster;
+        image-fit: cover;
+        opacity: 0.35;
+    }
+    Rectangle {
+        background: @linear-gradient(90deg, #0c0f17f5 0%, #0c0f17d9 55%, #0c0f17a6 100%);
+        backdrop-blur: 30px;
+    }
+
+    changed focus-row => {
+        if root.focus-row >= root.episodes-row {
+            episodes-view.content-y = clamp(
+                episodes-view.visible-height / 2 - (root.focus-row - root.episodes-row) * 70px,
+                min(0px, episodes-view.visible-height - episodes-view.content-height),
+                0px);
+        }
+    }
 
     VerticalLayout {
         padding: Theme.page-pad;
-        spacing: Theme.space-2;
+        spacing: Theme.space-3;
 
-        Text {
-            text: root.title;
-            color: Theme.text;
-            font-size: 28px;
-            font-weight: 700;
-        }
-        if root.loading: HorizontalLayout {
-            spacing: Theme.space-2;
+        HorizontalLayout {
+            spacing: Theme.space-4;
             alignment: start;
-            Spinner {
-                width: 20px;
-                height: 20px;
-                indeterminate: true;
+            Rectangle {
+                width: 200px;
+                height: 300px;
+                border-radius: Theme.radius;
+                clip: true;
+                background: Theme.card;
+                drop-shadow-blur: 30px;
+                drop-shadow-color: #000000aa;
+                if root.poster.width > 1: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.poster;
+                    image-fit: cover;
+                }
             }
-            MutedLabel {
-                text: root.plot == "" ? "Loading the title…" : root.plot;
-                vertical-alignment: center;
-            }
-            Button {
-                text: "Cancel";
-                clicked => { root.close(); }
-            }
-        }
-        if !root.loading: MutedLabel { text: root.meta; }
-        if !root.loading: Text {
-            text: root.plot;
-            color: Theme.text;
-            wrap: word-wrap;
-            font-size: Theme.body-size;
-        }
-
-        if !root.loading: HorizontalLayout {
-            spacing: Theme.space-2;
-            Button {
-                text: root.open-busy ? "Opening…" : "Play";
-                enabled: !root.open-busy;
-                primary: true;
-                clicked => { root.play(); }
-            }
-            if root.resume-label != "": Button {
-                text: root.resume-label;
-                clicked => { root.resume(); }
-            }
-            Button {
-                text: root.bookmarked ? "✓ In library" : "+ Bookmark";
-                clicked => { root.toggle-bookmark(); }
-            }
-            Button { text: "Close"; clicked => { root.close(); } }
-            if root.open-busy: Button {
-                text: "Skip checks";
-                clicked => { root.skip-checks(); }
-            }
-            if root.season-labels.length > 1: ComboBox {
-                model: root.season-labels;
-                current-index: 0;
-                selected(value) => { root.season-chosen(value); }
-            }
-        }
-
-        if root.open-status != "": Text {
-            text: root.open-status;
-            color: Theme.accent;
-        }
-
-        ScrollView {
             VerticalLayout {
-                spacing: Theme.space-1;
-                for ep[i] in root.episodes: Rectangle {
-                    height: (root.season-filter < 0 || ep.season == root.season-filter) ? 44px : 0px;
-                    background: Theme.panel;
-                    border-radius: Theme.radius-sm;
-                    clip: true;
+                spacing: Theme.space-2;
+                alignment: start;
+                horizontal-stretch: 1;
+                Text {
+                    text: root.title;
+                    color: Theme.text;
+                    font-size: 40px;
+                    font-weight: 800;
+                    wrap: word-wrap;
+                }
+                if root.loading: HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    Spinner { width: 22px; height: 22px; indeterminate: true; }
+                    MutedLabel {
+                        text: root.plot == "" ? "Loading the title…" : root.plot;
+                        font-size: 15px;
+                        vertical-alignment: center;
+                    }
+                }
+                if !root.loading && root.meta != "": Text {
+                    text: root.meta;
+                    color: Theme.muted;
+                    font-size: 15px;
+                }
+                if !root.loading: Text {
+                    text: root.plot;
+                    color: #d6dae3;
+                    font-size: 16px;
+                    wrap: word-wrap;
+                    max-height: 110px;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    padding-top: Theme.space-1;
+                    if !root.loading: PillButton {
+                        text: root.open-busy ? "Opening…" : "▶  Play";
+                        primary: true;
+                        enabled: !root.open-busy;
+                        focused: root.action-focused(0);
+                        clicked => { root.play(); }
+                    }
+                    if !root.loading && root.resume-label != "": PillButton {
+                        text: root.resume-label;
+                        focused: root.action-focused(root.resume-index);
+                        clicked => { root.resume(); }
+                    }
+                    if !root.loading: PillButton {
+                        text: root.bookmarked ? "✓  In library" : "+  Library";
+                        focused: root.action-focused(root.bookmark-index);
+                        clicked => { root.toggle-bookmark(); }
+                    }
+                    PillButton {
+                        text: root.loading ? "Cancel" : "Back";
+                        focused: root.action-focused(root.back-index);
+                        clicked => { root.close(); }
+                    }
+                }
+                if root.open-busy: Rectangle {
+                    background: #ffffff10;
+                    border-radius: Theme.radius;
                     HorizontalLayout {
-                        padding: 8px;
+                        padding: Theme.space-2;
                         spacing: Theme.space-2;
-                        Text {
-                            text: ep.code + "  " + ep.name;
-                            color: Theme.text;
-                            vertical-alignment: center;
+                        cross-axis-alignment: center;
+                        Spinner { width: 22px; height: 22px; indeterminate: true; }
+                        VerticalLayout {
                             horizontal-stretch: 1;
+                            Text { text: "Finding a working stream"; color: Theme.text; font-weight: 600; }
+                            MutedLabel { text: root.open-status; }
                         }
-                        if ep.watched: Text {
-                            text: "Watched";
-                            color: Theme.ok;
-                            vertical-alignment: center;
-                        }
-                        Button {
-                            text: "Play";
-                            clicked => { root.play-episode(i); }
+                        PillButton {
+                            text: "Play now";
+                            focused: root.action-focused(root.back-index + 1);
+                            clicked => { root.skip-checks(); }
                         }
                     }
+                }
+            }
+        }
+
+        if root.season-labels.length > 1: HorizontalLayout {
+            spacing: Theme.space-1;
+            alignment: start;
+            for label[i] in root.season-labels: SeasonChip {
+                text: label;
+                selected: (i == 0 && root.season-filter < 0) || label == "Season " + root.season-filter;
+                focused: root.focus-visible && root.focus-row == root.seasons-row && root.focus-col == i;
+                clicked => { root.season-chosen(label); }
+            }
+        }
+
+        episodes-view := ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+                for episode[row] in root.episodes: EpisodeRow {
+                    episode: episode;
+                    resume-here: episode.data == root.resume-key;
+                    focused: root.focus-visible && root.focus-row == root.episodes-row + row;
+                    clicked => { root.play-episode(episode.index); }
                 }
             }
         }

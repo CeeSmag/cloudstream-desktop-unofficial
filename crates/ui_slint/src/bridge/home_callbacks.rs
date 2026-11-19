@@ -9,6 +9,7 @@ use super::bridge_context::BridgeContext;
 use super::catalog_callbacks::load_browse_if_empty;
 use super::catalog_events::show_library;
 use super::details_loading::load_details;
+use super::focus_navigation::restore_focus;
 
 /// The Browse tab's index in the top bar.
 const BROWSE_TAB: i32 = 1;
@@ -17,17 +18,7 @@ const LIBRARY_TAB: i32 = 3;
 
 pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
-    ui.on_select_tab(move |tab| {
-        if let Some(ui) = c.window() {
-            ui.set_tab(tab);
-        }
-        if tab == BROWSE_TAB {
-            load_browse_if_empty(&c);
-        }
-        if let (LIBRARY_TAB, Some(ui)) = (tab, c.window()) {
-            show_library(&c, &ui);
-        }
-    });
+    ui.on_select_tab(move |tab| select_tab(&c, tab));
     let weak = ctx.ui.clone();
     ui.on_dismiss_notice(move || {
         if let Some(ui) = weak.upgrade() {
@@ -54,6 +45,20 @@ pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
     });
     let c = ctx.clone();
     ui.on_remove_continue(move |index| remove_continue(&c, index));
+}
+
+fn select_tab(ctx: &BridgeContext, tab: i32) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    ui.set_tab(tab);
+    if tab == BROWSE_TAB {
+        load_browse_if_empty(ctx);
+    }
+    if tab == LIBRARY_TAB {
+        show_library(ctx, &ui);
+    }
+    restore_focus(ctx, &ui);
 }
 
 fn open_shelf_item(ctx: &BridgeContext, shelf: i32, index: i32) {

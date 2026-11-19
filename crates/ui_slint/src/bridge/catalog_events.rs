@@ -2,22 +2,21 @@
 
 use std::time::Duration;
 
-use slint::{ModelRc, VecModel};
-
 use crate::posters::{
     posters_from_bookmarks, posters_from_browse, posters_from_continue, posters_from_search,
     shelves_from_sections, string_model,
 };
 use crate::startup_progress::{home_loading_view, plugin_loading_view, StartupView};
 use crate::ui_events::{DetailsPage, PosterKind};
-use crate::{CloudStream, EpisodeItem};
+use crate::CloudStream;
 use app_services::BrowseItem;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
+use super::details_view::{show_details_artwork, show_episode_list};
 use super::extension_catalog::refresh_plugins;
 use super::home_loading::load_home;
-use super::poster_hydrate::hydrate_poster_images;
+use super::poster_hydrate::{hydrate_poster_images, request_artwork};
 use super::session::DetailsTarget;
 use super::title_search::{search_message, SearchSummary};
 
@@ -100,9 +99,31 @@ pub(crate) fn show_continue_watching(ctx: &BridgeContext, ui: &CloudStream) {
             (Some(season), Some(episode)) => format!("S{season} E{episode}"),
             _ => first.provider.clone(),
         };
-        ui.set_hero_subtitle(subtitle.into());
+        let left = watched_left(first.position_ms, first.duration_ms);
+        ui.set_hero_subtitle(format!("{subtitle}{left}").into());
+        ui.set_hero_image(slint::Image::default());
+        let title = first.title.clone();
+        request_artwork(
+            ctx,
+            first.poster_url.as_deref().unwrap_or_default(),
+            move |ui, image| {
+                if ui.get_hero_title() == title.as_str() {
+                    ui.set_hero_image(image);
+                }
+            },
+        );
     }
     hydrate_poster_images(ctx, PosterKind::Continue);
+}
+
+/// "  ·  23 min left" when the length is known.
+fn watched_left(position_ms: i64, duration_ms: i64) -> String {
+    let minutes = (duration_ms - position_ms) / 60_000;
+    if duration_ms > 0 && minutes > 0 {
+        format!("  ·  {minutes} min left")
+    } else {
+        String::new()
+    }
 }
 
 pub(crate) fn show_home(
@@ -163,7 +184,7 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
             data: page.data,
             media_key: page.media_key,
             poster_url,
-            resume_media_key: page.resume_media_key,
+            resume_media_key: page.resume_media_key.clone(),
         };
         session.episodes.clone_from(&page.episodes);
     }
@@ -175,16 +196,7 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
     ui.set_resume_label(page.resume.into());
     ui.set_season_filter(-1);
     ui.set_season_labels(string_model(season_labels(&page.episodes)));
-    let rows: Vec<EpisodeItem> = page
-        .episodes
-        .into_iter()
-        .map(|row| EpisodeItem {
-            name: row.name.into(),
-            code: row.code.into(),
-            data: row.data.into(),
-            watched: row.watched,
-            season: row.season,
-        })
-        .collect();
-    ui.set_episodes(ModelRc::new(VecModel::from(rows)));
+    ui.set_details_resume_key(page.resume_media_key.clone().unwrap_or_default().into());
+    show_episode_list(ctx, ui);
+    show_details_artwork(ctx, ui);
 }

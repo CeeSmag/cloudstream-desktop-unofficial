@@ -11,6 +11,8 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_library;
 use super::details_loading::parse_season_label;
+use super::details_view::show_episode_list;
+use super::focus_navigation::restore_focus;
 use super::home_callbacks::row;
 use super::session::DetailsTarget;
 use super::stream_opening::begin_open;
@@ -28,10 +30,11 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_toggle_bookmark(move || toggle_bookmark(&c));
     let c = ctx.clone();
     ui.on_skip_checks(move || c.session.borrow().control.skip_checks());
-    let weak = ctx.ui.clone();
+    let c = ctx.clone();
     ui.on_season_chosen(move |label| {
-        if let Some(ui) = weak.upgrade() {
+        if let Some(ui) = c.window() {
             ui.set_season_filter(parse_season_label(&label));
+            show_episode_list(&c, &ui);
         }
     });
 }
@@ -53,6 +56,7 @@ fn close_details(ctx: &BridgeContext) {
     ui.set_open_status("".into());
     ui.set_details_title("".into());
     ui.set_episodes(empty_episodes());
+    restore_focus(ctx, &ui);
 }
 
 /// Adds the title page's title to the Library, or takes it out.

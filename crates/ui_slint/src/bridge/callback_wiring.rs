@@ -7,6 +7,7 @@ use super::catalog_callbacks::wire_catalog;
 use super::cloudflare_callbacks::wire_cloudflare;
 use super::details_callbacks::wire_details;
 use super::extension_settings_callbacks::wire_extension_settings;
+use super::focus_navigation::wire_navigation;
 use super::home_callbacks::wire_home;
 use super::player_callbacks::wire_player;
 use super::player_track_callbacks::wire_player_tracks;
@@ -26,4 +27,5 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_extension_settings(ctx, ui);
     wire_updates(ctx, ui);
     wire_cloudflare(ctx, ui);
+    wire_navigation(ctx, ui);
 }

@@ -1,0 +1,99 @@
+import { ProgressIndicator } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+/// One tab of the top bar; `focused` draws the remote's focus ring.
+component NavTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> focused;
+    callback clicked();
+    height: 40px;
+    width: label.preferred-width + 28px;
+    border-radius: 20px;
+    background: root.selected ? Theme.text : (touch.has-hover ? Theme.panel-hi : transparent);
+    border-width: root.focused ? 3px : 0px;
+    border-color: Theme.accent;
+    animate background { duration: 150ms; }
+    accessible-role: AccessibleRole.tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.selected;
+    label := Text {
+        text: root.text;
+        color: root.selected ? Theme.bg : (root.focused ? Theme.text : Theme.muted);
+        font-size: 15px;
+        font-weight: root.selected ? 700 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Logo, tabs, the Home provider and an activity strip that moves while anything loads.
+export component TopBar inherits Rectangle {
+    in property <int> tab;
+    in property <int> focused-tab: -1;
+    in property <string> provider;
+    in property <bool> busy;
+    in property <string> status;
+    callback select-tab(int);
+    callback provider-clicked();
+
+    height: 68px;
+    background: Theme.bg;
+    accessible-role: AccessibleRole.banner;
+
+    HorizontalLayout {
+        padding-left: Theme.page-pad;
+        padding-right: Theme.page-pad;
+        spacing: 6px;
+        alignment: start;
+        cross-axis-alignment: center;
+        Text {
+            text: root.width > 900px ? "CloudStream" : "CS";
+            color: Theme.accent;
+            font-size: 22px;
+            font-weight: 800;
+        }
+        Rectangle { width: Theme.space-2; }
+        for label[index] in ["Home", "Browse", "Search", "Library", "Settings"]: NavTab {
+            text: label;
+            selected: root.tab == index;
+            focused: root.focused-tab == index;
+            clicked => { root.select-tab(index); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if root.status != "" && root.width > 1200px: Text {
+            text: root.status;
+            color: Theme.muted;
+            font-size: Theme.caption-size;
+            overflow: elide;
+            max-width: 320px;
+        }
+        if root.provider != "" && root.width > 980px: Rectangle {
+            height: 34px;
+            width: chip.preferred-width + 28px;
+            border-radius: 17px;
+            background: chip-touch.has-hover ? Theme.panel-hi : Theme.panel;
+            chip := Text {
+                text: "● " + root.provider;
+                color: Theme.text;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            chip-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.provider-clicked(); }
+            }
+        }
+    }
+
+    if root.busy: ProgressIndicator {
+        y: parent.height - self.height;
+        height: 2px;
+        indeterminate: true;
+    }
+}

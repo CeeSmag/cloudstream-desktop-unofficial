@@ -17,13 +17,11 @@ export component PosterTile inherits Rectangle {
     height: 248px;
     background: transparent;
     border-radius: Theme.radius;
-    border-width: root.focused || touch.has-hover ? 2px : 0px;
-    border-color: Theme.accent;
 
     // Hover / focus zoom by growing the card's geometry. Not `transform-scale`: FemtoVG (the
     // default renderer) drew nothing for a card whose `transform-scale` a state sets, so every
     // tile on Home was invisible while the software renderer showed them.
-    property <length> grow: touch.has-hover || root.focused ? 6px : 0px;
+    property <length> grow: root.focused ? 8px : (touch.has-hover ? 5px : 0px);
     animate grow { duration: 140ms; easing: ease-out; }
 
     card := Rectangle {
@@ -31,8 +29,10 @@ export component PosterTile inherits Rectangle {
         y: -root.grow;
         width: parent.width + 2 * root.grow;
         height: parent.height + 2 * root.grow;
-        background: Theme.card;
+        background: root.focused ? Theme.panel-hi : Theme.card;
         border-radius: Theme.radius;
+        border-width: root.focused ? 3px : (touch.has-hover ? 1px : 0px);
+        border-color: root.focused ? Theme.accent : Theme.border;
         drop-shadow-blur: touch.has-hover || root.focused ? 18px : 0px;
         drop-shadow-color: #00000088;
 
@@ -110,23 +110,45 @@ export component PosterTile inherits Rectangle {
     }
 }
 
+/// The width a tile takes in a row or grid, gap included.
+export global TileMetrics {
+    out property <length> step: 172px;
+    out property <length> row-step: 260px;
+}
+
 export component PosterRow inherits Flickable {
     in property <[PosterItem]> items: [];
+    /// The tile the remote focuses (-1 = none in this row).
+    in property <int> focused-index: -1;
     callback open-at(int);
     callback play-at(int);
     callback bookmark-at(int);
     callback remove-at(int);
+    /// The row got the focus; its position in the window, to scroll it into view.
+    callback focus-arrived(length, length);
 
-    height: 260px;
+    height: 264px;
+
+    changed focused-index => {
+        if self.focused-index >= 0 {
+            self.content-x = clamp(
+                (self.width - 160px) / 2 - self.focused-index * TileMetrics.step,
+                min(0px, self.width - self.content-width),
+                0px);
+            root.focus-arrived(self.absolute-position.y, self.height);
+        }
+    }
+    animate content-x { duration: 180ms; easing: ease-out; }
 
     HorizontalLayout {
-        padding: 4px;
+        padding: 8px;
         spacing: Theme.space-2;
         for item[i] in root.items: PosterTile {
             title: item.title;
             subtitle: item.subtitle;
             artwork: item.image;
             progress: item.progress;
+            focused: i == root.focused-index;
             clicked => { root.open-at(i); }
             play-requested => { root.play-at(i); }
             bookmark-requested => { root.bookmark-at(i); }
@@ -135,16 +157,28 @@ export component PosterRow inherits Flickable {
     }
 }
 
-/// Posters that wrap into rows and scroll vertically (Browse, Search, Library).
+/// Posters that wrap into rows and scroll vertically (Browse, Search, Library). `columns` comes
+/// from the app (the same count its arrow keys move by), so wrapping and navigation agree.
 export component PosterGrid inherits ScrollView {
     in property <[PosterItem]> items: [];
+    in property <int> columns: 4;
+    in property <int> focused-index: -1;
     callback open-at(int);
     callback play-at(int);
     callback bookmark-at(int);
     callback remove-at(int);
 
+    changed focused-index => {
+        if self.focused-index >= 0 {
+            self.content-y = clamp(
+                -(floor(self.focused-index / max(1, root.columns)) * TileMetrics.row-step) + 8px,
+                min(0px, self.visible-height - self.content-height),
+                0px);
+        }
+    }
+
     FlexboxLayout {
-        width: root.visible-width;
+        width: root.columns * TileMetrics.step + 16px;
         height: max(self.preferred-height, root.visible-height);
         cross-axis-line-alignment: start;
         padding: 8px;
@@ -154,6 +188,7 @@ export component PosterGrid inherits ScrollView {
             subtitle: item.subtitle;
             artwork: item.image;
             progress: item.progress;
+            focused: i == root.focused-index;
             clicked => { root.open-at(i); }
             play-requested => { root.play-at(i); }
             bookmark-requested => { root.bookmark-at(i); }

@@ -10,6 +10,8 @@ import { SettingsPage } from "settings.slint";
 import { DetailsOverlay } from "details.slint";
 import { PlayerOverlay } from "player.slint";
 import { CloudflareBanner } from "cloudflare_banner.slint";
+import { TopBar } from "top_bar.slint";
+import { Toast } from "toast.slint";
 
 export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
 
@@ -27,6 +29,18 @@ export component CloudStream inherits Window {
     }
 
     in-out property <int> tab: 0;
+    // Remote / keyboard focus: the row (-1 = top bar) and item, shown once a key was used.
+    in-out property <int> focus-row: 0;
+    in-out property <int> focus-col: 0;
+    in-out property <bool> focus-visible: false;
+    // Home's rows: the hero button, the continue-watching row, the first shelf (-1 = none).
+    in-out property <int> hero-row: -1;
+    in-out property <int> continue-row: -1;
+    in-out property <int> shelf-row-base: 0;
+    // Posters per row of the Browse / Search / Library grids (set from the window's width).
+    in-out property <int> grid-columns: 4;
+    // Raised to put the keyboard into the search box (Enter on it with the remote).
+    in-out property <int> search-box-request: 0;
     in-out property <bool> starting: true;
     in-out property <string> startup-status: "Loading extensions…";
     in-out property <float> startup-progress: 0.0;
@@ -43,6 +57,8 @@ export component CloudStream inherits Window {
     in-out property <bool> browse-loading: false;
     in-out property <string> browse-message: "";
     in-out property <bool> details-loading: false;
+    in-out property <image> details-poster;
+    in-out property <string> details-resume-key: "";
     in-out property <string> details-title: "";
     in-out property <string> details-plot: "";
     in-out property <string> details-meta: "";
@@ -116,6 +132,7 @@ export component CloudStream inherits Window {
     in property <image> hero-image;
 
     callback select-tab(int);
+    callback nav-key(string);
     callback search(string);
     callback open-shelf-item(int, int);
     callback open-search-hit(int);
@@ -177,293 +194,293 @@ export component CloudStream inherits Window {
     callback toggle-fullscreen();
 
     main-focus := FocusScope {
-        width: 0px;
-        height: 0px;
-    }
-
-    // Startup overlay: shown until the plugins and the first Home shelves have loaded.
-    if starting: Rectangle {
-        background: Theme.bg;
-        VerticalLayout {
-            alignment: center;
-            cross-axis-alignment: center;
-            spacing: 16px;
-            Text {
-                text: "CloudStream";
-                color: Theme.text;
-                font-size: 36px;
-                font-weight: 700;
-            }
-            Text {
-                text: startup-status;
-                color: Theme.muted;
-            }
-            ProgressIndicator {
-                width: 320px;
-                height: 6px;
-                progress: startup-progress;
-                indeterminate: startup-indeterminate;
-            }
+        width: 100%;
+        height: 100%;
+        key-pressed(event) => {
+            if root.starting { return reject; }
+            if event.text == Key.UpArrow { root.nav-key("up"); return accept; }
+            if event.text == Key.DownArrow { root.nav-key("down"); return accept; }
+            if event.text == Key.LeftArrow { root.nav-key("left"); return accept; }
+            if event.text == Key.RightArrow { root.nav-key("right"); return accept; }
+            if event.text == Key.Return || event.text == " " { root.nav-key("enter"); return accept; }
+            if event.text == Key.Escape || event.text == Key.Backspace { root.nav-key("back"); return accept; }
+            return reject;
         }
-    }
 
-    // Main chrome
-    if !starting: VerticalLayout {
-        padding: 0;
-        spacing: 0;
-
-        Rectangle {
-            height: 52px;
-            background: Theme.panel;
-            accessible-role: AccessibleRole.banner;
-            HorizontalLayout {
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 8px;
-                alignment: start;
+        // Startup overlay: shown until the plugins and the first Home shelves have loaded.
+        if starting: Rectangle {
+            background: Theme.bg;
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                spacing: 16px;
                 Text {
                     text: "CloudStream";
                     color: Theme.text;
-                    font-size: 18px;
+                    font-size: 36px;
                     font-weight: 700;
-                    vertical-alignment: center;
                 }
-                for label[index] in ["Home", "Browse", "Search", "Library", "Settings"]: Rectangle {
-                    width: 88px;
-                    background: tab == index ? Theme.panel-hi : transparent;
-                    border-radius: 8px;
-                    border-width: tab == index ? 0px : 0px;
-                    Text {
-                        text: label;
-                        color: tab == index ? Theme.text : Theme.muted;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                    TouchArea {
-                        clicked => { select-tab(index); }
-                    }
-                }
-                Rectangle { horizontal-stretch: 1; }
-                if status-line != "": Text {
-                    text: status-line;
+                Text {
+                    text: startup-status;
                     color: Theme.muted;
-                    font-size: 12px;
-                    vertical-alignment: center;
+                }
+                ProgressIndicator {
+                    width: 320px;
+                    height: 6px;
+                    progress: startup-progress;
+                    indeterminate: startup-indeterminate;
                 }
             }
         }
 
-        if cf-state != 0: CloudflareBanner {
-            state: root.cf-state;
-            host: root.cf-host;
-            message: root.cf-message;
-            verify => { cf-verify(); }
-            dismiss => { cf-dismiss(); }
-        }
+        // Main chrome
+        if !starting: VerticalLayout {
+            padding: 0;
+            spacing: 0;
 
-        if notice != "": Rectangle {
-            height: 36px;
-            background: #2a2030;
-            HorizontalLayout {
-                padding: 8px;
-                Text { text: notice; color: Theme.text; vertical-alignment: center; }
-                Rectangle { horizontal-stretch: 1; }
-                Button { text: "Dismiss"; clicked => { dismiss-notice(); } }
+            TopBar {
+                tab: root.tab;
+                focused-tab: root.focus-visible && root.focus-row == -1 ? root.focus-col : -1;
+                provider: root.selected-provider;
+                busy: root.home-loading || root.search-loading || root.browse-loading || root.details-loading
+                    || root.open-busy || root.plugins-loading || root.extensions-busy != "";
+                status: root.open-busy ? root.status-line : "";
+                select-tab(i) => { select-tab(i); }
+                provider-clicked => { root.settings-page-index = 1; select-tab(4); }
+            }
+
+            if cf-state != 0: CloudflareBanner {
+                state: root.cf-state;
+                host: root.cf-host;
+                message: root.cf-message;
+                verify => { cf-verify(); }
+                dismiss => { cf-dismiss(); }
+            }
+
+            if tab == 0: HomePage {
+                continue-items: root.continue-items;
+                shelves: root.home-shelves;
+                provider-name: root.selected-provider;
+                has-providers: root.providers.length > 0;
+                loading: root.home-loading;
+                hero-title: root.hero-title;
+                hero-subtitle: root.hero-subtitle;
+                hero-image: root.hero-image;
+            focus-visible: root.focus-visible;
+            focus-row: root.focus-row;
+            focus-col: root.focus-col;
+            hero-row: root.hero-row;
+            continue-row: root.continue-row;
+            shelf-row-base: root.shelf-row-base;
+                open-continue(i) => { open-library-hit(i); }
+                open-shelf(s, i) => { open-shelf-item(s, i); }
+                resume-hero => { resume-hero(); }
+                play-continue(i) => { play-continue(i); }
+                bookmark-continue(i) => { bookmark-continue(i); }
+                remove-continue(i) => { remove-continue(i); }
+            }
+
+            if tab == 1: BrowsePage {
+                items: root.browse-items;
+                columns: root.grid-columns;
+                focused-index: root.focus-visible && root.focus-row >= 0 ? root.focus-row * root.grid-columns + root.focus-col : -1;
+                kind: root.browse-kind;
+                loading: root.browse-loading;
+                message: root.browse-message;
+                load-kind(kind) => { load-browse(kind); }
+                open-at(i) => { open-browse-hit(i); }
+            }
+
+            if tab == 2: SearchPage {
+                query <=> search-query;
+                items: root.search-items;
+                columns: root.grid-columns;
+                focused-index: root.focus-visible && root.focus-row >= 1 ? (root.focus-row - 1) * root.grid-columns + root.focus-col : -1;
+                search-focused: root.focus-visible && root.focus-row == 0;
+                loading: root.search-loading;
+                message: root.search-message;
+                box-request: root.search-box-request;
+                search(q) => { search(q); root.focus-main(); }
+                open-at(i) => { open-search-hit(i); }
+            }
+
+            if tab == 3: LibraryPage {
+                items: root.library-items;
+                columns: root.grid-columns;
+                focused-index: root.focus-visible && root.focus-row >= 0 ? root.focus-row * root.grid-columns + root.focus-col : -1;
+                open-at(i) => { open-library-hit(i); }
+            }
+
+            if tab == 4: SettingsPage {
+                page-index <=> settings-page-index;
+                cache-size-labels: root.cache-size-labels;
+                cache-size-value: root.cache-size-value;
+                ahead-labels: root.ahead-labels;
+                ahead-value: root.ahead-value;
+                storage-labels: root.storage-labels;
+                storage-value: root.storage-value;
+                worker-labels: root.worker-labels;
+                worker-value: root.worker-value;
+                provider-labels: root.providers;
+                selected-provider: root.selected-provider;
+                audio-labels: root.audio-labels;
+                audio-value: root.audio-value;
+                subtitle-labels: root.subtitle-labels;
+                subtitle-add-value: root.subtitle-add-value;
+                subtitle-chips: root.subtitle-chips;
+                keep-video-ready: root.keep-video-ready;
+                autoplay-next: root.autoplay-next;
+                skip-lookup: root.skip-lookup;
+                stream-proxy: root.stream-proxy;
+                auto-subtitles: root.auto-subtitles;
+                storage-label: root.storage-label;
+                update-label: root.update-label;
+                plugins: root.plugins;
+                repositories: root.repositories;
+                available-plugins: root.available-plugins;
+                extensions-busy: root.extensions-busy;
+                plugins-loading: root.plugins-loading;
+                repo-url <=> root.repo-url;
+                set-video-cache(v) => { set-video-cache(v); }
+                set-ahead(v) => { set-ahead(v); }
+                set-storage-cap(v) => { set-storage-cap(v); }
+                set-worker-limit(v) => { set-worker-limit(v); }
+                set-provider(v) => { set-provider(v); }
+                set-audio(v) => { set-audio(v); }
+                set-subtitle-add(v) => { set-subtitle-add(v); }
+                clear-subtitles => { clear-subtitles(); }
+                set-keep-ready(v) => { set-keep-ready(v); }
+                set-autoplay(v) => { set-autoplay(v); }
+                set-skip-lookup(v) => { set-skip-lookup(v); }
+                set-stream-proxy(v) => { set-stream-proxy(v); }
+                set-auto-subtitles(v) => { set-auto-subtitles(v); }
+                clean-storage => { clean-storage(); }
+                wipe-data => { show-wipe-confirm = true; }
+                check-updates => { check-updates(); }
+                apply-update => { apply-update(); }
+                open-logs => { open-logs(); }
+                install-repo(v) => { install-repo(v); }
+                set-trusted(f, t) => { set-trusted(f, t); }
+                uninstall-plugin(f) => { uninstall-plugin(f); }
+                remove-repo(u) => { remove-repo(u); }
+                install-plugin(k) => { install-plugin(k); }
+                changed page-index => { settings-page-shown(self.page-index); }
             }
         }
 
-        if tab == 0: HomePage {
-            continue-items: root.continue-items;
-            shelves: root.home-shelves;
-            provider-name: root.selected-provider;
-            has-providers: root.providers.length > 0;
-            loading: root.home-loading;
-            hero-title: root.hero-title;
-            hero-subtitle: root.hero-subtitle;
-            hero-image: root.hero-image;
-            open-continue(i) => { open-library-hit(i); }
-            open-shelf(s, i) => { open-shelf-item(s, i); }
-            resume-hero => { resume-hero(); }
-            play-continue(i) => { play-continue(i); }
-            bookmark-continue(i) => { bookmark-continue(i); }
-            remove-continue(i) => { remove-continue(i); }
+        if details-title != "": DetailsOverlay {
+            title: details-title;
+            loading: details-loading;
+            poster: details-poster;
+            resume-key: details-resume-key;
+            focus-visible: root.focus-visible;
+            focus-row: root.focus-row;
+            focus-col: root.focus-col;
+            bookmarked: details-bookmarked;
+            toggle-bookmark => { toggle-bookmark(); }
+            plot: details-plot;
+            meta: details-meta;
+            resume-label: resume-label;
+            open-busy: open-busy;
+            open-status: open-status;
+            episodes: episodes;
+            season-labels: season-labels;
+            season-filter <=> season-filter;
+            play => { play-details(); }
+            resume => { resume-details(); }
+            close => { close-details(); }
+            skip-checks => { skip-checks(); }
+            play-episode(i) => { play-episode(i); }
+            season-chosen(v) => { season-chosen(v); }
         }
 
-        if tab == 1: BrowsePage {
-            items: root.browse-items;
-            kind: root.browse-kind;
-            loading: root.browse-loading;
-            message: root.browse-message;
-            load-kind(kind) => { load-browse(kind); }
-            open-at(i) => { open-browse-hit(i); }
+        if player-open: PlayerOverlay {
+            init => { self.focus(); }
+            title: player-title;
+            video-frame: video-frame;
+            position-ms: position-ms;
+            duration-ms: duration-ms;
+            position-text: position-text;
+            duration-text: duration-text;
+            paused: paused;
+            buffering: buffering;
+            volume: volume;
+            fullscreen: fullscreen;
+            show-sources <=> show-sources;
+            chrome-visible <=> player-chrome-visible;
+            sources: sources;
+            audio-track-labels: audio-track-labels;
+            subtitle-track-labels: subtitle-track-labels;
+            audio-track-value: audio-track-value;
+            subtitle-track-value: subtitle-track-value;
+            toggle-pause => { toggle-pause(); }
+            seek-to(v) => { seek-to(v); }
+            set-volume(v) => { set-volume(v); }
+            close-player => { close-player(); }
+            leave-player => { leave-player(); }
+            toggle-sources => { toggle-sources(); }
+            refresh-sources => { refresh-sources(); }
+            skip-segment => { skip-segment(); }
+            select-source(i) => { select-source(i); }
+            select-audio(v) => { select-audio-track(v); }
+            select-subtitle(v) => { select-subtitle-track(v); }
+            toggle-fullscreen => { toggle-fullscreen(); }
         }
 
-        if tab == 2: SearchPage {
-            query <=> search-query;
-            items: root.search-items;
-            loading: root.search-loading;
-            message: root.search-message;
-            search(q) => { search(q); }
-            open-at(i) => { open-search-hit(i); }
-        }
-
-        if tab == 3: LibraryPage {
-            items: root.library-items;
-            open-at(i) => { open-library-hit(i); }
-        }
-
-        if tab == 4: SettingsPage {
-            page-index <=> settings-page-index;
-            cache-size-labels: root.cache-size-labels;
-            cache-size-value: root.cache-size-value;
-            ahead-labels: root.ahead-labels;
-            ahead-value: root.ahead-value;
-            storage-labels: root.storage-labels;
-            storage-value: root.storage-value;
-            worker-labels: root.worker-labels;
-            worker-value: root.worker-value;
-            provider-labels: root.providers;
-            selected-provider: root.selected-provider;
-            audio-labels: root.audio-labels;
-            audio-value: root.audio-value;
-            subtitle-labels: root.subtitle-labels;
-            subtitle-add-value: root.subtitle-add-value;
-            subtitle-chips: root.subtitle-chips;
-            keep-video-ready: root.keep-video-ready;
-            autoplay-next: root.autoplay-next;
-            skip-lookup: root.skip-lookup;
-            stream-proxy: root.stream-proxy;
-            auto-subtitles: root.auto-subtitles;
-            storage-label: root.storage-label;
-            update-label: root.update-label;
-            plugins: root.plugins;
-            repositories: root.repositories;
-            available-plugins: root.available-plugins;
-            extensions-busy: root.extensions-busy;
-            plugins-loading: root.plugins-loading;
-            repo-url <=> root.repo-url;
-            set-video-cache(v) => { set-video-cache(v); }
-            set-ahead(v) => { set-ahead(v); }
-            set-storage-cap(v) => { set-storage-cap(v); }
-            set-worker-limit(v) => { set-worker-limit(v); }
-            set-provider(v) => { set-provider(v); }
-            set-audio(v) => { set-audio(v); }
-            set-subtitle-add(v) => { set-subtitle-add(v); }
-            clear-subtitles => { clear-subtitles(); }
-            set-keep-ready(v) => { set-keep-ready(v); }
-            set-autoplay(v) => { set-autoplay(v); }
-            set-skip-lookup(v) => { set-skip-lookup(v); }
-            set-stream-proxy(v) => { set-stream-proxy(v); }
-            set-auto-subtitles(v) => { set-auto-subtitles(v); }
-            clean-storage => { clean-storage(); }
-            wipe-data => { show-wipe-confirm = true; }
-            check-updates => { check-updates(); }
-            apply-update => { apply-update(); }
-            open-logs => { open-logs(); }
-            install-repo(v) => { install-repo(v); }
-            set-trusted(f, t) => { set-trusted(f, t); }
-            uninstall-plugin(f) => { uninstall-plugin(f); }
-            remove-repo(u) => { remove-repo(u); }
-            install-plugin(k) => { install-plugin(k); }
-            changed page-index => { settings-page-shown(self.page-index); }
-        }
-    }
-
-    if details-title != "": DetailsOverlay {
-        title: details-title;
-        loading: details-loading;
-        bookmarked: details-bookmarked;
-        toggle-bookmark => { toggle-bookmark(); }
-        plot: details-plot;
-        meta: details-meta;
-        resume-label: resume-label;
-        open-busy: open-busy;
-        open-status: open-status;
-        episodes: episodes;
-        season-labels: season-labels;
-        season-filter <=> season-filter;
-        play => { play-details(); }
-        resume => { resume-details(); }
-        close => { close-details(); }
-        skip-checks => { skip-checks(); }
-        play-episode(i) => { play-episode(i); }
-        season-chosen(v) => { season-chosen(v); }
-    }
-
-    if player-open: PlayerOverlay {
-        init => { self.focus(); }
-        title: player-title;
-        video-frame: video-frame;
-        position-ms: position-ms;
-        duration-ms: duration-ms;
-        position-text: position-text;
-        duration-text: duration-text;
-        paused: paused;
-        buffering: buffering;
-        volume: volume;
-        fullscreen: fullscreen;
-        show-sources <=> show-sources;
-        chrome-visible <=> player-chrome-visible;
-        sources: sources;
-        audio-track-labels: audio-track-labels;
-        subtitle-track-labels: subtitle-track-labels;
-        audio-track-value: audio-track-value;
-        subtitle-track-value: subtitle-track-value;
-        toggle-pause => { toggle-pause(); }
-        seek-to(v) => { seek-to(v); }
-        set-volume(v) => { set-volume(v); }
-        close-player => { close-player(); }
-        leave-player => { leave-player(); }
-        toggle-sources => { toggle-sources(); }
-        refresh-sources => { refresh-sources(); }
-        skip-segment => { skip-segment(); }
-        select-source(i) => { select-source(i); }
-        select-audio(v) => { select-audio-track(v); }
-        select-subtitle(v) => { select-subtitle-track(v); }
-        toggle-fullscreen => { toggle-fullscreen(); }
-    }
-
-    if show-wipe-confirm: Rectangle {
-        background: #000000aa;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 420px;
-                background: Theme.panel;
-                border-radius: Theme.radius;
-                VerticalLayout {
-                    padding: 20px;
-                    spacing: 12px;
-                    Text {
-                        text: "Delete all saved data?";
-                        color: Theme.text;
-                        font-size: 18px;
-                        font-weight: 600;
-                    }
-                    Text {
-                        text: "This schedules a full wipe on the next restart. Plugins, settings, and history will be removed.";
-                        color: Theme.muted;
-                        wrap: word-wrap;
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button {
-                            text: "Delete everything";
-                            clicked => {
-                                show-wipe-confirm = false;
-                                confirm-wipe();
-                            }
+        if show-wipe-confirm: Rectangle {
+            background: #000000aa;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 420px;
+                    background: Theme.panel;
+                    border-radius: Theme.radius;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        Text {
+                            text: "Delete all saved data?";
+                            color: Theme.text;
+                            font-size: 18px;
+                            font-weight: 600;
                         }
-                        Button {
-                            text: "Cancel";
-                            clicked => {
-                                show-wipe-confirm = false;
-                                cancel-wipe();
+                        Text {
+                            text: "This schedules a full wipe on the next restart. Plugins, settings, and history will be removed.";
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Button {
+                                text: "Delete everything";
+                                clicked => {
+                                    show-wipe-confirm = false;
+                                    confirm-wipe();
+                                }
+                            }
+                            Button {
+                                text: "Cancel";
+                                clicked => {
+                                    show-wipe-confirm = false;
+                                    cancel-wipe();
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
+        if notice != "": Toast {
+            text: root.notice;
+            area-width: root.width;
+            area-height: root.height;
+            dismissed => { dismiss-notice(); }
+        }
+    }
+
+    /// Gives the keyboard / remote back to the screen navigation (after typing, or an overlay closed).
+    public function focus-main() {
+        main-focus.focus();
     }
 }

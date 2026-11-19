@@ -1,8 +1,77 @@
-import { Button, ScrollView, Spinner } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { PosterItem, ShelfSection } from "types.slint";
-import { PosterRow, PosterTile } from "poster.slint";
-import { SectionTitle, MutedLabel } from "widgets.slint";
+import { PosterRow } from "poster.slint";
+import { MutedLabel, PillButton, SkeletonRow } from "widgets.slint";
+
+/// The big banner at the top of Home: the title last watched, with Resume.
+component Hero inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> artwork;
+    in property <bool> focused;
+    callback resume();
+    callback info();
+
+    border-radius: Theme.radius;
+    clip: true;
+    background: Theme.panel;
+
+    if root.artwork.width > 1: Image {
+        x: parent.width * 0.35;
+        width: parent.width * 0.65;
+        height: 100%;
+        source: root.artwork;
+        image-fit: cover;
+    }
+    // Fade the artwork into the background on the left and at the bottom.
+    Rectangle {
+        background: @linear-gradient(90deg, #141824 0%, #141824 35%, #14182400 70%);
+    }
+    Rectangle {
+        background: @linear-gradient(0deg, #141824 0%, #14182400 45%);
+    }
+    VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: end;
+        Text {
+            text: "CONTINUE WATCHING";
+            color: Theme.accent;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 40px;
+            font-weight: 800;
+            wrap: word-wrap;
+            max-width: 720px;
+        }
+        Text {
+            text: root.subtitle;
+            color: Theme.muted;
+            font-size: 16px;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: start;
+            padding-top: Theme.space-1;
+            PillButton {
+                text: "▶  Resume";
+                primary: true;
+                focused: root.focused;
+                clicked => { root.resume(); }
+            }
+            PillButton {
+                text: "Details";
+                clicked => { root.info(); }
+            }
+        }
+    }
+}
 
 export component HomePage inherits ScrollView {
     in property <[PosterItem]> continue-items: [];
@@ -13,6 +82,12 @@ export component HomePage inherits ScrollView {
     in property <string> hero-title: "";
     in property <string> hero-subtitle: "";
     in property <image> hero-image;
+    in property <bool> focus-visible: false;
+    in property <int> focus-row: 0;
+    in property <int> focus-col: 0;
+    in property <int> hero-row: -1;
+    in property <int> continue-row: -1;
+    in property <int> shelf-row-base: 0;
     callback open-continue(int);
     callback open-shelf(int, int);
     callback resume-hero();
@@ -22,111 +97,101 @@ export component HomePage inherits ScrollView {
 
     accessible-role: AccessibleRole.main;
 
+    /// The focused row's index in its row, or -1 when `row` is not focused.
+    pure function focus-in(row: int) -> int {
+        return root.focus-visible && root.focus-row == row ? root.focus-col : -1;
+    }
+
+    /// Scrolls so that the band at window height `top` (`height` tall) is fully visible.
+    function reveal(top: length, height: length) {
+        if top - root.absolute-position.y < 90px {
+            root.content-y = min(0px, root.content-y + 90px - (top - root.absolute-position.y));
+        } else if top - root.absolute-position.y + height > root.visible-height - 16px {
+            root.content-y = max(
+                root.visible-height - root.content-height,
+                root.content-y - (top - root.absolute-position.y + height - root.visible-height + 16px));
+        }
+    }
+
+    changed focus-row => {
+        if root.focus-row < 0 || root.focus-row == root.hero-row {
+            root.content-y = 0px;
+        }
+    }
+    animate content-y { duration: 220ms; easing: ease-out; }
+
     VerticalLayout {
         padding: Theme.page-pad;
+        padding-top: Theme.space-2;
         spacing: Theme.space-3;
 
-        if continue-items.length > 0: Rectangle {
-            height: 220px;
-            border-radius: Theme.radius;
-            clip: true;
-            background: Theme.panel;
+        if root.continue-items.length > 0: Hero {
+            height: clamp(root.visible-height * 0.5, 300px, 460px);
+            title: root.hero-title;
+            subtitle: root.hero-subtitle;
+            artwork: root.hero-image;
+            focused: root.focus-in(root.hero-row) >= 0;
+            resume => { root.resume-hero(); }
+            info => { root.open-continue(0); }
+        }
 
-            if hero-image.width > 1: Image {
-                width: 100%;
-                height: 100%;
-                source: root.hero-image;
-                image-fit: cover;
+        if root.continue-items.length > 0: VerticalLayout {
+            spacing: Theme.space-1;
+            Text {
+                text: "Continue watching";
+                color: Theme.text;
+                font-size: 22px;
+                font-weight: 700;
             }
-
-            Rectangle {
-                width: 100%;
-                height: 100%;
-                background: @linear-gradient(90deg, #0c0f17f2 0%, #0c0f17cc 45%, #0c0f1744 100%);
-            }
-
-            Rectangle {
-                x: Theme.space-3;
-                y: Theme.space-3;
-                width: min(420px, parent.width - 48px);
-                height: parent.height - 40px;
-                background: #14182499;
-                border-radius: Theme.radius;
-                backdrop-blur: 10px;
-
-                VerticalLayout {
-                    padding: Theme.space-3;
-                    spacing: Theme.space-2;
-                    alignment: end;
-                    Text {
-                        text: root.hero-title == "" ? "Continue watching" : root.hero-title;
-                        color: Theme.text;
-                        font-size: 28px;
-                        font-weight: 700;
-                        wrap: word-wrap;
-                    }
-                    Text {
-                        text: root.hero-subtitle;
-                        color: Theme.muted;
-                        font-size: Theme.body-size;
-                    }
-                    HorizontalLayout {
-                        spacing: Theme.space-2;
-                        Button {
-                            text: "Resume";
-                            primary: true;
-                            clicked => { root.resume-hero(); }
-                        }
-                    }
-                }
+            PosterRow {
+                items: root.continue-items;
+                focused-index: root.focus-in(root.continue-row);
+                focus-arrived(y, h) => { root.reveal(y, h); }
+                open-at(i) => { root.open-continue(i); }
+                play-at(i) => { root.play-continue(i); }
+                bookmark-at(i) => { root.bookmark-continue(i); }
+                remove-at(i) => { root.remove-continue(i); }
             }
         }
 
-        if continue-items.length > 0: SectionTitle { text: "Continue watching"; }
-        if continue-items.length > 0: PosterRow {
-            items: root.continue-items;
-            open-at(i) => { root.open-continue(i); }
-            play-at(i) => { root.play-continue(i); }
-            bookmark-at(i) => { root.bookmark-continue(i); }
-            remove-at(i) => { root.remove-continue(i); }
-        }
-
-        SectionTitle {
-            text: root.provider-name == "" ? "Home" : root.provider-name;
-        }
-        if loading && shelves.length == 0: HorizontalLayout {
-            spacing: Theme.space-2;
-            alignment: start;
-            Spinner {
-                width: 20px;
-                height: 20px;
-                indeterminate: true;
-            }
+        if root.loading && root.shelves.length == 0: VerticalLayout {
+            spacing: Theme.space-1;
             MutedLabel {
                 text: "Loading " + (root.provider-name == "" ? "Home" : root.provider-name) + "…";
-                vertical-alignment: center;
+                font-size: 15px;
+            }
+            SkeletonRow { }
+            SkeletonRow { }
+        }
+        if !root.loading && root.shelves.length == 0: VerticalLayout {
+            spacing: Theme.space-2;
+            Text {
+                text: root.has-providers ? "Nothing to show from " + root.provider-name + " right now." : "Welcome to CloudStream";
+                color: Theme.text;
+                font-size: 26px;
+                font-weight: 700;
+            }
+            MutedLabel {
+                text: root.has-providers ? "Try another provider in Settings → Preferences." : "Add a repository and install a plugin in Settings → Extensions to fill Home.";
+                font-size: 15px;
             }
         }
-        if !loading && shelves.length == 0: MutedLabel {
-            text: root.has-providers
-                ? "Nothing to show from " + root.provider-name + " right now."
-                : "Add a plugin in Settings → Extensions to fill Home.";
-        }
 
-        for shelf[s] in shelves: VerticalLayout {
-            spacing: Theme.space-2;
+        for shelf[s] in root.shelves: VerticalLayout {
+            spacing: Theme.space-1;
             Text {
                 text: shelf.title;
                 color: Theme.text;
-                font-size: 18px;
-                font-weight: 600;
+                font-size: 22px;
+                font-weight: 700;
             }
             PosterRow {
                 items: shelf.items;
+                focused-index: root.focus-in(root.shelf-row-base + s);
+                focus-arrived(y, h) => { root.reveal(y, h); }
                 open-at(i) => { root.open-shelf(s, i); }
                 play-at(i) => { root.open-shelf(s, i); }
                 bookmark-at(i) => { root.open-shelf(s, i); }
-                remove-at(i) => { }
             }
         }
     }

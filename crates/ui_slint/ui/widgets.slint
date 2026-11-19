@@ -159,3 +159,55 @@ export component MutedLabel inherits Text {
     color: Theme.muted;
     font-size: Theme.caption-size;
 }
+
+/// A large rounded button for TV screens; `focused` draws the remote's focus ring.
+export component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    in property <bool> focused;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 48px;
+    min-width: label.preferred-width + 48px;
+    border-radius: 24px;
+    background: !root.enabled ? #ffffff14
+        : root.primary ? (touch.has-hover || root.focused ? #ffffff : #f2f4f8)
+        : (touch.has-hover || root.focused ? #ffffff2e : #ffffff1a);
+    border-width: root.focused ? 3px : 0px;
+    border-color: Theme.accent;
+    drop-shadow-blur: root.focused ? 16px : 0px;
+    drop-shadow-color: #5b8cff66;
+    opacity: root.enabled ? 1 : 0.5;
+    animate background { duration: 120ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    label := Text {
+        text: root.text;
+        color: root.primary && root.enabled ? Theme.bg : Theme.text;
+        font-size: 16px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// A row of grey tiles that pulse while a shelf loads.
+export component SkeletonRow inherits HorizontalLayout {
+    in property <int> count: 6;
+    spacing: Theme.space-2;
+    padding: 8px;
+    alignment: start;
+    for index in root.count: Rectangle {
+        width: 160px;
+        height: 248px;
+        border-radius: Theme.radius;
+        background: Theme.card;
+        opacity: 0.45 + 0.35 * abs(sin(animation-tick() / 900ms * 180deg + index * 25deg));
+    }
+}

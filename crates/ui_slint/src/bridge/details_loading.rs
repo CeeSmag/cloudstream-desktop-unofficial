@@ -8,6 +8,7 @@ use crate::PosterItem;
 
 use super::bridge_context::BridgeContext;
 use super::details_page::details_page;
+use super::focus_navigation::focus_details_start;
 use super::session::DetailsTarget;
 
 /// Opens the title page of `item`.
@@ -52,6 +53,7 @@ pub(crate) fn show_details_pending(ctx: &BridgeContext, title: &str, status: &st
     ui.set_season_labels(empty_strings());
     ui.set_episodes(empty_episodes());
     ui.set_details_loading(true);
+    focus_details_start(ctx, &ui);
 }
 
 /// Closes the pending title page and says why it could not be shown.

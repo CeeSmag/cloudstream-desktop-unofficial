@@ -1,0 +1,42 @@
+import { Theme } from "theme.slint";
+
+/// A message at the bottom of the screen that goes away by itself (or when clicked).
+export component Toast inherits Rectangle {
+    in property <string> text;
+    /// The size of the area the toast sits in.
+    in property <length> area-width;
+    in property <length> area-height;
+    callback dismissed();
+
+    width: min(root.area-width - 2 * Theme.page-pad, label.preferred-width + 48px);
+    height: max(48px, label.preferred-height + 24px);
+    x: (root.area-width - self.width) / 2;
+    y: root.area-height - self.height - 32px;
+    border-radius: Theme.radius;
+    background: #1f2638f2;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000099;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+
+    label := Text {
+        x: 24px;
+        width: parent.width - 48px;
+        text: root.text;
+        color: Theme.text;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    TouchArea {
+        clicked => { root.dismissed(); }
+    }
+    changed text => { hide.restart(); }
+    hide := Timer {
+        interval: 5s;
+        running: true;
+        triggered => { root.dismissed(); }
+    }
+}

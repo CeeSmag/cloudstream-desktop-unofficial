@@ -49,6 +49,8 @@ export component BrowsePage inherits VerticalLayout {
     in property <bool> loading: false;
     in property <string> message: "";
     callback load-kind(string);
+    in property <int> columns: 4;
+    in property <int> focused-index: -1;
     callback open-at(int);
 
     padding: Theme.page-pad;
@@ -80,6 +82,8 @@ export component BrowsePage inherits VerticalLayout {
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
+        columns: root.columns;
+        focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
         play-at(i) => { root.open-at(i); }
         bookmark-at(i) => { root.open-at(i); }
@@ -91,7 +95,14 @@ export component SearchPage inherits VerticalLayout {
     in property <[PosterItem]> items: [];
     in property <bool> loading: false;
     in property <string> message: "";
+    /// The remote's focus is on the search box (Enter starts typing).
+    in property <bool> search-focused: false;
+    /// Raised by the app to put the keyboard into the search box.
+    in property <int> box-request: 0;
+    changed box-request => { search-box.focus(); }
     callback search(string);
+    in property <int> columns: 4;
+    in property <int> focused-index: -1;
     callback open-at(int);
 
     padding: Theme.page-pad;
@@ -99,9 +110,19 @@ export component SearchPage inherits VerticalLayout {
     accessible-role: AccessibleRole.search;
 
     SectionTitle { text: "Search"; }
+
+    /// Puts the keyboard into the search box.
+    public function focus-box() {
+        search-box.focus();
+    }
     HorizontalLayout {
         spacing: Theme.space-2;
-        LineEdit {
+        Rectangle {
+            width: 4px;
+            border-radius: 2px;
+            background: root.search-focused ? Theme.accent : transparent;
+        }
+        search-box := LineEdit {
             text <=> root.query;
             placeholder-text: "Search titles…";
             horizontal-stretch: 1;
@@ -119,6 +140,8 @@ export component SearchPage inherits VerticalLayout {
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
+        columns: root.columns;
+        focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
         play-at(i) => { root.open-at(i); }
         bookmark-at(i) => { root.open-at(i); }
@@ -127,6 +150,8 @@ export component SearchPage inherits VerticalLayout {
 
 export component LibraryPage inherits VerticalLayout {
     in property <[PosterItem]> items: [];
+    in property <int> columns: 4;
+    in property <int> focused-index: -1;
     callback open-at(int);
 
     padding: Theme.page-pad;
@@ -140,6 +165,8 @@ export component LibraryPage inherits VerticalLayout {
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
+        columns: root.columns;
+        focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
         play-at(i) => { root.open-at(i); }
         bookmark-at(i) => { root.open-at(i); }

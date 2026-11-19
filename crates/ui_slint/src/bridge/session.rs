@@ -3,7 +3,10 @@
 use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
+use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
+
+use super::focus_screens::FocusScreen;
 use crate::request_tickets::RequestTickets;
 use crate::ui_events::EpisodeRow;
 
@@ -49,6 +52,8 @@ pub(crate) struct Session {
     pub(crate) away_key: Option<String>,
     /// The plugins the repositories offer, in the Extensions page's order.
     pub(crate) available: Vec<app_services::PluginHit>,
+    /// Where the remote's focus is on each screen.
+    pub(crate) focus: std::collections::HashMap<FocusScreen, FocusGrid>,
 }
 
 /// Which title the details page shows.
@@ -84,6 +89,7 @@ impl Default for Session {
             source_checks: Vec::new(),
             away_key: None,
             available: Vec::new(),
+            focus: std::collections::HashMap::new(),
         }
     }
 }

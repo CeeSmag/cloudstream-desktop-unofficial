@@ -16,6 +16,7 @@ use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
 use super::event_dispatch::drain_events;
+use super::focus_screens::grid_columns;
 use super::initial_settings::apply_settings_to_ui;
 use super::player_polling::{poll_player, show_latest_frame};
 use super::session::{AppExtras, Session};
@@ -51,6 +52,10 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
             drain_events(&tick_ctx, &ui);
             poll_player(&tick_ctx, &ui);
             drain_cloudflare(&tick_ctx, &ui);
+            let columns = grid_columns(&ui);
+            if ui.get_grid_columns() != columns {
+                ui.set_grid_columns(columns);
+            }
         }
     });
     let frames = slint::Timer::default();

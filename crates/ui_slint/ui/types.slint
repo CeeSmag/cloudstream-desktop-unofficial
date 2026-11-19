@@ -30,6 +30,8 @@ export struct EpisodeItem {
     data: string,
     watched: bool,
     season: int,
+    /// Its place in the provider's full list (the shown list is filtered by season).
+    index: int,
 }
 
 export struct PluginItem {

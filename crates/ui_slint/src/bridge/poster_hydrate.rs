@@ -70,6 +70,33 @@ fn poster_request_headers(encoded: &str, referer: Option<&str>) -> Vec<(String, 
     headers
 }
 
+/// Loads one image (a hero or a title page's artwork) and hands it to `on_ready` on the UI thread.
+pub(crate) fn request_artwork(
+    ctx: &BridgeContext,
+    url: &str,
+    on_ready: impl FnOnce(&CloudStream, slint::Image) + Send + 'static,
+) {
+    if url.is_empty() {
+        return;
+    }
+    let weak = ctx.ui.clone();
+    ctx.services.artwork.request(
+        url,
+        Vec::new(),
+        Box::new(move |result| {
+            let Ok(artwork) = result else {
+                return;
+            };
+            let buffer = pixel_buffer(&artwork);
+            let shown = weak
+                .upgrade_in_event_loop(move |ui| on_ready(&ui, slint::Image::from_rgba8(buffer)));
+            if shown.is_err() {
+                tracing::debug!("window closed before an image arrived");
+            }
+        }),
+    );
+}
+
 /// Each provider's site, sent as the Referer of its posters (some hosts refuse hot-linking).
 fn provider_referers(ctx: &BridgeContext) -> HashMap<String, String> {
     ctx.services
