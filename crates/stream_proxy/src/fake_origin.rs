@@ -161,7 +161,7 @@ pub(crate) fn request(method: &str, url: &str, extra: &[(&str, &str)]) -> std::i
     stream.write_all(text.as_bytes())?;
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw)?;
-    Ok(parse_reply(&raw))
+    parse_reply(&raw)
 }
 
 /// `GET` with no extra headers.
@@ -169,25 +169,27 @@ pub(crate) fn get(url: &str) -> Reply {
     request("GET", url, &[]).expect("the server answers")
 }
 
-fn parse_reply(raw: &[u8]) -> Reply {
+fn parse_reply(raw: &[u8]) -> std::io::Result<Reply> {
     let split = raw
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
-        .expect("a complete head");
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "incomplete head"))?;
     let head = String::from_utf8_lossy(&raw[..split]).into_owned();
     let mut lines = head.split("\r\n");
     let status = lines
         .next()
         .and_then(|line| line.split(' ').nth(1))
         .and_then(|code| code.parse().ok())
-        .expect("a status line");
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "missing status line")
+        })?;
     let headers = lines
         .filter_map(|line| line.split_once(':'))
         .map(|(name, value)| (name.to_owned(), value.trim().to_owned()))
         .collect();
-    Reply {
+    Ok(Reply {
         status,
         headers,
         body: raw[split + 4..].to_vec(),
-    }
+    })
 }
