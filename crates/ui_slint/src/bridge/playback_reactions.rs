@@ -3,7 +3,7 @@
 use app_services::PlaybackItem;
 use player_api::PlaybackState;
 
-use crate::playback_watch::{WatchAction, WatchInput};
+use crate::playback_watch::{mark_selected_broken, WatchAction, WatchInput};
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -35,6 +35,11 @@ pub(crate) fn react_to_status(ctx: &BridgeContext, ui: &CloudStream, state: &Pla
         WatchAction::TrySource(index) => {
             tracing::warn!(index, "the playing source failed; trying the next one");
             ui.set_notice("This source stopped working — trying the next one…".into());
+            {
+                let mut session = ctx.session.borrow_mut();
+                let selected = session.selected;
+                mark_selected_broken(&mut session.source_checks, selected);
+            }
             switch_source(ctx, index);
         }
         WatchAction::PlayNextEpisode => play_next_episode(ctx),

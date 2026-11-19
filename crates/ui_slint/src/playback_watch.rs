@@ -104,8 +104,15 @@ impl PlaybackWatch {
     }
 }
 
+/// Marks the playing source broken so wrap-around fallback will not retry it.
+pub(crate) fn mark_selected_broken(sources: &mut [SourceCheck], selected: usize) {
+    if let Some(slot) = sources.get_mut(selected) {
+        *slot = SourceCheck::Broken;
+    }
+}
+
 /// The first source after `selected` (wrapping) that is not known to be broken.
-fn next_usable_source(sources: &[SourceCheck], selected: usize) -> Option<usize> {
+pub(crate) fn next_usable_source(sources: &[SourceCheck], selected: usize) -> Option<usize> {
     let count = sources.len();
     (1..count)
         .map(|step| (selected + step) % count)
@@ -213,6 +220,29 @@ mod tests {
             watch.on_status(&input(&failed, &[Working, Broken])),
             WatchAction::GiveUp(_)
         ));
+    }
+
+    #[test]
+    fn mark_selected_broken_keeps_wrap_around_from_retrying_the_failed_url() {
+        let mut sources = [Working, Working];
+        let mut watch = PlaybackWatch::default();
+        let failed = PlaybackState::Failed("dead".into());
+        assert_eq!(
+            watch.on_status(&input(&failed, &sources)),
+            WatchAction::TrySource(1)
+        );
+        mark_selected_broken(&mut sources, 0);
+        watch.on_status(&input(&PlaybackState::Loading, &sources));
+        let second = WatchInput {
+            selected: 1,
+            ..input(&failed, &sources)
+        };
+        // Without marking, next_usable_source would wrap back to 0.
+        assert!(
+            matches!(watch.on_status(&second), WatchAction::GiveUp(_)),
+            "the only other source already failed"
+        );
+        assert_eq!(next_usable_source(&sources, 1), None);
     }
 
     #[test]
