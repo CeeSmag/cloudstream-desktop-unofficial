@@ -134,7 +134,9 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
 pub(crate) fn refresh_playing(ctx: &BridgeContext) {
     let (job, playing_url) = prepare_refresh(ctx);
     let sender = ctx.sender();
-    spawn_work("refresh-sources", move || run_refresh_job(&job, playing_url, &sender));
+    spawn_work("refresh-sources", move || {
+        run_refresh_job(&job, playing_url, &sender)
+    });
 }
 
 /// New ticket and control so the still-running open cannot race this refresh.

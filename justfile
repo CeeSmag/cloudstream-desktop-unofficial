@@ -60,7 +60,7 @@ run:
 run:
     #!/usr/bin/env bash
     set -euo pipefail
-    root="$(cd "{{justfile_directory}}" && pwd)"
+    root="$(cd "{{justfile_directory()}}" && pwd)"
     cache="$root/target/bundle-cache"
     if [[ -z "${CS_SIDECAR_HOME:-}" && -d "$cache/cs-sidecar-dist/bin" ]]; then
       export CS_SIDECAR_HOME="$cache/cs-sidecar-dist"

@@ -110,11 +110,15 @@ impl SiteWindow {
             );
             return;
         }
-        if let Err(reason) = self
-            .fetches
-            .start(&self.webview, request, crate::page_fetches::PageRequest::Fetch)
-        {
-            out.fetch_result(&request.id, &cloudflare_bridge::FetchOutcome::failed(reason));
+        if let Err(reason) = self.fetches.start(
+            &self.webview,
+            request,
+            crate::page_fetches::PageRequest::Fetch,
+        ) {
+            out.fetch_result(
+                &request.id,
+                &cloudflare_bridge::FetchOutcome::failed(reason),
+            );
         }
     }
 

@@ -288,12 +288,7 @@ fn count_img_files(dir: &std::path::Path) -> usize {
         .map(|entries| {
             entries
                 .filter_map(Result::ok)
-                .filter(|entry| {
-                    entry
-                        .path()
-                        .extension()
-                        .is_some_and(|ext| ext == "img")
-                })
+                .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "img"))
                 .count()
         })
         .unwrap_or(0)

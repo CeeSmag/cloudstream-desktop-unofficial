@@ -41,7 +41,6 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let fetcher: Arc<dyn HttpFetcher> = Arc::new(UreqFetcher::default());
     let gateway = build_gateway(&paths.data_dir().join("sidecar"));
-
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
     let (playback, player_problem) = build_playback(&database, &clock, options);
     let settings = SettingsService::new(SettingsStore::new(Arc::clone(&database)));
@@ -52,35 +51,62 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         InstalledExtensionStore::new(Arc::clone(&database)),
         Arc::clone(&clock),
     );
-    Ok(UiServices {
-        repositories: RepositoryService::new(
-            Arc::clone(&fetcher),
-            RepositoryStore::new(Arc::clone(&database)),
-            Arc::clone(&clock),
-        ),
+    Ok(assemble_services(AssembleParts {
+        paths,
+        database,
+        clock,
+        fetcher,
+        gateway,
         extensions,
-        catalog: CatalogService::new(Arc::clone(&gateway)),
-        streams: Arc::new(StreamResolver::new(gateway)),
+        settings,
         playback,
         player_problem,
-        library: LibraryService::new(
-            BookmarkStore::new(Arc::clone(&database)),
-            WatchProgressStore::new(Arc::clone(&database)),
-            ResumeStore::new(Arc::clone(&database)),
+    }))
+}
+
+struct AssembleParts<'a> {
+    paths: &'a AppPaths,
+    database: Arc<Database>,
+    clock: Arc<dyn Clock>,
+    fetcher: Arc<dyn HttpFetcher>,
+    gateway: Arc<dyn ProviderGateway>,
+    extensions: ExtensionService,
+    settings: SettingsService,
+    playback: Option<Arc<PlaybackService>>,
+    player_problem: Option<String>,
+}
+
+fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
+    let data = parts.paths.data_dir();
+    UiServices {
+        repositories: RepositoryService::new(
+            Arc::clone(&parts.fetcher),
+            RepositoryStore::new(Arc::clone(&parts.database)),
+            Arc::clone(&parts.clock),
         ),
-        settings,
-        clock,
+        extensions: parts.extensions,
+        catalog: CatalogService::new(Arc::clone(&parts.gateway)),
+        streams: Arc::new(StreamResolver::new(parts.gateway)),
+        playback: parts.playback,
+        player_problem: parts.player_problem,
+        library: LibraryService::new(
+            BookmarkStore::new(Arc::clone(&parts.database)),
+            WatchProgressStore::new(Arc::clone(&parts.database)),
+            ResumeStore::new(Arc::clone(&parts.database)),
+        ),
+        settings: parts.settings,
+        clock: parts.clock,
         title_cache: Arc::new(TitleCache::new(
-            paths.data_dir().join("sources"),
+            data.join("sources"),
             title_cache::CacheLimits::default(),
         )),
         subtitles: Arc::new(SubtitleCache::new(
-            paths.data_dir().join("subtitles"),
+            data.join("subtitles"),
             std::time::Duration::from_secs(7 * 24 * 60 * 60),
         )),
-        artwork: build_artwork(&paths.data_dir().join("artwork")),
+        artwork: build_artwork(&data.join("artwork")),
         skips: Arc::new(SkipLookup::new(Arc::new(UreqSkipFetcher::default()))),
-    })
+    }
 }
 
 /// The poster loader, with downloaded files kept in `dir` (trimmed once at start, off this thread).

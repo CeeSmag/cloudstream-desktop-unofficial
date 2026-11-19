@@ -53,7 +53,11 @@ pub(crate) fn should_announce_ready(when: ReadyWhen) -> bool {
 }
 
 /// No candidate at all after the first-stream wait: fail the open.
-pub(crate) fn no_streams_timed_out(found: usize, elapsed_secs: u64, first_stream_secs: u64) -> bool {
+pub(crate) fn no_streams_timed_out(
+    found: usize,
+    elapsed_secs: u64,
+    first_stream_secs: u64,
+) -> bool {
     found == 0 && elapsed_secs >= first_stream_secs
 }
 

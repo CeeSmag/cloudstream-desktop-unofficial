@@ -103,8 +103,8 @@ fn request_artwork_mode(
             return;
         };
         let buffer = pixel_buffer(&artwork);
-        let shown = weak
-            .upgrade_in_event_loop(move |ui| on_ready(&ui, slint::Image::from_rgba8(buffer)));
+        let shown =
+            weak.upgrade_in_event_loop(move |ui| on_ready(&ui, slint::Image::from_rgba8(buffer)));
         if shown.is_err() {
             tracing::debug!("window closed before an image arrived");
         }

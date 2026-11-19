@@ -139,11 +139,7 @@ fn skipping_starts_at_once_on_the_best_working_so_far() {
         skip: &skip,
         cancel: &cancel,
     };
-    let checker = checker(&[
-        "https://x/mid.mp4",
-        "https://x/hi.mp4",
-        "https://x/low.mp4",
-    ]);
+    let checker = checker(&["https://x/mid.mp4", "https://x/hi.mp4", "https://x/low.mp4"]);
     let mut state = OpenState::new();
     state.ordered = vec![
         (link(720, "https://x/mid.mp4"), None),
@@ -154,7 +150,11 @@ fn skipping_starts_at_once_on_the_best_working_so_far() {
     assert!(log.indices().is_empty());
     skip.store(true, Ordering::SeqCst);
     state.maybe_announce_ready(&hooks);
-    assert_eq!(log.indices(), vec![0], "best among checked so far (only mid)");
+    assert_eq!(
+        log.indices(),
+        vec![0],
+        "best among checked so far (only mid)"
+    );
     // A later better one is not required once skip already started.
     assert_eq!(state.play_index, Some(0));
 }
@@ -208,8 +208,5 @@ fn broken_streams_are_skipped_when_picking_best() {
     drive_checks(&mut state, &checker, &hooks);
     assert_eq!(state.play_index, Some(1));
     assert_eq!(log.indices(), vec![1]);
-    assert!(matches!(
-        state.ordered[0].1,
-        Some(LinkHealth::Broken(_))
-    ));
+    assert!(matches!(state.ordered[0].1, Some(LinkHealth::Broken(_))));
 }

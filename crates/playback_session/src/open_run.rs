@@ -136,11 +136,7 @@ pub(crate) fn run_search(
         }
     }
     if state.ordered.is_empty()
-        && no_streams_timed_out(
-            0,
-            state.started.elapsed().as_secs(),
-            FIRST_WORKING_SECS,
-        )
+        && no_streams_timed_out(0, state.started.elapsed().as_secs(), FIRST_WORKING_SECS)
     {
         search.cancel();
         return Err(OpenError::Empty);

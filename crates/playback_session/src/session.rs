@@ -7,9 +7,7 @@ use app_services::StreamResolver;
 use core_model::{PlayableLink, SubtitleTrack};
 
 use crate::checked_open::{open_with, OpenTarget};
-use crate::open_types::{
-    title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
-};
+use crate::open_types::{title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
 use title_cache::TitleCache;
 
 /// Shared control flags for an in-flight open.
