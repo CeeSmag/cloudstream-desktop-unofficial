@@ -62,7 +62,9 @@ impl PlaybackWatch {
         match input.state {
             PlaybackState::Failed(reason) => self.on_failure(input, reason),
             PlaybackState::Ended => self.on_end(input),
-            PlaybackState::Playing => {
+            // Loading clears the latch too: after TrySource the player often goes
+            // Loading → Failed without Playing; without this, further fallbacks stall.
+            PlaybackState::Playing | PlaybackState::Loading => {
                 self.failure_handled = false;
                 WatchAction::Nothing
             }
@@ -154,6 +156,29 @@ mod tests {
             watch.on_status(&input(&failed, &sources)),
             WatchAction::Nothing
         );
+    }
+
+    #[test]
+    fn on_status_loading_after_try_source_allows_another_fallback() {
+        // TrySource puts mpv in Loading; if that source fails without ever Playing,
+        // the next Failed must still fall over (not stay stuck on failure_handled).
+        let mut watch = PlaybackWatch::default();
+        let failed = PlaybackState::Failed("403".into());
+        let loading = PlaybackState::Loading;
+        let sources = [Working, Working, Working];
+        assert_eq!(
+            watch.on_status(&input(&failed, &sources)),
+            WatchAction::TrySource(1)
+        );
+        assert_eq!(
+            watch.on_status(&input(&loading, &sources)),
+            WatchAction::Nothing
+        );
+        let second = WatchInput {
+            selected: 1,
+            ..input(&failed, &sources)
+        };
+        assert_eq!(watch.on_status(&second), WatchAction::TrySource(2));
     }
 
     #[test]
