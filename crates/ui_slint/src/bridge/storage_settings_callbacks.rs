@@ -1,6 +1,9 @@
 //! Settings > General: video cache, storage limit, plugin processes, cleanup and data wipe.
 
+use app_services::clean_regenerable;
 use slint::SharedString;
+
+use crate::background_work::spawn_work;
 
 use crate::CloudStream;
 
@@ -99,23 +102,31 @@ fn clean_storage(ctx: &BridgeContext) {
     let Some(dir) = ctx.extras.borrow().data_dir.clone() else {
         return;
     };
-    for folder in ["sources", "subtitles", "artwork"] {
-        if let Err(error) = std::fs::remove_dir_all(dir.join(folder)) {
-            tracing::debug!(folder, %error, "nothing removed");
-        }
-    }
-    ctx.sender().notice("Cleaned regenerable caches");
+    ctx.sender().notice("Cleaning up…");
+    let sender = ctx.sender();
+    spawn_work("storage-cleanup", move || {
+        let report = clean_regenerable(&dir);
+        let megabytes = report.bytes / (1024 * 1024);
+        sender.notice(format!(
+            "Cleaned up {} files ({megabytes} MB). Sources, subtitles and posters load again when needed.",
+            report.files
+        ));
+    });
 }
 
 fn request_wipe(ctx: &BridgeContext) {
-    let Some(dir) = ctx.extras.borrow().data_dir.clone() else {
-        return;
+    let result = match ctx.extras.borrow().request_wipe.as_ref() {
+        Some(request) => request(),
+        None => Err(std::io::Error::other("this build cannot delete its data")),
     };
-    match std::fs::write(dir.join("delete_all_data.pending"), b"1") {
-        Ok(()) => ctx.sender().notice("Data wipe scheduled — restart the app"),
+    match result {
+        Ok(()) => ctx
+            .sender()
+            .notice("All saved data will be deleted when you restart CloudStream"),
         Err(error) => {
             tracing::error!(%error, "could not schedule the data wipe");
-            ctx.sender().notice("Could not schedule the data wipe");
+            ctx.sender()
+                .notice(format!("Could not schedule the data wipe: {error}"));
         }
     }
 }

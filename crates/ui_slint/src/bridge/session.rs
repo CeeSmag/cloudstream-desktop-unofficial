@@ -8,13 +8,18 @@ use crate::request_tickets::RequestTickets;
 use crate::ui_events::EpisodeRow;
 use crate::update::UpdateInfo;
 
+/// Asks for "delete all saved data" at the next start (built by the shell, which runs the wipe).
+pub type WipeRequest = Box<dyn Fn() -> std::io::Result<()>>;
+
 /// Optional runtime extras that are not part of [`app_services::UiServices`].
 #[derive(Default)]
 pub struct AppExtras {
     /// Sidecar Cloudflare challenge watcher.
     pub cloudflare: Option<cloudflare_bridge::WatchHandle>,
-    /// Data directory for logs / updates / wipe marker.
+    /// Data directory for logs / updates.
     pub data_dir: Option<std::path::PathBuf>,
+    /// Schedules the data wipe.
+    pub request_wipe: Option<WipeRequest>,
 }
 
 /// The title page and the opening video on screen right now.

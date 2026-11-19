@@ -33,5 +33,5 @@ mod update_callbacks;
 
 pub use app_start::{run_desktop_app, run_desktop_app_with};
 pub(crate) use extension_catalog::ExtensionsCatalog;
-pub use session::AppExtras;
+pub use session::{AppExtras, WipeRequest};
 pub(crate) use title_search::SearchSummary;
