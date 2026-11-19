@@ -461,31 +461,32 @@ fn sample_video_frame() -> Image {
     Image::from_rgb8(buf)
 }
 
+fn sample_skip_marks() -> ModelRc<SeekMark> {
+    let mark = |start: f32, width: f32, kind: i32| SeekMark { start, width, kind };
+    ModelRc::new(VecModel::from(vec![
+        mark(0.02, 0.04, 1), // Recap (sky)
+        mark(0.07, 0.06, 0), // Intro (amber)
+        mark(0.87, 0.08, 2), // Credits (emerald)
+        mark(0.96, 0.03, 3), // Preview (fuchsia)
+    ]))
+}
+
 fn populate_player(ui: &CloudStream) {
     ui.set_player_open(true);
     ui.set_video_frame(sample_video_frame());
     ui.set_player_title("Severance · S2 E4 — Woe's Hollow".into());
     ui.set_player_source_badge("1080p · HLS".into());
     ui.set_duration_ms(3_120_000.0);
-    ui.set_position_ms(1_310_000.0);
-    ui.set_position_text("21:50".into());
+    ui.set_position_ms(690_000.0);
+    ui.set_position_text("11:30".into());
     ui.set_duration_text("52:00".into());
-    ui.set_buffered_fraction(0.62);
-    ui.set_chapter_notches(ModelRc::new(VecModel::from(vec![0.12, 0.48, 0.86])));
-    ui.set_skip_marks(ModelRc::new(VecModel::from(vec![
-        SeekMark {
-            start: 0.04,
-            width: 0.06,
-            kind: 0,
-        },
-        SeekMark {
-            start: 0.90,
-            width: 0.08,
-            kind: 2,
-        },
+    ui.set_buffered_fraction(0.46);
+    ui.set_chapter_notches(ModelRc::new(VecModel::from(vec![
+        0.07, 0.13, 0.24, 0.35, 0.47, 0.58, 0.69, 0.78, 0.87, 0.96,
     ])));
-    ui.set_has_previous_episode(true);
-    ui.set_has_next_episode(true);
+    ui.set_skip_marks(sample_skip_marks());
+    ui.set_has_previous_episode(false);
+    ui.set_has_next_episode(false);
     ui.set_skip_label("Skip Intro".into());
     ui.set_sources(sample_sources());
     ui.set_source_info(sample_source_menu_info());
@@ -516,7 +517,7 @@ fn verify_player_scroll_isolation(ui: &CloudStream, window: &MinimalSoftwareWind
     ui.set_player_open_panel(0);
     // Hover over the seek bar so 09a_player captures the vertical cursor line, thumb & tooltip.
     window.dispatch_event(WindowEvent::PointerMoved {
-        position: LogicalPosition::new(720.0, 706.0),
+        position: LogicalPosition::new(720.0, 713.0),
     });
     assert_non_blank(&render_frame(window, "09a_player"), "player");
     dispatch_scroll(window, 400.0, 400.0);
@@ -527,7 +528,7 @@ fn verify_player_scroll_isolation(ui: &CloudStream, window: &MinimalSoftwareWind
         &render_frame(window, "09b_player_sources"),
         "player_sources",
     );
-    dispatch_scroll(window, 1040.0, 300.0);
+    dispatch_scroll(window, 1040.0, 260.0);
     assert_eq!(*wheel_hits.borrow(), 1, "Sources hover blocks wheel volume");
     dispatch_scroll(window, 400.0, 400.0);
     assert_eq!(*wheel_hits.borrow(), 2, "video outside Sources still works");
@@ -548,7 +549,7 @@ fn verify_track_drawer_scroll(
     ui.set_player_feedback_level(0.75);
     ui.set_player_feedback_count(1);
     assert_non_blank(&render_frame(window, "09c_player_tracks"), "player_tracks");
-    dispatch_scroll(window, 1080.0, 560.0);
+    dispatch_scroll(window, 1080.0, 180.0);
     assert_eq!(
         *wheel_hits.borrow(),
         2,

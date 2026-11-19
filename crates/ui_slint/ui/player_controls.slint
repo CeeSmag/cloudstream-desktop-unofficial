@@ -8,17 +8,22 @@ import { SeekMark, SeekPreview, TrackChoice } from "types.slint";
 /// on release (avoids `std-widgets` Slider overwriting its own binding after the first seek).
 export component DragBar inherits Rectangle {
     in property <float> value;
-    in property <brush> fill: @linear-gradient(90deg, #4b7cf5 0%, #7aa3ff 100%);
+    in property <brush> fill: @linear-gradient(90deg, #4f7cff 0%, #7aa3ff 100%);
+    /// Track thickness at rest and while hovered/dragged.
+    in property <length> rest-height: 7px;
+    in property <length> hover-height: 10px;
     /// How much is loaded, 0..1 (seek bar); drawn lighter behind the position.
     in property <float> buffered: 0;
-    /// Where chapters start, 0..1, drawn as hairline dividers.
+    /// Where chapters start, 0..1, drawn as crisp dark hairline dividers.
     in property <[float]> notches: [];
     /// Intro, recap, credits and preview stretches along the bar.
     in property <[SeekMark]> marks: [];
     /// Structured hover/drag preview (timestamp, chapter, skip part) above the pointer.
     in property <SeekPreview> preview;
-    /// Keep the thumb visible at rest; false keeps the seek bar minimal until hovered/dragged.
+    /// Keep the thumb visible at rest (false for seek bar, true for volume slider).
     in property <bool> show-resting-thumb: false;
+    /// Use a compact solid CloudStream Blue thumb (volume slider) instead of a white glowing knob.
+    in property <bool> accent-thumb: false;
     out property <bool> dragging: touch.pressed;
     out property <bool> hovering: touch.has-hover;
     out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
@@ -30,9 +35,9 @@ export component DragBar inherits Rectangle {
 
     Rectangle {
         y: (parent.height - self.height) / 2;
-        height: root.active ? 8px : 4.5px;
+        height: root.active ? root.hover-height : root.rest-height;
         border-radius: self.height / 2;
-        background: root.active ? #ffffff34 : #ffffff26;
+        background: root.active ? #ffffff36 : #ffffff2c;
         animate height, background { duration: 110ms; }
 
         Rectangle {
@@ -40,7 +45,7 @@ export component DragBar inherits Rectangle {
             width: parent.width * clamp(root.buffered, 0, 1);
             height: 100%;
             border-radius: parent.border-radius;
-            background: #ffffff32;
+            background: #ffffff34;
         }
         Rectangle {
             x: 0;
@@ -49,16 +54,16 @@ export component DragBar inherits Rectangle {
             border-radius: parent.border-radius;
             background: root.fill;
         }
-        // Coloured segment stretches remain distinguishable across the entire timeline.
+        // Coloured stretches for Intro (amber), Recap (sky), Credits (emerald), Preview (fuchsia).
         for mark in root.marks: Rectangle {
             x: parent.width * mark.start;
             width: parent.width * mark.width;
             height: 100%;
             border-radius: 2px;
-            background: mark.kind == 0 ? #f5b942c0
-                : mark.kind == 1 ? #38bdf8c0
-                : mark.kind == 2 ? #3ecf8ec0
-                : #e879f9c0;
+            background: mark.kind == 0 ? #fbbf24cc
+                : mark.kind == 1 ? #38bdf8cc
+                : mark.kind == 2 ? #34d399d4
+                : #e879f9cc;
         }
         if touch.has-hover && !root.dragging: Rectangle {
             x: 0;
@@ -71,10 +76,10 @@ export component DragBar inherits Rectangle {
             x: parent.width * notch - 1px;
             width: 2px;
             height: 100%;
-            background: #080b12e6;
+            background: #080b12e0;
         }
-        // Crisp white vertical cursor line tracking the pointer along the track.
-        if root.active: Rectangle {
+        // Crisp white vertical hover hairline tracking the pointer along the seek bar.
+        if root.active && !root.accent-thumb: Rectangle {
             x: clamp(parent.width * root.drag-value - 1px, 0px, max(0px, parent.width - 2px));
             width: 2px;
             height: 100%;
@@ -82,18 +87,20 @@ export component DragBar inherits Rectangle {
         }
     }
 
-    // Playhead thumb fades in smoothly on hover/drag so the bar stays calm at rest.
+    // Playhead / slider thumb (hover-only on seek bar, resting CloudStream Blue dot on volume).
     Rectangle {
-        property <length> thumb-size: root.active ? 15px : 11px;
+        property <length> thumb-size: root.accent-thumb
+            ? (root.active ? 14px : 12px)
+            : (root.active ? 16px : 12px);
         x: clamp(parent.width * root.shown - self.width / 2, 0px, max(0px, parent.width - self.width));
         y: (parent.height - self.height) / 2;
         width: self.thumb-size;
         height: self.thumb-size;
         border-radius: self.thumb-size / 2;
-        background: #ffffff;
-        border-width: 2px;
+        background: root.accent-thumb ? Theme.accent-hi : #ffffff;
+        border-width: root.accent-thumb ? 0px : 2px;
         border-color: Theme.accent;
-        drop-shadow-blur: 10px;
+        drop-shadow-blur: root.accent-thumb ? 6px : 12px;
         drop-shadow-color: #5b8cffb3;
         opacity: root.show-resting-thumb || root.active ? 1 : 0;
         animate opacity, width, height { duration: 120ms; }
@@ -109,7 +116,7 @@ export component DragBar inherits Rectangle {
         height: 30px;
         width: tip-row.preferred-width;
         border-radius: 9px;
-        background: #080b12d4;
+        background: #080b12d9;
         border-width: 1px;
         border-color: #ffffff24;
         drop-shadow-blur: 14px;
@@ -155,35 +162,32 @@ export component DragBar inherits Rectangle {
     }
 }
 
-/// Translucent obsidian button for the player HUD (`primary`, `glass`, `tonal`, `subtle`).
+/// Borderless cinema icon/action button (`frosted`, `accent`, `active`).
 export component PlayerActionButton inherits Rectangle {
     in property <string> text: "";
     in property <string> icon: "";
     in property <bool> icon-filled: false;
-    in property <string> badge: "";
     in property <string> accessible-name: "";
-    /// `"glass"` | `"primary"` | `"tonal"` | `"subtle"`
-    in property <string> kind: "glass";
-    in property <bool> compact: false;
+    /// `"frosted"` | `"accent"` | `"active"`
+    in property <string> kind: "frosted";
+    in property <length> size: 38px;
     callback clicked();
 
-    property <bool> is-primary: root.kind == "primary";
-    property <bool> is-tonal: root.kind == "tonal";
-    property <bool> is-subtle: root.kind == "subtle";
+    property <bool> is-accent: root.kind == "accent";
+    property <bool> is-active: root.kind == "active";
 
-    height: root.compact ? 32px : 36px;
-    width: max(self.height, btn-row.preferred-width);
+    height: root.size;
+    width: root.text != "" ? max(root.size, btn-row.preferred-width) : root.size;
     horizontal-stretch: 0;
     vertical-stretch: 0;
-    border-radius: root.is-primary ? 18px : 10px;
-    background: root.is-primary ? (touch.pressed ? #dbe4ff : (touch.has-hover ? #ffffff : #f4f6fbeb))
-        : root.is-tonal ? (touch.pressed ? #5b8cff44 : (touch.has-hover ? #5b8cff3a : #5b8cff2c))
-        : root.is-subtle ? (touch.pressed ? #ffffff24 : (touch.has-hover ? #ffffff18 : transparent))
-        : (touch.pressed ? #ffffff28 : (touch.has-hover ? #ffffff20 : #ffffff11));
-    border-width: root.is-primary || root.is-subtle ? 0px : 1px;
-    border-color: root.is-tonal ? Theme.accent-border : (touch.has-hover ? #ffffff2c : #ffffff18);
-    drop-shadow-blur: root.is-primary && touch.has-hover ? 12px : 0px;
-    drop-shadow-color: Theme.focus-glow;
+    border-radius: root.is-accent ? 12px : 11px;
+    background: root.is-accent ? (touch.pressed ? #4874e6 : (touch.has-hover ? Theme.accent-hi : Theme.accent))
+        : root.is-active ? (touch.has-hover ? Theme.accent-hi : Theme.accent)
+        : (touch.pressed ? #ffffff30 : (touch.has-hover ? #ffffff2c : #ffffff18));
+    border-width: root.is-accent ? 0px : 1px;
+    border-color: root.is-active ? Theme.accent-hi : (touch.has-hover ? #ffffff30 : #ffffff1c);
+    drop-shadow-blur: root.is-accent ? 18px : 0px;
+    drop-shadow-color: #5b8cff77;
     animate background, border-color { duration: 120ms; }
 
     accessible-role: AccessibleRole.button;
@@ -191,8 +195,8 @@ export component PlayerActionButton inherits Rectangle {
     accessible-action-default => { root.clicked(); }
 
     btn-row := HorizontalLayout {
-        padding-left: root.text != "" ? (root.compact ? 10px : 13px) : 9px;
-        padding-right: root.text != "" ? (root.compact ? 10px : 13px) : 9px;
+        padding-left: root.text != "" ? 12px : 0px;
+        padding-right: root.text != "" ? 12px : 0px;
         spacing: 7px;
         alignment: center;
         cross-axis-alignment: center;
@@ -200,33 +204,15 @@ export component PlayerActionButton inherits Rectangle {
         if root.icon != "": TvIcon {
             commands: root.icon;
             filled: root.icon-filled;
-            size: root.compact ? 14.5px : 15.5px;
-            color: root.is-primary ? Theme.bg
-                : root.is-tonal ? Theme.accent-hi
-                : Theme.text;
+            size: root.is-accent ? 18px : 17px;
+            color: #ffffff;
         }
         if root.text != "": Text {
             text: root.text;
-            color: root.is-primary ? Theme.bg
-                : root.is-tonal ? Theme.accent-hi
-                : Theme.text;
-            font-size: root.compact ? 12.5px : 13px;
-            font-weight: root.is-primary || root.is-tonal ? 700 : 600;
+            color: #ffffff;
+            font-size: 12.5px;
+            font-weight: 600;
             vertical-alignment: center;
-        }
-        if root.badge != "": Rectangle {
-            height: 18px;
-            width: badge-text.preferred-width + 10px;
-            border-radius: 9px;
-            background: root.is-tonal ? #5b8cff3d : #ffffff1c;
-            badge-text := Text {
-                text: root.badge;
-                color: root.is-tonal ? Theme.accent-hi : Theme.text-secondary;
-                font-size: 10.5px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
         }
     }
 
@@ -236,25 +222,25 @@ export component PlayerActionButton inherits Rectangle {
     }
 }
 
-/// Translucent volume capsule: clickable mute button, CloudStream Blue slider, and % readout.
+/// Compact frosted volume pill matching the reference layout: mute icon + slim blue slider.
 export component VolumeCapsule inherits Rectangle {
     in property <float> volume: 100;
     out property <bool> dragging: vol-bar.dragging;
     callback set-volume(float);
     callback toggle-mute();
 
-    height: 36px;
+    height: 38px;
     width: cap-row.preferred-width;
     horizontal-stretch: 0;
     vertical-stretch: 0;
-    border-radius: 10px;
-    background: #080b1255;
+    border-radius: 11px;
+    background: #ffffff18;
     border-width: 1px;
-    border-color: #ffffff18;
+    border-color: #ffffff1c;
 
     cap-row := HorizontalLayout {
-        padding-left: 5px;
-        padding-right: 11px;
+        padding-left: 7px;
+        padding-right: 12px;
         spacing: 8px;
         alignment: center;
         cross-axis-alignment: center;
@@ -263,7 +249,7 @@ export component VolumeCapsule inherits Rectangle {
             width: 28px;
             height: 28px;
             border-radius: 8px;
-            background: mute-touch.has-hover ? #ffffff1a : transparent;
+            background: mute-touch.has-hover ? #ffffff1c : transparent;
             animate background { duration: 110ms; }
             accessible-role: AccessibleRole.button;
             accessible-label: root.volume <= 0 ? "Unmute" : "Mute";
@@ -275,8 +261,8 @@ export component VolumeCapsule inherits Rectangle {
                 commands: root.volume <= 0 ? Icons.volume-muted
                     : root.volume < 50 ? Icons.volume-low
                     : Icons.volume;
-                size: 15.5px;
-                color: root.volume <= 0 ? Theme.danger : Theme.text-secondary;
+                size: 16px;
+                color: root.volume <= 0 ? Theme.danger : #e2e8f0;
             }
             mute-touch := TouchArea {
                 mouse-cursor: pointer;
@@ -285,25 +271,18 @@ export component VolumeCapsule inherits Rectangle {
         }
 
         vol-bar := DragBar {
-            width: 84px;
-            show-resting-thumb: false;
+            width: 96px;
+            rest-height: 4px;
+            hover-height: 5px;
+            show-resting-thumb: true;
+            accent-thumb: true;
             value: root.volume / 130;
             committed(v) => { root.set-volume(v * 130); }
-        }
-
-        Text {
-            text: Math.round(root.volume) + "%";
-            color: root.volume <= 0 ? Theme.danger : Theme.text-secondary;
-            font-size: 11.5px;
-            font-weight: 600;
-            min-width: 34px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
         }
     }
 }
 
-/// Translucent obsidian track chooser drawer (audio / subtitles).
+/// Translucent obsidian track chooser dropdown (audio / subtitles).
 /// Absorbs wheel scrolling when hovered so scrolling the list never changes volume underneath.
 export component ChoicePanel inherits Rectangle {
     in property <string> title;
@@ -312,14 +291,14 @@ export component ChoicePanel inherits Rectangle {
     callback picked(int);
     callback close();
 
-    width: 332px;
+    width: 320px;
     height: min(max(132px, root.choices.length * 46px + 88px), 440px);
-    background: #0b101ca8;
+    background: #0b101cd0;
     border-radius: Theme.radius-lg;
     border-width: 1px;
     border-color: #ffffff22;
-    drop-shadow-blur: 20px;
-    drop-shadow-color: #00000066;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000099;
 
     // Blocks clicks and wheel events from leaking through to the video surface underneath.
     TouchArea {
@@ -464,13 +443,13 @@ export component SkipPromptPill inherits Rectangle {
     width: skip-row.preferred-width;
     horizontal-stretch: 0;
     vertical-stretch: 0;
-    border-radius: 13px;
-    background: skip-touch.has-hover ? #18233bcc : #0b101c8c;
-    border-width: 1.5px;
+    border-radius: 12px;
+    background: skip-touch.has-hover ? #18233bd4 : #0b101ca8;
+    border-width: 1px;
     border-color: skip-touch.has-hover ? Theme.accent-hi : Theme.accent-border;
     clip: true;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #00000066;
+    drop-shadow-color: #00000070;
     animate background, border-color { duration: 120ms; }
     accessible-role: AccessibleRole.button;
     accessible-label: root.label;
@@ -482,7 +461,7 @@ export component SkipPromptPill inherits Rectangle {
         y: parent.height - 3px;
         height: 3px;
         width: root.countdown-active ? 0px : parent.width;
-        background: @linear-gradient(90deg, #4b7cf5 0%, #7aa3ff 100%);
+        background: @linear-gradient(90deg, #4f7cff 0%, #7aa3ff 100%);
         visible: root.countdown-active;
         animate width { duration: root.countdown-active ? 5s : 0ms; }
     }
@@ -505,7 +484,7 @@ export component SkipPromptPill inherits Rectangle {
                 commands: Icons.skip-forward;
                 filled: true;
                 size: 13px;
-                color: Theme.bg;
+                color: #ffffff;
             }
         }
         Text {

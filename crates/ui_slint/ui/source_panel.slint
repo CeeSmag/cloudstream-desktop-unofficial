@@ -185,12 +185,12 @@ export component SourcePanel inherits Rectangle {
     callback close();
 
     width: 432px;
-    background: #0b101ca8;
+    background: #0b101cd0;
     border-radius: Theme.radius-lg;
     border-width: 1px;
     border-color: #ffffff22;
-    drop-shadow-blur: 20px;
-    drop-shadow-color: #00000066;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000099;
     // Blocks clicks and wheel events from leaking to the video surface underneath.
     TouchArea {
         scroll-event(event) => { return accept; }
