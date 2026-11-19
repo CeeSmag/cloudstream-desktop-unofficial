@@ -52,6 +52,16 @@ pub(crate) fn wire_timeline(ctx: &BridgeContext, ui: &CloudStream) {
     });
 }
 
+/// True when the stream length changed or the chapter list arrived / changed.
+pub(crate) fn should_reread_parts(
+    read_for: Option<i64>,
+    duration_ms: i64,
+    stored: &[Chapter],
+    live: &[Chapter],
+) -> bool {
+    read_for != Some(duration_ms) || stored != live
+}
+
 /// Follows the player: how much is loaded, the stream's parts (once per stream length), the
 /// skip button and whether there is an episode before / after.
 pub(crate) fn show_timeline(ctx: &BridgeContext, ui: &CloudStream, status: &PlaybackStatus) {
@@ -60,9 +70,7 @@ pub(crate) fn show_timeline(ctx: &BridgeContext, ui: &CloudStream, status: &Play
         status.position_ms,
         status.duration_ms,
     ));
-    if ctx.session.borrow().timeline.read_for != Some(status.duration_ms) {
-        read_parts(ctx, ui, status.duration_ms);
-    }
+    refresh_parts_if_needed(ctx, ui, status.duration_ms);
     let has_next = ctx
         .session
         .borrow()
@@ -80,32 +88,57 @@ pub(crate) fn show_timeline(ctx: &BridgeContext, ui: &CloudStream, status: &Play
     ctx.session.borrow_mut().timeline.prompt = prompt;
 }
 
-/// The chapters come with the stream's length, so a new length means a new stream.
-fn read_parts(ctx: &BridgeContext, ui: &CloudStream, duration_ms: i64) {
+fn refresh_parts_if_needed(ctx: &BridgeContext, ui: &CloudStream, duration_ms: i64) {
     let Some(playback) = &ctx.services.playback else {
         return;
     };
-    let chapters = playback.chapters();
-    let segments = segments_from_chapters(&chapters, duration_ms);
+    let live = playback.chapters();
+    let needed = {
+        let timeline = &ctx.session.borrow().timeline;
+        should_reread_parts(timeline.read_for, duration_ms, &timeline.chapters, &live)
+    };
+    if needed {
+        apply_parts(ctx, ui, duration_ms, live);
+    }
+}
+
+/// Applies chapter parts; a new duration also clears online times and starts a fresh lookup.
+fn apply_parts(ctx: &BridgeContext, ui: &CloudStream, duration_ms: i64, chapters: Vec<Chapter>) {
+    let chapter_parts = segments_from_chapters(&chapters, duration_ms);
     ui.set_chapter_notches(ModelRc::new(VecModel::from(chapter_notches(
         &chapters,
         duration_ms,
     ))));
+    if !chapter_parts.is_empty() {
+        tracing::info!(
+            parts = chapter_parts.len(),
+            "skip parts found in the chapters"
+        );
+    }
+    let (segments, duration_changed) = store_parts(ctx, duration_ms, chapters, chapter_parts);
     ui.set_skip_marks(ModelRc::new(VecModel::from(marks(&segments, duration_ms))));
-    if !segments.is_empty() {
-        tracing::info!(parts = segments.len(), "skip parts found in the chapters");
-    }
-    {
-        let mut session = ctx.session.borrow_mut();
-        session.timeline.chapters = chapters;
-        session.timeline.chapter_parts.clone_from(&segments);
-        session.timeline.online.clear();
-        session.timeline.segments = segments;
-        session.timeline.read_for = Some(duration_ms);
-    }
-    if duration_ms > 0 {
+    if duration_changed && duration_ms > 0 {
         start_online_lookup(ctx, duration_ms);
     }
+}
+
+fn store_parts(
+    ctx: &BridgeContext,
+    duration_ms: i64,
+    chapters: Vec<Chapter>,
+    chapter_parts: Vec<Segment>,
+) -> (Vec<Segment>, bool) {
+    let mut session = ctx.session.borrow_mut();
+    let timeline = &mut session.timeline;
+    let duration_changed = timeline.read_for != Some(duration_ms);
+    timeline.chapters = chapters;
+    timeline.chapter_parts.clone_from(&chapter_parts);
+    if duration_changed {
+        timeline.online.clear();
+    }
+    timeline.segments = merge_segments(&chapter_parts, &timeline.online);
+    timeline.read_for = Some(duration_ms);
+    (timeline.segments.clone(), duration_changed)
 }
 
 /// Online skip times arrived for the playing stream: they fill the kinds the chapters miss.
@@ -167,4 +200,25 @@ fn previous_episode(ctx: &BridgeContext) -> Option<usize> {
     let key = session.target.as_ref()?.media_key.as_str();
     let playing = session.episodes.iter().position(|row| row.data == key)?;
     playing.checked_sub(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chapter(title: &str, time_ms: i64) -> Chapter {
+        Chapter {
+            title: title.into(),
+            time_ms,
+        }
+    }
+
+    #[test]
+    fn should_reread_parts_when_duration_or_chapters_change() {
+        let opening = [chapter("Opening", 0)];
+        assert!(should_reread_parts(None, 1_000, &[], &[]));
+        assert!(should_reread_parts(Some(500), 1_000, &opening, &opening));
+        assert!(should_reread_parts(Some(1_000), 1_000, &[], &opening));
+        assert!(!should_reread_parts(Some(1_000), 1_000, &opening, &opening));
+    }
 }
