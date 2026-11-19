@@ -6,7 +6,7 @@ use crate::ui_events::EpisodeRow;
 use crate::{CloudStream, EpisodeItem};
 
 use super::bridge_context::BridgeContext;
-use super::poster_hydrate::request_artwork;
+use super::poster_hydrate::request_ephemeral_artwork;
 
 /// Shows the episodes of the chosen season (all when no season is chosen).
 pub(crate) fn show_episode_list(ctx: &BridgeContext, ui: &CloudStream) {
@@ -76,10 +76,12 @@ pub(crate) fn shown_episodes(episodes: &[EpisodeRow], season: i32) -> Vec<(usize
 pub(crate) fn show_details_artwork(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_details_poster(slint::Image::default());
     let Some(url) = ctx.session.borrow().details.poster_url.clone() else {
+        ctx.session.borrow_mut().details_artwork_url = None;
         return;
     };
+    ctx.session.borrow_mut().details_artwork_url = Some(url.clone());
     let title = ui.get_details_title();
-    request_artwork(ctx, &url, move |ui, image| {
+    request_ephemeral_artwork(ctx, &url, move |ui, image| {
         if ui.get_details_title() == title {
             ui.set_details_poster(image);
         }

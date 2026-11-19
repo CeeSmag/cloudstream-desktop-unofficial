@@ -68,8 +68,10 @@ pub(crate) struct Session {
     pub(crate) source_filter: SourceFilter,
     /// How each source of the open list fared in its check.
     pub(crate) source_checks: Vec<SourceCheck>,
-    /// The video the viewer left (still loaded, paused) by its media key.
-    pub(crate) away_key: Option<String>,
+    /// Token from `TitleCache::keep_only` so leave/close can save only this title.
+    pub(crate) kept_sources: Option<title_cache::KeptTitle>,
+    /// Details poster URL loaded ephemerally (forgotten on Back).
+    pub(crate) details_artwork_url: Option<String>,
     /// The plugins the repositories offer, in the repositories' order.
     pub(crate) available: Vec<app_services::PluginHit>,
     /// Internal names of the installed plugins (for the list's installed marks and filter).
@@ -120,7 +122,8 @@ impl Default for Session {
             watch: PlaybackWatch::default(),
             source_filter: SourceFilter::default(),
             source_checks: Vec::new(),
-            away_key: None,
+            kept_sources: None,
+            details_artwork_url: None,
             available: Vec::new(),
             installed_names: Vec::new(),
             plugin_page: 0,

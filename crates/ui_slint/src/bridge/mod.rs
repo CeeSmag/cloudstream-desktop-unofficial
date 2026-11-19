@@ -36,6 +36,7 @@ mod poster_hydrate;
 mod preference_callbacks;
 mod session;
 mod skip_lookup_start;
+mod source_persist;
 mod source_picker;
 mod storage_settings_callbacks;
 mod storage_usage_view;

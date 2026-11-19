@@ -14,7 +14,8 @@ mod session;
 
 pub use checked_open::{check_and_pick, open_with, OpenTarget};
 pub use open_types::{
-    save_open, title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
+    cached_title_from_open, save_open, save_open_kept, title_key, CheckedOpen, OpenCache,
+    OpenError, OpenHooks, OpenProgress,
 };
 pub use session::{
     refresh_sources, run_open, LiveSources, OpenControl, OpenRequest, RefreshRequest,

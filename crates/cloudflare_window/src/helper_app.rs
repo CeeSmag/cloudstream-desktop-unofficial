@@ -114,13 +114,14 @@ impl HelperState {
     }
 
     fn verify(&mut self, request: VerifyRequest, target: &EventLoopWindowTarget<HelperEvent>) {
-        if !self.sites.contains_key(&request.host) {
+        let reuse = self.sites.contains_key(&request.host);
+        if !reuse {
             let parts = WindowParts {
                 target,
                 context: &mut self.context,
                 proxy: self.proxy.clone(),
             };
-            match SiteWindow::open(parts, &request.host) {
+            match SiteWindow::open(parts, &request.host, &request.url) {
                 Ok(site) => {
                     self.windows.insert(site.window_id(), request.host.clone());
                     self.sites.insert(request.host.clone(), site);
@@ -129,7 +130,7 @@ impl HelperState {
             }
         }
         if let Some(site) = self.sites.get_mut(&request.host) {
-            site.begin(request.id, &self.outbox);
+            site.begin(request.id, &request.url, &self.outbox);
         }
     }
 

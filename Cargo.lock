@@ -230,6 +230,7 @@ dependencies = [
  "serde_json",
  "skip_times",
  "storage",
+ "subtitle_store",
  "thiserror 2.0.21",
  "title_cache",
  "tracing",
@@ -254,6 +255,7 @@ dependencies = [
  "skip_times",
  "storage",
  "stream_proxy",
+ "subtitle_store",
  "title_cache",
  "tracing",
  "tracing-subscriber",
@@ -886,6 +888,7 @@ dependencies = [
  "tao",
  "tracing",
  "tracing-subscriber",
+ "webkit2gtk",
  "wry",
 ]
 
@@ -6256,6 +6259,8 @@ dependencies = [
  "skip_times",
  "slint",
  "slint-build",
+ "subtitle_store",
+ "title_cache",
  "tracing",
 ]
 

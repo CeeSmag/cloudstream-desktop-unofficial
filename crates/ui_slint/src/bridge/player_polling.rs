@@ -62,6 +62,12 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
     }
 }
 
+/// Drops the painted picture so leave/close/a new open do not keep the last stream on screen.
+pub(crate) fn clear_video_frame(ctx: &BridgeContext, ui: &CloudStream) {
+    ctx.session.borrow_mut().last_frame = 0;
+    ui.set_video_frame(Image::default());
+}
+
 /// Rebuilding the track menus every tick reset them while open; now only when the tracks change.
 fn show_tracks_if_changed(ctx: &BridgeContext, ui: &CloudStream, tracks: &[MediaTrack]) {
     if ctx.session.borrow().shown_tracks == tracks {

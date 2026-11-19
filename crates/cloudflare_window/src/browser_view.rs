@@ -6,26 +6,34 @@ use wry::{WebContext, WebView, WebViewBuilder};
 
 use crate::helper_events::HelperEvent;
 
-/// A window with a browser view on `host`'s front page (never the request's own address, which can
-/// be a video or an API call that a browser would download). Downloads are refused.
+/// A window with a browser view on `page_url` (the challenged page when safe). Starts hidden so a
+/// quick auto-pass never bothers the viewer. Downloads are refused.
 pub(crate) fn open_site_view(
     target: &EventLoopWindowTarget<HelperEvent>,
     context: &mut WebContext,
     host: &str,
+    page_url: &str,
 ) -> Result<(Window, WebView), String> {
     let window = WindowBuilder::new()
         .with_title(format!("Verify {host} — CloudStream"))
         .with_inner_size(tao::dpi::LogicalSize::new(960.0, 720.0))
+        .with_visible(false)
         .build(target)
         .map_err(|error| format!("cannot open a window: {error}"))?;
+    // Start blank so TLS-ignore can be applied on the shared WebKit context before the first
+    // navigation; otherwise a self-signed redirect paints WebKit's error page immediately.
     let builder = WebViewBuilder::new_with_web_context(context)
-        .with_url(format!("https://{host}/"))
+        .with_url("about:blank")
         .with_download_started_handler(|url, _path| {
             let url = cloudflare_window::short_address(&url);
             tracing::info!(%url, "refused a download in the verification window");
             false
         });
     let webview = build_webview(builder, &window)?;
+    ignore_verify_tls_errors(&webview);
+    webview
+        .load_url(page_url)
+        .map_err(|error| format!("cannot load the verification page: {error}"))?;
     Ok((window, webview))
 }
 
@@ -62,3 +70,22 @@ fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> Result<WebView
         .build_gtk(vbox)
         .map_err(|error| format!("cannot open the browser view: {error}"))
 }
+
+/// Verify windows must still open when a site redirects to a self-signed host (parked domain /
+/// CDN hop). On Linux that means telling WebKit to ignore TLS errors for this shared context.
+#[cfg(target_os = "linux")]
+fn ignore_verify_tls_errors(webview: &WebView) {
+    use webkit2gtk::{WebContextExt as _, WebViewExt as _, WebsiteDataManagerExt};
+    use wry::WebViewExtUnix;
+    let gtk_view = webview.webview();
+    let Some(manager) = gtk_view
+        .context()
+        .and_then(|context| context.website_data_manager())
+    else {
+        return;
+    };
+    manager.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Ignore);
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ignore_verify_tls_errors(_webview: &WebView) {}

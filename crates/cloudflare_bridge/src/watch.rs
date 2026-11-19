@@ -170,7 +170,8 @@ impl Watcher<'_> {
 
     fn route(&mut self, request: VerifyRequest) {
         tracing::info!(host = %request.host, id = %request.id, "a site needs Cloudflare verification");
-        if !self.allowed.is_allowed(&request.host) {
+        let allowed = self.allowed.is_allowed(&request.host);
+        if !allowed {
             let reason = format!(
                 "{} needs a quick check; press Verify in CloudStream",
                 request.host

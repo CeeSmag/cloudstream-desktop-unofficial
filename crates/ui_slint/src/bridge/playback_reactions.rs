@@ -49,14 +49,12 @@ pub(crate) fn react_to_status(ctx: &BridgeContext, ui: &CloudStream, state: &Pla
 }
 
 fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>) {
-    {
-        let mut session = ctx.session.borrow_mut();
-        session.abandon_open();
-        session.away_key = None;
-    }
+    ctx.session.borrow_mut().abandon_open();
+    super::source_persist::persist_playing_sources(ctx);
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
     }
+    super::player_polling::clear_video_frame(ctx, ui);
     ui.set_player_open(false);
     show_continue_watching(ctx, ui);
     if let Some(reason) = reason {

@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use app_services::{full_label, PlaybackItem, StreamSelection, UiServices};
 use playback_session::{
-    run_open, CheckedOpen, LiveSources, OpenControl, OpenProgress, OpenRequest, RefreshRequest,
+    run_open, title_key, CheckedOpen, LiveSources, OpenControl, OpenProgress, OpenRequest,
+    RefreshRequest,
 };
 
 use crate::background_work::{spawn_work, UiSender};
@@ -16,6 +17,7 @@ use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::player_feedback::show_feedback;
+use super::player_polling::clear_video_frame;
 use super::source_picker::show_sources;
 
 /// What a worker needs to open one video.
@@ -37,12 +39,8 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
             .notice(problem.unwrap_or_else(|| "no player".into()));
         return;
     };
-    if come_back_to_waiting_video(ctx, playback, &item.media_key) {
-        return;
-    }
-    // Leave shrinks the demuxer cache to ahead=0; a different video must get the full
-    // watching budget back or mpv stays paused-for-cache (Tauri play_media does the same).
-    restore_watching_cache(ctx, playback);
+    apply_watching_cache(ctx, playback);
+    claim_title_caches(ctx, &item);
     let (control, live, ticket) = {
         let mut session = ctx.session.borrow_mut();
         // The video opened before stops searching and checking; its answers are dropped.
@@ -56,11 +54,11 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         session.selected = 0;
         session.watch.reset();
         session.source_filter = SourceFilter::default();
-        session.away_key = None;
         session.reset_for_new_open();
         (session.control.clone(), session.live.clone(), ticket)
     };
     if let Some(ui) = ctx.window() {
+        clear_video_frame(ctx, &ui);
         show_opening_started(&ui, shown_title);
     }
     let job = OpenJob {
@@ -73,6 +71,14 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
     };
     let sender = ctx.sender();
     spawn_work("open-streams", move || run_open_job(&job, &sender));
+}
+
+/// Drops other titles' source/subtitle files; remembers the keep token for leave-save.
+fn claim_title_caches(ctx: &BridgeContext, item: &PlaybackItem) {
+    let key = title_key(&item.provider, &item.media_key);
+    let kept = ctx.services.title_cache.keep_only(&key);
+    ctx.services.subtitles.keep_only_title(&key);
+    ctx.session.borrow_mut().kept_sources = Some(kept);
 }
 
 /// The opening panel starts empty: nothing found, nothing to play yet.
@@ -233,33 +239,12 @@ fn resume_position(ctx: &BridgeContext) -> i64 {
     })
 }
 
-/// Puts the full while-watching demuxer budget back after a leave (ahead was zeroed).
-fn restore_watching_cache(ctx: &BridgeContext, playback: &app_services::PlaybackService) {
+/// Applies the Settings demuxer budget for active playback.
+fn apply_watching_cache(ctx: &BridgeContext, playback: &app_services::PlaybackService) {
     let cache = ctx.services.settings.video_cache().unwrap_or_default();
     if let Err(error) = playback.set_cache_limits(cache.while_watching()) {
         tracing::warn!(%error, "the video cache size could not be given to the player");
     }
-}
-
-/// Opening the video the viewer left (still loaded and paused) plays it on from memory.
-fn come_back_to_waiting_video(
-    ctx: &BridgeContext,
-    playback: &app_services::PlaybackService,
-    media_key: &str,
-) -> bool {
-    if ctx.session.borrow().away_key.as_deref() != Some(media_key) {
-        return false;
-    }
-    let cache = ctx.services.settings.video_cache().unwrap_or_default();
-    if let Err(error) = playback.come_back(cache.while_watching()) {
-        tracing::warn!(%error, "the waiting video could not resume; opening it again");
-        return false;
-    }
-    ctx.session.borrow_mut().away_key = None;
-    if let Some(ui) = ctx.window() {
-        ui.set_player_open(true);
-    }
-    true
 }
 
 /// Plays another source of the list from the current position.

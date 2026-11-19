@@ -5,7 +5,7 @@ use std::sync::Arc;
 use app_services::LinkHealth;
 use core_model::{PlayableLink, SubtitleTrack};
 use thiserror::Error;
-use title_cache::{CachedTitle, TitleCache};
+use title_cache::{CachedTitle, KeptSave, KeptTitle, TitleCache};
 
 /// Outcome of a checked open: streams ordered best-first with health, plus which to play.
 #[derive(Debug, Clone, Default)]
@@ -77,8 +77,8 @@ pub fn title_key(provider: &str, media_key: &str) -> String {
     OpenCache::key(provider, media_key)
 }
 
-/// Saves a completed open into the title cache (best-effort).
-pub fn save_open(cache: &TitleCache, title_key: &str, opened: &CheckedOpen) {
+/// Builds the on-disk title from a checked open.
+pub fn cached_title_from_open(opened: &CheckedOpen) -> CachedTitle {
     let links: Vec<title_cache::CachedLink> = opened
         .links
         .iter()
@@ -95,12 +95,28 @@ pub fn save_open(cache: &TitleCache, title_key: &str, opened: &CheckedOpen) {
         .play_index
         .and_then(|index| opened.links.get(index))
         .map(|(link, _)| link.url.clone());
-    let title = CachedTitle {
+    CachedTitle {
         complete: true,
         links,
         last_good,
-    };
-    if let Err(error) = cache.save(title_key, &title) {
+    }
+}
+
+/// Saves a completed open into the title cache (best-effort).
+pub fn save_open(cache: &TitleCache, title_key: &str, opened: &CheckedOpen) {
+    if let Err(error) = cache.save(title_key, &cached_title_from_open(opened)) {
         tracing::warn!(%error, "could not save title sources");
     }
 }
+
+/// Saves only while `kept` is still the open title (leave/close after `keep_only`).
+pub fn save_open_kept(cache: &TitleCache, kept: &KeptTitle, opened: &CheckedOpen) {
+    match cache.save_kept(kept, &cached_title_from_open(opened)) {
+        Ok(KeptSave::Saved(_)) | Ok(KeptSave::Replaced) => {}
+        Err(error) => tracing::warn!(%error, "could not save title sources"),
+    }
+}
+
+#[cfg(test)]
+#[path = "open_persist_tests.rs"]
+mod open_persist_tests;

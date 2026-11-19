@@ -8,7 +8,7 @@ use core_model::{PlayableLink, SubtitleTrack};
 
 use crate::checked_open::{open_with, OpenTarget};
 use crate::open_types::{
-    save_open, title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
+    title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress,
 };
 use title_cache::TitleCache;
 
@@ -104,7 +104,7 @@ pub struct OpenRequest<'a> {
     pub control: &'a OpenControl,
 }
 
-/// Runs a full open with live updates; saves to the title cache when finished.
+/// Runs a full open with live updates. Sources stay in memory until the UI saves on leave/close.
 pub fn run_open(request: OpenRequest<'_>) -> Result<CheckedOpen, OpenError> {
     let open_cache = request.cache.map(|cache| OpenCache {
         cache: Arc::clone(cache),
@@ -122,12 +122,7 @@ pub fn run_open(request: OpenRequest<'_>) -> Result<CheckedOpen, OpenError> {
         provider: request.provider,
         data: request.data,
     };
-    let opened = open_with(&target, open_cache.as_ref(), &hooks)?;
-    if let Some(cache) = request.cache {
-        let key = title_key(request.provider, request.media_key);
-        save_open(cache, &key, &opened);
-    }
-    Ok(opened)
+    open_with(&target, open_cache.as_ref(), &hooks)
 }
 
 /// Arguments for [`refresh_sources`].
@@ -187,9 +182,5 @@ pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenE
     };
     let opened = run_open(open_request)?;
     request.live.publish(opened.clone());
-    if let Some(cache) = request.cache {
-        let key = title_key(request.provider, request.media_key);
-        save_open(cache, &key, &opened);
-    }
     Ok(opened)
 }

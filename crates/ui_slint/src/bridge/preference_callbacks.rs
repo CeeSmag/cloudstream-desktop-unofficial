@@ -30,14 +30,6 @@ pub(crate) fn wire_preferences(ctx: &BridgeContext, ui: &CloudStream) {
 
 fn wire_switches(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
-    ui.on_set_keep_ready(move |on| {
-        saved(
-            "keep video ready",
-            c.services.settings.set_keep_video_ready(on),
-        );
-        c.window().inspect(|ui| ui.set_keep_video_ready(on));
-    });
-    let c = ctx.clone();
     ui.on_set_autoplay(move |on| {
         saved("autoplay", c.services.settings.set_autoplay_next(on));
         c.window().inspect(|ui| ui.set_autoplay_next(on));

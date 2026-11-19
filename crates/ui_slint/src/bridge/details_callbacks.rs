@@ -66,12 +66,16 @@ fn close_details(ctx: &BridgeContext) {
             session.control.cancel_open();
             session.tickets.cancel(RequestKind::Open);
         }
+        if let Some(url) = session.details_artwork_url.take() {
+            ctx.services.artwork.forget_memory(&url);
+        }
     }
     let flags = details_closed_flags();
     ui.set_details_loading(flags.loading);
     ui.set_open_busy(flags.open_busy);
     ui.set_open_status("".into());
     ui.set_details_title("".into());
+    ui.set_details_poster(slint::Image::default());
     ui.set_episodes(empty_episodes());
     restore_focus(ctx, &ui);
 }

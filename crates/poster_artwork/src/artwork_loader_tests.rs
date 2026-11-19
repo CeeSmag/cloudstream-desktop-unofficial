@@ -276,3 +276,80 @@ fn request_unsupported_address_is_answered_at_once_without_download() {
     assert!(matches!(result, Err(ArtworkError::Unsupported(_))));
     assert!(fetcher.order.lock().expect("order").is_empty());
 }
+
+fn disk_folder(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("cs_art_ephem_{name}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+fn count_img_files(dir: &std::path::Path) -> usize {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry
+                        .path()
+                        .extension()
+                        .is_some_and(|ext| ext == "img")
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+#[test]
+fn ephemeral_request_never_writes_disk_and_forget_memory_drops_decode() {
+    let dir = disk_folder("skip");
+    let fetcher = Arc::new(ScriptedFetcher::default());
+    let config = ArtworkLoaderConfig {
+        workers: 1,
+        disk: Some(crate::DiskCache::new(&dir)),
+        ..ArtworkLoaderConfig::default()
+    };
+    let loader = ArtworkLoader::new(Arc::clone(&fetcher) as Arc<dyn ArtworkFetcher>, config);
+    let (answers, received) = mpsc::channel();
+    let url = "https://img.test/details.png";
+    loader.request_ephemeral(url, Vec::new(), reporter(&answers));
+    received
+        .recv_timeout(Duration::from_secs(2))
+        .expect("answer")
+        .expect("ok");
+    assert_eq!(count_img_files(&dir), 0, "ephemeral must not save to disk");
+    assert!(loader.cached(url).is_some());
+    loader.forget_memory(url);
+    assert!(loader.cached(url).is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn persistent_request_writes_disk_while_ephemeral_skips_existing_file() {
+    let dir = disk_folder("persist");
+    let fetcher = Arc::new(ScriptedFetcher::default());
+    let config = ArtworkLoaderConfig {
+        workers: 1,
+        disk: Some(crate::DiskCache::new(&dir)),
+        ..ArtworkLoaderConfig::default()
+    };
+    let loader = ArtworkLoader::new(Arc::clone(&fetcher) as Arc<dyn ArtworkFetcher>, config);
+    let (answers, received) = mpsc::channel();
+    let url = "https://img.test/home.png";
+    loader.request(url, Vec::new(), reporter(&answers));
+    received
+        .recv_timeout(Duration::from_secs(2))
+        .expect("answer")
+        .expect("ok");
+    assert_eq!(count_img_files(&dir), 1);
+    assert_eq!(fetcher.calls_for(url), 1);
+    loader.forget_memory(url);
+    // Ephemeral must not reuse the disk file; it downloads again and still leaves disk alone.
+    loader.request_ephemeral(url, Vec::new(), reporter(&answers));
+    received
+        .recv_timeout(Duration::from_secs(2))
+        .expect("answer")
+        .expect("ok");
+    assert_eq!(fetcher.calls_for(url), 2);
+    assert_eq!(count_img_files(&dir), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}

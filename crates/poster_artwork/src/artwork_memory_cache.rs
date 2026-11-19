@@ -46,6 +46,16 @@ impl MemoryCache {
         }
     }
 
+    /// Drops the decoded poster for `url` if present.
+    pub(crate) fn forget(&mut self, url: &str) -> bool {
+        if let Some((artwork, _)) = self.entries.remove(url) {
+            self.used_bytes = self.used_bytes.saturating_sub(artwork.byte_size());
+            true
+        } else {
+            false
+        }
+    }
+
     fn drop_oldest(&mut self) {
         let oldest = self
             .entries
@@ -100,5 +110,15 @@ mod tests {
         let mut cache = MemoryCache::new(10);
         cache.insert("big".into(), artwork(100));
         assert!(cache.get("big").is_some());
+    }
+
+    #[test]
+    fn forget_removes_bytes_and_entry() {
+        let mut cache = MemoryCache::new(1000);
+        cache.insert("a".into(), artwork(100));
+        assert!(cache.forget("a"));
+        assert!(cache.get("a").is_none());
+        assert_eq!(cache.used_bytes(), 0);
+        assert!(!cache.forget("a"));
     }
 }

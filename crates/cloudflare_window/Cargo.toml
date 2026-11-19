@@ -18,5 +18,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 wry = { version = "=0.57.1", default-features = false, features = ["os-webview", "x11"] }
 
+# Same pin as wry: ignore TLS errors in the verify profile so a self-signed redirect host
+# (e.g. parked domain) does not freeze the window on WebKit's "Unacceptable TLS certificate".
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", default-features = false, features = ["v2_38"] }
+
 [lints]
 workspace = true

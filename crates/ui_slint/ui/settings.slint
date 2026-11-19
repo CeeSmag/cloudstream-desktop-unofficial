@@ -26,7 +26,6 @@ export component SettingsPage inherits Rectangle {
     /// The chosen subtitle languages ("EN  English"), in the viewer's order.
     in property <[string]> subtitle-chosen: [];
     in property <bool> subtitle-full: false;
-    in property <bool> keep-video-ready: true;
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
@@ -53,7 +52,6 @@ export component SettingsPage inherits Rectangle {
     callback set-audio(string);
     callback set-subtitle-add(string);
     callback remove-subtitle(int);
-    callback set-keep-ready(bool);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
     callback set-stream-proxy(bool);
@@ -207,13 +205,6 @@ export component SettingsPage inherits Rectangle {
                         title: "Playback";
                         VerticalLayout {
                             spacing: Theme.space-2;
-                            SettingRow {
-                                label: "Keep video ready when leaving";
-                                Switch {
-                                    checked: root.keep-video-ready;
-                                    toggled => { root.set-keep-ready(self.checked); }
-                                }
-                            }
                             SettingRow {
                                 label: "Autoplay next episode";
                                 Switch {

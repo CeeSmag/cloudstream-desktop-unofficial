@@ -8,10 +8,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
+use crate::artwork_load;
 use crate::artwork_memory_cache::MemoryCache;
 use crate::{
-    decode_artwork, poster_address, ArtworkError, ArtworkFetcher, ArtworkHeaders, DecodedArtwork,
-    DiskCache,
+    poster_address, ArtworkError, ArtworkFetcher, ArtworkHeaders, DecodedArtwork, DiskCache,
 };
 
 /// What a request gets back.
@@ -45,9 +45,18 @@ impl Default for ArtworkLoaderConfig {
     }
 }
 
-struct Job {
-    url: String,
+pub(crate) struct Job {
+    pub(crate) url: String,
+    pub(crate) headers: ArtworkHeaders,
+    /// When false, skip disk load/save (details poster); memory cache still used.
+    pub(crate) persist: bool,
+}
+
+struct JobSpec<'a> {
+    raw_url: &'a str,
     headers: ArtworkHeaders,
+    persist: bool,
+    on_done: ArtworkCallback,
 }
 
 struct QueueState {
@@ -62,8 +71,8 @@ pub(crate) struct Shared {
     state: Mutex<QueueState>,
     work_ready: Condvar,
     memory: Mutex<MemoryCache>,
-    disk: Option<DiskCache>,
-    fetcher: Arc<dyn ArtworkFetcher>,
+    pub(crate) disk: Option<DiskCache>,
+    pub(crate) fetcher: Arc<dyn ArtworkFetcher>,
     live_workers: AtomicUsize,
 }
 
@@ -111,28 +120,69 @@ impl ArtworkLoader {
 
     /// Loads `raw_url` (sending `headers` if it has to be downloaded) and calls `on_done` once.
     pub fn request(&self, raw_url: &str, headers: ArtworkHeaders, on_done: ArtworkCallback) {
-        let url = match poster_address(raw_url) {
+        self.enqueue(JobSpec {
+            raw_url,
+            headers,
+            persist: true,
+            on_done,
+        });
+    }
+
+    /// Like [`Self::request`], but never reads or writes the disk cache (details poster).
+    pub fn request_ephemeral(
+        &self,
+        raw_url: &str,
+        headers: ArtworkHeaders,
+        on_done: ArtworkCallback,
+    ) {
+        self.enqueue(JobSpec {
+            raw_url,
+            headers,
+            persist: false,
+            on_done,
+        });
+    }
+
+    /// Drops a decoded poster from memory (details Back). Disk files are untouched.
+    pub fn forget_memory(&self, raw_url: &str) {
+        let Ok(url) = poster_address(raw_url) else {
+            return;
+        };
+        let _ = self.shared.lock_memory().forget(&url);
+    }
+
+    fn enqueue(&self, spec: JobSpec<'_>) {
+        let url = match poster_address(spec.raw_url) {
             Ok(url) => url,
-            Err(error) => return on_done(Err(error)),
+            Err(error) => return (spec.on_done)(Err(error)),
         };
         let mut state = self.shared.lock_state();
         if state.closed {
             drop(state);
-            return on_done(Err(ArtworkError::ShutDown));
+            return (spec.on_done)(Err(ArtworkError::ShutDown));
         }
         // Checked under the queue lock: a worker files its result in memory under the same lock,
         // so an address is never downloaded twice by a request racing its own completion.
         let hit = self.shared.lock_memory().get(&url);
         if let Some(artwork) = hit {
             drop(state);
-            return on_done(Ok(artwork));
+            return (spec.on_done)(Ok(artwork));
         }
         if let Some(waiters) = state.waiting.get_mut(&url) {
-            waiters.push(on_done);
+            waiters.push(spec.on_done);
+            if spec.persist {
+                if let Some(job) = state.jobs.iter_mut().rev().find(|job| job.url == url) {
+                    job.persist = true;
+                }
+            }
             return;
         }
-        state.waiting.insert(url.clone(), vec![on_done]);
-        state.jobs.push(Job { url, headers });
+        state.waiting.insert(url.clone(), vec![spec.on_done]);
+        state.jobs.push(Job {
+            url,
+            headers: spec.headers,
+            persist: spec.persist,
+        });
         drop(state);
         self.shared.work_ready.notify_one();
     }
@@ -183,7 +233,7 @@ fn start_worker(shared: &Arc<Shared>, index: usize) {
 
 fn run_worker(shared: &Shared) {
     while let Some(job) = next_job(shared) {
-        let result = load(shared, &job);
+        let result = artwork_load::load(shared, &job);
         let waiters = {
             let mut state = shared.lock_state();
             if let Ok(artwork) = &result {
@@ -212,33 +262,5 @@ fn next_job(shared: &Shared) -> Option<Job> {
             .work_ready
             .wait(state)
             .unwrap_or_else(PoisonError::into_inner);
-    }
-}
-
-fn load(shared: &Shared, job: &Job) -> ArtworkResult {
-    if let Some(bytes) = shared.disk.as_ref().and_then(|disk| disk.load(&job.url)) {
-        match decode_artwork(&bytes) {
-            Ok(artwork) => return Ok(Arc::new(artwork)),
-            Err(error) => {
-                tracing::debug!(%error, "a saved poster was unreadable; downloading it again")
-            }
-        }
-    }
-    let loaded = shared
-        .fetcher
-        .fetch(&job.url, &job.headers)
-        .and_then(|bytes| decode_artwork(&bytes).map(|artwork| (bytes, artwork)));
-    match loaded {
-        Ok((bytes, artwork)) => {
-            if let Some(disk) = &shared.disk {
-                disk.save(&job.url, &bytes);
-            }
-            Ok(Arc::new(artwork))
-        }
-        Err(error) => {
-            let host = core_model::redact_url(&job.url);
-            tracing::warn!(%host, %error, "a poster could not be loaded; the tile shows a placeholder");
-            Err(error)
-        }
     }
 }

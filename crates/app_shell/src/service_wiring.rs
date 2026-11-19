@@ -17,6 +17,7 @@ use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
 };
+use subtitle_store::SubtitleCache;
 use title_cache::TitleCache;
 
 use crate::app_paths::AppPaths;
@@ -72,6 +73,10 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         title_cache: Arc::new(TitleCache::new(
             paths.data_dir().join("sources"),
             title_cache::CacheLimits::default(),
+        )),
+        subtitles: Arc::new(SubtitleCache::new(
+            paths.data_dir().join("subtitles"),
+            std::time::Duration::from_secs(7 * 24 * 60 * 60),
         )),
         artwork: build_artwork(&paths.data_dir().join("artwork")),
         skips: Arc::new(SkipLookup::new(Arc::new(UreqSkipFetcher::default()))),

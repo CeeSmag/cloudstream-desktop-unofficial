@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use poster_artwork::ArtworkLoader;
+use subtitle_store::SubtitleCache;
 use title_cache::TitleCache;
 
 use crate::{
@@ -33,6 +34,8 @@ pub struct UiServices {
     pub clock: Arc<dyn Clock>,
     /// On-disk stream source cache for fast reopen.
     pub title_cache: Arc<TitleCache>,
+    /// On-disk subtitle files; only the open title keeps entries after a switch.
+    pub subtitles: Arc<SubtitleCache>,
     /// Poster and artwork images, downloaded and decoded off the UI thread.
     pub artwork: Arc<ArtworkLoader>,
     /// Intro / recap / credits times from online databases (setting `skip_lookup`).

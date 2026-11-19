@@ -24,6 +24,7 @@ poster_artwork = { path = "../poster_artwork" }
 skip_times = { path = "../skip_times" }
 storage = { path = "../storage" }
 stream_proxy = { path = "../stream_proxy" }
+subtitle_store = { path = "../subtitle_store" }
 title_cache = { path = "../title_cache" }
 tracing.workspace = true
 tracing-subscriber.workspace = true

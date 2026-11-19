@@ -39,6 +39,8 @@ pub struct Observation {
     pub agent_known: bool,
     /// The page is on the site itself (a probe from another origin cannot reach the site).
     pub on_site: bool,
+    /// False while the view is still on `about:blank` / empty (not a real off-site redirect).
+    pub page_ready: bool,
 }
 
 /// The next step of a check.
@@ -59,13 +61,21 @@ pub enum Step {
 pub fn next_step(progress: &VerifyProgress, seen: Observation, now: Instant) -> Step {
     if now >= progress.deadline {
         Step::GiveUp
-    } else if !(seen.has_clearance && seen.agent_known) || progress.probing {
+    } else if !seen.page_ready || !(seen.has_clearance && seen.agent_known) || progress.probing {
         Step::Wait
     } else if seen.on_site {
         Step::Probe
     } else {
         Step::PassOnCookie
     }
+}
+
+/// True when `page` is a settled http(s) document (not the initial blank load).
+pub fn page_is_ready(page: &str) -> bool {
+    let trimmed = page.trim();
+    !trimmed.is_empty()
+        && trimmed != "about:blank"
+        && (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
 }
 
 /// True when `page_host` is the site `host` or one of its subdomains.
@@ -113,6 +123,7 @@ mod tests {
             has_clearance,
             agent_known,
             on_site: true,
+            page_ready: true,
         }
     }
 
@@ -130,6 +141,19 @@ mod tests {
             ..seen(false, true)
         };
         assert_eq!(next_step(&progress, no_cookie, now), Step::Wait);
+        let blank = Observation {
+            on_site: false,
+            page_ready: false,
+            ..seen(true, true)
+        };
+        assert_eq!(next_step(&progress, blank, now), Step::Wait);
+    }
+
+    #[test]
+    fn page_is_ready_rejects_blank() {
+        assert!(!page_is_ready(""));
+        assert!(!page_is_ready("about:blank"));
+        assert!(page_is_ready("https://site.test/"));
     }
 
     #[test]

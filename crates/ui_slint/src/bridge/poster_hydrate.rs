@@ -76,25 +76,46 @@ pub(crate) fn request_artwork(
     url: &str,
     on_ready: impl FnOnce(&CloudStream, slint::Image) + Send + 'static,
 ) {
+    request_artwork_mode(ctx, url, true, on_ready);
+}
+
+/// Details poster: memory only, never written to `artwork/` on disk.
+pub(crate) fn request_ephemeral_artwork(
+    ctx: &BridgeContext,
+    url: &str,
+    on_ready: impl FnOnce(&CloudStream, slint::Image) + Send + 'static,
+) {
+    request_artwork_mode(ctx, url, false, on_ready);
+}
+
+fn request_artwork_mode(
+    ctx: &BridgeContext,
+    url: &str,
+    persist: bool,
+    on_ready: impl FnOnce(&CloudStream, slint::Image) + Send + 'static,
+) {
     if url.is_empty() {
         return;
     }
     let weak = ctx.ui.clone();
-    ctx.services.artwork.request(
-        url,
-        Vec::new(),
-        Box::new(move |result| {
-            let Ok(artwork) = result else {
-                return;
-            };
-            let buffer = pixel_buffer(&artwork);
-            let shown = weak
-                .upgrade_in_event_loop(move |ui| on_ready(&ui, slint::Image::from_rgba8(buffer)));
-            if shown.is_err() {
-                tracing::debug!("window closed before an image arrived");
-            }
-        }),
-    );
+    let callback: poster_artwork::ArtworkCallback = Box::new(move |result| {
+        let Ok(artwork) = result else {
+            return;
+        };
+        let buffer = pixel_buffer(&artwork);
+        let shown = weak
+            .upgrade_in_event_loop(move |ui| on_ready(&ui, slint::Image::from_rgba8(buffer)));
+        if shown.is_err() {
+            tracing::debug!("window closed before an image arrived");
+        }
+    });
+    if persist {
+        ctx.services.artwork.request(url, Vec::new(), callback);
+    } else {
+        ctx.services
+            .artwork
+            .request_ephemeral(url, Vec::new(), callback);
+    }
 }
 
 /// Each provider's site, sent as the Referer of its posters (some hosts refuse hot-linking).

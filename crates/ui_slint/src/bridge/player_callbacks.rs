@@ -11,7 +11,9 @@ use crate::feedback_text::{volume_text, wheel_volume_delta};
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
 use super::player_feedback::show_feedback;
+use super::player_polling::clear_video_frame;
 use super::player_seeking::wire_seeking;
+use super::source_persist::persist_playing_sources;
 use super::stream_opening::{refresh_playing, switch_source};
 
 pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
@@ -97,17 +99,14 @@ fn toggle_pause(ctx: &BridgeContext) {
 }
 
 fn close_player(ctx: &BridgeContext) {
-    {
-        let mut session = ctx.session.borrow_mut();
-        session.abandon_open();
-        session.away_key = None;
-    }
+    ctx.session.borrow_mut().abandon_open();
+    persist_playing_sources(ctx);
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
     }
     if let Some(ui) = ctx.window() {
+        clear_video_frame(ctx, &ui);
         ui.set_player_open(false);
-        // The saved place changed: Continue watching and the banner follow it.
         show_continue_watching(ctx, &ui);
     }
 }
@@ -115,20 +114,13 @@ fn close_player(ctx: &BridgeContext) {
 fn leave_player(ctx: &BridgeContext) {
     // Drop any in-flight open so a late OpenReady cannot reopen the player.
     ctx.session.borrow_mut().abandon_open();
+    persist_playing_sources(ctx);
     if let Some(playback) = &ctx.services.playback {
-        let keep_ready = ctx.services.settings.keep_video_ready().unwrap_or(true);
-        match ctx.services.settings.video_cache() {
-            Ok(cache) if keep_ready => {
-                report("leave", playback.leave(cache.while_away()));
-                let mut session = ctx.session.borrow_mut();
-                session.away_key = session.target.as_ref().map(|item| item.media_key.clone());
-            }
-            _ => report("stop", playback.stop()),
-        }
+        report("stop", playback.stop());
     }
     if let Some(ui) = ctx.window() {
+        clear_video_frame(ctx, &ui);
         ui.set_player_open(false);
-        // The saved place changed: Continue watching and the banner follow it.
         show_continue_watching(ctx, &ui);
     }
 }

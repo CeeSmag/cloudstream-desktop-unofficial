@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod fetch_script;
+pub mod verify_open_url;
 pub mod verify_progress;
 
 /// A web address without its query or fragment, for the log (signed addresses stay private).

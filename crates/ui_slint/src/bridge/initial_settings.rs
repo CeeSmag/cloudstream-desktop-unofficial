@@ -18,7 +18,6 @@ pub(crate) fn apply_settings_to_ui(ui: &CloudStream, services: &UiServices) {
 
 fn apply_switches(ui: &CloudStream, services: &UiServices) {
     let settings = &services.settings;
-    ui.set_keep_video_ready(settings.keep_video_ready().unwrap_or(true));
     ui.set_autoplay_next(settings.autoplay_next().unwrap_or(true));
     ui.set_skip_lookup(settings.skip_lookup().unwrap_or(true));
     ui.set_stream_proxy(settings.stream_proxy().unwrap_or(true));

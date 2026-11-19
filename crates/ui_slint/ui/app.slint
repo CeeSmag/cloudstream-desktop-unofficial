@@ -146,7 +146,6 @@ export component CloudStream inherits Window {
     in property <[TrackChoice]> subtitle-tracks: [];
     in property <string> selected-provider: "";
     in property <string> video-cache-label: "";
-    in property <bool> keep-video-ready: true;
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
@@ -194,7 +193,6 @@ export component CloudStream inherits Window {
     callback install-plugin(string);
     callback settings-page-shown(int);
     callback toggle-bookmark();
-    callback set-keep-ready(bool);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
     callback set-stream-proxy(bool);
@@ -378,7 +376,6 @@ export component CloudStream inherits Window {
                 subtitle-add-value: root.subtitle-add-value;
                 subtitle-chosen: root.subtitle-chosen;
                 subtitle-full: root.subtitle-full;
-                keep-video-ready: root.keep-video-ready;
                 autoplay-next: root.autoplay-next;
                 skip-lookup: root.skip-lookup;
                 stream-proxy: root.stream-proxy;
@@ -399,7 +396,6 @@ export component CloudStream inherits Window {
                 set-audio(v) => { set-audio(v); }
                 set-subtitle-add(v) => { set-subtitle-add(v); }
                 remove-subtitle(i) => { remove-subtitle(i); }
-                set-keep-ready(v) => { set-keep-ready(v); }
                 set-autoplay(v) => { set-autoplay(v); }
                 set-skip-lookup(v) => { set-skip-lookup(v); }
                 set-stream-proxy(v) => { set-stream-proxy(v); }

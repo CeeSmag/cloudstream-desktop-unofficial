@@ -6,6 +6,7 @@ mod artwork_decode;
 mod artwork_disk_cache;
 mod artwork_error;
 mod artwork_fetcher;
+mod artwork_load;
 mod artwork_loader;
 #[cfg(test)]
 mod artwork_loader_tests;
