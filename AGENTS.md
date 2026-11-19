@@ -210,7 +210,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 - **Dependencies**: `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
 - **Responsibility**: Finds the intro, recap and credits of an episode or film. Providers do not carry these times; like the reference app it asks community databases by the title's ids: AniSkip (anime, MyAnimeList id), TheIntroDB (TMDb or IMDb id), IntroDB (IMDb id). First database that knows wins.
 - **Types**: `SkipLookup::find(&SkipQuery) -> Result<Vec<SkipSegment>, SkipError>` (answers remembered per run, at most 64; errors are not remembered), `ExternalIds::from_sync(sync_data, unique_url)` (validates ids so they are safe in a URL), `SkipFetcher` trait with `UreqSkipFetcher`.
-- **Plumbing**: `core_model::LoadDetails.sync_data` / `unique_url` come from the sidecar's `load` reply; `desktop_tauri::catalog_commands::map_media_details` turns them into `imdb_id` / `tmdb_id` / `mal_id` on the title page; `skip_commands::get_skip_segments` runs the lookup (switch: setting `skip_lookup`).
+- **Plumbing**: `core_model::LoadDetails.sync_data` / `unique_url` come from the sidecar's `load` reply; `desktop_tauri::catalog_commands::map_media_details` turns them into `imdb_id` / `tmdb_id` / `mal_id` on the title page; `skip_commands::get_skip_segments` runs the lookup (switch: setting `skip_lookup`). In the Slint product: built in `app_shell::service_wiring` as `UiServices::skips`; `ui_slint::bridge::skip_lookup_start` asks when a stream's length is known (request kind `Skips`), and the chapters' parts win for the kinds they name.
 
 ---
 
@@ -349,8 +349,9 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 
 #### `crates/ui_slint`
 - **Location**: `crates/ui_slint/`
-- **Dependencies**: `slint = "1.19"` (edition 1.19, no `system-tray`), `playback_session`, `player_api`, `app_services`, `app_updater`, `poster_artwork`, `cloudflare_bridge`
+- **Dependencies**: `slint = "1.19"` (edition 1.19, no `system-tray`), `playback_session`, `player_api`, `app_services`, `app_updater`, `poster_artwork`, `cloudflare_bridge`, `skip_times`
 - **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks. Layout of the bridge, request tickets, playback watch and known Slint pitfalls: `crates/ui_slint/README.md`.
+- **Ported from the old Tauri UI** (pure rules with tests, named after the TS files they replace): the player's Sources menu (`source_menu.rs`: broken hidden, best first, kind / size / preferred-subtitle tags, 1080p / 2160p filter with size sort, "only with subtitles" filter), track menus with preferred languages first and picks by id (`track_menu.rs`), feedback pop-up and buffering text (`feedback_text.rs`), seek bar extras (`seek_bar.rs`), skip prompts from chapters plus online times from `UiServices::skips` (`skip_segments.rs`, `bridge/skip_lookup_start.rs`), spaced-out key seeks (`seek_scheduler.rs`), the opening panel (`check_text.rs`), Browse filters (`browse_filters.rs`), plugin search / filter / sort (`plugin_filter.rs`), the per-provider Home banner (`resume_hero.rs`). Slint globals `PluginList` and `BrowseFilter` hold those lists' controls. Settings: removable subtitle-language chips, a debug-logging switch (`AppExtras::debug_logs`), storage usage (`app_services::measure_storage`).
 
 #### `crates/ui_app` (reference only)
 - **Location**: `crates/ui_app/`

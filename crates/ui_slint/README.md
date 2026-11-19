@@ -10,8 +10,12 @@ worker thread and comes back as a `UiEvent` (`src/ui_events.rs`), drained by a 2
 | `bridge/*_callbacks.rs` | one file per screen's buttons (home, catalog, details, player, settings…) |
 | `bridge/*_loading.rs`, `title_search.rs` | Home shelves, title pages, Browse (TMDB + provider match), search |
 | `bridge/event_dispatch.rs` + `*_events.rs` | show background results; answers of replaced requests are dropped |
-| `request_tickets.rs` | a ticket per request kind (home, search, browse, details, open) |
+| `request_tickets.rs` | a ticket per request kind (home, search, browse, details, open, skips) |
 | `playback_watch.rs` | next source on failure (max 3), next episode on end |
+| `source_menu.rs`, `track_menu.rs` | player Sources (filters, sizes, subtitle tags) and track menus |
+| `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
+| `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
+| `browse_filters.rs`, `plugin_filter.rs`, `resume_hero.rs` | Browse filters, plugin list, Home banner |
 | `focus_grid.rs`, `bridge/focus_*.rs` | remote / keyboard navigation: rows per screen, Enter / Back actions |
 | `startup_progress.rs` | the start-up screen's text and bar |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
