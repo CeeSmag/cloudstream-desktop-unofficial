@@ -1,9 +1,54 @@
-import { Button, LineEdit, Spinner, Switch } from "std-widgets.slint";
+import { Button, ComboBox, LineEdit, Spinner, Switch } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
 import { Card, MutedLabel } from "widgets.slint";
 
 /// Settings > Extensions: repositories, the plugins they offer, and the installed plugins.
+/// The plugin list's search, filters and paging (read by the app when `changed` fires).
+export global PluginList {
+    in-out property <string> search: "";
+    /// "All languages", then the languages the plugins are in.
+    in property <[string]> languages: ["All languages"];
+    in-out property <string> language: "All languages";
+    in property <[string]> sorts: ["Sort: Name", "Sort: Language", "Sort: Size"];
+    in-out property <string> sort: "Sort: Name";
+    /// 0 all, 1 not installed, 2 installed.
+    in-out property <int> view: 0;
+    /// "12 of 340".
+    in property <string> count-text: "";
+    in property <bool> has-more: false;
+    callback changed();
+    callback more();
+}
+
+/// A toggle of the plugin list's view row.
+component ViewChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    height: 30px;
+    width: view-label.preferred-width + 22px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: root.on ? Theme.accent : #ffffff1f;
+    background: root.on ? #5b8cff33 : (view-touch.has-hover ? #ffffff1f : #ffffff0d);
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-checked: root.on;
+    view-label := Text {
+        text: root.text;
+        color: root.on ? Theme.accent : Theme.text;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    view-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 export component ExtensionsPage inherits VerticalLayout {
     in property <[RepositoryItem]> repositories: [];
     in property <[AvailablePlugin]> available: [];
@@ -73,9 +118,39 @@ export component ExtensionsPage inherits VerticalLayout {
 
     Card {
         title: "Available plugins";
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            LineEdit {
+                text <=> PluginList.search;
+                placeholder-text: "Search by name, description, author, language or repository";
+                horizontal-stretch: 1;
+                edited => { PluginList.changed(); }
+            }
+            ComboBox {
+                model: PluginList.languages;
+                current-value <=> PluginList.language;
+                selected => { PluginList.changed(); }
+            }
+            ComboBox {
+                model: PluginList.sorts;
+                current-value <=> PluginList.sort;
+                selected => { PluginList.changed(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            ViewChip { text: "All"; on: PluginList.view == 0; clicked => { PluginList.view = 0; PluginList.changed(); } }
+            ViewChip { text: "Not installed"; on: PluginList.view == 1; clicked => { PluginList.view = 1; PluginList.changed(); } }
+            ViewChip { text: "Installed"; on: PluginList.view == 2; clicked => { PluginList.view = 2; PluginList.changed(); } }
+            Rectangle { horizontal-stretch: 1; }
+            MutedLabel { text: PluginList.count-text; vertical-alignment: center; }
+        }
         if root.loading: MutedLabel { text: "Loading the plugins your repositories offer…"; }
         if !root.loading && root.available.length == 0: MutedLabel {
-            text: root.repositories.length == 0 ? "Add a repository to see its plugins." : "Your repositories offer no plugins.";
+            text: root.repositories.length == 0 ? "Add a repository to see its plugins."
+                : PluginList.count-text == "" ? "Your repositories offer no plugins."
+                : "No plugin matches that search or filter.";
         }
         for plugin in root.available: HorizontalLayout {
             spacing: Theme.space-2;
@@ -94,6 +169,10 @@ export component ExtensionsPage inherits VerticalLayout {
                 enabled: !plugin.installed && root.busy-text == "";
                 clicked => { root.install(plugin.key); }
             }
+        }
+        if PluginList.has-more: Button {
+            text: "Show more";
+            clicked => { PluginList.more(); }
         }
     }
 

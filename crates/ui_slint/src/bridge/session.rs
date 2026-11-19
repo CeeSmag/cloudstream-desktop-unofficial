@@ -61,8 +61,12 @@ pub(crate) struct Session {
     pub(crate) source_checks: Vec<SourceCheck>,
     /// The video the viewer left (still loaded, paused) by its media key.
     pub(crate) away_key: Option<String>,
-    /// The plugins the repositories offer, in the Extensions page's order.
+    /// The plugins the repositories offer, in the repositories' order.
     pub(crate) available: Vec<app_services::PluginHit>,
+    /// Internal names of the installed plugins (for the list's installed marks and filter).
+    pub(crate) installed_names: Vec<String>,
+    /// How many plugins the list shows ("Show more" adds a page).
+    pub(crate) plugin_page: usize,
     /// Where the remote's focus is on each screen.
     pub(crate) focus: std::collections::HashMap<FocusScreen, FocusGrid>,
 }
@@ -102,6 +106,8 @@ impl Default for Session {
             source_checks: Vec::new(),
             away_key: None,
             available: Vec::new(),
+            installed_names: Vec::new(),
+            plugin_page: 0,
             focus: std::collections::HashMap::new(),
         }
     }

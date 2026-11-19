@@ -9,6 +9,7 @@ use crate::ui_events::UiEvent;
 use crate::{AvailablePlugin, CloudStream, RepositoryItem};
 
 use super::bridge_context::BridgeContext;
+use super::plugin_list::show_new_catalog;
 
 /// What the Extensions page lists.
 #[derive(Debug, Default)]
@@ -61,16 +62,15 @@ pub(crate) fn show_catalog(ctx: &BridgeContext, ui: &CloudStream, catalog: Exten
         })
         .collect();
     ui.set_repositories(ModelRc::new(VecModel::from(repositories)));
-    let available: Vec<AvailablePlugin> = catalog
-        .plugins
-        .iter()
-        .map(|hit| available_row(hit, &catalog.installed_names))
-        .collect();
-    ui.set_available_plugins(ModelRc::new(VecModel::from(available)));
-    ctx.session.borrow_mut().available = catalog.plugins;
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.available = catalog.plugins;
+        session.installed_names = catalog.installed_names;
+    }
+    show_new_catalog(ctx, ui);
 }
 
-fn available_row(hit: &PluginHit, installed: &[String]) -> AvailablePlugin {
+pub(crate) fn available_row(hit: &PluginHit, installed: &[String]) -> AvailablePlugin {
     let plugin = &hit.plugin;
     let mut detail = format!("v{} · {}", plugin.version, hit.repository_name);
     if let Some(language) = plugin

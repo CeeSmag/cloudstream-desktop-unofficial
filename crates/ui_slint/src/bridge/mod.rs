@@ -29,6 +29,7 @@ mod player_feedback;
 mod player_polling;
 mod player_timeline;
 mod player_track_callbacks;
+mod plugin_list;
 mod poster_hydrate;
 mod preference_callbacks;
 mod session;

@@ -11,6 +11,7 @@ mod check_text;
 mod feedback_text;
 mod focus_grid;
 mod playback_watch;
+mod plugin_filter;
 mod posters;
 mod request_tickets;
 mod seek_bar;
