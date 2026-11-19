@@ -86,17 +86,24 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
 }
 
 fn set_worker_limit(ctx: &BridgeContext, value: SharedString) {
-    let limit = match value.as_str() {
-        "1" => Some(1),
-        "2" => Some(2),
-        _ => None,
-    };
+    let limit = worker_limit_from_label(value.as_str());
     saved(
         "plugin workers",
         ctx.services.settings.set_plugin_worker_limit(limit),
     );
+    // Apply now (egui does the same); settings alone only take effect on the next start.
+    ctx.services.extensions.set_resident_worker_limit(limit);
     if let Some(ui) = ctx.window() {
         ui.set_worker_value(value);
+    }
+}
+
+/// "1" / "2" / anything else → Some(1) / Some(2) / unlimited.
+pub(crate) fn worker_limit_from_label(value: &str) -> Option<usize> {
+    match value {
+        "1" => Some(1),
+        "2" => Some(2),
+        _ => None,
     }
 }
 
@@ -138,4 +145,16 @@ fn request_wipe(ctx: &BridgeContext) {
 fn leading_number(text: &str) -> Option<u32> {
     let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_limit_from_label_maps_menu_choices() {
+        assert_eq!(worker_limit_from_label("1"), Some(1));
+        assert_eq!(worker_limit_from_label("2"), Some(2));
+        assert_eq!(worker_limit_from_label("Unlimited"), None);
+    }
 }
