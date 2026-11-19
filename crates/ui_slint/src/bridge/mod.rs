@@ -23,6 +23,7 @@ mod home_loading;
 mod initial_settings;
 mod playback_reactions;
 mod player_callbacks;
+mod player_feedback;
 mod player_polling;
 mod player_track_callbacks;
 mod poster_hydrate;

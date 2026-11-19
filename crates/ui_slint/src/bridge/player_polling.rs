@@ -7,6 +7,7 @@
 use player_api::{MediaTrack, PlaybackState, TrackKind};
 use slint::{ComponentHandle, Image, ModelRc, SharedPixelBuffer, VecModel};
 
+use crate::feedback_text::{audio_only, waiting_text};
 use crate::track_menu::{track_rows, TrackRow};
 use crate::{CloudStream, TrackChoice};
 
@@ -27,7 +28,8 @@ pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_position_text(format_time(status.position_ms).into());
     ui.set_duration_text(format_time(status.duration_ms).into());
     ui.set_paused(status.state == PlaybackState::Paused);
-    ui.set_buffering(status.is_buffering || status.state == PlaybackState::Loading);
+    ui.set_player_waiting(waiting_text(&status).into());
+    ui.set_player_audio_only(audio_only(&status));
     ui.set_fullscreen(ui.window().is_fullscreen());
     show_tracks_if_changed(ctx, ui, &playback.tracks());
     follow_window_size(ctx, ui);

@@ -73,7 +73,11 @@ export component CloudStream inherits Window {
     in-out property <float> position-ms: 0;
     in-out property <float> duration-ms: 1;
     in-out property <bool> paused: false;
-    in-out property <bool> buffering: false;
+    in-out property <string> player-waiting: "";
+    in-out property <bool> player-audio-only: false;
+    in-out property <string> player-feedback: "";
+    in-out property <float> player-feedback-level: -1;
+    in-out property <int> player-feedback-count: 0;
     in-out property <bool> fullscreen: false;
     in-out property <string> position-text: "0:00";
     in-out property <string> duration-text: "0:00";
@@ -153,6 +157,7 @@ export component CloudStream inherits Window {
     callback toggle-source-subtitle(int);
     callback toggle-pause();
     callback seek-to(float);
+    callback seek-by(float);
     callback set-volume(float);
     callback close-player();
     callback leave-player();
@@ -412,7 +417,11 @@ export component CloudStream inherits Window {
             position-text: position-text;
             duration-text: duration-text;
             paused: paused;
-            buffering: buffering;
+            waiting-text: player-waiting;
+            audio-only: player-audio-only;
+            feedback-text: player-feedback;
+            feedback-level: player-feedback-level;
+            feedback-count: player-feedback-count;
             volume: volume;
             fullscreen: fullscreen;
             show-sources <=> show-sources;
@@ -426,6 +435,7 @@ export component CloudStream inherits Window {
             subtitle-tracks: subtitle-tracks;
             toggle-pause => { toggle-pause(); }
             seek-to(v) => { seek-to(v); }
+            seek-by(v) => { seek-by(v); }
             set-volume(v) => { set-volume(v); }
             close-player => { close-player(); }
             leave-player => { leave-player(); }

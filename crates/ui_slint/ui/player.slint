@@ -1,4 +1,4 @@
-import { ScrollView } from "std-widgets.slint";
+import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { SourceItem, SourceMenuInfo, TrackChoice } from "types.slint";
 import { SourcePanel } from "source_panel.slint";
@@ -163,7 +163,14 @@ export component PlayerOverlay inherits Rectangle {
     in property <string> position-text: "0:00";
     in property <string> duration-text: "0:00";
     in property <bool> paused: false;
-    in property <bool> buffering: false;
+    /// "Loading stream…" or "Buffering 45%"; empty while the picture plays.
+    in property <string> waiting-text: "";
+    in property <bool> audio-only: false;
+    /// The pop-up confirming the viewer's last action; a new count shows it again.
+    in property <string> feedback-text: "";
+    /// A level bar under the pop-up (volume), 0..1; below 0 for none.
+    in property <float> feedback-level: -1;
+    in property <int> feedback-count: 0;
     in property <float> volume: 100;
     in property <bool> fullscreen: false;
     in-out property <bool> show-sources: false;
@@ -176,6 +183,7 @@ export component PlayerOverlay inherits Rectangle {
 
     callback toggle-pause();
     callback seek-to(float);
+    callback seek-by(float);
     callback set-volume(float);
     callback close-player();
     callback leave-player();
@@ -205,7 +213,7 @@ export component PlayerOverlay inherits Rectangle {
 
     function nudge(delta-ms: float) {
         root.show-chrome();
-        root.seek-to(clamp(root.position-ms + delta-ms, 0, root.duration-ms));
+        root.seek-by(delta-ms);
     }
 
     keys := FocusScope {
@@ -249,18 +257,89 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
-    if root.buffering: Rectangle {
-        width: 64px;
-        height: 64px;
-        border-radius: 32px;
-        background: #00000088;
-        Text {
-            text: "…";
-            color: white;
-            font-size: 28px;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+    if root.waiting-text != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 24px;
+        height: 40px;
+        width: waiting.preferred-width + 64px;
+        border-radius: 20px;
+        background: #0c0f17e6;
+        border-width: 1px;
+        border-color: #ffffff26;
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 18px;
+            spacing: 10px;
+            alignment: center;
+            Spinner { width: 18px; height: 18px; y: 11px; indeterminate: true; }
+            waiting := Text {
+                text: root.waiting-text;
+                color: Theme.text;
+                font-size: 14px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
         }
+    }
+
+    if root.audio-only: VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        Text { text: "♪"; color: Theme.accent; font-size: 48px; horizontal-alignment: center; }
+        Text { text: "Audio only"; color: Theme.muted; font-size: 15px; horizontal-alignment: center; }
+    }
+
+    feedback := Rectangle {
+        property <bool> shown: false;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        height: 56px;
+        width: feedback-row.preferred-width + 40px;
+        border-radius: 16px;
+        background: #00000059;
+        border-width: 1px;
+        border-color: #ffffff1a;
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: 250ms; }
+        feedback-row := HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            spacing: 14px;
+            alignment: center;
+            Text {
+                text: root.feedback-text;
+                color: white;
+                font-size: 19px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            if root.feedback-level >= 0: Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 112px;
+                height: 6px;
+                border-radius: 3px;
+                background: #ffffff40;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.feedback-level, 0, 1);
+                    border-radius: 3px;
+                    background: Theme.accent;
+                }
+            }
+        }
+    }
+    feedback-timer := Timer {
+        interval: 1200ms;
+        running: false;
+        triggered => {
+            feedback.shown = false;
+            self.running = false;
+        }
+    }
+    changed feedback-count => {
+        feedback.shown = true;
+        feedback-timer.running = true;
+        feedback-timer.restart();
     }
 
     if root.chrome-visible: Rectangle {

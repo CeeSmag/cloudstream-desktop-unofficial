@@ -2,18 +2,20 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use app_services::{PlaybackItem, StreamSelection, UiServices};
+use app_services::{full_label, PlaybackItem, StreamSelection, UiServices};
 use playback_session::{
     run_open, CheckedOpen, LiveSources, OpenControl, OpenProgress, OpenRequest, RefreshRequest,
 };
 
 use crate::background_work::{spawn_work, UiSender};
+use crate::feedback_text::source_text;
 use crate::request_tickets::{RequestKind, Ticket};
 use crate::source_menu::SourceFilter;
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::player_feedback::show_feedback;
 use super::source_picker::show_sources;
 
 /// What a worker needs to open one video.
@@ -243,6 +245,10 @@ pub(crate) fn switch_source(ctx: &BridgeContext, index: usize) {
         Ok(()) => {
             ctx.session.borrow_mut().selected = index;
             show_sources(ctx);
+            let label = ctx.session.borrow().links.get(index).map(full_label);
+            if let Some(label) = label {
+                show_feedback(&ui, source_text(&label), None);
+            }
         }
         Err(error) => {
             tracing::warn!(%error, index, "switching the source failed");

@@ -2,11 +2,13 @@
 
 use player_api::TrackKind;
 
+use crate::feedback_text::{audio_text, subtitle_text};
 use crate::track_menu::OFF_ID;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::player_callbacks::report;
+use super::player_feedback::show_feedback;
 
 pub(crate) fn wire_player_tracks(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -23,15 +25,29 @@ fn select_track(ctx: &BridgeContext, kind: TrackKind, id: i32) {
     let id = i64::from(id);
     if kind == TrackKind::Subtitle && id == OFF_ID {
         report("subtitles off", playback.select_track(kind, None));
+        tell(ctx, subtitle_text(None));
         return;
     }
-    if playback
+    let picked = playback
         .tracks()
-        .iter()
-        .any(|track| track.kind == kind && track.id == id)
-    {
-        report("select track", playback.select_track(kind, Some(id)));
-    } else {
+        .into_iter()
+        .find(|track| track.kind == kind && track.id == id);
+    let Some(track) = picked else {
         tracing::debug!(id, "the picked track is gone");
+        return;
+    };
+    report("select track", playback.select_track(kind, Some(id)));
+    tell(
+        ctx,
+        match kind {
+            TrackKind::Subtitle => subtitle_text(Some(&track.label())),
+            TrackKind::Audio => audio_text(&track.label()),
+        },
+    );
+}
+
+fn tell(ctx: &BridgeContext, text: String) {
+    if let Some(ui) = ctx.window() {
+        show_feedback(&ui, text, None);
     }
 }

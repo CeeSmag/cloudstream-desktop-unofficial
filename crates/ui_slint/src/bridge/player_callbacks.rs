@@ -7,7 +7,11 @@ use slint::ComponentHandle;
 use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
+use crate::feedback_text::{seek_text, volume_text};
+
 use super::bridge_context::BridgeContext;
+use super::player_feedback::show_feedback;
+use super::player_polling::format_time;
 use super::stream_opening::{refresh_playing, switch_source};
 
 /// How far "Skip" jumps when no intro times are known.
@@ -17,10 +21,15 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_toggle_pause(move || toggle_pause(&c));
     let c = ctx.clone();
-    ui.on_seek_to(move |ms| {
-        if let Some(playback) = &c.services.playback {
-            report("seek", playback.seek_to(ms as i64));
-        }
+    ui.on_seek_to(move |ms| seek(&c, ms as i64, None));
+    let c = ctx.clone();
+    ui.on_seek_by(move |delta| {
+        let Some(playback) = &c.services.playback else {
+            return;
+        };
+        let status = playback.tick();
+        let target = (status.position_ms + delta as i64).clamp(0, status.duration_ms.max(0));
+        seek(&c, target, Some(delta as i64));
     });
     let c = ctx.clone();
     ui.on_set_volume(move |volume| {
@@ -30,6 +39,7 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
         }
         if let Some(ui) = c.window() {
             ui.set_volume(volume);
+            show_feedback(&ui, volume_text(volume), Some(volume / 100.0));
         }
     });
     let c = ctx.clone();
@@ -54,7 +64,12 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
         }
     });
     let c = ctx.clone();
-    ui.on_refresh_sources(move || refresh_playing(&c));
+    ui.on_refresh_sources(move || {
+        refresh_playing(&c);
+        if let Some(ui) = c.window() {
+            show_feedback(&ui, "Searching for sources again".to_owned(), None);
+        }
+    });
     let c = ctx.clone();
     ui.on_select_source(move |index| {
         if let Ok(index) = usize::try_from(index) {
@@ -67,6 +82,8 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
             let fullscreen = !ui.window().is_fullscreen();
             ui.window().set_fullscreen(fullscreen);
             ui.set_fullscreen(fullscreen);
+            let text = if fullscreen { "Fullscreen" } else { "Windowed" };
+            show_feedback(&ui, text.to_owned(), None);
         }
     });
 }
@@ -75,6 +92,25 @@ fn toggle_pause(ctx: &BridgeContext) {
     if let Some(playback) = &ctx.services.playback {
         let paused = playback.tick().state == PlaybackState::Paused;
         report("pause", playback.set_paused(!paused));
+        if let Some(ui) = ctx.window() {
+            let text = if paused { "Playing" } else { "Paused" };
+            show_feedback(&ui, text.to_owned(), None);
+        }
+    }
+}
+
+/// Jumps to `target_ms`; the pop-up says how far (`delta_ms`) or where to.
+fn seek(ctx: &BridgeContext, target_ms: i64, delta_ms: Option<i64>) {
+    let Some(playback) = &ctx.services.playback else {
+        return;
+    };
+    report("seek", playback.seek_to(target_ms));
+    if let Some(ui) = ctx.window() {
+        let text = match delta_ms {
+            Some(delta) => seek_text(delta),
+            None => format!("Jump to {}", format_time(target_ms)),
+        };
+        show_feedback(&ui, text, None);
     }
 }
 
