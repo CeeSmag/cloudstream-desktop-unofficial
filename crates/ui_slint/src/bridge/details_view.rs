@@ -29,6 +29,22 @@ pub(crate) fn show_episode_list(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_play_label(label.into());
 }
 
+/// The season the title page opens on: the one of the episode the viewer left off at, so it is
+/// in view (like the old title page); -1 (every season) otherwise.
+pub(crate) fn resume_season(episodes: &[EpisodeRow], resume_key: Option<&str>) -> i32 {
+    let Some(key) = resume_key else {
+        return -1;
+    };
+    let seasons: std::collections::BTreeSet<i32> = episodes.iter().map(|row| row.season).collect();
+    if seasons.len() < 2 {
+        return -1;
+    }
+    episodes
+        .iter()
+        .find(|row| row.data == key)
+        .map_or(-1, |row| row.season.max(-1))
+}
+
 /// The episode Play starts: the first of the shown season (by season, then episode number).
 pub(crate) fn first_episode(episodes: &[EpisodeRow], season: i32) -> Option<usize> {
     shown_episodes(episodes, season)
@@ -92,6 +108,23 @@ mod tests {
             episode: Some(episode),
             ..EpisodeRow::default()
         }
+    }
+
+    #[test]
+    fn resume_season_opens_where_the_viewer_left_off() {
+        let mut episodes = vec![numbered(1, 1), numbered(2, 1)];
+        if let Some(row) = episodes.get_mut(1) {
+            row.data = "s2e1".into();
+        }
+        assert_eq!(resume_season(&episodes, Some("s2e1")), 2);
+        assert_eq!(resume_season(&episodes, Some("gone")), -1);
+        assert_eq!(resume_season(&episodes, None), -1);
+        let one_season = [numbered(1, 1)];
+        assert_eq!(
+            resume_season(&one_season, Some("")),
+            -1,
+            "nothing to choose"
+        );
     }
 
     #[test]

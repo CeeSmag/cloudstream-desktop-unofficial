@@ -15,7 +15,7 @@ use slint::ComponentHandle;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
-use super::details_view::{show_details_artwork, show_episode_list};
+use super::details_view::{resume_season, show_details_artwork, show_episode_list};
 use super::extension_catalog::refresh_plugins;
 use super::home_loading::load_home;
 use super::poster_hydrate::{hydrate_poster_images, request_artwork};
@@ -204,7 +204,11 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
     ui.set_details_tags(string_model(page.tags.into_iter().take(MAX_TAGS)));
     ui.set_details_cast(page.cast.join("  ·  ").into());
     ui.set_resume_label(page.resume.into());
-    ui.set_season_filter(-1);
+    let season = resume_season(
+        &ctx.session.borrow().episodes,
+        page.resume_media_key.as_deref(),
+    );
+    ui.set_season_filter(season);
     ui.set_season_labels(string_model(season_labels(&page.episodes)));
     ui.set_details_resume_key(page.resume_media_key.clone().unwrap_or_default().into());
     show_episode_list(ctx, ui);
