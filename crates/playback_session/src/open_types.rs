@@ -64,9 +64,9 @@ pub struct OpenHooks<'a> {
     pub on_progress: &'a (dyn Fn(OpenProgress) + Sync),
     /// Full snapshot after each batch or check (for the sources list).
     pub on_update: &'a (dyn Fn(&CheckedOpen) + Sync),
-    /// First time a working stream is ready to play (index into the current list).
+    /// When playback may start: best working after full check, skip, cap, or a trusted seed.
     pub on_ready: &'a (dyn Fn(usize) + Sync),
-    /// When true, stop waiting for more checks after a working stream exists (play best now).
+    /// When true, start the best working stream found so far and stop waiting.
     pub skip: &'a AtomicBool,
     /// When true, abandon the open entirely.
     pub cancel: &'a AtomicBool,

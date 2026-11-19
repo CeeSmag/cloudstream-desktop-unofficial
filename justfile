@@ -51,9 +51,37 @@ live:
     cargo test --workspace -- --ignored --test-threads=1
 
 # Rebuild and start the app.
+[windows]
 run:
     cargo run -p app_shell
 
+# On Linux, reuse the sidecar/JRE from `scripts/build_release.sh` when present.
+[unix]
+run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="$(cd "{{justfile_directory}}" && pwd)"
+    cache="$root/target/bundle-cache"
+    if [[ -z "${CS_SIDECAR_HOME:-}" && -d "$cache/cs-sidecar-dist/bin" ]]; then
+      export CS_SIDECAR_HOME="$cache/cs-sidecar-dist"
+    fi
+    if [[ -z "${CS_SIDECAR_JAVA_HOME:-}" ]]; then
+      if [[ -d "$cache/jre-linux-x64/bin" ]]; then
+        export CS_SIDECAR_JAVA_HOME="$cache/jre-linux-x64"
+      elif [[ -d /usr/lib/jvm/java-21-openjdk ]]; then
+        export CS_SIDECAR_JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+      fi
+    fi
+    cargo run -p app_shell
+
 # Build the JVM sidecar the app needs for extensions.
+[windows]
 sidecar:
     powershell -File scripts/setup_sidecar.ps1
+
+[unix]
+sidecar:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "On Linux, build the AppImage once (scripts/build_release.sh) or set CS_SIDECAR_HOME to target/bundle-cache/cs-sidecar-dist"
+    exit 1

@@ -1,11 +1,14 @@
 //! Finds and checks streams without a WebView shell.
 //!
-//! Searches provider links, probes candidates with [`StreamChecker`], plays the first working
-//! stream ASAP, and keeps checking the full list (optional TitleCache fresh/stale seeds).
+//! Searches provider links, probes candidates with [`StreamChecker`], waits for a full search and
+//! check (or skip / time cap), then plays the **best** working stream by [`link_rank`]. Fresh
+//! TitleCache seeds can still start at once; stale seeds get a short probe window first.
 #![forbid(unsafe_code)]
 
 mod checked_open;
+mod open_gate;
 mod open_run;
+mod open_seeds;
 mod open_types;
 mod session;
 

@@ -1,8 +1,7 @@
 //! Open a title by searching links and HTTP-checking them as they arrive.
 //!
-//! Plays as soon as the first working stream is found (via [`OpenHooks::on_ready`]) while search
-//! and checks continue until the provider finishes, the total time cap, or the caller skips /
-//! cancels. Unlike the old early-stop (two extras after the first), every candidate is checked.
+//! Waits for the provider search and every check (or skip / total time cap), then plays the best
+//! working stream via [`OpenHooks::on_ready`]. Fresh TitleCache seeds can still start at once.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,7 +9,8 @@ use std::sync::Arc;
 use app_services::{StreamChecker, StreamResolver};
 use extension_repo::UreqProbe;
 
-use crate::open_run::{finish, plant_saved, run_search, OpenState};
+use crate::open_run::{finish, run_search, OpenState};
+use crate::open_seeds::plant_saved;
 use crate::open_types::{CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
 
 /// Searches for streams of `provider`/`data`, checks them, and picks the best working one.
@@ -49,7 +49,7 @@ pub struct OpenTarget<'a> {
     pub data: &'a str,
 }
 
-/// Full open: optional cache seeds, early `on_ready`, live `on_update`, skip / cancel.
+/// Full open: optional cache seeds, deferred `on_ready` (best working), live `on_update`, skip.
 pub fn open_with(
     target: &OpenTarget<'_>,
     cache: Option<&OpenCache>,

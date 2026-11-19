@@ -40,6 +40,9 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
     if come_back_to_waiting_video(ctx, playback, &item.media_key) {
         return;
     }
+    // Leave shrinks the demuxer cache to ahead=0; a different video must get the full
+    // watching budget back or mpv stays paused-for-cache (Tauri play_media does the same).
+    restore_watching_cache(ctx, playback);
     let (control, live, ticket) = {
         let mut session = ctx.session.borrow_mut();
         // The video opened before stops searching and checking; its answers are dropped.
@@ -228,6 +231,14 @@ fn resume_position(ctx: &BridgeContext) -> i64 {
         tracing::warn!(%error, "could not read the saved position; starting from the beginning");
         0
     })
+}
+
+/// Puts the full while-watching demuxer budget back after a leave (ahead was zeroed).
+fn restore_watching_cache(ctx: &BridgeContext, playback: &app_services::PlaybackService) {
+    let cache = ctx.services.settings.video_cache().unwrap_or_default();
+    if let Err(error) = playback.set_cache_limits(cache.while_watching()) {
+        tracing::warn!(%error, "the video cache size could not be given to the player");
+    }
 }
 
 /// Opening the video the viewer left (still loaded and paused) plays it on from memory.

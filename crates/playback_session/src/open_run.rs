@@ -1,35 +1,31 @@
-//! Search/check loop and TitleCache seeding for a stream open.
+//! Search/check loop for a stream open (best working after full scan, skip, or time cap).
 
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use app_services::{LinkHealth, LinkSearch, StreamChecker};
 use core_model::{PlayableLink, SubtitleTrack};
-use title_cache::{Freshness, Lookup};
 
-use crate::open_types::{CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
+use crate::open_gate::{
+    best_after_working, no_streams_timed_out, should_announce_ready, ReadyWhen,
+};
+use crate::open_types::{CheckedOpen, OpenError, OpenHooks, OpenProgress};
 
-/// Cap how long we wait for the first working stream before returning what we have.
+/// Cap how long we wait with no streams at all before failing the open.
 pub(crate) const FIRST_WORKING_SECS: u64 = 30;
-/// Cap for the whole search + check pass.
+/// Cap for the whole search + check pass; then start the best working so far.
 pub(crate) const TOTAL_SECS: u64 = 60;
-/// How many saved streams to plant when the cache is fresh.
-const TRUSTED_RECHECK: usize = 8;
-/// How many saved streams to test first when the cache is stale.
-const STALE_TEST_FIRST: usize = 3;
-/// Cap for probing stale saved streams before falling through to the live search.
-const STALE_TEST_SECS: u64 = 3;
 
 pub(crate) struct OpenState {
-    ordered: Vec<(PlayableLink, Option<LinkHealth>)>,
-    subtitles: Vec<SubtitleTrack>,
-    checked: usize,
-    working: usize,
-    play_index: Option<usize>,
-    next_to_check: usize,
-    started: Instant,
-    search_done: bool,
-    ready_announced: bool,
+    pub(crate) ordered: Vec<(PlayableLink, Option<LinkHealth>)>,
+    pub(crate) subtitles: Vec<SubtitleTrack>,
+    pub(crate) checked: usize,
+    pub(crate) working: usize,
+    pub(crate) play_index: Option<usize>,
+    pub(crate) next_to_check: usize,
+    pub(crate) started: Instant,
+    pub(crate) search_done: bool,
+    pub(crate) ready_announced: bool,
 }
 
 impl OpenState {
@@ -47,7 +43,7 @@ impl OpenState {
         }
     }
 
-    fn progress(&self) -> OpenProgress {
+    pub(crate) fn progress(&self) -> OpenProgress {
         OpenProgress {
             found: self.ordered.len(),
             checked: self.checked,
@@ -56,7 +52,7 @@ impl OpenState {
         }
     }
 
-    fn snapshot(&self) -> CheckedOpen {
+    pub(crate) fn snapshot(&self) -> CheckedOpen {
         CheckedOpen {
             links: self.ordered.clone(),
             play_index: self.play_index,
@@ -68,13 +64,11 @@ impl OpenState {
         self.started.elapsed() >= Duration::from_secs(TOTAL_SECS)
     }
 
-    fn first_working_wait_done(&self) -> bool {
-        self.play_index.is_some()
-            && self.started.elapsed() >= Duration::from_secs(FIRST_WORKING_SECS)
-            && self.search_done
+    fn all_checked(&self) -> bool {
+        self.next_to_check >= self.ordered.len()
     }
 
-    fn announce_ready(&mut self, hooks: &OpenHooks<'_>) {
+    pub(crate) fn announce_ready(&mut self, hooks: &OpenHooks<'_>) {
         if self.ready_announced {
             return;
         }
@@ -85,91 +79,33 @@ impl OpenState {
         (hooks.on_ready)(index);
         (hooks.on_update)(&self.snapshot());
     }
-}
 
-pub(crate) fn plant_saved(
-    state: &mut OpenState,
-    open_cache: &OpenCache,
-    checker: &StreamChecker,
-    hooks: &OpenHooks<'_>,
-) {
-    let Some((freshness, seeds)) = saved_seeds(open_cache) else {
-        return;
-    };
-    tracing::info!(
-        ?freshness,
-        seeds = seeds.len(),
-        "planting saved sources for open"
-    );
-    for link in seeds {
-        state.ordered.push((link, None));
-    }
-    (hooks.on_progress)(state.progress());
-    (hooks.on_update)(&state.snapshot());
-    match freshness {
-        Freshness::Fresh => {
-            check_trusted_seed(state, checker, hooks);
-            check_pending(state, checker, hooks);
+    /// Starts when skip, total cap, or search+checks are complete (and something works).
+    pub(crate) fn maybe_announce_ready(&mut self, hooks: &OpenHooks<'_>) {
+        let skip = hooks.skip.load(Ordering::SeqCst);
+        if should_announce_ready(ReadyWhen {
+            has_working: self.play_index.is_some(),
+            search_done: self.search_done,
+            all_checked: self.all_checked(),
+            skip,
+            total_timed_out: self.timed_out(),
+        }) {
+            self.announce_ready(hooks);
         }
-        Freshness::Stale => check_stale_seeds(state, checker, hooks),
     }
 }
 
-/// The saved streams worth trying again, best first; None when nothing usable is saved.
-fn saved_seeds(open_cache: &OpenCache) -> Option<(Freshness, Vec<PlayableLink>)> {
-    let Lookup::Hit(hit) = open_cache.cache.load(&open_cache.title_key) else {
-        return None;
-    };
-    let take = match hit.freshness {
-        Freshness::Fresh => TRUSTED_RECHECK,
-        Freshness::Stale => STALE_TEST_FIRST,
-    };
-    let seeds: Vec<PlayableLink> = hit
-        .title
-        .playing_order()
-        .into_iter()
-        .filter(|cached| cached.health != title_cache::LinkHealth::Broken)
-        .take(take)
-        .map(|cached| cached.link.clone())
-        .collect();
-    (!seeds.is_empty()).then_some((hit.freshness, seeds))
-}
-
-/// A fresh save: the first stream played a moment ago, so it is checked and played at once.
-fn check_trusted_seed(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
-    let Some((link, slot)) = state.ordered.first_mut() else {
-        return;
-    };
-    let health = checker.check(link);
-    let is_ok = health.is_working();
-    *slot = Some(health);
-    state.checked = 1;
-    state.next_to_check = 1;
-    if is_ok {
-        state.working = 1;
-        state.play_index = Some(0);
-        state.announce_ready(hooks);
-    }
-}
-
-/// A stale save: try the best few for a short while before the live search.
-fn check_stale_seeds(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
-    let deadline = Instant::now() + Duration::from_secs(STALE_TEST_SECS);
-    while state.next_to_check < state.ordered.len() && Instant::now() < deadline {
-        if state.play_index.is_some() {
-            break;
-        }
-        check_one(state, checker, hooks);
-    }
-}
-
-/// True when the open should stop polling the search: cancelled, over time, or skipped with a stream.
+/// True when the open should stop polling the search.
 fn should_stop_search(state: &OpenState, hooks: &OpenHooks<'_>) -> bool {
     let skipped = hooks.skip.load(Ordering::SeqCst);
     hooks.cancel.load(Ordering::SeqCst)
         || state.timed_out()
         || (skipped && state.play_index.is_some())
-        || (skipped && state.first_working_wait_done())
+        || no_streams_timed_out(
+            state.ordered.len(),
+            state.started.elapsed().as_secs(),
+            FIRST_WORKING_SECS,
+        )
 }
 
 pub(crate) fn run_search(
@@ -190,12 +126,29 @@ pub(crate) fn run_search(
         }
         absorb_batch(&mut state, batch.links, batch.subtitles, hooks);
         check_pending(&mut state, checker, hooks);
+        state.maybe_announce_ready(hooks);
         if batch.done {
             state.search_done = true;
             (hooks.on_progress)(state.progress());
             check_pending(&mut state, checker, hooks);
+            state.maybe_announce_ready(hooks);
             break;
         }
+    }
+    if state.ordered.is_empty()
+        && no_streams_timed_out(
+            0,
+            state.started.elapsed().as_secs(),
+            FIRST_WORKING_SECS,
+        )
+    {
+        search.cancel();
+        return Err(OpenError::Empty);
+    }
+    state.maybe_announce_ready(hooks);
+    if state.timed_out() && !state.ready_announced {
+        check_pending(&mut state, checker, hooks);
+        state.maybe_announce_ready(hooks);
     }
     search.cancel();
     finish(state)
@@ -227,19 +180,26 @@ fn absorb_batch(
     }
 }
 
-fn check_pending(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
+pub(crate) fn check_pending(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
     while state.next_to_check < state.ordered.len() {
-        if state.timed_out() || hooks.cancel.load(Ordering::SeqCst) {
+        if hooks.cancel.load(Ordering::SeqCst) {
             break;
         }
         if hooks.skip.load(Ordering::SeqCst) && state.play_index.is_some() {
             break;
         }
+        if state.timed_out() && state.play_index.is_some() {
+            break;
+        }
         check_one(state, checker, hooks);
+        state.maybe_announce_ready(hooks);
+        if state.ready_announced && hooks.skip.load(Ordering::SeqCst) {
+            break;
+        }
     }
 }
 
-fn check_one(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
+pub(crate) fn check_one(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
     let index = state.next_to_check;
     let Some((link, slot)) = state.ordered.get_mut(index) else {
         return;
@@ -250,14 +210,11 @@ fn check_one(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'
     state.checked += 1;
     if is_ok {
         state.working += 1;
-        if state.play_index.is_none() {
-            state.play_index = Some(index);
-        }
+        state.play_index = Some(best_after_working(state.play_index, index, &state.ordered));
     }
     state.next_to_check += 1;
     (hooks.on_progress)(state.progress());
     (hooks.on_update)(&state.snapshot());
-    state.announce_ready(hooks);
 }
 
 pub(crate) fn finish(state: OpenState) -> Result<CheckedOpen, OpenError> {
@@ -266,3 +223,7 @@ pub(crate) fn finish(state: OpenState) -> Result<CheckedOpen, OpenError> {
     }
     Ok(state.snapshot())
 }
+
+#[cfg(test)]
+#[path = "open_run_tests.rs"]
+mod tests;

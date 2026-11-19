@@ -295,7 +295,7 @@ export component DetailsOverlay inherits Rectangle {
                             }
                             if root.open-status != "": MutedLabel { text: root.open-status; }
                             if root.can-skip-checks: MutedLabel {
-                                text: "Play now starts a working source; the rest is checked in the background.";
+                                text: "Play now starts the best working source found so far; otherwise we finish checking and pick the best.";
                                 font-size: 11px;
                             }
                         }
