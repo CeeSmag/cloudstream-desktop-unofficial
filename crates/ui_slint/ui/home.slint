@@ -4,6 +4,32 @@ import { PosterItem, ShelfSection } from "types.slint";
 import { PosterRow } from "poster.slint";
 import { MutedLabel, PillButton, SkeletonRow } from "widgets.slint";
 
+/// A small text button for a row's header (Clear all).
+component SmallButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> danger;
+    callback clicked();
+    height: 30px;
+    width: small-label.preferred-width + 24px;
+    border-radius: 15px;
+    background: root.danger ? (small-touch.has-hover ? #e85d6a : #e85d6acc) : (small-touch.has-hover ? #ffffff26 : #ffffff14);
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    small-label := Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    small-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 /// The big banner at the top of Home: the title last watched, with Resume.
 component Hero inherits Rectangle {
     in property <string> title;
@@ -94,6 +120,8 @@ export component HomePage inherits ScrollView {
     callback play-continue(int);
     callback bookmark-continue(int);
     callback remove-continue(int);
+    callback clear-continue();
+    property <bool> asking-clear: false;
 
     accessible-role: AccessibleRole.main;
 
@@ -137,14 +165,34 @@ export component HomePage inherits ScrollView {
 
         if root.continue-items.length > 0: VerticalLayout {
             spacing: Theme.space-1;
-            Text {
-                text: "Continue watching";
-                color: Theme.text;
-                font-size: 22px;
-                font-weight: 700;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                Text {
+                    text: "Continue watching";
+                    color: Theme.text;
+                    font-size: 22px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                if root.asking-clear: Text {
+                    text: "Remove everything from Continue watching?";
+                    color: Theme.muted;
+                    vertical-alignment: center;
+                }
+                if root.asking-clear: SmallButton {
+                    text: "Yes, clear";
+                    danger: true;
+                    clicked => { root.asking-clear = false; root.clear-continue(); }
+                }
+                SmallButton {
+                    text: root.asking-clear ? "Cancel" : "Clear all";
+                    clicked => { root.asking-clear = !root.asking-clear; }
+                }
             }
             PosterRow {
                 items: root.continue-items;
+                remove-text: "Remove from Continue watching";
                 focused-index: root.focus-in(root.continue-row);
                 focus-arrived(y, h) => { root.reveal(y, h); }
                 open-at(i) => { root.open-continue(i); }

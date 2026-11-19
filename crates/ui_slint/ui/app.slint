@@ -214,6 +214,8 @@ export component CloudStream inherits Window {
     callback play-continue(int);
     callback bookmark-continue(int);
     callback remove-continue(int);
+    callback clear-continue();
+    callback remove-bookmark(int);
     callback season-chosen(string);
     callback select-audio-track(int);
     callback select-subtitle-track(int);
@@ -231,6 +233,7 @@ export component CloudStream inherits Window {
             if event.text == Key.RightArrow { root.nav-key("right"); return accept; }
             if event.text == Key.Return || event.text == " " { root.nav-key("enter"); return accept; }
             if event.text == Key.Escape || event.text == Key.Backspace { root.nav-key("back"); return accept; }
+            if event.text == Key.Delete { root.nav-key("delete"); return accept; }
             return reject;
         }
 
@@ -307,6 +310,7 @@ export component CloudStream inherits Window {
                 play-continue(i) => { play-continue(i); }
                 bookmark-continue(i) => { bookmark-continue(i); }
                 remove-continue(i) => { remove-continue(i); }
+                clear-continue => { clear-continue(); }
             }
 
             if tab == 1: BrowsePage {
@@ -338,6 +342,7 @@ export component CloudStream inherits Window {
                 columns: root.grid-columns;
                 focused-index: root.focus-visible && root.focus-row >= 0 ? root.focus-row * root.grid-columns + root.focus-col : -1;
                 open-at(i) => { open-library-hit(i); }
+                remove-at(i) => { remove-bookmark(i); }
             }
 
             if tab == 4: SettingsPage {

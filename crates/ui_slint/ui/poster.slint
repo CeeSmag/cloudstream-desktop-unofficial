@@ -8,6 +8,8 @@ export component PosterTile inherits Rectangle {
     in property <image> artwork;
     in property <float> progress: 0;
     in property <bool> focused: false;
+    /// The context menu's remove entry ("Remove from Library"); empty for none.
+    in property <string> remove-text: "";
     callback clicked();
     callback play-requested();
     callback bookmark-requested();
@@ -95,15 +97,11 @@ export component PosterTile inherits Rectangle {
     ContextMenuArea {
         Menu {
             MenuItem {
-                title: "Play";
-                activated => { root.play-requested(); }
+                title: "Open";
+                activated => { root.clicked(); }
             }
-            MenuItem {
-                title: "Bookmark";
-                activated => { root.bookmark-requested(); }
-            }
-            MenuItem {
-                title: "Remove from continue";
+            if root.remove-text != "": MenuItem {
+                title: root.remove-text;
                 activated => { root.remove-requested(); }
             }
         }
@@ -120,6 +118,7 @@ export component PosterRow inherits Flickable {
     in property <[PosterItem]> items: [];
     /// The tile the remote focuses (-1 = none in this row).
     in property <int> focused-index: -1;
+    in property <string> remove-text: "";
     callback open-at(int);
     callback play-at(int);
     callback bookmark-at(int);
@@ -149,6 +148,7 @@ export component PosterRow inherits Flickable {
             artwork: item.image;
             progress: item.progress;
             focused: i == root.focused-index;
+            remove-text: root.remove-text;
             clicked => { root.open-at(i); }
             play-requested => { root.play-at(i); }
             bookmark-requested => { root.bookmark-at(i); }
@@ -163,6 +163,7 @@ export component PosterGrid inherits ScrollView {
     in property <[PosterItem]> items: [];
     in property <int> columns: 4;
     in property <int> focused-index: -1;
+    in property <string> remove-text: "";
     callback open-at(int);
     callback play-at(int);
     callback bookmark-at(int);
@@ -189,6 +190,7 @@ export component PosterGrid inherits ScrollView {
             artwork: item.image;
             progress: item.progress;
             focused: i == root.focused-index;
+            remove-text: root.remove-text;
             clicked => { root.open-at(i); }
             play-requested => { root.play-at(i); }
             bookmark-requested => { root.bookmark-at(i); }

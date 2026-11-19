@@ -10,6 +10,7 @@ use super::details_view::shown_episodes;
 use super::focus_screens::{
     current_screen, screen_rows, DetailsAction, DetailsButtons, FocusScreen,
 };
+use super::library_actions::{remove_bookmark, remove_continue};
 
 /// Tabs in the top bar.
 const NAV_ITEMS: usize = 5;
@@ -34,6 +35,7 @@ fn handle_key(ctx: &BridgeContext, ui: &CloudStream, key: &str) {
         "right" => Direction::Right,
         "enter" => return activate(ctx, ui, screen),
         "back" => return go_back(ctx, ui, screen),
+        "delete" => return remove_focused(ctx, ui, screen),
         _ => return,
     };
     if !ui.get_focus_visible() {
@@ -126,6 +128,20 @@ fn activate_details(ctx: &BridgeContext, ui: &CloudStream, point: FocusPoint) {
         if let Some(index) = original.and_then(|index| i32::try_from(index).ok()) {
             ui.invoke_play_episode(index);
         }
+    }
+}
+
+/// Delete on a focused title: out of Continue watching (Home) or out of the Library.
+fn remove_focused(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
+    let point = focus_of(ctx, screen).point();
+    match screen {
+        FocusScreen::Home if point.row == ui.get_continue_row() => {
+            remove_continue(ctx, point.col);
+        }
+        FocusScreen::Library if point.row >= 0 => {
+            remove_bookmark(ctx, point.row * ui.get_grid_columns() + point.col);
+        }
+        _ => {}
     }
 }
 

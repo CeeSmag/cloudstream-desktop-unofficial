@@ -155,22 +155,26 @@ export component LibraryPage inherits VerticalLayout {
     in property <int> columns: 4;
     in property <int> focused-index: -1;
     callback open-at(int);
+    callback remove-at(int);
 
     padding: Theme.page-pad;
     spacing: Theme.space-2;
     accessible-role: AccessibleRole.main;
 
     SectionTitle { text: "Library"; }
-    if root.items.length == 0: MutedLabel {
-        text: "Bookmarked titles show up here.";
+    MutedLabel {
+        text: root.items.length == 0
+            ? "Titles you add with “+ Library” on their page show up here."
+            : root.items.length + " saved · right-click or press Delete on a title to remove it";
     }
     PosterGrid {
         vertical-stretch: 1;
         items: root.items;
         columns: root.columns;
         focused-index: root.focused-index;
+        remove-text: "Remove from Library";
         open-at(i) => { root.open-at(i); }
         play-at(i) => { root.open-at(i); }
-        bookmark-at(i) => { root.open-at(i); }
+        remove-at(i) => { root.remove-at(i); }
     }
 }

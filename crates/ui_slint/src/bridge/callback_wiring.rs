@@ -9,6 +9,7 @@ use super::details_callbacks::wire_details;
 use super::extension_settings_callbacks::wire_extension_settings;
 use super::focus_navigation::wire_navigation;
 use super::home_callbacks::wire_home;
+use super::library_actions::wire_library_actions;
 use super::player_callbacks::wire_player;
 use super::player_timeline::wire_timeline;
 use super::player_track_callbacks::wire_player_tracks;
@@ -20,6 +21,7 @@ use super::update_callbacks::wire_updates;
 /// Wires every callback of the window.
 pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_home(ctx, ui);
+    wire_library_actions(ctx, ui);
     wire_catalog(ctx, ui);
     wire_details(ctx, ui);
     wire_player(ctx, ui);

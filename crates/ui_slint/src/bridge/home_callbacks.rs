@@ -2,7 +2,6 @@
 
 use slint::Model;
 
-use crate::posters::posters_from_continue;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -43,8 +42,6 @@ pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
             ui.invoke_open_library_hit(index);
         }
     });
-    let c = ctx.clone();
-    ui.on_remove_continue(move |index| remove_continue(&c, index));
 }
 
 fn select_tab(ctx: &BridgeContext, tab: i32) {
@@ -86,24 +83,6 @@ fn open_library_hit(ctx: &BridgeContext, index: i32) {
     };
     if let Some(item) = model.row_data(row(index)) {
         load_details(ctx, &item);
-    }
-}
-
-fn remove_continue(ctx: &BridgeContext, index: i32) {
-    let Some(ui) = ctx.window() else {
-        return;
-    };
-    let Some(item) = ui.get_continue_items().row_data(row(index)) else {
-        return;
-    };
-    let library = &ctx.services.library;
-    if let Err(error) = library.remove_continue_watching(&item.provider, &item.url) {
-        tracing::warn!(%error, "could not remove a continue-watching entry");
-        ui.set_notice("Could not remove it from Continue watching".into());
-    }
-    match library.continue_watching() {
-        Ok(list) => ui.set_continue_items(posters_from_continue(&list)),
-        Err(error) => tracing::warn!(%error, "could not read the watch history"),
     }
 }
 

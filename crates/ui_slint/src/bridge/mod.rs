@@ -21,6 +21,7 @@ mod focus_screens;
 mod home_callbacks;
 mod home_loading;
 mod initial_settings;
+mod library_actions;
 mod playback_reactions;
 mod player_callbacks;
 mod player_feedback;
