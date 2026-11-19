@@ -8,11 +8,13 @@ use player_api::{MediaTrack, PlaybackState, TrackKind};
 use slint::{ComponentHandle, Image, ModelRc, SharedPixelBuffer, VecModel};
 
 use crate::feedback_text::{audio_only, waiting_text};
+use crate::seek_bar::format_time;
 use crate::track_menu::{track_rows, TrackRow};
 use crate::{CloudStream, TrackChoice};
 
 use super::bridge_context::BridgeContext;
 use super::playback_reactions::react_to_status;
+use super::player_timeline::show_timeline;
 
 /// Updates position, times, pause, buffering, tracks and the video surface size.
 pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
@@ -32,6 +34,7 @@ pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_player_audio_only(audio_only(&status));
     ui.set_fullscreen(ui.window().is_fullscreen());
     show_tracks_if_changed(ctx, ui, &playback.tracks());
+    show_timeline(ctx, ui, &status);
     follow_window_size(ctx, ui);
     react_to_status(ctx, ui, &status.state);
 }
@@ -101,29 +104,5 @@ fn follow_window_size(ctx: &BridgeContext, ui: &CloudStream) {
     if ctx.session.borrow().surface_size != wanted && wanted.0 > 0 && wanted.1 > 0 {
         playback.set_surface_size(wanted.0, wanted.1);
         ctx.session.borrow_mut().surface_size = wanted;
-    }
-}
-
-/// `m:ss`, or `h:mm:ss` from an hour on; negative times show as 0:00.
-pub(crate) fn format_time(ms: i64) -> String {
-    let total = ms.max(0) / 1000;
-    let (hours, minutes, seconds) = (total / 3600, (total / 60) % 60, total % 60);
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_time_short_and_long_videos() {
-        assert_eq!(format_time(0), "0:00");
-        assert_eq!(format_time(-5), "0:00");
-        assert_eq!(format_time(65_400), "1:05");
-        assert_eq!(format_time(3_725_000), "1:02:05");
     }
 }

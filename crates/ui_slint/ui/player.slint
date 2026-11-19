@@ -10,7 +10,14 @@ import { SourcePanel } from "source_panel.slint";
 component DragBar inherits Rectangle {
     in property <float> value;
     in property <color> fill: Theme.accent;
+    /// How much is loaded, 0..1 (the seek bar); drawn lighter behind the position.
+    in property <float> buffered: 0;
+    /// Where chapters start, 0..1, drawn as dividers.
+    in property <[float]> notches: [];
+    /// The text over the bar where the pointer is; empty for none.
+    in property <string> hover-text: "";
     out property <bool> dragging: touch.pressed;
+    out property <bool> hovering: touch.has-hover;
     out property <float> drag-value: clamp(touch.mouse-x / max(1px, root.width), 0, 1);
     callback committed(float);
 
@@ -25,10 +32,30 @@ component DragBar inherits Rectangle {
         animate height { duration: 100ms; }
         Rectangle {
             x: 0;
+            width: parent.width * clamp(root.buffered, 0, 1);
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: #ffffff40;
+        }
+        Rectangle {
+            x: 0;
             width: parent.width * root.shown;
             height: 100%;
             border-radius: parent.border-radius;
             background: root.fill;
+        }
+        if touch.has-hover && !root.dragging: Rectangle {
+            x: 0;
+            width: parent.width * root.drag-value;
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: #ffffff26;
+        }
+        for notch in root.notches: Rectangle {
+            x: parent.width * notch - 1px;
+            width: 2px;
+            height: 100%;
+            background: #0c0f17e6;
         }
     }
     if touch.has-hover || root.dragging: Rectangle {
@@ -38,6 +65,24 @@ component DragBar inherits Rectangle {
         height: 14px;
         border-radius: 7px;
         background: white;
+    }
+    if (touch.has-hover || root.dragging) && root.hover-text != "": Rectangle {
+        x: clamp(parent.width * root.drag-value - self.width / 2, 0px, parent.width - self.width);
+        y: -self.height - 8px;
+        height: 28px;
+        width: tip.preferred-width + 20px;
+        border-radius: 8px;
+        background: #000000d9;
+        border-width: 1px;
+        border-color: #ffffff1a;
+        tip := Text {
+            text: root.hover-text;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -171,6 +216,10 @@ export component PlayerOverlay inherits Rectangle {
     /// A level bar under the pop-up (volume), 0..1; below 0 for none.
     in property <float> feedback-level: -1;
     in property <int> feedback-count: 0;
+    /// How much of the stream is loaded, 0..1.
+    in property <float> buffered-fraction: 0;
+    /// Where the stream's chapters start, 0..1.
+    in property <[float]> chapter-notches: [];
     in property <float> volume: 100;
     in property <bool> fullscreen: false;
     in-out property <bool> show-sources: false;
@@ -182,6 +231,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <[TrackChoice]> subtitle-tracks: [];
 
     callback toggle-pause();
+    /// The text over the seek bar for a point of the video (time, chapter, part).
+    pure callback describe-seek(float) -> string;
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
@@ -375,8 +426,12 @@ export component PlayerOverlay inherits Rectangle {
             HorizontalLayout {
                 spacing: 14px;
                 Text { text: root.position-text; color: white; vertical-alignment: center; }
-                DragBar {
+                seek-bar := DragBar {
                     horizontal-stretch: 1;
+                    buffered: root.buffered-fraction;
+                    notches: root.chapter-notches;
+                    hover-text: self.hovering && root.duration-ms > 1
+                        ? root.describe-seek(self.drag-value * root.duration-ms) : "";
                     value: root.duration-ms <= 1 ? 0 : root.position-ms / root.duration-ms;
                     committed(v) => { root.show-chrome(); root.seek-to(v * root.duration-ms); }
                 }

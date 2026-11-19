@@ -8,10 +8,10 @@ use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
 use crate::feedback_text::{seek_text, volume_text};
+use crate::seek_bar::format_time;
 
 use super::bridge_context::BridgeContext;
 use super::player_feedback::show_feedback;
-use super::player_polling::format_time;
 use super::stream_opening::{refresh_playing, switch_source};
 
 /// How far "Skip" jumps when no intro times are known.

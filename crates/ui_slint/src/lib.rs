@@ -12,6 +12,7 @@ mod focus_grid;
 mod playback_watch;
 mod posters;
 mod request_tickets;
+mod seek_bar;
 mod source_menu;
 mod startup_progress;
 mod track_menu;

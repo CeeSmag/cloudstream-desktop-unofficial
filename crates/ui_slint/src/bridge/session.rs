@@ -38,6 +38,8 @@ pub(crate) struct Session {
     pub(crate) last_frame: u64,
     /// The track menus on screen (audio, subtitles), so they are rebuilt only when they change.
     pub(crate) shown_tracks: Vec<player_api::MediaTrack>,
+    /// The chapters of the playing stream, and the length they were read for.
+    pub(crate) chapters: (Vec<player_api::Chapter>, i64),
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
     pub(crate) tickets: RequestTickets,
@@ -84,6 +86,7 @@ impl Default for Session {
             details: DetailsTarget::default(),
             last_frame: 0,
             shown_tracks: Vec::new(),
+            chapters: (Vec::new(), -1),
             surface_size: (0, 0),
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),

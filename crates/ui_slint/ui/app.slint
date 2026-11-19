@@ -78,6 +78,8 @@ export component CloudStream inherits Window {
     in-out property <string> player-feedback: "";
     in-out property <float> player-feedback-level: -1;
     in-out property <int> player-feedback-count: 0;
+    in-out property <float> buffered-fraction: 0;
+    in property <[float]> chapter-notches: [];
     in-out property <bool> fullscreen: false;
     in-out property <string> position-text: "0:00";
     in-out property <string> duration-text: "0:00";
@@ -156,6 +158,7 @@ export component CloudStream inherits Window {
     callback toggle-source-tier(int);
     callback toggle-source-subtitle(int);
     callback toggle-pause();
+    pure callback describe-seek(float) -> string;
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
@@ -422,6 +425,9 @@ export component CloudStream inherits Window {
             feedback-text: player-feedback;
             feedback-level: player-feedback-level;
             feedback-count: player-feedback-count;
+            buffered-fraction: buffered-fraction;
+            chapter-notches: chapter-notches;
+            describe-seek(ms) => { return root.describe-seek(ms); }
             volume: volume;
             fullscreen: fullscreen;
             show-sources <=> show-sources;
