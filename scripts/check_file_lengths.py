@@ -6,7 +6,7 @@ Clippy's too_many_lines counts lines per function only, so nothing else checks t
 
 Files that were already too long when the check came in are listed in
 scripts/file_length_baseline.txt ("<lines> <path>"). Such a file may shrink but not grow, and its line
-must be removed once it is within the limit (RULES.md R1 work in docs/HARDENING_PLAN.md), so the list
+must be removed once it is within the limit (RULES.md §4), so the list
 only ever gets shorter. Test files (in a tests/ folder, or named *tests.rs) are not checked.
 """
 

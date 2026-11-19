@@ -12,8 +12,8 @@ Read this file fully before every task. If a rule conflicts with a request, say 
 3. **Extensions run at 100% fidelity**: providers, extractors, plugins, scripts, and their behavior must match the Kotlin reference.
 4. **Parity is proven by tests** (see §9), not assumed. A feature is not "done" until its parity test passes.
 
-> Decided: extensions run in an out-of-process **JVM sidecar** (`sidecar/cs-sidecar`: converted DEX bytecode against Android stubs). The Wasm route was spiked and not taken (`docs/spike_findings.md`). Code against the `ProviderGateway` trait (§3), never the concrete runtime.
-> `player_mpv`: use the maintained `libmpv2` / `libmpv2-sys` bindings (the older `mpv-rs` is deprecated). The libmpv C API is generally thread-safe. mpv is GPLv2+ (the client API is ISC): confirm the licensing consequences of linking before distribution.
+> Decided: extensions run in an out-of-process **JVM sidecar** (`sidecar/cs-sidecar`: converted DEX bytecode against Android stubs). The Wasm route was spiked and not taken (retained under `spikes/wasmtime_host/`). Code against the `ProviderGateway` trait (§3), never the concrete runtime.
+> `player_mpv`: loads libmpv **dynamically** at runtime via `libloading` (`libmpv-2.dll` / `.so.2` / `.dylib`; see `libmpv_locator`). The libmpv C API is generally thread-safe. mpv is GPLv2+ (the client API is ISC): confirm the licensing consequences of linking before distribution.
 
 ---
 
@@ -28,16 +28,20 @@ crates/
   extension_runtime/ # JSON-lines RPC to the JVM sidecar, behind ProviderGateway
   extension_repo/    # repository manifests, install/update/remove of plugins, stream probes
   player_api/        # VideoPlayer trait + player types
-  player_mpv/        # libmpv wrapper only (the only crate with FFI unsafe)
+  player_mpv/        # libmpv wrapper (dynamic load + localized FFI unsafe; see §8)
   storage/           # settings, library, history (SQLite)
   subtitle_store/    # subtitle download, cleaning and disk cache
   title_cache/       # saved stream links per title
   skip_times/        # intro/recap/credits times from online databases
   stream_proxy/      # local HTTP proxy that lets the player open HLS streams (headers, ranges, redirects)
   app_services/      # use cases behind the screens
-  playback_session/  # search + check + open (egui product; no WebView)
+  playback_session/  # search + check + open (shell-agnostic; wired from ui_slint)
+  poster_artwork/    # poster download/cache for the UI (off the UI thread)
+  app_updater/       # self-update verify/install helpers
   cloudflare_bridge/ # sidecar CF file exchange without main WebView chrome
-  ui_app/ app_shell/ # product UI: egui screens, and main() wiring only, no logic
+  cloudflare_window/ # cloudstream-verify helper (tao + wry)
+  ui_slint/ app_shell/ # product UI: Slint screens, and main() wiring only, no logic
+  ui_app/            # egui reference shell (workspace exclude; not product)
   archive/desktop_tauri/  # former Tauri+React shell (not a workspace member)
   portable_launcher/ # the single-file Windows portable exe
 # native Rust extractors (no JVM): planned, not started; add their crates when there is code
@@ -45,7 +49,7 @@ crates/
 
 Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`), grouped by the tiers in §9.
 
-- **Dependency direction is one-way**: `ui_app → services → traits ← implementations`. `core_model` depends on nothing internal. No cycles. Enforce with `cargo deny`/`cargo-modules` in CI.
+- **Dependency direction is one-way**: `ui_slint → services → traits ← implementations`. `core_model` depends on nothing internal. No cycles. Enforce with `cargo deny`/`cargo-modules` in CI.
 - `app_shell` is the only place where concrete implementations are wired to traits (dependency injection by constructor).
 - Navigating the repo must be obvious from folder names alone; each crate has a `README.md` (purpose, public API, how to test) of ≤ 40 lines.
 
@@ -84,7 +88,7 @@ Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`), grouped by th
   - `error!` failures that affect the user; `warn!` recovered/fallback paths; `info!` lifecycle events; `debug!`/`trace!` data flow.
   - Every log line carries context fields (`provider`, `url`, `plugin_id`, `request_id`...). Never log secrets, tokens, or full cookies.
 - Errors: `thiserror` for library crates, `anyhow` only in `app_shell` and tests. Every error type carries **what failed, where, and why**, and keeps its `source()`.
-- **No `unwrap()`, `expect()`, `panic!`, `unreachable!` on fallible paths** in non-test code. These are *restriction* lints, off by default: deny `clippy::unwrap_used`, `expect_used`, `panic`, `unreachable`, `todo`, `indexing_slicing` in the workspace `[lints]` table; tests are exempted via `allow-unwrap-in-tests` / `allow-expect-in-tests` in `clippy.toml`. Indexing is via `.get()`.
+- **No `unwrap()`, `expect()`, `panic!`, `unreachable!` on fallible paths** in non-test code. These are *restriction* lints, off by default: deny `clippy::unwrap_used`, `expect_used`, `panic`, `unreachable`, `todo`, `indexing_slicing` in the workspace `[lints]` table; tests are exempted via `allow-unwrap-in-tests` / `allow-expect-in-tests` / `allow-panic-in-tests` / `allow-indexing-slicing-in-tests` in `clippy.toml`. Indexing is via `.get()`.
 - Every fallible operation has an explicit **handling decision**: propagate with context, retry with backoff, fall back, or surface to the user. "Ignore" must be a commented, logged decision.
 - Every external boundary (network, filesystem, mpv, extension execution, parsing) has:
   1. a timeout,
@@ -113,13 +117,20 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check        # licenses/advisories
 cargo audit             # known vulnerabilities
-python scripts/check_file_lengths.py   # the 300-line file limit of section 4 (clippy counts functions only)
+python scripts/check_file_lengths.py   # 300-line file limit (§4); clippy counts functions only
 ```
 
-`just gates` runs all of them. CI (`.github/workflows/ci.yml`) runs the same on every push and pull request, clippy and
-tests on both Windows and Linux; keep the three lists the same. On Linux clippy runs with `-A clippy::cognitive_complexity`:
-a Wayland dependency (calloop) turns on `tracing/log` there, and clippy then counts the `log` branch every tracing macro
-expands to as complexity of the function. Windows enforces the lint.
+`just gates` runs all of them (`fmt clippy test deny audit lengths`). The `lengths` recipe also runs
+`python -m unittest discover -s scripts -p "*_test.py"` before the file-length check (same as CI's
+`project-rules` job). Files already over 300 lines when the check landed are listed in
+`scripts/file_length_baseline.txt`: they may shrink but not grow, and the baseline line must go once
+they are within the limit.
+
+CI (`.github/workflows/ci.yml`) runs the same gates on every push and pull request — clippy and tests on
+both Windows and Linux — plus Kotlin sidecar tests; keep the gate lists in this file, the justfile, and
+CI aligned. On Linux clippy runs with `-A clippy::cognitive_complexity`: a Wayland dependency (calloop)
+turns on `tracing/log` there, and clippy then counts the `log` branch every tracing macro expands to as
+complexity of the function. Windows enforces the lint. (`just clippy` on Unix uses the same `-A`.)
 
 Required `clippy.toml` at the workspace root (limits mirror §4):
 
@@ -129,11 +140,20 @@ too-many-arguments-threshold = 4
 cognitive-complexity-threshold = 10
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
 ```
 
-and in the root `Cargo.toml` `[workspace.lints.clippy]`: `unwrap_used`, `expect_used`, `panic`, `todo`, `unreachable`, `indexing_slicing`, `cognitive_complexity` = `"deny"`/`"warn"` as above, inherited by each crate with `[lints] workspace = true`.
+and in the root `Cargo.toml` (each crate inherits with `[lints] workspace = true`):
 
-- `#![forbid(unsafe_code)]` in every crate except `player_mpv` (FFI) and the extension runtime, where each `unsafe` block has a `// SAFETY:` comment.
+- `[workspace.lints.rust]`: `unsafe_code = "deny"`, `missing_docs = "warn"`.
+- `[workspace.lints.clippy]`: `all = "warn"` (low priority); deny `unwrap_used`, `expect_used`, `panic`,
+  `todo`, `unreachable`, `indexing_slicing`, `print_stdout`, `print_stderr`, `dbg_macro`; warn
+  `cognitive_complexity`, `too_many_lines`, `too_many_arguments`.
+
+- Most crates `#![forbid(unsafe_code)]`. Localized `allow(unsafe_code)` only in `player_mpv` (libmpv FFI),
+  `extension_runtime` (OS sandbox spawn), and `ui_slint`'s generated Slint bindings; each hand-written
+  `unsafe` block needs a `// SAFETY:` comment.
 - Pin dependencies; justify each new dependency in the commit message. Prefer std/small crates.
 
 ## 9. Test Tiers (T1–T4)

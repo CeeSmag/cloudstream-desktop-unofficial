@@ -4,7 +4,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-rs-egui?label=release)](https://github.com/CeeSmag/cloudstream-rs-egui/releases/latest)
 
-A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux, with a native **egui** interface and a fast video player (`cloudstream-rs-egui`).
+A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux. Product builds ship the `cloudstream` binary from `app_shell` with a native **Slint** UI (`ui_slint`) and libmpv playback — no WebView / Tauri chrome.
 
 <p align="center">
   <img src="docs/images/home-with-content.jpg" alt="CloudStream RS Home page with featured content and poster rows" width="800">
@@ -87,19 +87,38 @@ Build instructions, architecture, and contribution rules live in:
 - [RULES.md](RULES.md) — coding invariants and quality gates  
 - [docs/RELEASING.md](docs/RELEASING.md) — how releases are built and signed  
 
-Quick start from source:
+Quality gates (same checks as CI):
+
+```bash
+just gates
+```
+
+Run the product UI (`cloudstream` from `app_shell` + Slint):
 
 ```powershell
-# Windows: build the JVM sidecar once, then run the egui shell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1
-cargo run -p app_shell
+# Windows: build the JVM sidecar once, then run
+just sidecar
+just run
+# equivalent: cargo run -p app_shell
 ```
 
 ```bash
-# Linux
-bash scripts/setup_sidecar.ps1   # or follow AGENTS.md / sidecar docs
-cargo run -p app_shell
+# Linux: build an AppImage once (caches sidecar + JRE under target/bundle-cache), then run
+bash scripts/build_release.sh --install-deps   # Debian/Ubuntu; once
+bash scripts/build_release.sh                  # AppImage → dist/
+just run
+# or: cargo run -p app_shell
+# (just run reuses CS_SIDECAR_HOME / CS_SIDECAR_JAVA_HOME from target/bundle-cache when set)
 ```
+
+Release artifacts (also built by `.github/workflows/release.yml` on a `v*` tag):
+
+| OS | Command | Output in `dist/` |
+|---|---|---|
+| Windows | `powershell -File scripts/build_release.ps1` | installer + portable (`-Kind` for one) |
+| Linux | `bash scripts/build_release.sh` | `CloudStream-<ver>-<arch>.AppImage` for this CPU |
+
+`ui_app` (egui) and `archive/desktop_tauri` are reference-only; they are not the product shell.
 
 ---
 

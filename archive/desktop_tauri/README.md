@@ -1,8 +1,9 @@
-# Archived: `desktop_tauri` (WebView product)
+# ARCHIVED reference — `desktop_tauri`
 
-This folder is the former Tauri + React shell. It is **not** a Cargo workspace member in
-`cloudstream-rs-egui`. Product builds ship `cloudstream` from `crates/app_shell` (egui).
+**Not the product. Not a Cargo workspace member.**
 
-Kept as a reference while SourceManager / Cloudflare / updater behaviour is ported into
-`playback_session`, `cloudflare_bridge`, and `ui_app`. Do not add it back to `[workspace].members`
-unless you intentionally revive the WebView product.
+Former Tauri + React (WebView) shell, kept only as a porting reference for SourceManager /
+Cloudflare / updater behaviour into `playback_session`, `cloudflare_bridge`, and `ui_slint`.
+
+Product builds ship `cloudstream` from `crates/app_shell` + `ui_slint`. Do not add this tree
+back to `[workspace].members` unless you intentionally revive the WebView shell.

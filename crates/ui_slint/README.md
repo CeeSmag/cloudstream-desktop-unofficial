@@ -2,13 +2,16 @@
 
 The product UI (Slint 1.19, edition 1.19, Fluent dark style). `.slint` files in `ui/` draw; Rust in
 `src/bridge/` connects them to `app_services` and never blocks the window: every slow call runs on a
-worker thread and comes back as a `UiEvent` (`src/ui_events.rs`), drained by a 200 ms timer.
+worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_events.rs`), drained by a
+200 ms timer.
 
 | Part | Responsibility |
 |---|---|
 | `bridge/app_start.rs` | window, wiring, plugin load, the UI tick and the 16 ms video frame timer |
-| `bridge/*_callbacks.rs` | one file per screen's buttons (home, catalog, details, player, settings…) |
-| `bridge/*_loading.rs`, `title_search.rs` | Home shelves, title pages, Browse (TMDB + provider match), search |
+| `bridge/*_callbacks.rs` | screen and settings buttons (home, catalog, details, player, preferences…) |
+| `bridge/*_loading.rs`, `bridge/title_search.rs` | Home shelves, title pages, Browse (TMDB + provider match), search |
+| `bridge/stream_opening.rs`, `bridge/stream_events.rs` | open / refresh sources via `playback_session`; progress on the player |
+| `bridge/player_polling.rs` | playback status on the UI tick; frames on the 16 ms timer |
 | `bridge/event_dispatch.rs` + `*_events.rs` | show background results; answers of replaced requests are dropped |
 | `request_tickets.rs` | a ticket per request kind (home, search, browse, details, open, skips) |
 | `playback_watch.rs` | next source on failure (max 3), next episode on end |

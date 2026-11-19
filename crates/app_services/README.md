@@ -1,16 +1,36 @@
 # app_services
 
-The use cases behind the screens. Each service takes its collaborators as trait objects or stores,
-so it is tested with fakes and wired to the real thing only in `app_shell`.
+Use-case services the UI calls. Collaborators are trait objects or stores so services are
+tested with fakes and wired to real implementations only in `app_shell`. The UI-facing bundle is
+`UiServices`.
 
-| Service | Responsibility |
+| Piece | Responsibility |
 |---|---|
-| `RepositoryService` | add/remove repositories, list their plugins |
-| `ExtensionService` | install/uninstall/load plugin files into the runtime |
-| `CatalogService` | search, home page, title details |
-| `StreamResolver` | turn a title/episode into playable streams, with retry and fallback |
-| `PlaybackService` | start playback, resume position, save progress |
-| `LibraryService` | bookmarks and continue-watching |
-| `SettingsService` | typed settings |
+| `RepositoryService` | Add/remove repositories, list plugins, refresh icons, import discovered repos |
+| `ExtensionService` | Install/uninstall `.cs3`, load into the gateway, trust flag, provider list |
+| `PluginIndex` | In-memory searchable index of plugins across repositories |
+| `CatalogService` | Multi-provider search, home page shelves, title details |
+| `BrowseService` (`BrowseClient`) | TMDB Discover browse (genre/year/rating filters) |
+| `StreamResolver` | Title/episode → playable links (retry empty/timeout, extractor fallback, best-first sort) |
+| `LinkSearch` | Streaming link-search poll protocol over the gateway |
+| `StreamChecker` / `CheckQueue` / `LinkHealth` | Concurrent HTTP Range probes (2…12 workers); queue is quality-first |
+| `PlaybackService` | Start/pause/seek/volume, resume position, progress every 5 s, resume-pointer rules |
+| `RoutedPlayer` / `RequestRouter` | Wrap any `VideoPlayer` so a router (e.g. stream proxy) can rewrite each `play` |
+| `LibraryService` | Bookmarks, continue-watching (max 20), resume pointers |
+| `SettingsService` | Typed settings (see below) |
+| `measure_storage` / `clean_regenerable` | Data-folder size breakdown and regenerable cleanup |
+
+### Settings (`SettingsService` + sibling modules)
+
+One `impl SettingsService` per group: providers / debug / autoplay / skip lookup / sources-valid-from
+(`settings_service.rs`); audio & subtitle languages (`language_settings.rs`, up to 3 preferred
+subs); stream proxy; video cache size & ahead share; storage cap GB; plugin worker limit;
+Cloudflare allowed hosts; home provider.
+
+### Stream check
+
+`StreamChecker::check` / `check_queue` ask the host for the first bytes via `HttpProbe`.
+`LinkHealth::Working` carries optional size and embedded subtitle language names from the head;
+`Broken` is a log-ready reason. `check_worker_count` clamps `available_parallelism` to 2…12.
 
 Test: `cargo test -p app_services`.

@@ -17,13 +17,13 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
    - [Chunk 7: Scripts, Tooling & External Repositories](#chunk-7-scripts-tooling--external-repositories)
 3. [Subsystem Lifecycles & Data Flow Diagrams](#3-subsystem-lifecycles--data-flow-diagrams)
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
-   - [Video Stream Resolution, Check Gate & Fallback](#video-stream-resolution-check-gate--fallback)
+   - [Video Stream Resolution, Open Gate & Fallback](#video-stream-resolution-open-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Tauri IPC Interface (68 Commands Reference)](#4-tauri-ipc-interface-68-commands-reference)
+4. [Archived Tauri IPC (reference)](#4-archived-tauri-ipc-reference)
 5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
 6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
-   - [Recipe 1: Adding a new Tauri IPC command (Rust + React)](#recipe-1-adding-a-new-tauri-ipc-command-rust--react)
-   - [Recipe 2: Modifying or adding a React frontend component](#recipe-2-modifying-or-adding-a-react-frontend-component)
+   - [Recipe 1: Adding a Slint UI callback / bridge hook](#recipe-1-adding-a-slint-ui-callback--bridge-hook)
+   - [Recipe 2: Changing a Slint layout or screen](#recipe-2-changing-a-slint-layout-or-screen)
    - [Recipe 3: Adding or updating an Application Service](#recipe-3-adding-or-updating-an-application-service)
    - [Recipe 4: Adding a database migration and store method](#recipe-4-adding-a-database-migration-and-store-method)
    - [Recipe 5: Modifying stream checking or playback fallback](#recipe-5-modifying-stream-checking-or-playback-fallback)
@@ -43,8 +43,8 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 - **Decoupled One-Way Flow**: `ui -> services -> traits <- implementations`. Concrete implementations are only wired in `app_shell`.
 - **Fault-Tolerant Resilience**: No unhandled panics (`unwrap`, `expect`, `panic!`, `indexing_slicing` denied). Fallible paths have explicit fallbacks or structured errors.
 - **Application Frontend (this fork)**: `app_shell` / `ui_slint` — native desktop shell with a retained-mode Slint GUI and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
-- **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`open_with` / `run_open`), plays the first working ASAP, keeps checking the full list, and can seed from `title_cache`; wired from `ui_slint`.
-- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, opens challenges in the system browser after allow-host, and writes cookie/result files from the Slint confirm UI.
+- **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`open_with` / `run_open`), waits for a full search+check (or skip / 60s total cap; 30s empty fail), then plays the **best** working stream by `link_rank`; fresh `title_cache` seeds can start at once; wired from `ui_slint`.
+- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, and after allow-host runs `cloudstream-verify` (`cloudflare_window`); Slint confirm UI writes cookie/result files.
 - **Legacy reference**: `archive/desktop_tauri` (former Tauri + React shell) is kept for porting remaining features; it is **not** a workspace member.
 
 ---
@@ -68,7 +68,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `LoadDetails`: Title `name`, `url`, `api_name`, `media_type`, `data_url`, `poster_url`, `year`, `plot`, `tags: Option<Vec<String>>`, `episodes: Vec<EpisodeInfo>`, `background_poster_url`, `rating: Option<i32>`, `duration: Option<i32>`, `actors: Vec<CastMember>`.
   - `EpisodeInfo`: `data: String` (provider payload), `name`, `season: Option<i32>`, `episode: Option<i32>`, `poster_url`, `description`.
   - `CastMember`: `name: String`, `image: Option<String>`, `role: Option<String>`.
-  - `PlayableLink`: `source: String`, `name: String`, `url: String`, `referer: Option<String>`, `quality: Option<i32>`, `headers: Option<HashMap<String, String>>`, `is_m3u8: Option<bool>`.
+  - `PlayableLink`: `source`, `name`, `url`, `referer: String`, `quality: i32`, `headers: HashMap<String, String>`, `link_type` (`VIDEO`/`M3U8`/`DASH`/`TORRENT`/`MAGNET`), optional ClearKey `kid`/`key`.
   - `PlayableLinks`: `success: bool`, `links: Vec<PlayableLink>`, `subtitles: Vec<SubtitleTrack>`.
   - `SubtitleTrack`: Provider subtitle item (`lang: String`, `url: String`).
   - `PluginListing`: `name`, `internal_name`, `version: i32`, `authors: Vec<String>`, `description: Option<String>`, `url: String`, `icon_url: Option<String>`.
@@ -80,7 +80,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `WatchProgress`: `provider`, `media_key`, `title`, `detail_url`, `poster_url`, `position_ms: i64`, `duration_ms: i64`, `updated_at_ms: i64`, `season: Option<i32>`, `episode: Option<i32>`, `fraction_watched() -> f32`.
   - `ResumePointer`: `provider: String`, `detail_url: String`, `media_key: String`, `title: String`, `poster_url: Option<String>`, `season: Option<i32>`, `episode: Option<i32>`, `updated_at_ms: i64`.
   - `stable_key(text: &str) -> String`: Deterministic 16-character hex hash based on FNV constants for safe file/cache keys.
-  - `redact_url(url: &str) -> String`: `host#fingerprint` of a stream address for logs (no path, query, credentials or port). Used by `desktop_tauri` and `player_mpv` wherever an address is logged.
+  - `redact_url(url: &str) -> String`: `host#fingerprint` of a stream address for logs (no path, query, credentials or port). Used by `player_mpv` (and the archived Tauri shell) wherever an address is logged. Also see `DEFAULT_STREAM_USER_AGENT` (Chrome desktop string shared with stream checks / stream proxy).
 
 #### `crates/extension_api`
 - **Location**: `crates/extension_api/`
@@ -196,8 +196,8 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `max_titles`: 50 entries (LRU eviction).
   - `max_links_per_title`: 200 links.
   - `max_file_size`: 1 MB.
-- **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`); notes (`mark_broken`, ...) never revive such a file. `desktop_tauri::provider_switch::apply_switch` (command `provider_switched`) calls it when the viewer picks a different provider, and stores the time in the `sources_valid_from` setting, which `sources_cleanup::open_title_cache` restores at start. The cleanup queue (`cleanup_start.rs`) prunes it hourly once the app has started.
-- **Only the open video keeps its sources**: `TitleCache::keep_only(key)` removes every other title's file and hands out a `KeptTitle`; `save_kept` / `forget_kept` refuse once a newer `keep_only` was called (same write lock), so the background checks of a replaced video cannot bring its file back. `SourceManager::keep_only` (`desktop_tauri/src/source_notes.rs`) calls it, and `SubtitleCache::keep_only_title` (`subtitle_store/src/subtitle_cache_keep.rs`) for the subtitles, whenever a video is opened (`discover_with`); `LinkLedger` saves through its `KeptTitle`.
+- **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`); notes (`mark_broken`, ...) never revive such a file. In the Slint product, `ui_slint` bridge extension-settings callbacks call `TitleCache::invalidate_now()` and `SettingsService::set_sources_valid_from` when the viewer picks a different provider. (The archived Tauri shell had `provider_switched` / `sources_cleanup`.)
+- **Only the open video keeps its sources**: `TitleCache::keep_only(key)` removes every other title's file and hands out a `KeptTitle`; `save_kept` / `forget_kept` refuse once a newer `keep_only` was called (same write lock), so the background checks of a replaced video cannot bring its file back. In the Slint product, `ui_slint::bridge::stream_opening` calls `TitleCache::keep_only` and `SubtitleCache::keep_only_title` when a video is opened; `playback_session` persists through the kept title. (Archived Tauri used `SourceManager` / `LinkLedger`.)
 - **Atomic File Operations**: Writes to temporary `.tmp` files and renames into place, preventing corruption on app crash.
 - **Types & Methods**:
   - `TitleCache`: `load(key) -> Lookup`, `save(key, title) -> Result<SaveReport, TitleCacheError>`, `update(key, fn)`, `mark_broken(key, url)`, `forget(key)`, `clear()`, `prune() -> PruneReport`.
@@ -210,7 +210,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 - **Dependencies**: `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
 - **Responsibility**: Finds the intro, recap and credits of an episode or film. Providers do not carry these times; like the reference app it asks community databases by the title's ids: AniSkip (anime, MyAnimeList id), TheIntroDB (TMDb or IMDb id), IntroDB (IMDb id). First database that knows wins.
 - **Types**: `SkipLookup::find(&SkipQuery) -> Result<Vec<SkipSegment>, SkipError>` (answers remembered per run, at most 64; errors are not remembered), `ExternalIds::from_sync(sync_data, unique_url)` (validates ids so they are safe in a URL), `SkipFetcher` trait with `UreqSkipFetcher`.
-- **Plumbing**: `core_model::LoadDetails.sync_data` / `unique_url` come from the sidecar's `load` reply; `desktop_tauri::catalog_commands::map_media_details` turns them into `imdb_id` / `tmdb_id` / `mal_id` on the title page; `skip_commands::get_skip_segments` runs the lookup (switch: setting `skip_lookup`). In the Slint product: built in `app_shell::service_wiring` as `UiServices::skips`; `ui_slint::bridge::skip_lookup_start` asks when a stream's length is known (request kind `Skips`), and the chapters' parts win for the kinds they name.
+- **Plumbing**: `core_model::LoadDetails.sync_data` / `unique_url` come from the sidecar's `load` reply; Slint `ui_slint::bridge::details_page` builds `skip_times::ExternalIds::from_sync(...)`. Product: `app_shell::service_wiring` as `UiServices::skips`; `ui_slint::bridge::skip_lookup_start` asks when a stream's length is known (request kind `Skips`); chapter-named segments win for those kinds. (Archived Tauri used `catalog_commands` / `get_skip_segments`.)
 
 ---
 
@@ -244,7 +244,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 - **Build System**: Gradle 8.x + Kotlin 2.1 (JVM Target 21).
 - **Compatibility Bridge**: Converts Android DEX bytecode to JVM bytecode via `dex2jar` / `plugin-runtime` and provides fake Android environment classes (`android-stubs`).
 - **Kotlin Modules (`src/main/kotlin/`)**:
-  - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (see "Cloudflare verification" under `desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
+  - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (product: `cloudflare_bridge` + Slint banner; archived detail under `archive/desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
   - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
   - `sidecar/LinkSearches.kt`: Coordinates asynchronous streaming link searches and channel buffers.
@@ -312,7 +312,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `RepositoryService`: `repositories()`, `add(url)`, `remove(url)`, `plugins(url)`, `import_discovered()`, `refresh_icons()`.
   - `PluginIndex`: In-memory searchable index of all plugins across all registered repositories.
   - `StreamResolver`: Initiates streaming link resolution via `ProviderGateway::start_link_search` with automatic retry logic; sorts candidates using `playable_links_best_first` and `link_rank`.
-  - `StreamChecker`: Concurrently probes video streams with `check_worker_count(available_parallelism)` clamped to 2…12 workers using HTTP Range probes (`Range: bytes=0-32767`). Evaluates `LinkHealth` (`Working { size_bytes, subtitles }`, `Broken(String)`).
+  - `StreamChecker`: Concurrently probes video streams with `check_worker_count(available_parallelism)` clamped to 2…12 workers using HTTP Range probes (`Range: bytes=0-32767` via `extension_repo::UreqProbe`). Request headers mirror the player: link headers + referer + `core_model::DEFAULT_STREAM_USER_AGENT` (Chrome desktop) unless the link already sets User-Agent. Evaluates `LinkHealth` (`Working { size_bytes, subtitles }`, `Broken(String)`).
   - `CheckQueue`: Thread-safe priority queue sorting streams by resolution/quality (`push`, `close`, `stop`, `next`).
   - `PlaybackService`: Coordinates `VideoPlayer`, `WatchProgressStore`, and `ResumeStore`. Manages `start()`, `start_at()`, `resume_position_ms()`, `set_paused()`, `seek_to()`, `set_volume()`, `tracks()`, `select_track()`, `latest_frame()`. Progress automatically updates every 5,000 ms (`SAVE_EVERY_MS = 5_000`). Advances resume pointer to `next_episode` when progress reaches ≥ 90% (`NEXT_WATCH_EPISODE_PERCENTAGE = 0.90`), or removes pointer if last episode/movie; that rule is the pure `playback_resume::resume_change`.
   - `LibraryService`: Bookmarks, continue-watching, and resume pointers. `continue_watching()` returns one card per show, newest first, carrying season/episode and progress from `ResumeStore`. `resume_pointer(provider, detail_url)` finds resume position for details page. `remove_continue_watching(provider, detail_url)` and `clear_continue_watching()` remove resume pointers and episode progress rows. Max 20 items in continue-watching.
@@ -321,6 +321,15 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `RequestRouter` / `RoutedPlayer`: `RoutedPlayer` wraps any `VideoPlayer` and lets a `RequestRouter` change the request before every `play` (the stream proxy, wired in `app_shell`); `stop` stops the player first and then lets the router go. It forwards **every** method of `VideoPlayer`, defaults included: add new trait methods there too (`routed_player_tests.rs` lists them).
   - `SettingsService::stream_proxy()` / `set_stream_proxy()` (`stream_proxy_setting.rs`): the "Play HLS streams through a local helper" switch, on by default, option name `stream_proxy`.
   - `ServiceError`: Transparent error envelope wrapping `GatewayError`, `RepoError`, `StorageError`, `PlayerError`, and `NotFound(String)`.
+
+#### `crates/playback_session`
+- **Location**: `crates/playback_session/`
+- **Responsibility**: Shell-agnostic stream open: search + `StreamChecker` probes, TitleCache seeds, live source updates, refresh. Product entry points: `open_with` / `run_open` / `refresh_sources`; UI wiring in `ui_slint::bridge::stream_opening`.
+- **Gate**: announce ready on full search+all checks, viewer skip, or 60s total; fail empty after 30s with no streams; pick **best** working by `link_rank` (not first-checked).
+
+#### `crates/app_updater`
+- **Location**: `crates/app_updater/`
+- **Responsibility**: GitHub release check, signed `SHA256SUMS` verify (`update_signing_key.pub`), download + install helper for installer / portable / AppImage. Slint calls `check_latest` / `download_and_install` from `bridge/update_callbacks.rs` (not Tauri IPC).
 
 ---
 
@@ -333,9 +342,9 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `app_paths.rs`: Locates data directory: `CS_DATA_DIR` -> `%LOCALAPPDATA%\CloudStreamRs` (Windows) -> `~/.local/share/cloudstream-rs` (Linux). Holds `database_file()`, `extensions_dir()`, `log_file()`.
   - `logging_setup.rs`: Initializes `tracing-subscriber` logging to `<data>/logs/cloudstream.log` and reloadable debug/problem category layers in `<data>/logs/debug/` (`DebugLogs`).
   - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME` or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`.
-  - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in both `main`s, before logging) removes everything in the data folder except the marker and the running program's own `runtime-*` folder (`running_folder_name`; older `runtime-*` folders go too), retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
+  - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in `app_shell` `main`, before logging) removes everything in the data folder except the marker and the running program's own `runtime-*` folder (`running_folder_name`; older `runtime-*` folders go too), retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
-  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` (both shells).
+  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` for the Slint product shell.
   - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS (provider says `Hls`, or the address ends in `.m3u8`) and progressive/unknown streams that carry custom headers or a referer through `stream_proxy` when the setting is on (never DASH). The proxy starts on the first such stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly. This replaces plugin-local FlixProxy-style servers for header injection.
   - Plugin sandbox (defense in depth):
     - **Install:** `ExtensionInstaller` requires HTTPS, download host bound to the repository (or GitHub family / subdomain), ZIP magic (`PK`), and a matching published `file_size` when present (`plugin_download_guard`).
@@ -343,7 +352,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
     - **Bytecode (untrusted):** cannot load real `java.net.ServerSocket` / `Socket` / `DatagramSocket`, `javax.net.ssl.SSLSocket*`, or `java.lang.Thread`. Remaps via `RawSocketRemapper` → loopback `ServerSocketStub`, deny-outbound `SocketStub`, capped `ThreadStub`. `CompatPluginClassLoader` **fails closed** if patches fail (no raw unpatched bytes). `ProcessBuilder`, NIO `Files`, and `ClassLoader` stay denied even for Trusted. Trusted skips static verify and widens the classloader — confirm in UI; reload applies immediately. Trusted also skips the OS filesystem jail (AppContainer / Landlock) while keeping Job / rlimit + heap caps (`SidecarLaunchConfig::os_fs_sandbox`); untrust clears JVM trust via `removeTrusted`.
     - **OS job (Windows):** the sidecar process tree is assigned to a Job Object (1536 MB memory cap, kill-on-job-close, fail-closed if assign fails) in `extension_runtime::sidecar_job_object`.
     - **OS AppContainer (Windows):** each **untrusted** plugin worker JVM is started with `CreateProcess` inside AppContainer `CloudStream.PluginSidecar.v1` (internetClient capability), with ACLs on the JDK, install home, `<data>/sidecar` (modify), and sibling `<data>/extensions` (read+execute) (`sidecar_app_container_*`; ACL grants cached per process in `acl_session_cache`). Trusted workers use plain spawn + Job Object only. `SECURITY_CAPABILITIES` and the stdio `HANDLE_LIST` stay alive on the heap until CreateProcess returns (`sidecar_app_container_attrs`). When `icacls` cannot change a path (typical for Program Files without admin), that tree is mirrored once under `<data>/sidecar/appcontainer/` (which already has modify rights) and the container runs from the copy (`sidecar_app_container_mirror`). `ExtensionPathJail` resolves host plugins as `<data>/extensions` while `cloudstream.data.dir` stays `<data>/sidecar`. `PluginPermissionAPI` is overlaid to file storage under the data dir (Windows `java.util.prefs` registry is denied in AppContainer). Fail-closed if the container cannot be prepared or the process cannot start.
-    - **Per-plugin workers:** `PluginWorkerPool` (`extension_runtime`) implements `ProviderGateway` and spawns one sidecar JVM per loaded `.cs3` (untrusted: AppContainer + Job on Windows / Landlock + rlimit + process group on Linux; trusted: Job / rlimit only). After load, workers above `plugin_worker_limit` are parked (JVM stopped; providers stay listed) and revived on demand. Provider calls route by name; link searches by id (workers with an open search are not parked); `extract` fans out across currently live workers; `take_added_repositories` merges. Each live worker keeps `-Xmx512m` and a 1536 MB OS memory cap. Wired from `app_shell::service_wiring::build_gateway`; cap applied in `desktop_tauri::plugin_worker_commands::apply_saved`.
+    - **Per-plugin workers:** `PluginWorkerPool` (`extension_runtime`) implements `ProviderGateway` and spawns one sidecar JVM per loaded `.cs3` (untrusted: AppContainer + Job on Windows / Landlock + rlimit + process group on Linux; trusted: Job / rlimit only). After load, workers above `plugin_worker_limit` are parked (JVM stopped; providers stay listed) and revived on demand. Provider calls route by name; link searches by id (workers with an open search are not parked); `extract` fans out across currently live workers; `take_added_repositories` merges. Each live worker keeps `-Xmx512m` and a 1536 MB OS memory cap. Wired from `app_shell::service_wiring::build_gateway`; cap applied from `SettingsService::plugin_worker_limit` in `app_shell::service_wiring::build_gateway` / Slint settings callbacks.
     - **Linux:** one out-of-process JVM **per plugin** with the bytecode sandbox. Untrusted + `cloudstream.data.dir`: Landlock FS allow-list (RO: JDK, sidecar home, `<data>/extensions`, `/bin`/`/usr`/`/lib*`/`/etc`/`/proc`; RW: `<data>/sidecar`, `/tmp`, `/dev`), `RLIMIT_AS` 4096 MB (virtual; Windows Job 1536 MB is commit charge — HotSpot needs the headroom for compressed class space), `-XX:CompressedClassSpaceSize=256m`, `-Djava.awt.headless=true` (plugins like StreamPlay use Swing dispatchers; no X11 inside Landlock), `DISPLAY` cleared, new process group + `PR_SET_PDEATHSIG`, kill-on-drop of the group (`sidecar_linux_*`). Trusted + `data.dir`: same rlimit/pgid/headless without Landlock. Fail-closed if Landlock/rlimit cannot be applied when required. Tests/`fake_sidecar` without `data.dir` stay plain spawn.
     - **Threat model:** plugins are untrusted community code with intentional public HTTPS egress. Isolation aims to block process spawn, host filesystem escape, and raw sockets — not to make arbitrary `.cs3` “perfectly safe.” Plugins no longer share one JVM (a crash or escape in one worker does not take down another plugin’s process).
 
@@ -356,7 +365,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 #### `crates/ui_app` (reference only)
 - **Location**: `crates/ui_app/`
 - **Dependencies**: `egui = "0.37"`, `eframe = "0.37"`, `egui_extras`, `image`, `player_api`, `app_services`
-- **Status**: Former product UI; kept for porting reference. Product binary uses `ui_slint`.
+- **Status**: Former product UI; kept for porting reference. Listed in Cargo.toml `exclude` (not a workspace member — fontconfig `dlopen` conflicts with Slint `fontique`). Product binary uses `ui_slint`.
 - **Architecture**: Unidirectional reactive pattern:
   - `screens/` and `widgets/` render state and emit `UiAction`.
   - `actions/dispatcher.rs` executes use cases asynchronously on `TaskRunner`.
@@ -368,8 +377,9 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - Glass/Backdrop Blur: Stretches player frame down to 48px and scales up via GPU linear filtering (`video_presenter::blur_thumbnail`, `widgets::glass`). Hero banners stretch artwork to 24x36px (`ambient_backdrop`).
 - **Input State**: `UiServices` bundle passed to `run_desktop_app(services)`.
 
-#### `crates/desktop_tauri`
-- **Location**: `crates/desktop_tauri/`
+#### `archive/desktop_tauri`
+- **Location**: `archive/desktop_tauri/` (**not** a workspace member; former Tauri + React shell kept for porting)
+- **Status**: Reference only. Product open/playback/UI live in `playback_session` + `ui_slint` + `app_shell`.
 - **Backend Architecture (`src/`)**:
   - `main.rs`: Registers IPC commands (including `get_resume_pointer`) and sets up `AppState`, `SourceManager`, and `StartupTracker`.
   - `source_manager.rs`: Session-based coordinator managing stream search, checking queue, title caching, and subtitle prefetch.
@@ -389,7 +399,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
   - `shutdown.rs`: the closer. Runs on the main window's close request and on exit (once; later callers wait): closes every other window/view (a hidden Cloudflare check would keep the app alive), stops the player, ends every plugin worker (`ProviderGateway::shutdown` -> `PluginWorkerPool` drops each `SidecarProcessTransport`, which also blocks restarts), with a 10 s watchdog that ends the process. Every step is logged with its time (`closing: ...` lines in `app-logs.txt` and the main log).
   - `deadlock_tests.rs` (tests only): fails when a synchronous `#[tauri::command]` calls something that waits for the window's own thread (`cookies_for_url`, building a window or view, `eval_with_callback`) or blocks (`recv`, `join`, `sleep`, `block_on`): that freezes the whole app on Windows. Make such a command `async`. Also holds `finishes_within`, a watchdog for tests of shared state.
   - `update_commands.rs`: The self-updater (`check_for_updates`, `apply_update`). Reads the latest GitHub release and chooses the asset by name: `*-setup.exe` (installed Windows app), `*_portable.exe` (portable, replaced through `CS_PORTABLE_EXE`), `*.AppImage` whose name contains `x86_64` or `aarch64` (Linux). Keep the release file names (see `docs/RELEASING.md`). The command file only runs the work and turns `UpdateError` (`update_error.rs`) into text; the work is split by step: `update_version.rs` (tag comparison), `update_assets.rs` (release JSON, choosing the file), `update_download.rs` (GitHub requests, download with progress), `update_install.rs` (`InstallMethod`: the installed Windows app runs the downloaded installer with `/P /R /UPDATE`; the portable exe and the AppImage have the file moved over them), `update_helper_script.rs` (the `.bat`/`.sh` helper text with quoted paths, started by plain name from its own folder), `update_verify.rs` (minisign signature of the release's `SHA256SUMS`, checked with the key in `crates/app_updater/update_signing_key.pub`, then the download's SHA-256), `update_folder.rs` (a fresh `<data>/updates/<attempt>/` per try, old ones removed), `update_prepare.rs` (the order: newer? file for this PC, signed list, download, hash; a failure removes the folder). `apply_update` takes no address: the backend picks the file. A release without `SHA256SUMS` + `SHA256SUMS.minisig`, or a build whose key file holds no key, installs nothing.
-- **Frontend Architecture (`frontend/src/`)**:
+- **Frontend Architecture (`frontend/src/`, archived React UI)**:
   - `App.tsx`: Main application shell, keyboard shortcuts, and tab routing (`home`, `browse`, `search`, `library`, `settings`).
   - `screens/`: `HomeScreen.tsx`, `BrowseScreen.tsx`, `SearchScreen.tsx`, `DetailsScreen.tsx` (shows "Resume" button with time left, highlights/scrolls to resume episode), `LibraryScreen.tsx`, `SettingsScreen.tsx`, `PlayerOverlay.tsx`.
   - `screens/settings/`: `GeneralSettings.tsx`, `PreferencesPage.tsx`, `SubtitleLanguages.tsx`, `RepositoryPage.tsx`, `PluginsTab.tsx`, `ExtensionsPage.tsx`.
@@ -406,7 +416,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 
 #### `crates/portable_launcher`
 - **Location**: `crates/portable_launcher/`
-- **Responsibility**: The single-file Windows portable exe. The release script compiles a tar.gz of the whole app into it (`CS_PAYLOAD_ARCHIVE`, see `build.rs`); on start it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>\` once and launches `desktop_tauri.exe` from there. `build.rs` embeds `desktop_tauri/icons/icon.ico` as its icon.
+- **Responsibility**: The single-file Windows portable exe. The release script compiles a tar.gz of the whole app into it (`CS_PAYLOAD_ARCHIVE`, see `build.rs`); on start it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>\` once and launches `cloudstream.exe` (`cloudstream` on non-Windows) from there. `build.rs` embeds `crates/app_shell/icons/icon.ico` as its icon.
 
 ---
 
@@ -426,11 +436,11 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
  - Compiles `app_shell` (`cloudstream.exe`); stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer payload or portable payload.
 - `scripts/check_file_lengths.py`: fails on a Rust file outside the tests over 300 lines (clippy only counts functions). Files that were already over are in `scripts/file_length_baseline.txt`: they may shrink, not grow, and their line must go once they are split. Tests: `scripts/check_file_lengths_test.py`.
 - `scripts/sign_release.sh`: writes `SHA256SUMS` for the release files in a folder, signs it with minisign (`MINISIGN_SECRET_KEY`/`_FILE`, `MINISIGN_PASSWORD`) and checks it against `crates/app_updater/update_signing_key.pub`. The in-app updater refuses releases without it. Run by `release.yml` on tags; by hand see `docs/RELEASING.md`.
-- `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU from `app_shell` (`cloudstream`); `--install-deps` installs egui/libmpv tools on Debian/Ubuntu (no Node/WebKit).
+- `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU from `app_shell` (`cloudstream`); `--install-deps` installs Slint/GTK/X11/Wayland, libmpv, WebKitGTK 4.1 (Cloudflare helper), and JDK 21 tools on Debian/Ubuntu (no Node).
 - `scripts/vendor/vulkan/`: the vendored x64 Vulkan loader (`vulkan-1.dll`), its Apache-2.0 license and rebuild steps. libmpv imports it; PCs without a GPU driver have none.
 
 #### GitHub Actions (`.github/workflows/`)
-- `ci.yml`: on every push and pull request to `main`: format, clippy and Rust tests on Windows; clippy and Rust tests on Linux (`rust-linux`, compiles the Unix-only code); `cargo deny` + `cargo audit` (`supply-chain`, also weekly); the file-length check (`project-rules`); frontend tests/build; sidecar tests. Same list as `just gates` and `RULES.md` §8.
+- `ci.yml`: on every push and pull request to `main`: format, clippy and Rust tests on Windows; clippy and Rust tests on Linux (`rust-linux`, Slint/WebKitGTK deps, Unix-only code); `cargo deny` + `cargo audit` (`supply-chain`, also weekly); the file-length check (`project-rules`); sidecar Kotlin tests. **No** npm/Tauri frontend CI (archive only). `just gates` covers fmt/clippy/test/deny/audit/lengths (not the sidecar job).
 - `release.yml`: builds the three release files on GitHub (Windows x64; AppImage on x86_64 and ARM runners) when a `v*` tag is pushed or when run by hand; a tag also drafts a release. See `docs/RELEASING.md`.
 
 #### Sibling Reference Repositories
@@ -445,7 +455,7 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 
 ```mermaid
 sequenceDiagram
-    participant UI as Tauri Frontend / Service
+    participant UI as Slint / Service
     participant GW as RpcProviderGateway
     participant TR as SidecarProcessTransport
     participant JV as cs-sidecar (JVM)
@@ -471,31 +481,33 @@ sequenceDiagram
 
 ---
 
-### Video Stream Resolution, Check Gate & Fallback
+### Video Stream Resolution, Open Gate & Fallback
+
+Product path: `playback_session` (`open_with` / `run_open`) + `ui_slint` playback watch. Stream probes use `StreamChecker` + `DEFAULT_STREAM_USER_AGENT`; HLS / header-bearing progressive may go through `stream_proxy` (`app_shell::stream_proxy_router`).
 
 ```mermaid
 flowchart TD
     Start[User selects title / episode] --> CheckCache{TitleCache Lookup}
     
-    CheckCache -- Fresh (<20 min) --> PlayCached[Play last good cached stream immediately]
-    CheckCache -- Stale (20m - 24h) --> ProbeStale[Probe best 3 stale streams (3s cap)]
-    CheckCache -- Miss --> FullSearch[Initiate streaming link search]
+    CheckCache -- Fresh (<20 min) --> PlayCached[May start last-good / fresh seed at once]
+    CheckCache -- Stale (20m - 24h) --> ProbeStale[Probe best stale streams short window]
+    CheckCache -- Miss --> FullSearch[Start link search]
     
     ProbeStale -- One works --> PlayCached
     ProbeStale -- None work --> FullSearch
     
-    PlayCached --> BgSearch[Fresh search runs in background]
-    FullSearch --> Gate[CheckGate: 30s first working / 60s cap]
-    Gate --> CheckQueue[CheckQueue: Priority sorted by resolution]
-    CheckQueue --> StreamChecker[StreamChecker: HTTP HEAD / M3U8 check]
+    PlayCached --> BgSearch[Fresh search continues]
+    FullSearch --> Gate[Open gate: full search+check / skip / 60s total; 30s empty fail]
+    Gate --> CheckQueue[CheckQueue: priority by quality]
+    CheckQueue --> StreamChecker[StreamChecker: Range probe + Chrome UA]
     
-    Gate -- Stream verified OR user skips --> StartMpv[MpvPlayer::play]
-    StartMpv --> Monitor[Playback Monitor]
+    Gate -- Best working ready --> StartMpv[MpvPlayer::play via RoutedPlayer / proxy]
+    StartMpv --> Monitor[ui_slint playback_watch]
     
-    Monitor -- Stream error / sudden EOF --> Fallback[SourceFallback: Pick next verified stream]
+    Monitor -- Stream Failed --> Fallback[switch_source: next working candidate]
     Fallback --> StartMpv
     
-    BgSearch --> SaveCache[Save verified links to TitleCache on search completion]
+    BgSearch --> SaveCache[Save verified links to TitleCache]
 ```
 
 ---
@@ -513,9 +525,9 @@ flowchart LR
 
 ---
 
-## 4. Tauri IPC Interface (70 Commands Reference)
+## 4. Archived Tauri IPC (reference)
 
-All commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests.rs` fails when this table and that list differ: add a row with every new command.
+**Not product.** The Slint shell does not use Tauri IPC. The table below documents commands that still exist under `archive/desktop_tauri/src/main.rs` for porting. `docs_drift_tests.rs` in that archive tree guards the list there.
 
 | Category | Command Identifier | Description |
 |---|---|---|
@@ -593,69 +605,47 @@ All commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests
 
 | Component / Task | File Location |
 |---|---|
-| **Tauri Backend Commands** | `crates/desktop_tauri/src/*_commands.rs` |
-| **Tauri Backend Main & State** | `crates/desktop_tauri/src/main.rs`, `app_state.rs` |
-| **Tauri Source Verification & Session**| `crates/desktop_tauri/src/source_manager.rs`, `source_session.rs` |
-| **Tauri Stream Fallback Controller** | `crates/desktop_tauri/src/source_fallback.rs`, `source_fallback_steps.rs` |
-| **Tauri Wait Limit Gate** | `crates/desktop_tauri/src/check_gate.rs` |
-| **Tauri Video Frame Encoder** | `crates/desktop_tauri/src/video_commands.rs` |
-| **Frontend Root & Router** | `crates/desktop_tauri/frontend/src/App.tsx` |
-| **Frontend Canvas Blitter** | `crates/desktop_tauri/frontend/src/components/VideoCanvas.tsx` |
-| **Frontend Tauri API Wrapper** | `crates/desktop_tauri/frontend/src/services/api.ts` |
-| **Frontend TypeScript Types** | `crates/desktop_tauri/frontend/src/types/index.ts` |
-| **Native GUI (Slint)** | `crates/ui_slint/ui/`, `crates/ui_slint/src/bridge/` |
-| **Native GUI (egui, reference)** | `crates/ui_app/src/screens/`, `crates/ui_app/src/widgets/` |
+| **Product UI (Slint)** | `crates/ui_slint/ui/`, `crates/ui_slint/src/bridge/` |
+| **Stream open / check gate** | `crates/playback_session/` (`open_with`, `run_open`, `open_gate`, `open_run`) |
+| **Playback failure fallback** | `crates/ui_slint/src/playback_watch.rs`, `bridge/stream_opening.rs` (`switch_source`) |
+| **Self-updater** | `crates/app_updater/`; Slint wiring `ui_slint/src/bridge/update_callbacks.rs` |
+| **egui shell (reference only)** | `crates/ui_app/` (workspace `exclude`) |
+| **Archived Tauri shell** | `archive/desktop_tauri/` (not a workspace member) |
 | **Service Construction Root** | `crates/app_shell/src/service_wiring.rs` |
 | **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs` |
 | **Sidecar Process Transport** | `crates/extension_runtime/src/sidecar_process_transport.rs` |
-| **Local stream proxy** | `crates/stream_proxy/src/stream_proxy.rs`, `request_handler.rs`, `hls_rewrite.rs`; wiring in `crates/app_shell/src/stream_proxy_router.rs` |
+| **Local stream proxy** | `crates/stream_proxy/`; wiring `crates/app_shell/src/stream_proxy_router.rs` |
+| **Default stream User-Agent** | `crates/core_model/src/stream_user_agent.rs` (`DEFAULT_STREAM_USER_AGENT`) |
+| **Stream HTTP probe** | `crates/extension_repo/src/http_probe.rs`; used by `app_services::StreamChecker` |
 | **Sidecar JSON-Lines RPC Gateway** | `crates/extension_runtime/src/rpc_provider_gateway.rs` |
 | **Per-plugin worker pool** | `crates/extension_runtime/src/plugin_worker_pool.rs`, `plugin_worker_maps.rs` |
 | **libmpv FFI & Loaders** | `crates/player_mpv/src/mpv_api.rs`, `libmpv_locator.rs` |
 | **SQLite Schema Migrations** | `crates/storage/src/schema_migrations.rs` |
 | **Subtitle Cleaner & Decompressor** | `crates/subtitle_store/src/normalize_subtitle.rs` |
 | **Stream Title Disk Cache** | `crates/title_cache/src/title_cache.rs` |
-| **Delete all saved data** | `crates/app_shell/src/data_wipe.rs`, `crates/desktop_tauri/src/data_commands.rs`, `frontend/src/components/DeleteDataCard.tsx` |
-| **Self-updater** | `crates/desktop_tauri/src/update_commands.rs`, `update_*.rs` beside it |
-| **Home "add a plugin" prompt** | `frontend/src/components/NoPluginsPrompt.tsx`, `frontend/src/utils/homeEmptyState.ts` |
+| **Delete all saved data** | `crates/app_shell/src/data_wipe.rs`; Slint Settings General |
 | **Release scripts & workflow** | `scripts/build_release.ps1`, `scripts/build_release.sh`, `.github/workflows/release.yml`, `docs/RELEASING.md` |
-| **Portable exe launcher** | `crates/portable_launcher/` |
+| **Portable exe launcher** | `crates/portable_launcher/` (launches `cloudstream.exe`) |
 | **Workspace Coding Invariants** | `RULES.md` |
 
 ---
 
 ## 6. Step-by-Step Modification Recipes ("How do I do X?")
 
-### Recipe 1: Adding a new Tauri IPC command (Rust + React)
+### Recipe 1: Adding a Slint UI callback / bridge hook
 
-1. **Create or update DTO**: In `crates/desktop_tauri/src/dto.rs`, declare request/response structs with `#[derive(Serialize, Deserialize)]`.
-2. **Implement command function**: In the appropriate `crates/desktop_tauri/src/*_commands.rs`:
-   ```rust
-   #[tauri::command]
-   pub async fn sample_command(input: String, state: State<'_, AppState>) -> Result<SampleDto, String> {
-       let services = state.read();
-       // Invoke services.catalog, services.library, etc.
-       Ok(SampleDto { ... })
-   }
-   ```
-3. **Register in Tauri handler**: In `crates/desktop_tauri/src/main.rs`, append `sample_commands::sample_command` to `tauri::generate_handler![...]`.
-   Add its row to the table in section 4 and raise the count in its heading; `docs_drift_tests.rs` fails until you do.
-4. **Expose in frontend API**: In `crates/desktop_tauri/frontend/src/services/api.ts`:
-   ```typescript
-   export const api = {
-     // ...
-     sampleCommand: (input: string) => invokeTauri<SampleDto>('sample_command', { input }),
-   };
-   ```
+1. **Slint UI**: Add the property/callback in the relevant `.slint` under `crates/ui_slint/ui/`.
+2. **Bridge**: Wire it in `crates/ui_slint/src/bridge/` (call into `UiServices` / `app_services` / `playback_session`; keep UI thread free — spawn work and use request tickets / generations for late answers).
+3. **Services**: Prefer extending `app_services` (or `playback_session`) rather than putting I/O in the bridge.
+4. **Check**: `cargo check -p ui_slint` (or `cargo run -p app_shell`). See `crates/ui_slint/README.md` for bridge pitfalls.
 
 ---
 
-### Recipe 2: Modifying or adding a React frontend component
+### Recipe 2: Changing a Slint layout or screen
 
-1. **Location**: `crates/desktop_tauri/frontend/src/components/` or `screens/`.
-2. **Tailwind CSS**: Use existing theme colors (`bg-[#0c0f17]`, `border-white/10`, `text-white/80`).
-3. **State Management**: Consume hooks from `frontend/src/hooks/` or invoke backend commands via `api` from `services/api.ts`.
-4. **Build Check**: In `crates/desktop_tauri/frontend`, run `npm run build` to verify TypeScript typing and JSX bundling.
+1. **Location**: `crates/ui_slint/ui/` (screens/widgets) and matching bridge modules under `crates/ui_slint/src/bridge/`.
+2. **Pure rules**: Prefer tested Rust helpers next to the bridge (e.g. `source_menu.rs`, `browse_filters.rs`) over logic in `.slint`.
+3. **Check**: `cargo run -p app_shell` / `just run`.
 
 ---
 
@@ -688,9 +678,10 @@ All commands registered in `crates/desktop_tauri/src/main.rs`. `docs_drift_tests
 
 ### Recipe 5: Modifying stream checking or playback fallback
 
-1. **Stream Checking**: In `crates/app_services/src/stream_checker.rs`. Probes HEAD/GET status codes and playlist availability.
-2. **Wait Logic**: In `crates/desktop_tauri/src/check_gate.rs`. Configures `WaitLimits` (30s first working link timeout, 60s total search timeout).
-3. **Fallback Logic**: In `crates/desktop_tauri/src/source_fallback.rs` and `source_fallback_steps.rs`. When playback reports `PlaybackState::Failed`, `FallbackController::on_status` invokes `fail_over`, uses `next_candidate(&active)` from `ActiveSources` (`source_session.rs`) to select the next working/unchecked stream, marks the failed stream broken via `sources.mark_broken`, starts the candidate at the previous position via `start_source`, and tracks limits via `FallbackLimits` (max 3 attempts or 20s cap). When a fallback stream plays successfully, `on_playing` records it via `sources.note_played`.
+1. **Stream Checking**: `crates/app_services/src/stream_checker.rs` (Range probe via `UreqProbe`; default UA `DEFAULT_STREAM_USER_AGENT`).
+2. **Open / wait gate**: `crates/playback_session/src/open_gate.rs` + `open_run.rs` (`FIRST_WORKING_SECS` = 30 empty fail, `TOTAL_SECS` = 60 then start best working; skip starts best so far).
+3. **Proxy routing**: `crates/app_shell/src/stream_proxy_router.rs` (HLS or progressive with headers/referer; never DASH).
+4. **Playback fallback**: `crates/ui_slint/src/playback_watch.rs` + `bridge/stream_opening.rs` (`switch_source`) when status goes `Failed`.
 
 ---
 
@@ -767,4 +758,4 @@ scripts/build_release.sh
 - `CS_MPV_LOG`: When set, enables verbose internal libmpv console logging (`terminal=yes, msg-level=all=v`) and forwards verbose mpv event logs into `player-logs.txt` (not tied to the Settings debug switch).
 - `CS_TEST_CINESTREAM_CS3`: Path to CineStream `.cs3` extension file used by `scripts/record_sidecar_replies.py`.
 - Packages (`scripts/build_release.ps1`) carry `libmpv-2.dll`, `sidecar\` and `jre\` next to the program; the app finds them there (`sidecar_discovery::bundled_install`). A `portable.txt` next to the program makes it keep its data in `data\` beside it (`app_paths::portable_data_dir`).
-- `RUST_LOG`: Tracing filter directive (e.g. `RUST_LOG=cloudstream=debug,desktop_tauri=debug`).
+- `RUST_LOG`: Tracing filter directive (e.g. `RUST_LOG=cloudstream=debug,ui_slint=debug,playback_session=debug`).

@@ -1,124 +1,108 @@
-# Native video window — plan
+# Native video window — plan (ARCHIVE / REFERENCE ONLY)
 
-Branch: `feat/native-video-window`. Status: **Phase 0 mostly done. Chosen design: E (one window, mpv under a
-transparent web view).** Not yet proven: input, resize/maximize/fullscreen, heavy-file CPU. Production code not started.
+**Not a product plan.** The shipping UI is `app_shell` + `ui_slint` with embedded mpv
+(`vo=libmpv` frames into Slint). There is no WebView / Tauri chrome in the product build.
 
-## 1. Problem
+This document records the **former Tauri + React** investigation for Windows “native” video
+(design E: mpv under a transparent web view). What shipped for that shell lives under
+`archive/desktop_tauri/` (`native_video.rs`, transparent `tauri.conf.json`,
+`PlayerOverlay` / `useNativeVideo`). Do not treat the phases below as open work for Slint.
 
-Old laptops lag on 2K/4K streams. Today every frame takes this path:
+Historical branch note: `feat/native-video-window`. Spike commits cited below: `44cbed6`, `abba31d`.
 
-1. mpv decodes (`hwdec=auto-copy-safe`: the GPU may decode, then each frame is **copied back** to RAM; with no
-   usable GPU decoder the CPU decodes alone).
-2. mpv's **software renderer** (`vo=libmpv`, `sw-fast`) scales it on the CPU to at most 1280 px wide
-   (`frame_renderer.rs`, `MAX_RENDER_WIDTH`).
-3. `to_rgba` converts it, `get_video_frame` copies it through the Tauri IPC (about 3.7 MB per 720p frame),
-   and `VideoCanvas.tsx` paints it on a `<canvas>`.
+## 1. Problem (Tauri canvas path — historical)
 
-Goal: let mpv decode **and draw on the GPU into a real OS window** (like VLC), with the app's controls
-(seek bar, menus, skip button) still on top of the video, in the **same window**.
+On the old Tauri shell, every frame took roughly:
+
+1. mpv decodes (`hwdec=auto-copy-safe`: GPU may decode, then each frame is **copied back** to RAM).
+2. Software renderer (`vo=libmpv`, `sw-fast`) scales on the CPU (then capped, e.g. `MAX_RENDER_WIDTH`).
+3. RGBA conversion, `get_video_frame` over Tauri IPC, paint on `VideoCanvas.tsx`.
+
+Goal then: let mpv decode **and draw on the GPU into a real OS window**, with React controls
+still on top in the **same window**.
 
 ## 2. Verified facts (checked in the code, online, or by spike)
 
 | # | Fact | Source |
 |---|------|--------|
-| F1 | The app picks the player mode once at start: `main.rs:176-178` passes `player_wid: None`, so `service_wiring.rs:93` sets `embedded: true`. A `wid` mode already exists in `player_configuration.rs` (`vo=gpu`, `hwdec=auto-safe`). Services are built before a window handle exists, so building the player with a `wid` needs restructuring. | code |
-| F2 | The first Tauri version tried "transparent window over mpv attached to the main HWND" and reported failure: the transparent window showed the desktop and never the video (commit `cd6ad46`). The reason was not recorded. Spike E (F13) now shows this layout working, so that failure had another cause that is **still unexplained**. | git history, spike |
-| F3 | libmpv's own header says the software renderer is "extremely simple (but slow)... You probably don't want to use this", and that window embedding "can cause various issues, especially with GUI toolkits". The app uses the software renderer today. | [render.h](https://rust-digger.code-maven.com/src/libmpv-sys-3.1.0/include/render.h) |
-| F4 | `--wid` embedding works on X11, Windows and macOS only; the render API is the route that works on Wayland. One third-party issue says so; current mpv docs not checked. Stock libmpv has no `--wid` on macOS (Frame Player patches it). | [libmpv client.h](https://git.tjdev.de/mirror/mpv/src/branch/master/libmpv/client.h), [Celluloid #900](https://www.github.com/celluloid-player/celluloid/issues/900), [frame-player README](https://github.com/risenxxx/frame-player) |
+| F1 | Tauri `main` once passed `player_wid: None`, so wiring used `embedded: true`. A `wid` mode already existed in `player_configuration.rs` (`vo=gpu`, `hwdec=auto-safe`). Services were built before a window handle existed, so a `wid` player needed deferred construction. | code (then) |
+| F2 | An early Tauri attempt (“transparent window over mpv on the main HWND”) failed: desktop showed, no video (commit `cd6ad46`). Spike E (F13) later showed the layout working; that earlier failure’s cause was **not** recorded. | git history, spike |
+| F3 | libmpv’s software renderer is documented as simple/slow; window embedding “can cause various issues, especially with GUI toolkits”. | [render.h](https://rust-digger.code-maven.com/src/libmpv-sys-3.1.0/include/render.h) |
+| F4 | `--wid` embedding works on X11, Windows and (patched) macOS; Wayland generally needs the render API. Stock libmpv has no `--wid` on macOS (Frame Player patches it). | [libmpv client.h](https://git.tjdev.de/mirror/mpv/src/branch/master/libmpv/client.h), [Celluloid #900](https://www.github.com/celluloid-player/celluloid/issues/900), [frame-player README](https://github.com/risenxxx/frame-player) |
 | F5 | WebView2 `DefaultBackgroundColor` can be fully transparent; only fully opaque or fully transparent values are allowed. | [Microsoft docs](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2controller.defaultbackgroundcolor?view=webview2-dotnet-1.0.2957.106) |
-| F6 | Microsoft's guidance on "airspace": transparency works for whole top-level windows; the workaround is a separate top-level window over the area (design A). | [MS blog](https://learn.microsoft.com/en-us/archive/blogs/changov/webbrowser-control-on-transparent-wpf-window) |
-| F7 | **Verified:** `tauri-plugin-libmpv` takes the Tauri window's native handle (`raw_window_handle` -> `wid`) and gives it to mpv; there is no separate child window of ours. Its example sets `"transparent": true` for the window. | [plugin source](https://github.com/nini22P/tauri-plugin-libmpv) (`src/desktop.rs`, `src/utils.rs`) |
-| F8 | The app already builds a second native browser view inside the main window (`cloudflare_panel.rs`); Tauri's `unstable` feature is enabled. | code |
-| F9 | A transparent, undecorated Tauri window with `set_ignore_cursor_events` is a known pattern (relevant only to design A). | [Tauri issue 9250](https://github.com/tauri-apps/tauri/issues/9250) |
-| F10 | `tauri.conf.json` starts WebView2 with `--disable-gpu`; reason not recorded. The spike showed design E works **with and without** it. | code, spike |
-| F11 | Whole player UI is `PlayerOverlay.tsx` (295 lines) over `VideoCanvas.tsx` (80 lines), at `fixed inset-0 z-50 bg-black`. | code |
-| F12 | **Verified:** Frame Player (Tauri 2 + libmpv, shipped, Windows and macOS) uses exactly design E: "mpv renders into a native child view behind a transparent webview"; the window is deliberately transparent, so it keeps an opaque backdrop until mpv paints and an opaque window background colour underneath. Notes: "nothing painted means the desktop shows through"; "two compositors have to agree about geometry" (fullscreen, resize). | [architecture.md](https://github.com/risenxxx/frame-player/blob/main/docs/architecture.md), [window rules](https://github.com/risenxxx/frame-player/blob/main/docs/rules/window.md) |
-| F13 | **Verified by spike (this PC):** design E works; see section 7. | spike `abba31d` |
-| F14 | **Verified:** the reference CloudStream desktop client on disk (`player_bridge.cpp`) keeps the top-level window opaque and sets only the web view's `DefaultBackgroundColor` to transparent; mpv and WebView2 are siblings in one container and the container is raised with `SetWindowPos(HWND_TOP)`. Same idea, hand-written in C++. | local reference code |
-| F15 | Gemini 3.8 Flash (High) was asked to search GitHub; its top recommendation is design E. All 8 repositories it named exist. Its detailed claims (maximize lag explanation, WebView2 TextureStream, DirectComposition limits in `wry`) were **not** individually verified and are not relied on here. | agy CLI output |
+| F6 | Microsoft’s “airspace” guidance: transparency for whole top-level windows; separate top-level overlay is the classic workaround (design A). | [MS blog](https://learn.microsoft.com/en-us/archive/blogs/changov/webbrowser-control-on-transparent-wpf-window) |
+| F7 | `tauri-plugin-libmpv` takes the Tauri window’s native handle as `wid`; example uses `"transparent": true`. | [plugin source](https://github.com/nini22P/tauri-plugin-libmpv) |
+| F8 | The Tauri app already built a second native browser view inside the main window (`cloudflare_panel.rs`). | code (archive) |
+| F9 | Transparent undecorated Tauri window + `set_ignore_cursor_events` is a known pattern (design A). | [Tauri issue 9250](https://github.com/tauri-apps/tauri/issues/9250) |
+| F10 | `tauri.conf.json` started WebView2 with `--disable-gpu` on Windows; spike E worked with and without it. | code, spike |
+| F11 | Player UI was `PlayerOverlay.tsx` over `VideoCanvas.tsx`. | archive frontend |
+| F12 | Frame Player (Tauri 2 + libmpv) uses design E: mpv behind a transparent webview; nothing painted shows the desktop; geometry must stay in sync (fullscreen, resize). | [architecture.md](https://github.com/risenxxx/frame-player/blob/main/docs/architecture.md) |
+| F13 | Spike on Windows 11: design E works; see section 7. | spike `abba31d` |
+| F14 | Reference CloudStream desktop client (`player_bridge.cpp`): opaque top-level window, transparent web-view background only; mpv and WebView2 as siblings. | local reference code |
+| F15 | External repo survey preferred design E; detailed secondary claims were **not** individually verified. | agy CLI output |
 
-## 3. Candidate designs
+## 3. Candidate designs (historical choice)
 
-- **E. One window, mpv under a transparent web view (chosen).** mpv gets the main window's handle as `wid` and
-  creates its own child window; the transparent web view sits above it, so the React controls float over the
-  video. One window, GPU decode and display, no pixel copies, no second window to keep in sync.
-- **A. Owned overlay window (fallback).** mpv in a child window, controls in a second transparent top-level window
-  that follows the main one. Proven to work in spike A, but the overlay leads the maximize animation and needs
-  window-sync code. Keep only if E fails a gate.
-- **B. Own `STATIC` child window under a transparent web view. Dropped.** Fails twice (GPU on and off): shows the
-  desktop, no video. (Why this fails while E works is unexplained.)
-- **C. Keep the canvas, make it cheaper.** Quality cap, automatic step-down, `hwdec`, smaller render size.
-  Independent of E and A, works everywhere, and stays the fallback on Linux, macOS and on any failure.
-- **D. mpv render API (OpenGL/D3D) into our own surface.** Needs our own GL context and native controls. Not pursued.
-- **Also considered and not chosen:** swapping to a controls bar beside the video; DirectComposition visual hosting
-  (needs our own WebView2 host, Windows-only, large).
+- **E. One window, mpv under a transparent web view (chosen for Tauri).** mpv gets the main window
+  handle as `wid`; transparent web view sits above; React controls float over the video.
+- **A. Owned overlay window (fallback).** Proven in spike A; overlay can lead maximize animation.
+- **B. Own `STATIC` child under transparent web view. Dropped.** Showed desktop, no video.
+- **C. Cheaper canvas.** Independent fallback (also the non-Windows path in the archived shell).
+- **D. mpv render API into our own surface.** Not pursued for Tauri.
 
-## 4. Plan
+## 4. Historical plan (do not execute for Slint)
 
-**Phase 0 — spike (Windows only, throw-away).** Done for the visuals (section 7). Still to prove for E: real
-clicks, resize, maximize, fullscreen, whether lowering mpv's window is needed, CPU on a heavy file.
+Phases 0–5 below were the Tauri rollout checklist. Native mode later shipped on Windows in
+`archive/desktop_tauri` (no Auto/On/Off setting there: native when a window handle exists).
+Slint product work does **not** follow this checklist.
 
-**Phase 1 — enable design E in the app.**
-- Window `transparent: true`; every page keeps an opaque background (the pages already paint their own) and the
-  player screen shows an opaque backdrop until mpv paints (F12).
-- Build the player **after** the main window exists (F1), with `wid` = the window's native handle; keep the
-  existing embedded/canvas player as the fallback.
-- Win32 code (z-order of mpv's window, if needed) in one small module with `// SAFETY:` comments and a documented
-  `RULES.md` exception.
-- mpv's window must be hidden or absent while not playing (no white or black rectangle over the pages).
+**Phase 0 — spike (Windows).** Visuals done (section 7). Remaining spike items were input,
+resize/maximize/fullscreen, heavy-file CPU.
 
-**Phase 2 — controls.** `PlayerOverlay.tsx` becomes transparent over the video; `VideoCanvas` and the
-`get_video_frame` loop are skipped in native mode. Fullscreen, resize, maximize, minimize/restore, shortcuts and
-click handling re-tested.
+**Phase 1 — enable E.** Transparent window; deferred player with `wid`; canvas as fallback;
+Win32 z-order if needed; hide mpv’s child while not playing.
 
-**Phase 3 — mode switch.** Setting "Hardware video mode" (Auto / On / Off), applied at restart. Auto = native on
-Windows when it works, canvas otherwise (Linux Wayland, macOS: F4).
+**Phase 2 — controls.** Transparent overlay; skip canvas / `get_video_frame` in native mode.
 
-**Phase 4 — quality fixes (design C, can start in parallel).** Max-quality setting, automatic step-down to a lower
-verified source on dropped frames, decoder tuning measured with `CS_BENCH_VIDEO`.
+**Phase 3 — mode switch.** Setting “Hardware video mode” was planned; archived Windows path
+made native the only mode instead.
 
-**Phase 5 — verify and finish.** Old laptop test, quality gates, `AGENTS.md`.
+**Phase 4 — quality (design C).** Cap / step-down / decoder tuning (`CS_BENCH_VIDEO`).
 
-## 5. Risks
+**Phase 5 — verify.** Old laptop, gates, docs.
 
-- **R1** Design E failed once before for an unknown reason (F2). Mitigation: Phase 0 checks and fallback to A or C.
-- **R2** A transparent top-level window means "nothing painted = desktop visible" (F12): flashes at start and stop,
-  and pages must always paint. Mitigation: opaque backdrop and window background colour.
-- **R3** Fullscreen, resize and maximize must keep mpv's window and the web view in agreement (F12). Not tested yet.
-- **R4** Mouse and keyboard: the web view is on top and receives input; the player is commanded through IPC as today.
-  Real clicks on the web view are expected to work; verify in the app.
-- **R5** Player is built before a window exists today (F1). Needs restructuring and a lazy or deferred player.
-- **R6** Concurrency in any new shared state needs race tests (`AGENTS.md` recipe 6).
-- **R7** Linux Wayland and macOS: no `--wid` (F4). They stay on the canvas.
-- **R8** The project's limits: files ≤ 300 lines, functions ≤ 40 lines, `unsafe` confined, no `unwrap`.
+## 5. Risks (still relevant if revisiting Tauri archive)
 
-## 6. Done means
+- **R1** Design E failed once before for an unknown reason (F2).
+- **R2** Transparent top-level window: nothing painted = desktop visible.
+- **R3** Fullscreen / resize / maximize: mpv child and web view must agree on geometry.
+- **R4** Web view on top receives input; player commanded through IPC.
+- **R5** Player was built before a window existed → deferred construction.
+- **R6** Shared state needs race tests.
+- **R7** Linux Wayland / macOS: no stock `--wid` path → canvas (or render API).
+- **R8** Project limits: file/function size, confined `unsafe`, no unwrap.
 
-Windows, old laptop, 2K stream: smooth playback with controls visible and working; fullscreen works; seeking,
-pause, subtitles, source switching unchanged; falling back to canvas works; all quality gates pass.
+## 6. Done means (Tauri target — historical)
 
-## 7. Phase 0 results (this PC, Windows 11, 16 cores; spike code in commits `44cbed6` and `abba31d`)
+Windows, old laptop, 2K stream: smooth playback with controls; fullscreen; seek/pause/subs/source
+switch unchanged; canvas fallback; quality gates pass.
 
-Screenshots were taken of the full window at its real size.
+## 7. Phase 0 results (Windows 11 spike; commits `44cbed6`, `abba31d`)
 
 | Test | Result |
 |------|--------|
-| **A**: mpv in a child window, transparent owned top-level window above it | **Works.** Video plays; the HTML control draws over it; clicks work (user tested by hand); the overlay follows window drags and resizes; playback smooth. **Flaw:** on maximize the overlay jumps to the final size before the window's animation ends. |
-| **B**: own `STATIC` child window for mpv under a transparent web view | **Fails** (GPU flag on and off): the window shows the desktop, no video. |
-| **E**: mpv given the main window's own handle (plugin style), transparent window and web view | **Works** (GPU flag on and off): video fills the window and the red test control floats over it. The child windows of the main window, top to bottom, were `WRY_WEBVIEW` then `mpv` (same size). |
-| CPU (design A, mostly static clip) | 0.19-0.27 CPU-seconds per 5 s (about 5% of one core). Not compared with the canvas path; this PC is not an old laptop. |
+| **A**: mpv child + transparent owned overlay | **Works.** Overlay can jump ahead of maximize animation. |
+| **B**: own `STATIC` under transparent web view | **Fails** (GPU flag on/off): desktop, no video. |
+| **E**: main-window `wid`, transparent window/web view | **Works** (GPU flag on/off). Child order: `WRY_WEBVIEW` then `mpv`. |
+| CPU (design A, light clip) | ~5% of one core / 5 s on that PC; not a canvas baseline. |
 
-**Not yet tested for E:** real mouse clicks on the control; resize, maximize, fullscreen; minimize/restore; whether
-the code that lowers mpv's window is needed (E was captured with it on; the z-order was already correct when
-printed); a heavy 2K/4K file; the canvas baseline.
+**Not tested in the spike for E:** real control clicks; resize/maximize/fullscreen; minimize/restore;
+whether lowering mpv’s window is required; heavy 2K/4K; canvas baseline.
 
-**Gate:** provisional pass for E, final after the untested items. If E fails any of them, fall back to A, which
-passed; C is independent either way.
-
-Gotchas found (production code must handle them):
-1. The test exe needs the Windows manifest that `tauri_build` adds only to **bin** targets; an example crashed at start with `0xC0000139`.
-2. WebView2 windows of one app sharing a profile must have **identical** `additionalBrowserArgs`, or building the second fails with `0x8007139F` (matters for design A only).
-3. `tauri.conf.json` creates the `main` window itself; a code-built window needs another label.
+Gotchas found then:
+1. Test exe needs the Windows manifest `tauri_build` adds to **bin** targets.
+2. WebView2 windows sharing a profile need identical `additionalBrowserArgs`.
+3. Config-created `main` window vs code-built windows need distinct labels.
 4. Data URLs need the `webview-data-url` feature.
-5. When an own child window's content goes away it paints **white** (design B/A); E uses mpv's own window.
-6. Screen captures of the window must be DPI-aware or they are cropped.
+5. Own child windows paint **white** when empty; E uses mpv’s own window.
+6. Screen captures must be DPI-aware or they crop.
