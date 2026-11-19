@@ -66,15 +66,24 @@ pub(crate) struct DetailsPage {
     pub url: String,
     pub data: String,
     pub media_key: String,
+    /// The provider's genres and tags.
+    pub tags: Vec<String>,
+    /// "Name (role)" of each cast member, in the provider's order.
+    pub cast: Vec<String>,
 }
 
 /// One episode line of a title page.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct EpisodeRow {
     pub name: String,
     pub code: String,
     pub data: String,
+    /// Seen to 80 % or more.
     pub watched: bool,
+    /// How far it was watched, 0 to 1 (0 when never started).
+    pub progress: f32,
+    /// The provider's summary of the episode.
+    pub description: String,
     /// Season number, -1 when unknown.
     pub season: i32,
     /// Episode number, if known.

@@ -64,6 +64,9 @@ export component CloudStream inherits Window {
     in-out property <string> browse-kind: "movie";
     in-out property <bool> browse-loading: false;
     in-out property <string> browse-message: "";
+    in-out property <[string]> details-tags: [];
+    in-out property <string> details-cast: "";
+    in-out property <string> play-label: "Play";
     in-out property <bool> details-loading: false;
     in-out property <image> details-poster;
     in-out property <string> details-resume-key: "";
@@ -407,6 +410,9 @@ export component CloudStream inherits Window {
             toggle-bookmark => { toggle-bookmark(); }
             plot: details-plot;
             meta: details-meta;
+            tags: details-tags;
+            cast: details-cast;
+            play-label: play-label;
             resume-label: resume-label;
             open-busy: open-busy;
             open-status: open-status;

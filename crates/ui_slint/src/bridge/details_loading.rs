@@ -49,6 +49,9 @@ pub(crate) fn show_details_pending(ctx: &BridgeContext, title: &str, status: &st
     ui.set_details_title(title.into());
     ui.set_details_plot(status.into());
     ui.set_details_meta("".into());
+    ui.set_details_tags(empty_strings());
+    ui.set_details_cast("".into());
+    ui.set_play_label("Play".into());
     ui.set_resume_label("".into());
     ui.set_season_labels(empty_strings());
     ui.set_episodes(empty_episodes());

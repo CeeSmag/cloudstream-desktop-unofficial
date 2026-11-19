@@ -62,7 +62,11 @@ export struct EpisodeItem {
     name: string,
     code: string,
     data: string,
+    /// Seen to 80 % or more.
     watched: bool,
+    /// How far it was watched, 0..1.
+    progress: float,
+    description: string,
     season: int,
     /// Its place in the provider's full list (the shown list is filtered by season).
     index: int,

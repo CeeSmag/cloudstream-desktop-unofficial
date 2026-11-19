@@ -168,6 +168,9 @@ pub(crate) fn show_browse(
     hydrate_poster_images(ctx, PosterKind::Browse);
 }
 
+/// Tags shown on a title page (providers can send dozens).
+const MAX_TAGS: usize = 8;
+
 pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsPage) {
     let bookmarked = ctx
         .services
@@ -193,6 +196,8 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
     ui.set_details_title(page.title.into());
     ui.set_details_plot(page.plot.into());
     ui.set_details_meta(page.meta.into());
+    ui.set_details_tags(string_model(page.tags.into_iter().take(MAX_TAGS)));
+    ui.set_details_cast(page.cast.join("  ·  ").into());
     ui.set_resume_label(page.resume.into());
     ui.set_season_filter(-1);
     ui.set_season_labels(string_model(season_labels(&page.episodes)));

@@ -1,7 +1,7 @@
 //! Builds a title page from the provider's answer and the viewer's history.
 
 use app_services::UiServices;
-use core_model::{LoadDetails, WatchProgress};
+use core_model::{CastMember, LoadDetails, WatchProgress};
 
 use crate::ui_events::{DetailsPage, EpisodeRow};
 
@@ -45,7 +45,30 @@ pub(crate) fn details_page(
         url: target.url,
         data,
         media_key: target.media_key,
+        tags: details.tags.clone().unwrap_or_default(),
+        cast: details.actors.iter().map(cast_text).collect(),
     }
+}
+
+/// "Name (role)", or the name alone when the provider gives no role.
+pub(crate) fn cast_text(member: &CastMember) -> String {
+    match member.role.as_deref().map(str::trim) {
+        Some(role) if !role.is_empty() => format!("{} ({role})", member.name),
+        _ => member.name.clone(),
+    }
+}
+
+/// From this share of an episode on it counts as watched.
+pub(crate) const WATCHED_FRACTION: f32 = 0.8;
+
+/// How far a saved position went (0 to 1) and whether that counts as watched; never started (or
+/// an unknown length) is 0 and not watched.
+pub(crate) fn episode_mark(position_ms: i64, duration_ms: i64) -> (f32, bool) {
+    if duration_ms <= 0 || position_ms <= 0 {
+        return (0.0, false);
+    }
+    let fraction = (position_ms as f64 / duration_ms as f64).min(1.0) as f32;
+    (fraction, fraction >= WATCHED_FRACTION)
 }
 
 /// "Resume S1 E3 · 23 min left" (the time only when the length is known).
@@ -95,9 +118,17 @@ fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<Episod
                 (None, Some(number)) => format!("E{number}"),
                 _ => String::new(),
             };
+            let (fraction, watched) = progress
+                .iter()
+                .find(|seen| seen.media_key == episode.data)
+                .map_or((0.0, false), |seen| {
+                    episode_mark(seen.position_ms, seen.duration_ms)
+                });
             EpisodeRow {
                 name: episode.name.clone().unwrap_or_else(|| code.clone()),
-                watched: progress.iter().any(|seen| seen.media_key == episode.data),
+                watched,
+                progress: fraction,
+                description: episode.description.clone().unwrap_or_default(),
                 code,
                 data: episode.data.clone(),
                 season: episode.season.unwrap_or(-1),
@@ -132,6 +163,28 @@ mod tests {
         assert_eq!(resume_label(&pointer), "Resume S1 E3 · 23 min left");
         let movie = WatchProgress::default();
         assert_eq!(resume_label(&movie), "Resume");
+    }
+
+    #[test]
+    fn episode_mark_partial_watched_and_unknown() {
+        assert_eq!(episode_mark(0, 1_000), (0.0, false));
+        assert_eq!(episode_mark(500, 0), (0.0, false));
+        let (half, watched) = episode_mark(500, 1_000);
+        assert!((half - 0.5).abs() < 1e-6 && !watched);
+        assert!(episode_mark(800, 1_000).1, "80 % counts as watched");
+        assert!((episode_mark(2_000, 1_000).0 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cast_text_adds_the_role_when_known() {
+        let member = |role: Option<&str>| CastMember {
+            name: "Bryan Cranston".into(),
+            role: role.map(str::to_owned),
+            ..CastMember::default()
+        };
+        assert_eq!(cast_text(&member(Some("Main"))), "Bryan Cranston (Main)");
+        assert_eq!(cast_text(&member(Some(" "))), "Bryan Cranston");
+        assert_eq!(cast_text(&member(None)), "Bryan Cranston");
     }
 
     #[test]

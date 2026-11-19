@@ -34,7 +34,8 @@ component EpisodeRow inherits Rectangle {
     in property <bool> focused;
     in property <bool> resume-here;
     callback clicked();
-    height: 64px;
+    height: root.episode.description != "" ? 78px : 64px;
+    clip: true;
     border-radius: Theme.radius-sm;
     background: root.focused ? Theme.panel-hi : (touch.has-hover ? #ffffff10 : #ffffff08);
     border-width: root.focused ? 3px : 0px;
@@ -50,20 +51,42 @@ component EpisodeRow inherits Rectangle {
             font-weight: 700;
             min-width: 64px;
         }
-        Text {
-            text: root.episode.name;
-            color: Theme.text;
-            font-size: 15px;
-            overflow: elide;
+        VerticalLayout {
             horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.episode.name;
+                color: Theme.text;
+                font-size: 15px;
+                overflow: elide;
+            }
+            if root.episode.description != "": Text {
+                text: root.episode.description;
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+            }
         }
         if root.resume-here: Text { text: "Continue here"; color: Theme.accent; font-size: 13px; }
         if root.episode.watched: Text { text: "✓ Watched"; color: Theme.ok; font-size: 13px; }
+        if !root.episode.watched && root.episode.progress > 0: Text {
+            text: Math.round(root.episode.progress * 100) + "%";
+            color: Theme.muted;
+            font-size: 13px;
+        }
         Text { text: "▶"; color: root.focused ? Theme.text : Theme.muted; font-size: 18px; }
     }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    if !root.episode.watched && root.episode.progress > 0: Rectangle {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width * clamp(root.episode.progress, 0, 1);
+        height: 3px;
+        background: Theme.accent;
     }
 }
 
@@ -74,6 +97,11 @@ export component DetailsOverlay inherits Rectangle {
     in property <bool> bookmarked: false;
     in property <string> plot: "";
     in property <string> meta: "";
+    in property <[string]> tags: [];
+    /// "Name (role)  ·  …".
+    in property <string> cast: "";
+    /// "Play S1 E1", or "Play" for a movie.
+    in property <string> play-label: "Play";
     in property <string> resume-label: "";
     in property <string> resume-key: "";
     in property <image> poster;
@@ -181,6 +209,25 @@ export component DetailsOverlay inherits Rectangle {
                     color: Theme.muted;
                     font-size: 15px;
                 }
+                if !root.loading && root.tags.length > 0: HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for tag in root.tags: Rectangle {
+                        height: 26px;
+                        width: tag-text.preferred-width + 20px;
+                        border-radius: 13px;
+                        background: #ffffff12;
+                        border-width: 1px;
+                        border-color: #ffffff1a;
+                        tag-text := Text {
+                            text: tag;
+                            color: #d6dae3;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
                 if !root.loading: Text {
                     text: root.plot;
                     color: #d6dae3;
@@ -189,12 +236,18 @@ export component DetailsOverlay inherits Rectangle {
                     max-height: 110px;
                     overflow: elide;
                 }
+                if !root.loading && root.cast != "": Text {
+                    text: "Cast:  " + root.cast;
+                    color: Theme.muted;
+                    font-size: 13px;
+                    overflow: elide;
+                }
                 HorizontalLayout {
                     spacing: Theme.space-2;
                     alignment: start;
                     padding-top: Theme.space-1;
                     if !root.loading: PillButton {
-                        text: root.open-busy ? "Opening…" : "▶  Play";
+                        text: root.open-busy ? "Opening…" : "▶  " + root.play-label;
                         primary: true;
                         enabled: !root.open-busy;
                         focused: root.action-focused(0);

@@ -18,11 +18,33 @@ pub(crate) fn show_episode_list(ctx: &BridgeContext, ui: &CloudStream) {
             code: row.code.clone().into(),
             data: row.data.clone().into(),
             watched: row.watched,
+            progress: row.progress,
+            description: row.description.clone().into(),
             season: row.season,
             index: i32::try_from(index).unwrap_or(i32::MAX),
         })
         .collect();
     ui.set_episodes(ModelRc::new(VecModel::from(rows)));
+    let label = play_label(&ctx.session.borrow().episodes, season);
+    ui.set_play_label(label.into());
+}
+
+/// The episode Play starts: the first of the shown season (by season, then episode number).
+pub(crate) fn first_episode(episodes: &[EpisodeRow], season: i32) -> Option<usize> {
+    shown_episodes(episodes, season)
+        .into_iter()
+        .min_by_key(|(index, row)| (row.season, row.episode.unwrap_or(i32::MAX), *index))
+        .map(|(index, _)| index)
+}
+
+/// "Play S1 E1" for a show, "Play" for a movie.
+pub(crate) fn play_label(episodes: &[EpisodeRow], season: i32) -> String {
+    let first = first_episode(episodes, season).and_then(|index| episodes.get(index));
+    match first.map(|row| (row.season, row.episode)) {
+        Some((season, Some(number))) if season >= 0 => format!("Play S{season} E{number}"),
+        Some((_, Some(number))) => format!("Play E{number}"),
+        _ => "Play".to_owned(),
+    }
 }
 
 /// The episodes of `season` (-1 = all) with their place in the full list.
@@ -60,7 +82,27 @@ mod tests {
             watched: false,
             season,
             episode: None,
+            ..EpisodeRow::default()
         }
+    }
+
+    fn numbered(season: i32, episode: i32) -> EpisodeRow {
+        EpisodeRow {
+            season,
+            episode: Some(episode),
+            ..EpisodeRow::default()
+        }
+    }
+
+    #[test]
+    fn first_episode_and_play_label_follow_the_shown_season() {
+        let episodes = [numbered(2, 1), numbered(1, 2), numbered(1, 1)];
+        assert_eq!(first_episode(&episodes, -1), Some(2));
+        assert_eq!(play_label(&episodes, -1), "Play S1 E1");
+        assert_eq!(first_episode(&episodes, 2), Some(0));
+        assert_eq!(play_label(&episodes, 2), "Play S2 E1");
+        assert_eq!(play_label(&[], -1), "Play", "a movie");
+        assert_eq!(play_label(&[numbered(-1, 4)], -1), "Play E4");
     }
 
     #[test]

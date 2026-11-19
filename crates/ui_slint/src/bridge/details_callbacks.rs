@@ -11,7 +11,7 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_library;
 use super::details_loading::parse_season_label;
-use super::details_view::show_episode_list;
+use super::details_view::{first_episode, show_episode_list};
 use super::focus_navigation::restore_focus;
 use super::home_callbacks::row;
 use super::session::DetailsTarget;
@@ -88,8 +88,13 @@ fn toggle_bookmark(ctx: &BridgeContext) {
     show_library(ctx, &ui);
 }
 
-/// Plays the movie (or the title's own stream when it lists no episodes).
+/// Plays the first episode of the shown season, or the movie when the title lists no episodes.
 fn play_details(ctx: &BridgeContext) {
+    let season = ctx.window().map_or(-1, |ui| ui.get_season_filter());
+    let first = first_episode(&ctx.session.borrow().episodes, season);
+    if let Some(index) = first {
+        return play_episode(ctx, index);
+    }
     let title = ctx
         .window()
         .map(|ui| ui.get_details_title().to_string())
@@ -180,6 +185,7 @@ mod tests {
             watched: false,
             season,
             episode,
+            ..EpisodeRow::default()
         }
     }
 
