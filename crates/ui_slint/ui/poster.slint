@@ -188,11 +188,16 @@ export component PosterGrid inherits ScrollView {
     in property <[PosterItem]> items: [];
     in property <int> columns: 4;
     in property <int> focused-index: -1;
+    in property <int> scroll-reset: 0;
     in property <string> remove-text: "";
     callback open-at(int);
     callback play-at(int);
     callback bookmark-at(int);
     callback remove-at(int);
+
+    changed scroll-reset => {
+        self.content-y = 0px;
+    }
 
     changed focused-index => {
         if self.focused-index >= 0 {

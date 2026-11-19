@@ -10,6 +10,8 @@ use crate::seek_scheduler::SeekScheduler;
 use crate::source_menu::SourceFilter;
 
 use super::focus_screens::FocusScreen;
+use super::home_expanded::ExpandedShelfState;
+use super::home_loading::HomeShelf;
 use super::player_timeline::Timeline;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
@@ -55,6 +57,10 @@ pub(crate) struct Session {
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
     pub(crate) tickets: RequestTickets,
+    /// The Home shelves of the active provider, with their paging metadata.
+    pub(crate) home_shelves: Vec<HomeShelf>,
+    /// Currently expanded Home shelf, if any.
+    pub(crate) home_expanded: Option<ExpandedShelfState>,
     /// The TMDB titles Browse shows, in the grid's order.
     pub(crate) browse_items: Vec<app_services::BrowseItem>,
     /// What Browse shows, and the last page loaded with the number of pages.
@@ -119,6 +125,8 @@ impl Default for Session {
             wheel_carry: 0.0,
             surface_size: (0, 0),
             tickets: RequestTickets::default(),
+            home_shelves: Vec::new(),
+            home_expanded: None,
             browse_items: Vec::new(),
             browse_filters: BrowseFilters::default(),
             browse_page: (0, 0),

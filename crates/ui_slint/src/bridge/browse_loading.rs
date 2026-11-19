@@ -21,8 +21,7 @@ pub(crate) fn load_browse(ctx: &BridgeContext, kind: String) {
     fetch_browse(ctx, 1);
 }
 
-/// Fetches page `page` of Browse with the viewer's filters; page 1 replaces the grid, later
-/// pages are added to it.
+/// Fetches page `page` of Browse with the viewer's filters, replacing the grid with that page.
 pub(crate) fn fetch_browse(ctx: &BridgeContext, page: u32) {
     let request = ctx.session.borrow().browse_filters.request(page);
     if let Some(ui) = ctx.window() {

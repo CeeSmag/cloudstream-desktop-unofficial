@@ -1,0 +1,229 @@
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { PaginationItem } from "types.slint";
+
+/// Directional Prev / Next pill button inside pagination bars.
+component PagerArrowButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> leading-chevron: true;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 34px;
+    min-width: content.preferred-width + 20px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 10px;
+    background: !root.enabled ? transparent
+        : (touch.pressed ? #ffffff24 : (touch.has-hover ? #ffffff16 : transparent));
+    opacity: root.enabled ? 1.0 : 0.38;
+    animate background { duration: 120ms; }
+
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled { root.clicked(); }
+    }
+
+    content := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 4px;
+        alignment: center;
+        cross-axis-alignment: center;
+        if root.leading-chevron: TvIcon {
+            commands: Icons.chevron-left;
+            size: 15px;
+            color: Theme.text;
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        if !root.leading-chevron: TvIcon {
+            commands: Icons.chevron-right;
+            size: 15px;
+            color: Theme.text;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Numbered pagination bar (`‹ Prev  1  2  3  …  167  Next ›`) for Browse.
+export component PaginationBar inherits Rectangle {
+    in property <int> current-page: 1;
+    in property <int> total-pages: 1;
+    in property <[PaginationItem]> pages: [];
+    in property <bool> disabled: false;
+    callback go-to-page(int);
+
+    height: 46px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 15px;
+    background: Theme.panel-glass;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000055;
+
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        PagerArrowButton {
+            text: "Prev";
+            leading-chevron: true;
+            enabled: !root.disabled && root.current-page > 1;
+            clicked => { root.go-to-page(root.current-page - 1); }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 18px;
+            background: Theme.border;
+        }
+
+        for slot in root.pages: HorizontalLayout {
+            alignment: center;
+            cross-axis-alignment: center;
+            if slot.ellipsis: Text {
+                width: 26px;
+                height: 34px;
+                text: "…";
+                color: Theme.muted;
+                font-size: 13px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            if !slot.ellipsis: Rectangle {
+                width: max(34px, num-label.preferred-width + 16px);
+                height: 34px;
+                horizontal-stretch: 0;
+                vertical-stretch: 0;
+                border-radius: 10px;
+                background: slot.active ? Theme.accent
+                    : (!root.disabled && slot-touch.pressed ? #ffffff24
+                    : (!root.disabled && slot-touch.has-hover ? #ffffff16 : transparent));
+                drop-shadow-blur: slot.active ? 10px : 0px;
+                drop-shadow-color: #5b8cff66;
+                opacity: root.disabled && !slot.active ? 0.5 : 1.0;
+                animate background { duration: 120ms; }
+
+                accessible-role: AccessibleRole.button;
+                accessible-label: "Page " + slot.label;
+                accessible-checked: slot.active;
+                accessible-enabled: !root.disabled;
+                accessible-action-default => {
+                    if !root.disabled && !slot.active {
+                        root.go-to-page(slot.page);
+                    }
+                }
+
+                num-label := Text {
+                    text: slot.label;
+                    color: slot.active ? Theme.bg
+                        : (slot-touch.has-hover ? #ffffff : Theme.text-secondary);
+                    font-size: 13px;
+                    font-weight: slot.active ? 700 : 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                slot-touch := TouchArea {
+                    enabled: !root.disabled && !slot.active;
+                    mouse-cursor: self.enabled ? MouseCursor.pointer : MouseCursor.default;
+                    clicked => { root.go-to-page(slot.page); }
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 18px;
+            background: Theme.border;
+        }
+
+        PagerArrowButton {
+            text: "Next";
+            leading-chevron: false;
+            enabled: !root.disabled && root.current-page < root.total-pages;
+            clicked => { root.go-to-page(root.current-page + 1); }
+        }
+    }
+}
+
+/// Compact Prev / Page N / Next bar for provider sections where total page count is unknown.
+export component SimplePager inherits Rectangle {
+    in property <int> page: 1;
+    in property <bool> has-prev: false;
+    in property <bool> has-next: false;
+    in property <bool> disabled: false;
+    callback prev();
+    callback next();
+
+    height: 46px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 15px;
+    background: Theme.panel-glass;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000055;
+
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 8px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        PagerArrowButton {
+            text: "Prev";
+            leading-chevron: true;
+            enabled: !root.disabled && root.has-prev;
+            clicked => { root.prev(); }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 18px;
+            background: Theme.border;
+        }
+
+        Text {
+            text: "Page " + root.page;
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            min-width: 64px;
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 18px;
+            background: Theme.border;
+        }
+
+        PagerArrowButton {
+            text: "Next";
+            leading-chevron: false;
+            enabled: !root.disabled && root.has-next;
+            clicked => { root.next(); }
+        }
+    }
+}

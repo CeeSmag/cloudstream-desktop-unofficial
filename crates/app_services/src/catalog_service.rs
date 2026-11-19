@@ -44,14 +44,25 @@ impl CatalogService {
             .collect()
     }
 
-    /// Loads one home page category of a provider.
+    /// Loads the first page of one home page category of a provider.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
     pub fn home(
         &self,
         provider: &str,
         entry: &MainPageEntry,
     ) -> Result<Option<HomePage>, ServiceError> {
-        Ok(self.gateway.main_page(provider, 1, entry)?)
+        self.home_page(provider, 1, entry)
+    }
+
+    /// Loads `page` (1-based) of one home page category of a provider.
+    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, page), err)]
+    pub fn home_page(
+        &self,
+        provider: &str,
+        page: u32,
+        entry: &MainPageEntry,
+    ) -> Result<Option<HomePage>, ServiceError> {
+        Ok(self.gateway.main_page(provider, page, entry)?)
     }
 
     /// Loads the details of a title.
@@ -108,5 +119,29 @@ mod tests {
         *gateway.load_reply.lock().expect("lock") = Some(Ok(Some(details)));
         let service = CatalogService::new(Arc::new(gateway));
         assert_eq!(service.details("P", "u").expect("loads").name, "Apollo");
+    }
+
+    #[test]
+    fn home_page_forwards_requested_page_number_to_gateway() {
+        let gateway = Arc::new(FakeGateway::default());
+        *gateway.main_page_reply.lock().expect("lock") = Some(Ok(Some(HomePage {
+            items: Vec::new(),
+            has_next: true,
+        })));
+        let service = CatalogService::new(gateway.clone());
+        let entry = MainPageEntry {
+            name: "Popular Movies".into(),
+            data: "popular".into(),
+            horizontal_images: false,
+        };
+        let page = service
+            .home_page("StreamFlix", 3, &entry)
+            .expect("loads")
+            .expect("has page");
+        assert!(page.has_next);
+        assert_eq!(
+            *gateway.main_page_calls.lock().expect("lock"),
+            vec![("StreamFlix".to_owned(), 3, "Popular Movies".to_owned())]
+        );
     }
 }

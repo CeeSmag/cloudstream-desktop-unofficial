@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use crate::focus_grid::FocusPoint;
+use crate::pagination::pagination_model;
 use crate::posters::{
     posters_from_bookmarks, posters_from_browse, posters_from_continue, posters_from_search,
     shelves_from_sections, string_model,
@@ -17,7 +19,9 @@ use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
 use super::details_view::{resume_season, show_details_artwork, show_episode_list};
 use super::extension_catalog::refresh_plugins;
-use super::home_loading::load_home;
+use super::focus_screens::FocusScreen;
+use super::home_expanded::close_expanded_shelf;
+use super::home_loading::{load_home, HomeShelf};
 use super::poster_hydrate::{hydrate_poster_images, request_artwork};
 use super::session::DetailsTarget;
 use super::title_search::{search_message, SearchSummary};
@@ -119,11 +123,9 @@ pub(crate) fn show_continue_watching(ctx: &BridgeContext, ui: &CloudStream) {
     hydrate_poster_images(ctx, PosterKind::Continue);
 }
 
-pub(crate) fn show_home(
-    ctx: &BridgeContext,
-    ui: &CloudStream,
-    sections: &[(String, Vec<core_model::SearchResult>)],
-) {
+pub(crate) fn show_home(ctx: &BridgeContext, ui: &CloudStream, sections: &[HomeShelf]) {
+    close_expanded_shelf(ctx);
+    ctx.session.borrow_mut().home_shelves = sections.to_vec();
     ui.set_home_loading(false);
     ui.set_starting(false);
     ui.set_home_shelves(shelves_from_sections(sections));
@@ -152,13 +154,19 @@ pub(crate) fn show_browse(
     };
     let items = {
         let mut session = ctx.session.borrow_mut();
-        if page.page <= 1 {
-            session.browse_items.clear();
-        }
-        session.browse_items.extend(page.items);
+        session.browse_items = page.items;
         session.browse_page = (page.page, page.total_pages);
+        session
+            .focus
+            .entry(FocusScreen::Browse)
+            .or_default()
+            .set(FocusPoint { row: 0, col: 0 });
         session.browse_items.clone()
     };
+    if ui.get_tab() == 1 && ui.get_details_title().is_empty() {
+        ui.set_focus_row(0);
+        ui.set_focus_col(0);
+    }
     let message = if items.is_empty() {
         "Nothing matches these filters."
     } else {
@@ -166,8 +174,11 @@ pub(crate) fn show_browse(
     };
     ui.set_browse_message(message.into());
     ui.set_browse_items(posters_from_browse(&items));
-    ui.global::<BrowseFilter>()
-        .set_has_more(page.page < page.total_pages);
+    let filter = ui.global::<BrowseFilter>();
+    filter.set_current_page(i32::try_from(page.page).unwrap_or(1));
+    filter.set_total_pages(i32::try_from(page.total_pages).unwrap_or(1));
+    filter.set_pages(pagination_model(page.page, page.total_pages));
+    filter.set_scroll_reset(filter.get_scroll_reset().wrapping_add(1));
     hydrate_poster_images(ctx, PosterKind::Browse);
 }
 

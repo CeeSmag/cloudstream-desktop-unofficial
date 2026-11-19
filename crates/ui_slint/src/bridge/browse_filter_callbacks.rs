@@ -1,4 +1,4 @@
-//! Browse's filter row: year, popular or best rated, genres, and "Load more".
+//! Browse's filter row: year, popular or best rated, genres, and pagination.
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 
@@ -43,12 +43,23 @@ pub(crate) fn wire_browse_filters(ctx: &BridgeContext, ui: &CloudStream) {
         fetch_browse(&c, 1);
     });
     let c = ctx.clone();
-    filter.on_more(move || {
-        let (page, total) = c.session.borrow().browse_page;
-        if page < total {
-            fetch_browse(&c, page + 1);
-        }
-    });
+    filter.on_go_to_page(move |target| go_to_browse_page(&c, target));
+}
+
+fn go_to_browse_page(ctx: &BridgeContext, target: i32) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    if ui.get_browse_loading() {
+        return;
+    }
+    let Ok(page) = u32::try_from(target) else {
+        return;
+    };
+    let (current, total) = ctx.session.borrow().browse_page;
+    if page >= 1 && page <= total.max(1) && page != current {
+        fetch_browse(ctx, page);
+    }
 }
 
 fn show_genres(ctx: &BridgeContext, ui: &CloudStream) {

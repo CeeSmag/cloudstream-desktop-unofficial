@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 
 use poster_artwork::DecodedArtwork;
-use slint::{Model, ModelRc, Rgba8Pixel, SharedPixelBuffer};
+use slint::{ComponentHandle, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer};
 
 use crate::posters::decode_poster_headers;
 use crate::ui_events::PosterKind;
-use crate::{CloudStream, PosterItem};
+use crate::{CloudStream, HomeExpanded, PosterItem};
 
 use super::bridge_context::BridgeContext;
 
@@ -152,6 +152,7 @@ fn poster_rows(ui: &CloudStream, kind: PosterKind) -> Vec<(usize, usize, PosterI
                 .flat_map(|(shelf, section)| model_rows(shelf, &section.items))
                 .collect()
         }
+        PosterKind::HomeExpanded => model_rows(0, &ui.global::<HomeExpanded>().get_items()),
     }
 }
 
@@ -174,6 +175,7 @@ fn model_of(ui: &CloudStream, slot: &PosterSlot) -> Option<ModelRc<PosterItem>> 
             .get_home_shelves()
             .row_data(slot.shelf)
             .map(|section| section.items),
+        PosterKind::HomeExpanded => Some(ui.global::<HomeExpanded>().get_items()),
     }
 }
 

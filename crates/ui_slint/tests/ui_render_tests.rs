@@ -11,8 +11,8 @@ use slint::{
     SharedString, VecModel,
 };
 use ui_slint::{
-    AvailablePlugin, CloudStream, EpisodeItem, PluginItem, PluginList, PosterItem, RepoDetail,
-    RepoList, RepositoryItem, ShelfSection,
+    AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, HomeExpanded, PaginationItem,
+    PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem, ShelfSection,
 };
 
 const WIDTH: u32 = 1280;
@@ -224,20 +224,42 @@ fn populate_repo_detail(ui: &CloudStream) {
     ])));
 }
 
+fn sample_browse_pages() -> ModelRc<PaginationItem> {
+    let slot = |label: &str, page: i32, active: bool, ellipsis: bool| PaginationItem {
+        label: label.into(),
+        page,
+        active,
+        ellipsis,
+    };
+    ModelRc::new(VecModel::from(vec![
+        slot("1", 1, false, false),
+        slot("2", 2, true, false),
+        slot("3", 3, false, false),
+        slot("4", 4, false, false),
+        slot("5", 5, false, false),
+        slot("…", 0, false, true),
+        slot("167", 167, false, false),
+    ]))
+}
+
 fn populate_home_and_details(ui: &CloudStream) {
     let posters = sample_posters();
     ui.set_continue_items(posters.clone());
     ui.set_home_shelves(ModelRc::new(VecModel::from(vec![
         ShelfSection {
-            title: "Trending Now".into(),
+            title: "Popular Movies".into(),
             items: posters.clone(),
         },
         ShelfSection {
-            title: "Top Rated Cinema".into(),
+            title: "Popular TV Shows".into(),
             items: posters.clone(),
         },
     ])));
     ui.set_browse_items(posters.clone());
+    let browse = ui.global::<BrowseFilter>();
+    browse.set_current_page(2);
+    browse.set_total_pages(167);
+    browse.set_pages(sample_browse_pages());
     ui.set_search_items(posters);
     ui.set_hero_title("Dune: Part Two".into());
     ui.set_hero_subtitle("2024 · Resume at 1:18:42 · 4K HDR".into());
@@ -247,6 +269,29 @@ fn populate_home_and_details(ui: &CloudStream) {
     ui.set_shelf_row_base(2);
     ui.set_grid_columns(6);
     ui.set_wide_window(true);
+}
+
+fn verify_home_views(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    ui.set_focus_visible(true);
+    ui.set_focus_row(0);
+    ui.set_focus_col(0);
+    assert_non_blank(&render_frame(window, "02_home"), "home");
+
+    ui.set_hero_title("".into());
+    ui.set_continue_items(ModelRc::new(VecModel::from(Vec::<PosterItem>::new())));
+    ui.set_focus_visible(false);
+    assert_non_blank(&render_frame(window, "02a_home_shelves"), "home_shelves");
+
+    let expanded = ui.global::<HomeExpanded>();
+    expanded.set_open(true);
+    expanded.set_title("Popular Movies".into());
+    expanded.set_count_text("Page 1 · 5 titles".into());
+    expanded.set_items(sample_posters());
+    expanded.set_page(1);
+    expanded.set_has_prev(false);
+    expanded.set_has_next(true);
+    assert_non_blank(&render_frame(window, "02b_home_expanded"), "home_expanded");
+    expanded.set_open(false);
 }
 
 fn populate_details(ui: &CloudStream) {
@@ -364,13 +409,13 @@ fn redesigned_tv_screens_render_without_panics_or_blank_frames() {
     populate_extensions(&ui);
     populate_home_and_details(&ui);
 
-    ui.set_focus_visible(true);
-    ui.set_focus_row(0);
-    ui.set_focus_col(0);
-    assert_non_blank(&render_frame(&window, "02_home"), "home");
+    verify_home_views(&ui, &window);
     verify_settings_and_browse(&ui, &window);
     verify_overlays(&ui, &window);
+    verify_callbacks(&ui, &worker_seen);
+}
 
+fn verify_callbacks(ui: &CloudStream, worker_seen: &Rc<RefCell<String>>) {
     ui.invoke_set_worker_limit("Unlimited".into());
     assert_eq!(worker_seen.borrow().as_str(), "Unlimited");
 
@@ -384,4 +429,18 @@ fn redesigned_tv_screens_render_without_panics_or_blank_frames() {
         opened_repo.borrow().as_str(),
         "https://anime-repo.example/repo.json"
     );
+
+    let expanded_shelf = Rc::new(RefCell::new(-1));
+    let shelf_ref = expanded_shelf.clone();
+    ui.global::<HomeExpanded>()
+        .on_open_shelf(move |idx| *shelf_ref.borrow_mut() = idx);
+    ui.global::<HomeExpanded>().invoke_open_shelf(1);
+    assert_eq!(*expanded_shelf.borrow(), 1);
+
+    let browse_page = Rc::new(RefCell::new(0));
+    let page_ref = browse_page.clone();
+    ui.global::<BrowseFilter>()
+        .on_go_to_page(move |p| *page_ref.borrow_mut() = p);
+    ui.global::<BrowseFilter>().invoke_go_to_page(5);
+    assert_eq!(*browse_page.borrow(), 5);
 }

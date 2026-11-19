@@ -3,7 +3,7 @@
 use slint::{ComponentHandle, Model};
 
 use crate::focus_grid::grid_rows;
-use crate::CloudStream;
+use crate::{CloudStream, HomeExpanded};
 
 /// The screens with their own focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,7 +67,7 @@ pub(crate) fn columns_for_width(logical_width: f32) -> i32 {
 pub(crate) fn screen_rows(ui: &CloudStream, screen: FocusScreen) -> Vec<usize> {
     let columns = usize::try_from(ui.get_grid_columns()).unwrap_or(1);
     match screen {
-        FocusScreen::Home => home_rows(ui),
+        FocusScreen::Home => home_rows(ui, columns),
         FocusScreen::Browse => grid_rows(ui.get_browse_items().row_count(), columns),
         FocusScreen::Library => grid_rows(ui.get_library_items().row_count(), columns),
         FocusScreen::Search => {
@@ -80,7 +80,11 @@ pub(crate) fn screen_rows(ui: &CloudStream, screen: FocusScreen) -> Vec<usize> {
     }
 }
 
-fn home_rows(ui: &CloudStream) -> Vec<usize> {
+fn home_rows(ui: &CloudStream, columns: usize) -> Vec<usize> {
+    let expanded = ui.global::<HomeExpanded>();
+    if expanded.get_open() {
+        return grid_rows(expanded.get_items().row_count(), columns);
+    }
     let mut rows = Vec::new();
     let continue_count = ui.get_continue_items().row_count();
     let has_hero = !ui.get_hero_title().is_empty();

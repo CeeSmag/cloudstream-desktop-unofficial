@@ -20,6 +20,8 @@ pub(crate) struct FakeGateway {
     pub(crate) load_links_calls: Mutex<u32>,
     pub(crate) searched: Mutex<Vec<String>>,
     pub(crate) load_reply: Mutex<Option<Result<Option<LoadDetails>, GatewayError>>>,
+    pub(crate) main_page_calls: Mutex<Vec<(String, u32, String)>>,
+    pub(crate) main_page_reply: Mutex<Option<Result<Option<HomePage>, GatewayError>>>,
     /// Answers to link-search polls; `None` means the runtime cannot stream links.
     pub(crate) search_updates: Mutex<Option<VecDeque<Result<LinkSearchUpdate, GatewayError>>>>,
     pub(crate) searches_started: Mutex<u32>,
@@ -104,11 +106,19 @@ impl ProviderGateway for FakeGateway {
 
     fn main_page(
         &self,
-        _p: &str,
-        _page: u32,
-        _e: &MainPageEntry,
+        provider: &str,
+        page: u32,
+        entry: &MainPageEntry,
     ) -> Result<Option<HomePage>, GatewayError> {
-        unavailable()
+        self.main_page_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((provider.to_owned(), page, entry.name.clone()));
+        self.main_page_reply
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .unwrap_or_else(unavailable)
     }
 
     fn load(&self, _provider: &str, _url: &str) -> Result<Option<LoadDetails>, GatewayError> {

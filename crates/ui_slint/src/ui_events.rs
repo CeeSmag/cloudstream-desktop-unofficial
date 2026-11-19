@@ -1,6 +1,6 @@
 //! Results of background work, handed to the Slint event loop.
 
-use crate::bridge::{ExtensionsCatalog, SearchSummary};
+use crate::bridge::{ExtensionsCatalog, HomeShelf, SearchSummary};
 use crate::request_tickets::Ticket;
 
 /// One finished piece of background work for the UI thread to show.
@@ -15,7 +15,8 @@ pub(crate) enum UiEvent {
         providers: Vec<String>,
         error: Option<String>,
     },
-    HomeLoaded(Ticket, Vec<(String, Vec<core_model::SearchResult>)>),
+    HomeLoaded(Ticket, Vec<HomeShelf>),
+    HomeSectionPageLoaded(Ticket, HomeSectionPage),
     SearchLoaded(Ticket, SearchSummary),
     BrowseLoaded(Ticket, Result<app_services::BrowsePage, String>),
     BrowseMatched(Ticket, BrowseMatch),
@@ -43,6 +44,7 @@ impl UiEvent {
     pub(crate) fn ticket(&self) -> Option<Ticket> {
         match self {
             Self::HomeLoaded(ticket, _)
+            | Self::HomeSectionPageLoaded(ticket, _)
             | Self::SearchLoaded(ticket, _)
             | Self::BrowseLoaded(ticket, _)
             | Self::BrowseMatched(ticket, _)
@@ -107,6 +109,14 @@ pub(crate) struct BrowseMatch {
     pub found: Option<core_model::SearchResult>,
 }
 
+/// One loaded page of an expanded Home shelf.
+#[derive(Debug, Clone)]
+pub(crate) struct HomeSectionPage {
+    pub(crate) shelf_index: usize,
+    pub(crate) page: u32,
+    pub(crate) result: Result<(Vec<core_model::SearchResult>, bool), String>,
+}
+
 /// Which poster model an artwork result belongs to.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum PosterKind {
@@ -115,4 +125,5 @@ pub(crate) enum PosterKind {
     Library,
     Continue,
     Shelf,
+    HomeExpanded,
 }

@@ -21,6 +21,7 @@ mod extension_settings_callbacks;
 mod focus_navigation;
 mod focus_screens;
 mod home_callbacks;
+mod home_expanded;
 mod home_loading;
 mod initial_settings;
 mod library_actions;
@@ -49,5 +50,6 @@ mod update_callbacks;
 
 pub use app_start::{run_desktop_app, run_desktop_app_with};
 pub(crate) use extension_catalog::ExtensionsCatalog;
+pub(crate) use home_loading::HomeShelf;
 pub use session::{AppExtras, DebugLogSwitch, WipeRequest};
 pub(crate) use title_search::SearchSummary;

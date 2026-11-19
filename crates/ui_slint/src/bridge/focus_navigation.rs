@@ -3,7 +3,7 @@
 use slint::{ComponentHandle, Model};
 
 use crate::focus_grid::{Direction, FocusGrid, FocusPoint, NAV_ROW};
-use crate::{CloudStream, RepoDetail};
+use crate::{CloudStream, HomeExpanded, RepoDetail};
 
 use super::bridge_context::BridgeContext;
 use super::details_view::shown_episodes;
@@ -81,6 +81,11 @@ fn activate(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
 }
 
 fn activate_home(ui: &CloudStream, point: FocusPoint) {
+    let expanded = ui.global::<HomeExpanded>();
+    if expanded.get_open() {
+        expanded.invoke_open_item(point.row * ui.get_grid_columns() + point.col);
+        return;
+    }
     if point.row == ui.get_hero_row() {
         ui.invoke_resume_hero();
     } else if point.row == ui.get_continue_row() {
@@ -148,6 +153,10 @@ fn remove_focused(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
 fn go_back(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
     if screen == FocusScreen::Details {
         return close_details(ctx, ui);
+    }
+    if screen == FocusScreen::Home && ui.global::<HomeExpanded>().get_open() {
+        ui.global::<HomeExpanded>().invoke_close();
+        return;
     }
     if screen == FocusScreen::Settings
         && ui.get_settings_page_index() == 2

@@ -13,6 +13,7 @@ use super::extension_catalog::load_extensions_catalog;
 use super::extension_changes::{
     add_repository, install_plugin, remove_repository, set_trusted, uninstall,
 };
+use super::home_expanded::close_expanded_shelf;
 use super::home_loading::load_home;
 use super::preference_callbacks::saved;
 
@@ -41,6 +42,7 @@ pub(crate) fn wire_extension_settings(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn set_provider(ctx: &BridgeContext, name: SharedString) {
+    close_expanded_shelf(ctx);
     if let Some(ui) = ctx.window() {
         ui.set_selected_provider(name.clone());
         show_continue_watching(ctx, &ui);

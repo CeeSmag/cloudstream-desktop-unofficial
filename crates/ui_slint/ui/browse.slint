@@ -1,10 +1,11 @@
 import { Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
-import { FilterChip, PosterItem } from "types.slint";
+import { FilterChip, PaginationItem, PosterItem } from "types.slint";
 import { TvBadge, TvButton, TvSegmented, TvSelect, TvTextInput } from "controls.slint";
 import { PosterGrid } from "poster.slint";
 import { SectionTitle, MutedLabel, SkeletonRow } from "widgets.slint";
+import { PaginationBar } from "pagination.slint";
 
 /// A spinner with a line of text: something is loading.
 export component LoadingLine inherits HorizontalLayout {
@@ -24,17 +25,20 @@ export component LoadingLine inherits HorizontalLayout {
     }
 }
 
-/// Browse's year, sort and genre filters and paging (read by the app when `changed` fires).
+/// Browse's year, sort and genre filters and pagination (read by the app when `changed` fires).
 export global BrowseFilter {
     in property <[string]> years: ["Any year"];
     in-out property <string> year: "Any year";
     in property <[string]> sorts: ["Popular", "Rated 6+", "Rated 7+", "Rated 8+"];
     in-out property <string> sort: "Popular";
     in property <[FilterChip]> genres: [];
-    in property <bool> has-more: false;
+    in property <int> current-page: 1;
+    in property <int> total-pages: 1;
+    in property <[PaginationItem]> pages: [];
+    in property <int> scroll-reset: 0;
     callback changed();
     callback toggle-genre(int);
-    callback more();
+    callback go-to-page(int);
 }
 
 /// Frosted genre filter pill.
@@ -136,18 +140,21 @@ export component BrowsePage inherits VerticalLayout {
         vertical-stretch: 1;
         items: root.items;
         columns: root.columns;
+        scroll-reset: BrowseFilter.scroll-reset;
         focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
         play-at(i) => { root.open-at(i); }
         bookmark-at(i) => { root.open-at(i); }
     }
-    if BrowseFilter.has-more && !root.loading: HorizontalLayout {
+    if BrowseFilter.total-pages > 1: HorizontalLayout {
         alignment: center;
-        padding-top: 4px;
-        TvButton {
-            text: "Load more";
-            kind: "secondary";
-            clicked => { BrowseFilter.more(); }
+        padding-top: 2px;
+        PaginationBar {
+            current-page: BrowseFilter.current-page;
+            total-pages: BrowseFilter.total-pages;
+            pages: BrowseFilter.pages;
+            disabled: root.loading;
+            go-to-page(p) => { BrowseFilter.go-to-page(p); }
         }
     }
 }

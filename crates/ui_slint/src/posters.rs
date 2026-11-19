@@ -3,6 +3,7 @@
 use core_model::{Bookmark, SearchResult, WatchProgress};
 use slint::{Image, ModelRc, VecModel};
 
+use crate::bridge::HomeShelf;
 use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection};
 
 fn empty_image() -> Image {
@@ -52,15 +53,17 @@ pub(crate) fn posters_from_search(items: &[SearchResult]) -> ModelRc<PosterItem>
     ModelRc::new(VecModel::from(rows))
 }
 
-pub(crate) fn shelves_from_sections(
-    sections: &[(String, Vec<SearchResult>)],
-) -> ModelRc<ShelfSection> {
+pub(crate) fn shelves_from_sections(sections: &[HomeShelf]) -> ModelRc<ShelfSection> {
     let rows: Vec<ShelfSection> = sections
         .iter()
-        .map(|(title, items)| ShelfSection {
-            title: title.clone().into(),
+        .map(|shelf| ShelfSection {
+            title: shelf.title.clone().into(),
             items: ModelRc::new(VecModel::from(
-                items.iter().map(poster_from_search).collect::<Vec<_>>(),
+                shelf
+                    .items
+                    .iter()
+                    .map(poster_from_search)
+                    .collect::<Vec<_>>(),
             )),
         })
         .collect();

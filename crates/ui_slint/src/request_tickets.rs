@@ -10,6 +10,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RequestKind {
     Home,
+    HomeSection,
     Search,
     Browse,
     Details,
@@ -36,6 +37,7 @@ impl Ticket {
 #[derive(Debug, Default)]
 pub(crate) struct RequestTickets {
     home: u64,
+    home_section: u64,
     search: u64,
     browse: u64,
     details: u64,
@@ -47,6 +49,7 @@ impl RequestTickets {
     fn generation_mut(&mut self, kind: RequestKind) -> &mut u64 {
         match kind {
             RequestKind::Home => &mut self.home,
+            RequestKind::HomeSection => &mut self.home_section,
             RequestKind::Search => &mut self.search,
             RequestKind::Browse => &mut self.browse,
             RequestKind::Details => &mut self.details,
@@ -58,6 +61,7 @@ impl RequestTickets {
     fn generation(&self, kind: RequestKind) -> u64 {
         match kind {
             RequestKind::Home => self.home,
+            RequestKind::HomeSection => self.home_section,
             RequestKind::Search => self.search,
             RequestKind::Browse => self.browse,
             RequestKind::Details => self.details,

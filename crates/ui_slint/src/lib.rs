@@ -11,6 +11,7 @@ mod browse_filters;
 mod check_text;
 mod feedback_text;
 mod focus_grid;
+mod pagination;
 mod playback_watch;
 mod plugin_filter;
 mod posters;

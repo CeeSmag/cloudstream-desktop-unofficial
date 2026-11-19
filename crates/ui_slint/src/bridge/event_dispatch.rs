@@ -11,6 +11,7 @@ use super::catalog_events::{
 use super::details_loading::show_details_failed;
 use super::extension_catalog::show_catalog;
 use super::extension_changes::show_change_done;
+use super::home_expanded::show_home_section_page;
 use super::player_timeline::show_online_parts;
 use super::storage_usage_view::show_storage_usage;
 use super::stream_events::{show_open_progress, show_open_update, start_ready_stream};
@@ -39,6 +40,7 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
             show_startup_done(ctx, ui, &providers, error);
         }
         UiEvent::HomeLoaded(_, sections) => show_home(ctx, ui, &sections),
+        UiEvent::HomeSectionPageLoaded(_, page) => show_home_section_page(ctx, ui, page),
         UiEvent::SearchLoaded(_, summary) => show_search(ctx, ui, &summary),
         UiEvent::BrowseLoaded(_, result) => show_browse(ctx, ui, result),
         UiEvent::BrowseMatched(_, matched) => show_browse_match(ctx, matched),

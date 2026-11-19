@@ -19,7 +19,8 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `source_menu.rs`, `track_menu.rs` | player Sources (filters, sizes, subtitle tags) and track menus |
 | `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
-| `browse_filters.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters, plugin & repository search/sort |
+| `browse_filters.rs`, `pagination.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters/pagination, plugin & repository search/sort |
+| `bridge/home_expanded.rs` | Home expanded vertical section grid & provider pagination |
 | `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs` | remote / keyboard navigation, Home banner |
 | `startup_progress.rs` | the start-up screen's text and bar |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |

@@ -112,3 +112,11 @@ export struct AvailablePlugin {
     description: string,
     installed: bool,
 }
+
+/// One slot in a numbered pagination bar (a clickable page number or an ellipsis).
+export struct PaginationItem {
+    label: string,
+    page: int,
+    active: bool,
+    ellipsis: bool,
+}
