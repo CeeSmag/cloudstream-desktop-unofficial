@@ -55,6 +55,7 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         }
         UiEvent::Notice(text) => ui.set_notice(text.into()),
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
+        UiEvent::UpdateBadge(badge) => ui.set_update_badge(badge.into()),
         UiEvent::ExtensionChanged(message) => show_change_done(ctx, ui, message),
         UiEvent::ExtensionsLoaded(catalog) => show_catalog(ctx, ui, *catalog),
     }

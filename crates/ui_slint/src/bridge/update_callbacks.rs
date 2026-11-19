@@ -10,6 +10,8 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 
 pub(crate) fn wire_updates(ctx: &BridgeContext, ui: &CloudStream) {
+    // Like the old nav bar's indicator: one check per launch, a badge when a newer release exists.
+    check_updates(ctx);
     let c = ctx.clone();
     ui.on_check_updates(move || check_updates(&c));
     let c = ctx.clone();
@@ -30,7 +32,10 @@ fn check_updates(ctx: &BridgeContext) {
     }
     let sender = ctx.sender();
     spawn_work("updates", move || match app_updater::check_latest() {
-        Ok(check) => sender.send(UiEvent::UpdateLabel(update_label(&check))),
+        Ok(check) => {
+            sender.send(UiEvent::UpdateLabel(update_label(&check)));
+            sender.send(UiEvent::UpdateBadge(update_badge(&check)));
+        }
         Err(error) => {
             tracing::warn!(%error, "update check failed");
             sender.send(UiEvent::UpdateLabel(format!(
@@ -38,6 +43,15 @@ fn check_updates(ctx: &BridgeContext) {
             )));
         }
     });
+}
+
+/// The nav bar's badge: the newer version when one can be installed here, else nothing.
+pub(crate) fn update_badge(check: &UpdateCheck) -> String {
+    if check.has_update && check.asset_name.is_some() {
+        format!("Update {}", check.latest_version)
+    } else {
+        String::new()
+    }
 }
 
 /// The line under "Updates" for a finished check.
@@ -126,5 +140,12 @@ mod tests {
         assert!(update_label(&check(true, true)).starts_with("Update available: 0.5.0"));
         assert!(update_label(&check(true, false)).contains("not for this system"));
         assert_eq!(update_label(&check(false, true)), "Up to date (0.4.8).");
+    }
+
+    #[test]
+    fn update_badge_only_for_an_installable_newer_release() {
+        assert_eq!(update_badge(&check(true, true)), "Update 0.5.0");
+        assert_eq!(update_badge(&check(true, false)), "");
+        assert_eq!(update_badge(&check(false, true)), "");
     }
 }

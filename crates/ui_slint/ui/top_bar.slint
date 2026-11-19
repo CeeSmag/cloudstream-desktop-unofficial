@@ -38,11 +38,14 @@ export component TopBar inherits Rectangle {
     in property <string> provider;
     in property <bool> busy;
     in property <string> status;
+    /// "Update v0.5.0" when a newer release can be installed; empty for none.
+    in property <string> update;
     /// A narrow window: short logo, no provider chip or status (decided by the window's width).
     in property <bool> compact;
     in property <bool> wide;
     callback select-tab(int);
     callback provider-clicked();
+    callback update-clicked();
 
     height: 68px;
     background: Theme.bg;
@@ -74,6 +77,29 @@ export component TopBar inherits Rectangle {
             font-size: Theme.caption-size;
             overflow: elide;
             max-width: 320px;
+        }
+        if root.update != "": Rectangle {
+            height: 34px;
+            width: update-text.preferred-width + 28px;
+            border-radius: 17px;
+            background: update-touch.has-hover ? #5b8cff4d : #5b8cff26;
+            border-width: 1px;
+            border-color: #5b8cff80;
+            accessible-role: AccessibleRole.button;
+            accessible-label: root.update;
+            accessible-action-default => { root.update-clicked(); }
+            update-text := Text {
+                text: "⬆  " + root.update;
+                color: Theme.accent;
+                font-size: 13px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            update-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.update-clicked(); }
+            }
         }
         if root.provider != "" && !root.compact: Rectangle {
             height: 34px;

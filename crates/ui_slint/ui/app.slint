@@ -66,6 +66,7 @@ export component CloudStream inherits Window {
     in-out property <string> browse-kind: "movie";
     in-out property <bool> browse-loading: false;
     in-out property <string> browse-message: "";
+    in-out property <string> update-badge: "";
     in-out property <int> hero-index: -1;
     in-out property <[string]> details-tags: [];
     in-out property <string> details-cast: "";
@@ -285,6 +286,8 @@ export component CloudStream inherits Window {
                 status: root.open-busy ? root.status-line : "";
                 select-tab(i) => { select-tab(i); }
                 provider-clicked => { root.settings-page-index = 1; select-tab(4); }
+                update: root.update-badge;
+                update-clicked => { root.settings-page-index = 0; select-tab(4); }
             }
 
             if cf-state != 0: CloudflareBanner {
