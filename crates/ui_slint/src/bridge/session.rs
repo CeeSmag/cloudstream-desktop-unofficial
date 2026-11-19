@@ -15,6 +15,9 @@ use crate::ui_events::EpisodeRow;
 /// Asks for "delete all saved data" at the next start (built by the shell, which runs the wipe).
 pub type WipeRequest = Box<dyn Fn() -> std::io::Result<()>>;
 
+/// Switches the app's debug log files on or off (built by the shell, which owns the logger).
+pub type DebugLogSwitch = Box<dyn Fn(bool) -> std::io::Result<()>>;
+
 /// Optional runtime extras that are not part of [`app_services::UiServices`].
 #[derive(Default)]
 pub struct AppExtras {
@@ -24,6 +27,8 @@ pub struct AppExtras {
     pub data_dir: Option<std::path::PathBuf>,
     /// Schedules the data wipe.
     pub request_wipe: Option<WipeRequest>,
+    /// Settings > General > Debug logging.
+    pub debug_logs: Option<DebugLogSwitch>,
 }
 
 /// The title page and the opening video on screen right now.

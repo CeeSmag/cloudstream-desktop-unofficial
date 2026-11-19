@@ -5,6 +5,7 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_callbacks::wire_catalog;
 use super::cloudflare_callbacks::wire_cloudflare;
+use super::debug_logging::wire_debug_logging;
 use super::details_callbacks::wire_details;
 use super::extension_settings_callbacks::wire_extension_settings;
 use super::focus_navigation::wire_navigation;
@@ -29,6 +30,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_timeline(ctx, ui);
     wire_source_picker(ctx, ui);
     wire_preferences(ctx, ui);
+    wire_debug_logging(ctx, ui);
     wire_storage_settings(ctx, ui);
     wire_extension_settings(ctx, ui);
     wire_updates(ctx, ui);

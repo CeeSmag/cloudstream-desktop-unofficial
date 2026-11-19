@@ -15,6 +15,7 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
+use super::debug_logging::apply_saved_debug_logging;
 use super::event_dispatch::drain_events;
 use super::focus_screens::follow_window_width;
 use super::initial_settings::apply_settings_to_ui;
@@ -44,6 +45,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
     set_empty_models(&ui);
     apply_settings_to_ui(&ui, &ctx.services);
     wire_callbacks(&ctx, &ui);
+    apply_saved_debug_logging(&ctx, &ui);
     start_extensions(&ctx);
     let timer = slint::Timer::default();
     let tick_ctx = ctx.clone();

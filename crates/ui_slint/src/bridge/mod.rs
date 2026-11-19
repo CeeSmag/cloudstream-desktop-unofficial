@@ -8,6 +8,7 @@ mod catalog_callbacks;
 mod catalog_events;
 mod cloudflare_callbacks;
 mod cloudflare_drain;
+mod debug_logging;
 mod details_callbacks;
 mod details_loading;
 mod details_page;
@@ -41,5 +42,5 @@ mod update_callbacks;
 
 pub use app_start::{run_desktop_app, run_desktop_app_with};
 pub(crate) use extension_catalog::ExtensionsCatalog;
-pub use session::{AppExtras, WipeRequest};
+pub use session::{AppExtras, DebugLogSwitch, WipeRequest};
 pub(crate) use title_search::SearchSummary;

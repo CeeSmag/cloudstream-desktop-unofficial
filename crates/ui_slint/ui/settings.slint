@@ -31,6 +31,7 @@ export component SettingsPage inherits Rectangle {
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
     in property <bool> auto-subtitles: true;
+    in property <bool> debug-logging: false;
     in property <string> storage-label: "";
     in property <string> update-label: "";
     in property <[PluginItem]> plugins: [];
@@ -58,6 +59,7 @@ export component SettingsPage inherits Rectangle {
     callback check-updates();
     callback apply-update();
     callback open-logs();
+    callback set-debug-logging(bool);
     callback install-repo(string);
     callback set-trusted(string, bool);
     callback uninstall-plugin(string);
@@ -136,6 +138,24 @@ export component SettingsPage inherits Rectangle {
                                 model: root.worker-labels;
                                 current-value: root.worker-value;
                                 selected(value) => { root.set-worker-limit(value); }
+                            }
+                        }
+                    }
+
+                    Card {
+                        title: "Debug logging";
+                        VerticalLayout {
+                            spacing: Theme.space-2;
+                            SettingRow {
+                                label: "Write detailed logs";
+                                Switch {
+                                    checked: root.debug-logging;
+                                    toggled => { root.set-debug-logging(self.checked); }
+                                }
+                            }
+                            MutedLabel {
+                                text: "Writes step-by-step logs to separate files (logs/debug), one for each part of the app and the plugins, so odd behaviour can be traced. Leave it off normally: the files grow quickly.";
+                                wrap: word-wrap;
                             }
                         }
                     }
