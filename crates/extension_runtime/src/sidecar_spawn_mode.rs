@@ -19,6 +19,7 @@ pub(crate) fn uses_os_fs_sandbox(config: &SidecarLaunchConfig) -> bool {
 }
 
 /// True when Linux should still apply rlimit + process-group without Landlock.
+#[cfg(any(test, target_os = "linux"))]
 pub(crate) fn uses_linux_process_limits(config: &SidecarLaunchConfig) -> bool {
     config_requests_data_dir(config)
 }

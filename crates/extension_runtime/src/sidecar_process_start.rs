@@ -6,7 +6,9 @@ use std::sync::mpsc::{self, Receiver};
 use extension_api::GatewayError;
 
 use crate::sidecar_output::{forward_stdout, log_stderr};
-use crate::sidecar_spawn_mode::{uses_linux_process_limits, uses_os_fs_sandbox};
+#[cfg(target_os = "linux")]
+use crate::sidecar_spawn_mode::uses_linux_process_limits;
+use crate::sidecar_spawn_mode::uses_os_fs_sandbox;
 use crate::SidecarLaunchConfig;
 
 /// A running child process and the channel its reply lines arrive on.

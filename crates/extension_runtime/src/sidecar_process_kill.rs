@@ -42,6 +42,7 @@ pub(crate) fn take_if_exited(slot: &mut Option<RunningSidecar>) -> bool {
     false
 }
 
+#[cfg(not(windows))]
 fn discard_running_slot(slot: &mut Option<RunningSidecar>) {
     if let Some(mut running) = slot.take() {
         discard_running(&mut running);
