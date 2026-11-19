@@ -1,5 +1,4 @@
 //! Spawns the sidecar child and wires its stdin/stdout/stderr pipes.
-
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver};
 
