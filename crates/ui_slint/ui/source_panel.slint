@@ -2,7 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { FilterChip, SourceItem, SourceMenuInfo } from "types.slint";
-import { TvBadge, TvButton } from "controls.slint";
+import { TvBadge, TvButton, TvProgressBar } from "controls.slint";
 
 /// Small rounded metadata tag (stream kind, checking state, subtitle language, file size).
 component Tag inherits Rectangle {
@@ -178,6 +178,8 @@ export component SourcePanel inherits Rectangle {
     in property <[SourceItem]> sources;
     in property <SourceMenuInfo> info;
     in property <bool> can-refresh;
+    in property <bool> loading: false;
+    in property <string> loading-text: "";
     callback refresh();
     callback pick(int);
     callback toggle-tier(int);
@@ -230,7 +232,7 @@ export component SourcePanel inherits Rectangle {
                 tone: "neutral";
             }
             TvButton {
-                text: "Refresh";
+                text: root.loading ? "Refreshing…" : "Refresh";
                 icon: Icons.refresh;
                 kind: "secondary";
                 compact: true;
@@ -257,6 +259,20 @@ export component SourcePanel inherits Rectangle {
                     mouse-cursor: pointer;
                     clicked => { root.close(); }
                 }
+            }
+        }
+        if root.loading: VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: root.loading-text != "" ? root.loading-text : "Loading sources…";
+                color: Theme.accent-hi;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+            TvProgressBar {
+                bar-height: 3px;
+                indeterminate: true;
+                fill: Theme.accent;
             }
         }
         FilterRow {

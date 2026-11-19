@@ -1,7 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
-import { TvBadge } from "controls.slint";
+import { TvBadge, TvProgressBar } from "controls.slint";
 import { SeekMark, SeekPreview, TrackChoice } from "types.slint";
 
 /// Horizontal cinema scrubber / slider; follows `value` (0..1) until dragged and emits `committed`
@@ -171,6 +171,7 @@ export component PlayerActionButton inherits Rectangle {
     /// `"frosted"` | `"accent"` | `"active"`
     in property <string> kind: "frosted";
     in property <length> size: 38px;
+    in property <bool> loading: false;
     callback clicked();
 
     property <bool> is-accent: root.kind == "accent";
@@ -214,6 +215,17 @@ export component PlayerActionButton inherits Rectangle {
             font-weight: 600;
             vertical-alignment: center;
         }
+    }
+
+    if root.loading: Rectangle {
+        property <float> phase: mod(animation-tick() / 1200ms, 1.0);
+        x: parent.width - 10px;
+        y: 4px;
+        width: 7px;
+        height: 7px;
+        border-radius: 3.5px;
+        background: Theme.accent-hi;
+        opacity: 0.4 + 0.6 * (1.0 - abs(self.phase * 2.0 - 1.0));
     }
 
     touch := TouchArea {
@@ -288,11 +300,13 @@ export component ChoicePanel inherits Rectangle {
     in property <string> title;
     in property <string> icon: "";
     in property <[TrackChoice]> choices;
+    in property <bool> loading: false;
+    in property <string> loading-text: "";
     callback picked(int);
     callback close();
 
     width: 320px;
-    height: min(max(132px, root.choices.length * 46px + 88px), 440px);
+    height: min(max(132px, root.choices.length * 46px + 88px + (root.loading ? 36px : 0px)), 460px);
     background: #0b101cd0;
     border-radius: Theme.radius-lg;
     border-width: 1px;
@@ -365,7 +379,22 @@ export component ChoicePanel inherits Rectangle {
 
         Rectangle { height: 1px; background: Theme.divider; }
 
-        if root.choices.length == 0: Text {
+        if root.loading: VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: root.loading-text != "" ? root.loading-text : "Loading…";
+                color: Theme.accent-hi;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+            TvProgressBar {
+                bar-height: 3px;
+                indeterminate: true;
+                fill: Theme.accent;
+            }
+        }
+
+        if root.choices.length == 0 && !root.loading: Text {
             text: "None in this stream";
             color: Theme.muted;
             font-size: 13.5px;

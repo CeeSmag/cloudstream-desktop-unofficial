@@ -524,10 +524,14 @@ fn verify_player_scroll_isolation(ui: &CloudStream, window: &MinimalSoftwareWind
     assert_eq!(*wheel_hits.borrow(), 1, "scrolling video adjusts volume");
 
     ui.set_show_sources(true);
+    ui.set_sources_loading(true);
+    ui.set_sources_status("Searching & checking… 2 of 3".into());
     assert_non_blank(
         &render_frame(window, "09b_player_sources"),
         "player_sources",
     );
+    ui.set_sources_loading(false);
+    ui.set_sources_status("".into());
     dispatch_scroll(window, 1040.0, 260.0);
     assert_eq!(*wheel_hits.borrow(), 1, "Sources hover blocks wheel volume");
     dispatch_scroll(window, 400.0, 400.0);
@@ -543,12 +547,16 @@ fn verify_track_drawer_scroll(
 ) {
     ui.set_show_sources(false);
     ui.set_player_open_panel(2);
+    ui.set_subtitles_loading(true);
+    ui.set_subtitles_status("Loading subtitles… (2 of 5)".into());
     ui.set_player_waiting("Buffering 45%".into());
     ui.set_player_feedback_icon("volume".into());
     ui.set_player_feedback("Volume 75%".into());
     ui.set_player_feedback_level(0.75);
     ui.set_player_feedback_count(1);
     assert_non_blank(&render_frame(window, "09c_player_tracks"), "player_tracks");
+    ui.set_subtitles_loading(false);
+    ui.set_subtitles_status("".into());
     dispatch_scroll(window, 1080.0, 180.0);
     assert_eq!(
         *wheel_hits.borrow(),

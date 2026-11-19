@@ -108,6 +108,10 @@ export component CloudStream inherits Window {
     in-out property <float> volume: 100;
     in-out property <image> video-frame;
     in-out property <bool> show-sources: false;
+    in-out property <bool> sources-loading: false;
+    in-out property <string> sources-status: "";
+    in-out property <bool> subtitles-loading: false;
+    in-out property <string> subtitles-status: "";
     // Cloudflare banner: 0 hidden, 1 needs permission, 2 verifying, 3 verified, 4 failed.
     in-out property <int> cf-state: 0;
     in-out property <bool> show-wipe-confirm: false;
@@ -513,7 +517,11 @@ export component CloudStream inherits Window {
             chrome-visible <=> player-chrome-visible;
             sources: sources;
             source-info: source-info;
-            can-refresh: !open-busy;
+            can-refresh: !sources-loading;
+            sources-loading: sources-loading;
+            sources-status: sources-status;
+            subtitles-loading: subtitles-loading;
+            subtitles-status: subtitles-status;
             toggle-tier(i) => { toggle-source-tier(i); }
             toggle-source-subtitle(i) => { toggle-source-subtitle(i); }
             audio-tracks: audio-tracks;

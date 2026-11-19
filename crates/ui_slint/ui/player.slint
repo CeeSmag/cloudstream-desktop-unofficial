@@ -47,6 +47,10 @@ export component PlayerOverlay inherits Rectangle {
     in property <[SourceItem]> sources: [];
     in property <SourceMenuInfo> source-info;
     in property <bool> can-refresh: true;
+    in property <bool> sources-loading: false;
+    in property <string> sources-status: "";
+    in property <bool> subtitles-loading: false;
+    in property <string> subtitles-status: "";
     in property <[TrackChoice]> audio-tracks: [];
     in property <[TrackChoice]> subtitle-tracks: [];
 
@@ -405,6 +409,7 @@ export component PlayerOverlay inherits Rectangle {
                     accessible-name: "Sources";
                     size: 40px;
                     kind: root.show-sources ? "active" : "frosted";
+                    loading: root.sources-loading;
                     clicked => {
                         root.show-chrome();
                         root.open-panel = 0;
@@ -416,6 +421,7 @@ export component PlayerOverlay inherits Rectangle {
                     accessible-name: "Subtitles";
                     size: 40px;
                     kind: root.open-panel == 2 ? "active" : "frosted";
+                    loading: root.subtitles-loading;
                     clicked => { root.toggle-track-panel(2); }
                 }
                 PlayerActionButton {
@@ -545,6 +551,8 @@ export component PlayerOverlay inherits Rectangle {
         title: "Subtitles";
         icon: Icons.subtitles;
         choices: root.subtitle-tracks;
+        loading: root.subtitles-loading;
+        loading-text: root.subtitles-status;
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
         close => { root.open-panel = 0; }
     }
@@ -557,6 +565,8 @@ export component PlayerOverlay inherits Rectangle {
         sources: root.sources;
         info: root.source-info;
         can-refresh: root.can-refresh;
+        loading: root.sources-loading;
+        loading-text: root.sources-status;
         refresh => { root.refresh-sources(); }
         pick(index) => { root.select-source(index); }
         toggle-tier(i) => { root.toggle-tier(i); }
