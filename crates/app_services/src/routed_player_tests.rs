@@ -75,6 +75,9 @@ impl VideoPlayer for ScriptedPlayer {
     fn add_subtitles(&self, subtitles: &[SubtitleSource]) {
         note(&self.log, &format!("add_subtitles {}", subtitles.len()));
     }
+    fn pending_subtitles(&self) -> usize {
+        3
+    }
     fn set_preferred_audio(&self, language: Option<Language>) {
         note(
             &self.log,
@@ -234,6 +237,7 @@ fn every_other_method_reaches_the_player_and_its_answer_comes_back() {
     assert_eq!(player.status().position_ms, 1234);
     assert_eq!(player.tracks().len(), 1);
     assert_eq!(player.chapters().len(), 1, "chapters are not lost");
+    assert_eq!(player.pending_subtitles(), 3);
     assert!(player.is_embedded());
     assert_eq!(player.latest_frame(9).map(|frame| frame.serial), Some(10));
 }

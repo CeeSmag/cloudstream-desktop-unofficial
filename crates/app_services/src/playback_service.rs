@@ -103,6 +103,11 @@ impl PlaybackService {
         self.player.add_subtitles(&subtitle_sources(subtitles));
     }
 
+    /// Number of external subtitle files queued or currently attaching in the player.
+    pub fn pending_subtitles(&self) -> usize {
+        self.player.pending_subtitles()
+    }
+
     /// Pauses or resumes the current stream.
     #[tracing::instrument(level = "debug", skip_all, fields(paused = ?paused), err)]
     pub fn set_paused(&self, paused: bool) -> Result<(), ServiceError> {

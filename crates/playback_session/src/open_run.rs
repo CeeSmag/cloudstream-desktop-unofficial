@@ -76,8 +76,8 @@ impl OpenState {
             return;
         };
         self.ready_announced = true;
-        (hooks.on_ready)(index);
         (hooks.on_update)(&self.snapshot());
+        (hooks.on_ready)(index);
     }
 
     /// Starts when skip, total cap, or search+checks are complete (and something works).
@@ -96,11 +96,11 @@ impl OpenState {
 }
 
 /// True when the open should stop polling the search.
+/// Skipping ("Play now") starts playback immediately via `maybe_announce_ready`, while leaving
+/// this loop running in the background to gather remaining sources and subtitles.
 fn should_stop_search(state: &OpenState, hooks: &OpenHooks<'_>) -> bool {
-    let skipped = hooks.skip.load(Ordering::SeqCst);
     hooks.cancel.load(Ordering::SeqCst)
         || state.timed_out()
-        || (skipped && state.play_index.is_some())
         || no_streams_timed_out(
             state.ordered.len(),
             state.started.elapsed().as_secs(),
@@ -181,17 +181,11 @@ pub(crate) fn check_pending(state: &mut OpenState, checker: &StreamChecker, hook
         if hooks.cancel.load(Ordering::SeqCst) {
             break;
         }
-        if hooks.skip.load(Ordering::SeqCst) && state.play_index.is_some() {
-            break;
-        }
         if state.timed_out() && state.play_index.is_some() {
             break;
         }
         check_one(state, checker, hooks);
         state.maybe_announce_ready(hooks);
-        if state.ready_announced && hooks.skip.load(Ordering::SeqCst) {
-            break;
-        }
     }
 }
 

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use app_services::StreamResolver;
 use core_model::{PlayableLink, SubtitleTrack};
 
-use crate::checked_open::{open_with, OpenTarget};
+use crate::checked_open::{open_with, open_with_playing, OpenTarget};
 use crate::open_types::{title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
 use title_cache::TitleCache;
 
@@ -133,8 +133,8 @@ pub struct RefreshRequest<'a> {
     pub data: &'a str,
     /// Media key for the title cache.
     pub media_key: &'a str,
-    /// URL currently playing (kept as selected).
-    pub playing_url: Option<&'a str>,
+    /// Stream currently playing (kept in the refreshed list as working so playback continues).
+    pub playing_link: Option<&'a PlayableLink>,
     /// Optional disk cache.
     pub cache: Option<&'a Arc<TitleCache>>,
     /// Live source list to publish into.
@@ -143,11 +143,14 @@ pub struct RefreshRequest<'a> {
     pub control: &'a OpenControl,
     /// Progress callback.
     pub on_progress: &'a (dyn Fn(OpenProgress) + Sync),
+    /// Incremental snapshot callback as refreshed sources and subtitles arrive.
+    pub on_update: &'a (dyn Fn(&CheckedOpen) + Sync),
 }
 
 /// Refresh sources for the playing title: forgets saved links and runs a new search.
 ///
-/// The currently playing URL stays in the list as working so playback is not interrupted.
+/// The currently playing stream stays in the list as working so playback is not interrupted, and
+/// live incremental updates are forwarded as fresh sources and subtitles arrive.
 pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenError> {
     request.control.skip.store(false, Ordering::SeqCst);
     request.control.cancel.store(false, Ordering::SeqCst);
@@ -155,30 +158,39 @@ pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenE
         let key = title_key(request.provider, request.media_key);
         let _ = cache.forget(&key);
     }
-    let playing_url = request.playing_url;
+    let playing_url = request.playing_link.map(|link| link.url.as_str());
     let live = request.live;
+    let notify = request.on_update;
     let on_update = |open: &CheckedOpen| {
-        let mut merged = open.clone();
-        if let Some(url) = playing_url {
-            if let Some(index) = merged.links.iter().position(|(link, _)| link.url == url) {
-                merged.play_index = Some(index);
-            }
-        }
-        live.publish(merged);
+        let merged = pin_playing_index(open, playing_url);
+        live.publish(merged.clone());
+        notify(&merged);
     };
     let on_ready = |_index: usize| {};
-    let open_request = OpenRequest {
-        streams: request.streams,
-        provider: request.provider,
-        data: request.data,
-        media_key: request.media_key,
-        cache: None,
+    let hooks = OpenHooks {
         on_progress: request.on_progress,
         on_update: &on_update,
         on_ready: &on_ready,
-        control: request.control,
+        skip: &request.control.skip,
+        cancel: &request.control.cancel,
     };
-    let opened = run_open(open_request)?;
-    request.live.publish(opened.clone());
-    Ok(opened)
+    let target = OpenTarget {
+        streams: request.streams,
+        provider: request.provider,
+        data: request.data,
+    };
+    let opened = open_with_playing(&target, None, request.playing_link, &hooks)?;
+    let pinned = pin_playing_index(&opened, playing_url);
+    request.live.publish(pinned.clone());
+    Ok(pinned)
+}
+
+fn pin_playing_index(open: &CheckedOpen, playing_url: Option<&str>) -> CheckedOpen {
+    let mut merged = open.clone();
+    if let Some(url) = playing_url {
+        if let Some(index) = merged.links.iter().position(|(link, _)| link.url == url) {
+            merged.play_index = Some(index);
+        }
+    }
+    merged
 }

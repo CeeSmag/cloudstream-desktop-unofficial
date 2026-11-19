@@ -210,3 +210,89 @@ fn broken_streams_are_skipped_when_picking_best() {
     assert_eq!(log.indices(), vec![1]);
     assert!(matches!(state.ordered[0].1, Some(LinkHealth::Broken(_))));
 }
+
+#[test]
+fn announce_ready_publishes_update_before_ready() {
+    let order = Mutex::new(Vec::new());
+    let skip = AtomicBool::new(false);
+    let cancel = AtomicBool::new(false);
+    let on_update = |_: &crate::open_types::CheckedOpen| order.lock().expect("lock").push("update");
+    let on_ready = |_: usize| order.lock().expect("lock").push("ready");
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &on_update,
+        on_ready: &on_ready,
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let mut state = OpenState::new();
+    state.ordered = vec![(link(1080, "https://x/a.mp4"), None)];
+    state.play_index = Some(0);
+    state.announce_ready(&hooks);
+    assert_eq!(*order.lock().expect("lock"), vec!["update", "ready"]);
+}
+
+#[test]
+fn skipping_starts_playback_and_still_checks_remaining_sources() {
+    let log = ReadyLog::new();
+    let skip = AtomicBool::new(true);
+    let cancel = AtomicBool::new(false);
+    let on_ready = |index: usize| log.push(index);
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &on_ready,
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let checker = checker(&["https://x/low.mp4", "https://x/hi.mp4"]);
+    let mut state = OpenState::new();
+    state.ordered = vec![
+        (link(720, "https://x/low.mp4"), None),
+        (link(1080, "https://x/hi.mp4"), None),
+    ];
+    drive_checks(&mut state, &checker, &hooks);
+    assert_eq!(
+        log.indices(),
+        vec![0],
+        "started on first working after skip"
+    );
+    assert_eq!(state.checked, 2, "remaining sources still get checked");
+    assert_eq!(state.working, 2);
+}
+
+#[test]
+fn plant_playing_seeds_playing_stream_as_working_and_already_ready() {
+    let updates = Mutex::new(Vec::new());
+    let ready = ReadyLog::new();
+    let skip = AtomicBool::new(false);
+    let cancel = AtomicBool::new(false);
+    let on_update =
+        |open: &crate::open_types::CheckedOpen| updates.lock().expect("lock").push(open.clone());
+    let on_ready = |index: usize| ready.push(index);
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &on_update,
+        on_ready: &on_ready,
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let mut state = OpenState::new();
+    let current = link(1080, "https://x/playing.mp4");
+    crate::open_seeds::plant_playing(&mut state, &current, &hooks);
+    assert!(state.ready_announced);
+    assert_eq!(state.play_index, Some(0));
+    assert_eq!(state.checked, 1);
+    assert_eq!(state.working, 1);
+    assert!(
+        ready.indices().is_empty(),
+        "already playing, no new on_ready"
+    );
+    let published = updates.lock().expect("lock");
+    assert_eq!(published.len(), 1);
+    assert_eq!(published[0].links[0].0.url, "https://x/playing.mp4");
+    assert!(published[0].links[0]
+        .1
+        .as_ref()
+        .is_some_and(LinkHealth::is_working));
+}

@@ -132,21 +132,18 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
 
 /// Searches the playing title's streams again while the current one keeps playing.
 pub(crate) fn refresh_playing(ctx: &BridgeContext) {
-    let (job, playing_url) = prepare_refresh(ctx);
+    let (job, playing_link) = prepare_refresh(ctx);
     let sender = ctx.sender();
     spawn_work("refresh-sources", move || {
-        run_refresh_job(&job, playing_url, &sender)
+        run_refresh_job(&job, playing_link, &sender)
     });
 }
 
 /// New ticket and control so the still-running open cannot race this refresh.
-fn prepare_refresh(ctx: &BridgeContext) -> (OpenJob, Option<String>) {
+fn prepare_refresh(ctx: &BridgeContext) -> (OpenJob, Option<core_model::PlayableLink>) {
     let mut session = ctx.session.borrow_mut();
     let (control, ticket) = session.begin_source_refresh();
-    let playing_url = session
-        .links
-        .get(session.selected)
-        .map(|link| link.url.clone());
+    let playing_link = session.links.get(session.selected).cloned();
     let job = OpenJob {
         ticket,
         services: ctx.owned_services(),
@@ -158,22 +155,28 @@ fn prepare_refresh(ctx: &BridgeContext) -> (OpenJob, Option<String>) {
         control,
         live: session.live.clone(),
     };
-    (job, playing_url)
+    (job, playing_link)
 }
 
-fn run_refresh_job(job: &OpenJob, playing_url: Option<String>, sender: &UiSender) {
+fn run_refresh_job(
+    job: &OpenJob,
+    playing_link: Option<core_model::PlayableLink>,
+    sender: &UiSender,
+) {
     let ticket = job.ticket;
     let on_progress = |progress: OpenProgress| sender.send(UiEvent::OpenProgress(ticket, progress));
+    let on_update = |open: &CheckedOpen| sender.send(UiEvent::OpenUpdate(ticket, open.clone()));
     let request = RefreshRequest {
         streams: &job.services.streams,
         provider: &job.item.provider,
         data: &job.data,
         media_key: &job.item.media_key,
-        playing_url: playing_url.as_deref(),
+        playing_link: playing_link.as_ref(),
         cache: Some(&job.services.title_cache),
         live: &job.live,
         control: &job.control,
         on_progress: &on_progress,
+        on_update: &on_update,
     };
     match playback_session::refresh_sources(request) {
         Ok(opened) => sender.send(UiEvent::OpenUpdate(ticket, opened)),

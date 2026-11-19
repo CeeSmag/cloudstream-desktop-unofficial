@@ -17,7 +17,7 @@ use storage::{
     BookmarkStore, Database, InstalledExtensionStore, RepositoryStore, ResumeStore, SettingsStore,
     WatchProgressStore,
 };
-use subtitle_store::SubtitleCache;
+use subtitle_store::{LoadOptions, SubtitleCache, SubtitleLoader, UreqSubtitleFetcher};
 use title_cache::TitleCache;
 
 use crate::app_paths::AppPaths;
@@ -78,6 +78,15 @@ struct AssembleParts<'a> {
 
 fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
     let data = parts.paths.data_dir();
+    let subtitles = Arc::new(SubtitleCache::new(
+        data.join("subtitles"),
+        std::time::Duration::from_secs(7 * 24 * 60 * 60),
+    ));
+    let subtitle_loader = Arc::new(SubtitleLoader::new(
+        Arc::clone(&subtitles),
+        Arc::new(UreqSubtitleFetcher::default()),
+        LoadOptions::default(),
+    ));
     UiServices {
         repositories: RepositoryService::new(
             Arc::clone(&parts.fetcher),
@@ -100,10 +109,8 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
             data.join("sources"),
             title_cache::CacheLimits::default(),
         )),
-        subtitles: Arc::new(SubtitleCache::new(
-            data.join("subtitles"),
-            std::time::Duration::from_secs(7 * 24 * 60 * 60),
-        )),
+        subtitles,
+        subtitle_loader,
         artwork: build_artwork(&data.join("artwork")),
         skips: Arc::new(SkipLookup::new(Arc::new(UreqSkipFetcher::default()))),
     }

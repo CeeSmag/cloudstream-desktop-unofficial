@@ -2,12 +2,31 @@
 
 use std::time::{Duration, Instant};
 
-use app_services::StreamChecker;
+use app_services::{LinkHealth, StreamChecker};
 use core_model::PlayableLink;
 use title_cache::{Freshness, Lookup};
 
 use crate::open_run::{check_one, check_pending, OpenState};
 use crate::open_types::{OpenCache, OpenHooks};
+
+/// Plants the stream that is already playing (during Refresh Sources) so it stays in the list as
+/// working and is never duplicated when the provider returns it again.
+pub(crate) fn plant_playing(state: &mut OpenState, playing: &PlayableLink, hooks: &OpenHooks<'_>) {
+    state.ordered.push((
+        playing.clone(),
+        Some(LinkHealth::Working {
+            size_bytes: None,
+            subtitles: Vec::new(),
+        }),
+    ));
+    state.checked = 1;
+    state.working = 1;
+    state.play_index = Some(0);
+    state.next_to_check = 1;
+    state.ready_announced = true;
+    (hooks.on_progress)(state.progress());
+    (hooks.on_update)(&state.snapshot());
+}
 
 /// How many saved streams to plant when the cache is fresh.
 const TRUSTED_RECHECK: usize = 8;

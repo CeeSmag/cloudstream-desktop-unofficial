@@ -7,10 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use app_services::{StreamChecker, StreamResolver};
+use core_model::PlayableLink;
 use extension_repo::UreqProbe;
 
 use crate::open_run::{finish, run_search, OpenState};
-use crate::open_seeds::plant_saved;
+use crate::open_seeds::{plant_playing, plant_saved};
 use crate::open_types::{CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
 
 /// Searches for streams of `provider`/`data`, checks them, and picks the best working one.
@@ -55,9 +56,21 @@ pub fn open_with(
     cache: Option<&OpenCache>,
     hooks: &OpenHooks<'_>,
 ) -> Result<CheckedOpen, OpenError> {
+    open_with_playing(target, cache, None, hooks)
+}
+
+/// Same as [`open_with`], optionally seeding an already-playing link (for Refresh Sources).
+pub(crate) fn open_with_playing(
+    target: &OpenTarget<'_>,
+    cache: Option<&OpenCache>,
+    playing: Option<&PlayableLink>,
+    hooks: &OpenHooks<'_>,
+) -> Result<CheckedOpen, OpenError> {
     let checker = StreamChecker::new(Arc::new(UreqProbe::default()));
     let mut state = OpenState::new();
-    if let Some(open_cache) = cache {
+    if let Some(link) = playing {
+        plant_playing(&mut state, link, hooks);
+    } else if let Some(open_cache) = cache {
         plant_saved(&mut state, open_cache, &checker, hooks);
     }
     if hooks.cancel.load(Ordering::SeqCst) {

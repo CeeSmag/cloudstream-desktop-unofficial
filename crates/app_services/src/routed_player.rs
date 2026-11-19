@@ -71,6 +71,10 @@ impl VideoPlayer for RoutedPlayer {
         self.inner.add_subtitles(subtitles);
     }
 
+    fn pending_subtitles(&self) -> usize {
+        self.inner.pending_subtitles()
+    }
+
     fn set_preferred_audio(&self, language: Option<Language>) {
         self.inner.set_preferred_audio(language);
     }
