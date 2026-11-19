@@ -44,6 +44,8 @@ export component CloudStream inherits Window {
     in-out property <bool> wide-window: false;
     // Raised to put the keyboard into the search box (Enter on it with the remote).
     in-out property <int> search-box-request: 0;
+    // Raised to hand the remote to the Settings side menu.
+    in-out property <int> settings-menu-request: 0;
     in-out property <bool> starting: true;
     in-out property <string> startup-status: "Loading extensions…";
     in-out property <float> startup-progress: 0.0;
@@ -318,6 +320,7 @@ export component CloudStream inherits Window {
 
             if tab == 4: SettingsPage {
                 page-index <=> settings-page-index;
+                menu-request: root.settings-menu-request;
                 cache-size-labels: root.cache-size-labels;
                 cache-size-value: root.cache-size-value;
                 ahead-labels: root.ahead-labels;

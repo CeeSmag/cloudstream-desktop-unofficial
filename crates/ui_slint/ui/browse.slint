@@ -2,7 +2,7 @@ import { Button, LineEdit, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { PosterItem } from "types.slint";
 import { PosterGrid } from "poster.slint";
-import { SectionTitle, MutedLabel } from "widgets.slint";
+import { SectionTitle, MutedLabel, SkeletonRow } from "widgets.slint";
 
 /// A spinner with a line of text: something is loading.
 export component LoadingLine inherits HorizontalLayout {
@@ -78,6 +78,7 @@ export component BrowsePage inherits VerticalLayout {
     }
     MutedLabel { text: "Popular on TMDB. Pick a title to find it on your providers."; }
     if root.loading: LoadingLine { text: "Loading popular titles…"; }
+    if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
     if !root.loading && root.message != "": MutedLabel { text: root.message; }
     PosterGrid {
         vertical-stretch: 1;
@@ -136,6 +137,7 @@ export component SearchPage inherits VerticalLayout {
         }
     }
     if root.loading: LoadingLine { text: "Searching your providers for “" + root.query + "”…"; }
+    if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
     if !root.loading && root.message != "": MutedLabel { text: root.message; }
     PosterGrid {
         vertical-stretch: 1;

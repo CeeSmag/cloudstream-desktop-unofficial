@@ -42,6 +42,11 @@ fn handle_key(ctx: &BridgeContext, ui: &CloudStream, key: &str) {
         show_point(ui, focus_of(ctx, screen).point());
         return;
     }
+    if screen == FocusScreen::Settings && direction == Direction::Down {
+        // Settings uses the standard widgets: the side menu takes Up/Down/Enter, Tab the controls.
+        ui.set_settings_menu_request(ui.get_settings_menu_request() + 1);
+        return;
+    }
     let rows = screen_rows(ui, screen);
     let nav = if screen == FocusScreen::Details {
         0

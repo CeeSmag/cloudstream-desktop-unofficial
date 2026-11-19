@@ -211,3 +211,22 @@ export component SkeletonRow inherits HorizontalLayout {
         opacity: 0.45 + 0.35 * abs(sin(animation-tick() / 900ms * 180deg + index * 25deg));
     }
 }
+
+/// A titled card (Settings pages).
+export component Card inherits Rectangle {
+    in property <string> title;
+    background: Theme.panel;
+    border-radius: Theme.radius;
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 17px;
+            font-weight: 600;
+        }
+        @children
+    }
+}
+

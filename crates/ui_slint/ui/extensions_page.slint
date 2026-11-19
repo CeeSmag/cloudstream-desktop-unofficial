@@ -1,25 +1,7 @@
 import { Button, LineEdit, Spinner, Switch } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
-import { MutedLabel } from "widgets.slint";
-
-/// A titled card of the Extensions page.
-component Card inherits Rectangle {
-    in property <string> title;
-    background: Theme.panel;
-    border-radius: Theme.radius;
-    VerticalLayout {
-        padding: Theme.space-3;
-        spacing: Theme.space-2;
-        Text {
-            text: root.title;
-            color: Theme.text;
-            font-size: 17px;
-            font-weight: 600;
-        }
-        @children
-    }
-}
+import { Card, MutedLabel } from "widgets.slint";
 
 /// Settings > Extensions: repositories, the plugins they offer, and the installed plugins.
 export component ExtensionsPage inherits VerticalLayout {
