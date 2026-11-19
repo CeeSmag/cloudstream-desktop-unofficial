@@ -7,10 +7,13 @@ use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::catalog_callbacks::load_browse_if_empty;
+use super::catalog_events::show_library;
 use super::details_loading::load_details;
 
 /// The Browse tab's index in the top bar.
 const BROWSE_TAB: i32 = 1;
+/// The Library tab's index in the top bar.
+const LIBRARY_TAB: i32 = 3;
 
 pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -20,6 +23,9 @@ pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
         }
         if tab == BROWSE_TAB {
             load_browse_if_empty(&c);
+        }
+        if let (LIBRARY_TAB, Some(ui)) = (tab, c.window()) {
+            show_library(&c, &ui);
         }
     });
     let weak = ctx.ui.clone();

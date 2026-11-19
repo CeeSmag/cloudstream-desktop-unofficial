@@ -14,6 +14,7 @@ mod cloudflare_setting;
 mod extension_load_report;
 mod extension_resident;
 mod extension_service;
+mod home_provider_setting;
 mod keep_video_ready_setting;
 mod language_settings;
 mod library_service;

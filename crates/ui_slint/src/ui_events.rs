@@ -1,6 +1,6 @@
 //! Results of background work, handed to the Slint event loop.
 
-use crate::bridge::SearchSummary;
+use crate::bridge::{ExtensionsCatalog, SearchSummary};
 use crate::request_tickets::Ticket;
 
 /// One finished piece of background work for the UI thread to show.
@@ -27,6 +27,9 @@ pub(crate) enum UiEvent {
     OpenFailed(Ticket, String),
     Notice(String),
     UpdateLabel(String),
+    /// A plugin or repository change finished; the message says how.
+    ExtensionChanged(String),
+    ExtensionsLoaded(Box<ExtensionsCatalog>),
 }
 
 impl UiEvent {

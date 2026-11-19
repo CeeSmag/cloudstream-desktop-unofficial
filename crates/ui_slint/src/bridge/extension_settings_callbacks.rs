@@ -1,42 +1,52 @@
-//! Settings > Extensions and the Home provider.
+//! Settings > Extensions and the Home provider: wiring. Every plugin or repository change runs off
+//! the UI thread ([`super::extension_changes`]); installing used to freeze the window.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use slint::SharedString;
 
-use crate::posters::plugin_rows;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::extension_catalog::load_extensions_catalog;
+use super::extension_changes::{
+    add_repository, install_plugin, remove_repository, set_trusted, uninstall,
+};
 use super::home_loading::load_home;
 use super::preference_callbacks::saved;
+
+/// The Extensions page's index in the Settings side bar.
+const EXTENSIONS_PAGE: i32 = 2;
 
 pub(crate) fn wire_extension_settings(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_set_provider(move |name| set_provider(&c, name));
     let c = ctx.clone();
-    ui.on_set_trusted(move |file, trusted| {
-        change_extension(&c, &file, |services, extension| {
-            services
-                .extensions
-                .set_trusted(extension, trusted)
-                .map(|_| ())
-        });
+    ui.on_settings_page_shown(move |page| {
+        if page == EXTENSIONS_PAGE {
+            load_extensions_catalog(&c);
+        }
     });
     let c = ctx.clone();
-    ui.on_uninstall_plugin(move |file| {
-        change_extension(&c, &file, |services, extension| {
-            services.extensions.uninstall(extension)
-        });
-    });
+    ui.on_set_trusted(move |file, trusted| set_trusted(&c, file.to_string(), trusted));
     let c = ctx.clone();
-    ui.on_install_repo(move |url| add_repository(&c, url.to_string()));
+    ui.on_uninstall_plugin(move |file| uninstall(&c, file.to_string()));
+    let c = ctx.clone();
+    ui.on_install_repo(move |url| add_repository(&c, url.trim().to_owned()));
+    let c = ctx.clone();
+    ui.on_remove_repo(move |url| remove_repository(&c, url.to_string()));
+    let c = ctx.clone();
+    ui.on_install_plugin(move |key| install_plugin(&c, &key));
 }
 
 fn set_provider(ctx: &BridgeContext, name: SharedString) {
     if let Some(ui) = ctx.window() {
-        ui.set_selected_provider(name);
+        ui.set_selected_provider(name.clone());
     }
+    saved(
+        "home provider",
+        ctx.services.settings.set_home_provider(&name),
+    );
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs())
@@ -51,50 +61,4 @@ fn set_provider(ctx: &BridgeContext, name: SharedString) {
         "saved sources of the previous provider are no longer used"
     );
     load_home(ctx);
-}
-
-fn change_extension(
-    ctx: &BridgeContext,
-    file: &str,
-    change: impl Fn(
-        &app_services::UiServices,
-        &core_model::InstalledExtension,
-    ) -> Result<(), app_services::ServiceError>,
-) {
-    match ctx.services.extensions.installed() {
-        Ok(list) => {
-            if let Some(extension) = list.iter().find(|known| known.file_name == file) {
-                if let Err(error) = change(&ctx.services, extension) {
-                    tracing::warn!(%file, %error, "the plugin change failed");
-                    ctx.sender()
-                        .notice(format!("Plugin change failed: {error}"));
-                }
-            }
-        }
-        Err(error) => tracing::warn!(%error, "could not list the installed plugins"),
-    }
-    if let Some(ui) = ctx.window() {
-        refresh_plugins(ctx, &ui);
-    }
-}
-
-fn add_repository(ctx: &BridgeContext, url: String) {
-    if url.is_empty() {
-        ctx.sender().notice("Enter a repository URL");
-        return;
-    }
-    match ctx.services.repositories.add(&url) {
-        Ok(entry) => ctx
-            .sender()
-            .notice(format!("Added repository {}", entry.name)),
-        Err(error) => ctx.sender().notice(format!("Repository failed: {error}")),
-    }
-}
-
-/// Shows the installed plugins in Settings.
-pub(crate) fn refresh_plugins(ctx: &BridgeContext, ui: &CloudStream) {
-    match ctx.services.extensions.installed() {
-        Ok(list) => ui.set_plugins(plugin_rows(&list)),
-        Err(error) => tracing::warn!(%error, "could not list the installed plugins"),
-    }
 }

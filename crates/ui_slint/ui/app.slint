@@ -1,7 +1,8 @@
 import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice
+    PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
+    RepositoryItem, AvailablePlugin
 } from "types.slint";
 import { HomePage } from "home.slint";
 import { BrowsePage, SearchPage, LibraryPage } from "browse.slint";
@@ -10,7 +11,7 @@ import { DetailsOverlay } from "details.slint";
 import { PlayerOverlay } from "player.slint";
 import { CloudflareBanner } from "cloudflare_banner.slint";
 
-export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice }
+export { PosterItem, ShelfSection, SourceItem, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -76,6 +77,11 @@ export component CloudStream inherits Window {
     in property <[EpisodeItem]> episodes: [];
     in property <[SourceItem]> sources: [];
     in property <[PluginItem]> plugins: [];
+    in property <[RepositoryItem]> repositories: [];
+    in property <[AvailablePlugin]> available-plugins: [];
+    in-out property <string> extensions-busy: "";
+    in-out property <bool> plugins-loading: false;
+    in-out property <bool> details-bookmarked: false;
     in property <[string]> providers: [];
     in property <[SettingChoice]> cache-sizes: [];
     in property <[string]> cache-size-labels: [];
@@ -134,6 +140,10 @@ export component CloudStream inherits Window {
     callback install-repo(string);
     callback set-trusted(string, bool);
     callback uninstall-plugin(string);
+    callback remove-repo(string);
+    callback install-plugin(string);
+    callback settings-page-shown(int);
+    callback toggle-bookmark();
     callback set-keep-ready(bool);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
@@ -327,6 +337,10 @@ export component CloudStream inherits Window {
             storage-label: root.storage-label;
             update-label: root.update-label;
             plugins: root.plugins;
+            repositories: root.repositories;
+            available-plugins: root.available-plugins;
+            extensions-busy: root.extensions-busy;
+            plugins-loading: root.plugins-loading;
             repo-url <=> root.repo-url;
             set-video-cache(v) => { set-video-cache(v); }
             set-ahead(v) => { set-ahead(v); }
@@ -349,12 +363,17 @@ export component CloudStream inherits Window {
             install-repo(v) => { install-repo(v); }
             set-trusted(f, t) => { set-trusted(f, t); }
             uninstall-plugin(f) => { uninstall-plugin(f); }
+            remove-repo(u) => { remove-repo(u); }
+            install-plugin(k) => { install-plugin(k); }
+            changed page-index => { settings-page-shown(self.page-index); }
         }
     }
 
     if details-title != "": DetailsOverlay {
         title: details-title;
         loading: details-loading;
+        bookmarked: details-bookmarked;
+        toggle-bookmark => { toggle-bookmark(); }
         plot: details-plot;
         meta: details-meta;
         resume-label: resume-label;

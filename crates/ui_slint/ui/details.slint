@@ -6,6 +6,8 @@ import { MutedLabel } from "widgets.slint";
 export component DetailsOverlay inherits Rectangle {
     in property <string> title: "";
     in property <bool> loading: false;
+    in property <bool> bookmarked: false;
+    callback toggle-bookmark();
     in property <string> plot: "";
     in property <string> meta: "";
     in property <string> resume-label: "";
@@ -70,6 +72,10 @@ export component DetailsOverlay inherits Rectangle {
             if root.resume-label != "": Button {
                 text: root.resume-label;
                 clicked => { root.resume(); }
+            }
+            Button {
+                text: root.bookmarked ? "✓ In library" : "+ Bookmark";
+                clicked => { root.toggle-bookmark(); }
             }
             Button { text: "Close"; clicked => { root.close(); } }
             if root.open-busy: Button {

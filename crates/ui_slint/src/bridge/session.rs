@@ -44,6 +44,8 @@ pub(crate) struct Session {
     pub(crate) source_checks: Vec<SourceCheck>,
     /// The video the viewer left (still loaded, paused) by its media key.
     pub(crate) away_key: Option<String>,
+    /// The plugins the repositories offer, in the Extensions page's order.
+    pub(crate) available: Vec<app_services::PluginHit>,
 }
 
 /// Which title the details page shows.
@@ -79,6 +81,7 @@ impl Default for Session {
             watch: PlaybackWatch::default(),
             source_checks: Vec::new(),
             away_key: None,
+            available: Vec::new(),
         }
     }
 }

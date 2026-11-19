@@ -15,7 +15,7 @@ use app_services::BrowseItem;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
-use super::extension_settings_callbacks::refresh_plugins;
+use super::extension_catalog::refresh_plugins;
 use super::home_loading::load_home;
 use super::poster_hydrate::hydrate_poster_images;
 use super::session::DetailsTarget;
@@ -47,10 +47,14 @@ pub(crate) fn show_startup_done(
     error: Option<String>,
 ) {
     ui.set_providers(string_model(providers.iter().cloned()));
-    match providers.first() {
+    let saved = ctx.services.settings.home_provider().ok().flatten();
+    let chosen = saved
+        .filter(|name| providers.contains(name))
+        .or_else(|| providers.first().cloned());
+    match chosen {
         Some(first) => {
-            ui.set_selected_provider(first.into());
-            show_startup_view(ui, &home_loading_view(first));
+            ui.set_selected_provider(first.clone().into());
+            show_startup_view(ui, &home_loading_view(&first));
             let weak = ctx.ui.clone();
             slint::Timer::single_shot(STARTUP_HOME_WAIT, move || {
                 if let Some(ui) = weak.upgrade() {
@@ -69,7 +73,8 @@ pub(crate) fn show_startup_done(
     load_home(ctx);
 }
 
-fn show_library(ctx: &BridgeContext, ui: &CloudStream) {
+/// Shows the bookmarked titles in the Library.
+pub(crate) fn show_library(ctx: &BridgeContext, ui: &CloudStream) {
     match ctx.services.library.bookmarks() {
         Ok(bookmarks) => {
             ui.set_library_items(posters_from_bookmarks(&bookmarks));
@@ -143,6 +148,10 @@ pub(crate) fn show_browse(
 }
 
 pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsPage) {
+    let bookmarked = ctx
+        .services
+        .library
+        .is_bookmarked(&page.provider, &page.url);
     {
         let mut session = ctx.session.borrow_mut();
         let poster_url = page
@@ -159,6 +168,7 @@ pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsP
         session.episodes.clone_from(&page.episodes);
     }
     ui.set_details_loading(false);
+    ui.set_details_bookmarked(bookmarked.unwrap_or(false));
     ui.set_details_title(page.title.into());
     ui.set_details_plot(page.plot.into());
     ui.set_details_meta(page.meta.into());

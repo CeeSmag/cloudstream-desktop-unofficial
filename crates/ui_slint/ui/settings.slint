@@ -1,6 +1,7 @@
 import { Button, ComboBox, GroupBox, LineEdit, Switch, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { PluginItem } from "types.slint";
+import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
+import { ExtensionsPage } from "extensions_page.slint";
 import { SideNav, SettingRow, SectionTitle, MutedLabel } from "widgets.slint";
 
 export component SettingsPage inherits Rectangle {
@@ -28,6 +29,10 @@ export component SettingsPage inherits Rectangle {
     in property <string> storage-label: "";
     in property <string> update-label: "";
     in property <[PluginItem]> plugins: [];
+    in property <[RepositoryItem]> repositories: [];
+    in property <[AvailablePlugin]> available-plugins: [];
+    in property <string> extensions-busy: "";
+    in property <bool> plugins-loading: false;
     in-out property <string> repo-url: "";
 
     callback set-video-cache(string);
@@ -51,6 +56,8 @@ export component SettingsPage inherits Rectangle {
     callback install-repo(string);
     callback set-trusted(string, bool);
     callback uninstall-plugin(string);
+    callback remove-repo(string);
+    callback install-plugin(string);
 
     background: transparent;
     accessible-role: AccessibleRole.main;
@@ -238,48 +245,18 @@ export component SettingsPage inherits Rectangle {
                     }
                 }
 
-                if root.page-index == 2: VerticalLayout {
-                    spacing: Theme.space-3;
-
-                    GroupBox {
-                        title: "Add repository";
-                        HorizontalLayout {
-                            spacing: Theme.space-2;
-                            LineEdit {
-                                text <=> root.repo-url;
-                                placeholder-text: "https://…/repo.json";
-                                horizontal-stretch: 1;
-                            }
-                            Button {
-                                text: "Install";
-                                clicked => { root.install-repo(root.repo-url); }
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Installed plugins";
-                        VerticalLayout {
-                            spacing: Theme.space-2;
-                            for plugin in root.plugins: HorizontalLayout {
-                                spacing: Theme.space-2;
-                                Text {
-                                    text: plugin.name + " — " + plugin.detail;
-                                    color: Theme.text;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                Button {
-                                    text: plugin.trusted ? "Trusted" : "Sandbox";
-                                    clicked => { root.set-trusted(plugin.file-name, !plugin.trusted); }
-                                }
-                                Button {
-                                    text: "Remove";
-                                    clicked => { root.uninstall-plugin(plugin.file-name); }
-                                }
-                            }
-                        }
-                    }
+                if root.page-index == 2: ExtensionsPage {
+                    repositories: root.repositories;
+                    available: root.available-plugins;
+                    plugins: root.plugins;
+                    busy-text: root.extensions-busy;
+                    loading: root.plugins-loading;
+                    repo-url <=> root.repo-url;
+                    add-repository(url) => { root.install-repo(url); }
+                    remove-repository(url) => { root.remove-repo(url); }
+                    install(key) => { root.install-plugin(key); }
+                    set-trusted(file, on) => { root.set-trusted(file, on); }
+                    uninstall(file) => { root.uninstall-plugin(file); }
                 }
             }
         }

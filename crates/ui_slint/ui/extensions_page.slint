@@ -1,0 +1,142 @@
+import { Button, LineEdit, Spinner, Switch } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AvailablePlugin, PluginItem, RepositoryItem } from "types.slint";
+import { MutedLabel } from "widgets.slint";
+
+/// A titled card of the Extensions page.
+component Card inherits Rectangle {
+    in property <string> title;
+    background: Theme.panel;
+    border-radius: Theme.radius;
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 17px;
+            font-weight: 600;
+        }
+        @children
+    }
+}
+
+/// Settings > Extensions: repositories, the plugins they offer, and the installed plugins.
+export component ExtensionsPage inherits VerticalLayout {
+    in property <[RepositoryItem]> repositories: [];
+    in property <[AvailablePlugin]> available: [];
+    in property <[PluginItem]> plugins: [];
+    in property <string> busy-text: "";
+    in property <bool> loading: false;
+    in-out property <string> repo-url: "";
+    callback add-repository(string);
+    callback remove-repository(string);
+    callback install(string);
+    callback set-trusted(string, bool);
+    callback uninstall(string);
+
+    spacing: Theme.space-3;
+
+    if root.busy-text != "": HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        Spinner {
+            width: 20px;
+            height: 20px;
+            indeterminate: true;
+        }
+        Text {
+            text: root.busy-text;
+            color: Theme.accent;
+            vertical-alignment: center;
+        }
+    }
+
+    Card {
+        title: "Repositories";
+        MutedLabel {
+            text: "A repository lists plugins. Paste its address (repo.json or a short code) and press Add.";
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            LineEdit {
+                text <=> root.repo-url;
+                placeholder-text: "https://…/repo.json";
+                horizontal-stretch: 1;
+                accepted => { root.add-repository(root.repo-url); }
+            }
+            Button {
+                text: "Add";
+                primary: true;
+                enabled: root.repo-url != "" && root.busy-text == "";
+                clicked => { root.add-repository(root.repo-url); }
+            }
+        }
+        for repository in root.repositories: HorizontalLayout {
+            spacing: Theme.space-2;
+            cross-axis-alignment: center;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Text { text: repository.name; color: Theme.text; overflow: elide; }
+                MutedLabel { text: repository.url; overflow: elide; }
+            }
+            Button {
+                text: "Remove";
+                enabled: root.busy-text == "";
+                clicked => { root.remove-repository(repository.url); }
+            }
+        }
+    }
+
+    Card {
+        title: "Available plugins";
+        if root.loading: MutedLabel { text: "Loading the plugins your repositories offer…"; }
+        if !root.loading && root.available.length == 0: MutedLabel {
+            text: root.repositories.length == 0 ? "Add a repository to see its plugins." : "Your repositories offer no plugins.";
+        }
+        for plugin in root.available: HorizontalLayout {
+            spacing: Theme.space-2;
+            cross-axis-alignment: center;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Text { text: plugin.name; color: Theme.text; font-weight: 600; overflow: elide; }
+                MutedLabel { text: plugin.detail; overflow: elide; }
+                if plugin.description != "": MutedLabel { text: plugin.description; overflow: elide; }
+            }
+            Button {
+                text: plugin.installed ? "Installed" : "Install";
+                primary: !plugin.installed;
+                enabled: !plugin.installed && root.busy-text == "";
+                clicked => { root.install(plugin.key); }
+            }
+        }
+    }
+
+    Card {
+        title: "Installed plugins";
+        if root.plugins.length == 0: MutedLabel { text: "No plugin installed yet."; }
+        for plugin in root.plugins: HorizontalLayout {
+            spacing: Theme.space-2;
+            cross-axis-alignment: center;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Text { text: plugin.name; color: Theme.text; font-weight: 600; }
+                MutedLabel { text: plugin.detail + (plugin.trusted ? " · trusted (no sandbox)" : " · sandboxed"); }
+            }
+            Text { text: "Trusted"; color: Theme.muted; vertical-alignment: center; }
+            Switch {
+                checked: plugin.trusted;
+                enabled: root.busy-text == "";
+                toggled => { root.set-trusted(plugin.file-name, self.checked); }
+            }
+            Button {
+                text: "Remove";
+                enabled: root.busy-text == "";
+                clicked => { root.uninstall(plugin.file-name); }
+            }
+        }
+    }
+}

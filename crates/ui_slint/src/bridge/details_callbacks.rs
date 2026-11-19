@@ -1,6 +1,7 @@
 //! The title page: play, resume, episodes, seasons, close.
 
 use app_services::{NextEpisode, PlaybackItem};
+use core_model::Bookmark;
 
 use crate::posters::empty_episodes;
 use crate::request_tickets::RequestKind;
@@ -8,6 +9,7 @@ use crate::ui_events::EpisodeRow;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::catalog_events::show_library;
 use super::details_loading::parse_season_label;
 use super::home_callbacks::row;
 use super::session::DetailsTarget;
@@ -22,6 +24,8 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_play_episode(move |index| play_episode(&c, row(index)));
     let c = ctx.clone();
     ui.on_close_details(move || close_details(&c));
+    let c = ctx.clone();
+    ui.on_toggle_bookmark(move || toggle_bookmark(&c));
     let c = ctx.clone();
     ui.on_skip_checks(move || c.session.borrow().control.skip_checks());
     let weak = ctx.ui.clone();
@@ -49,6 +53,35 @@ fn close_details(ctx: &BridgeContext) {
     ui.set_open_status("".into());
     ui.set_details_title("".into());
     ui.set_episodes(empty_episodes());
+}
+
+/// Adds the title page's title to the Library, or takes it out.
+fn toggle_bookmark(ctx: &BridgeContext) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    let details = ctx.session.borrow().details.clone();
+    let library = &ctx.services.library;
+    let result = if ui.get_details_bookmarked() {
+        library.remove_bookmark(&details.provider, &details.url)
+    } else {
+        library.add_bookmark(&Bookmark {
+            provider: details.provider.clone(),
+            url: details.url.clone(),
+            name: ui.get_details_title().to_string(),
+            poster_url: details.poster_url.clone(),
+            media_type: None,
+            added_at_ms: ctx.services.clock.now_ms(),
+        })
+    };
+    match result {
+        Ok(()) => ui.set_details_bookmarked(!ui.get_details_bookmarked()),
+        Err(error) => {
+            tracing::warn!(%error, "the bookmark could not be changed");
+            ui.set_notice("Could not change the Library".into());
+        }
+    }
+    show_library(ctx, &ui);
 }
 
 /// Plays the movie (or the title's own stream when it lists no episodes).

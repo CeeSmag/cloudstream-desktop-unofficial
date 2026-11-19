@@ -48,3 +48,18 @@ export struct TrackChoice {
     label: string,
     id: int,
 }
+
+export struct RepositoryItem {
+    name: string,
+    url: string,
+}
+
+export struct AvailablePlugin {
+    /// Identifies the plugin to the app: its repository and internal name.
+    key: string,
+    name: string,
+    /// Version, language and repository.
+    detail: string,
+    description: string,
+    installed: bool,
+}

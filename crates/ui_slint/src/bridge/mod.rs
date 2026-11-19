@@ -12,6 +12,8 @@ mod details_callbacks;
 mod details_loading;
 mod details_page;
 mod event_dispatch;
+mod extension_catalog;
+mod extension_changes;
 mod extension_settings_callbacks;
 mod home_callbacks;
 mod home_loading;
@@ -30,5 +32,6 @@ mod title_search;
 mod update_callbacks;
 
 pub use app_start::{run_desktop_app, run_desktop_app_with};
+pub(crate) use extension_catalog::ExtensionsCatalog;
 pub use session::AppExtras;
 pub(crate) use title_search::SearchSummary;
