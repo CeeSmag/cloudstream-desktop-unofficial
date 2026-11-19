@@ -7,28 +7,18 @@ use slint::ComponentHandle;
 use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
-use crate::feedback_text::{seek_text, volume_text, wheel_volume_delta};
-use crate::seek_bar::format_time;
+use crate::feedback_text::{volume_text, wheel_volume_delta};
 
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
 use super::player_feedback::show_feedback;
+use super::player_seeking::wire_seeking;
 use super::stream_opening::{refresh_playing, switch_source};
 
 pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_toggle_pause(move || toggle_pause(&c));
-    let c = ctx.clone();
-    ui.on_seek_to(move |ms| seek(&c, ms as i64, None));
-    let c = ctx.clone();
-    ui.on_seek_by(move |delta| {
-        let Some(playback) = &c.services.playback else {
-            return;
-        };
-        let status = playback.tick();
-        let target = (status.position_ms + delta as i64).clamp(0, status.duration_ms.max(0));
-        seek(&c, target, Some(delta as i64));
-    });
+    wire_seeking(ctx, ui);
     wire_volume(ctx, ui);
     let c = ctx.clone();
     ui.on_close_player(move || close_player(&c));
@@ -107,27 +97,13 @@ fn toggle_pause(ctx: &BridgeContext) {
     }
 }
 
-/// Jumps to `target_ms`; the pop-up says how far (`delta_ms`) or where to.
-fn seek(ctx: &BridgeContext, target_ms: i64, delta_ms: Option<i64>) {
-    let Some(playback) = &ctx.services.playback else {
-        return;
-    };
-    report("seek", playback.seek_to(target_ms));
-    if let Some(ui) = ctx.window() {
-        let text = match delta_ms {
-            Some(delta) => seek_text(delta),
-            None => format!("Jump to {}", format_time(target_ms)),
-        };
-        show_feedback(&ui, text, None);
-    }
-}
-
 fn close_player(ctx: &BridgeContext) {
     {
         let mut session = ctx.session.borrow_mut();
         session.control.cancel_open();
         session.tickets.cancel(RequestKind::Open);
         session.away_key = None;
+        session.seeks.cancel();
     }
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());

@@ -6,6 +6,7 @@ use playback_session::{LiveSources, OpenControl};
 use crate::browse_filters::BrowseFilters;
 use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
+use crate::seek_scheduler::SeekScheduler;
 use crate::source_menu::SourceFilter;
 
 use super::focus_screens::FocusScreen;
@@ -47,6 +48,8 @@ pub(crate) struct Session {
     pub(crate) shown_tracks: Vec<player_api::MediaTrack>,
     /// The playing stream's chapters, skip parts and skip button.
     pub(crate) timeline: Timeline,
+    /// The arrow keys' jumps, spaced out against rate limits.
+    pub(crate) seeks: SeekScheduler,
     /// Wheel movement that has not made a whole percent of volume yet.
     pub(crate) wheel_carry: f32,
     /// The size the player renders at (physical pixels).
@@ -106,6 +109,7 @@ impl Default for Session {
             last_frame: 0,
             shown_tracks: Vec::new(),
             timeline: Timeline::default(),
+            seeks: SeekScheduler::default(),
             wheel_carry: 0.0,
             surface_size: (0, 0),
             tickets: RequestTickets::default(),

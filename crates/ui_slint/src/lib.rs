@@ -17,6 +17,7 @@ mod posters;
 mod request_tickets;
 mod resume_hero;
 mod seek_bar;
+mod seek_scheduler;
 mod skip_segments;
 mod source_menu;
 mod startup_progress;

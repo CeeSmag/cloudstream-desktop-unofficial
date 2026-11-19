@@ -14,6 +14,7 @@ use crate::{CloudStream, TrackChoice};
 
 use super::bridge_context::BridgeContext;
 use super::playback_reactions::react_to_status;
+use super::player_seeking::{send_due_seek, shown_position};
 use super::player_timeline::show_timeline;
 
 /// Updates position, times, pause, buffering, tracks and the video surface size.
@@ -25,9 +26,10 @@ pub(crate) fn poll_player(ctx: &BridgeContext, ui: &CloudStream) {
         return;
     }
     let status = playback.tick();
-    ui.set_position_ms(status.position_ms as f32);
+    let position_ms = shown_position(ctx, status.position_ms);
+    ui.set_position_ms(position_ms as f32);
     ui.set_duration_ms(status.duration_ms.max(1) as f32);
-    ui.set_position_text(format_time(status.position_ms).into());
+    ui.set_position_text(format_time(position_ms).into());
     ui.set_duration_text(format_time(status.duration_ms).into());
     ui.set_paused(status.state == PlaybackState::Paused);
     ui.set_player_waiting(waiting_text(&status).into());
@@ -47,6 +49,7 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
     if !ui.get_player_open() {
         return;
     }
+    send_due_seek(ctx);
     let last = ctx.session.borrow().last_frame;
     if let Some(frame) = playback.latest_frame(last) {
         ctx.session.borrow_mut().last_frame = frame.serial;
