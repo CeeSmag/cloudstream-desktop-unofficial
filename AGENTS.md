@@ -349,8 +349,8 @@ This document is the architectural index for **`cloudstream-rs-egui`** (native S
 
 #### `crates/ui_slint`
 - **Location**: `crates/ui_slint/`
-- **Dependencies**: `slint = "1.19"`, `playback_session`, `player_api`, `app_services`, `cloudflare_bridge`
-- **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks.
+- **Dependencies**: `slint = "1.19"` (edition 1.19, no `system-tray`), `playback_session`, `player_api`, `app_services`, `app_updater`, `poster_artwork`, `cloudflare_bridge`
+- **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks. Layout of the bridge, request tickets, playback watch and known Slint pitfalls: `crates/ui_slint/README.md`.
 
 #### `crates/ui_app` (reference only)
 - **Location**: `crates/ui_app/`
