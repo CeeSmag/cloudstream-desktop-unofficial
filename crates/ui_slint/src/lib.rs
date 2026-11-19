@@ -7,6 +7,7 @@
 
 mod background_work;
 mod bridge;
+mod browse_filters;
 mod check_text;
 mod feedback_text;
 mod focus_grid;

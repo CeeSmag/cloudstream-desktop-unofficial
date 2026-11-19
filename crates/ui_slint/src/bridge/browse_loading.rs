@@ -4,7 +4,7 @@
 //! that id to the provider as if it were the provider's address, so every title failed to open).
 //! Opening one searches the enabled providers for its name and opens the best match.
 
-use app_services::{pick_best_search_match, BrowseFilterRequest, BrowseItem, BrowseService};
+use app_services::{pick_best_search_match, BrowseService};
 
 use crate::background_work::spawn_work;
 use crate::posters::poster_from_search;
@@ -15,38 +15,34 @@ use super::bridge_context::BridgeContext;
 use super::details_loading::{load_details, show_details_failed, show_details_pending};
 use super::title_search::{enabled_providers, search_providers};
 
-/// Loads the most popular titles of `kind` ("movie" or "tv").
+/// Shows `kind` ("movie" or "tv") with the current filters, from the first page.
 pub(crate) fn load_browse(ctx: &BridgeContext, kind: String) {
+    ctx.session.borrow_mut().browse_filters.kind = kind;
+    fetch_browse(ctx, 1);
+}
+
+/// Fetches page `page` of Browse with the viewer's filters; page 1 replaces the grid, later
+/// pages are added to it.
+pub(crate) fn fetch_browse(ctx: &BridgeContext, page: u32) {
+    let request = ctx.session.borrow().browse_filters.request(page);
     if let Some(ui) = ctx.window() {
-        ui.set_browse_kind(kind.clone().into());
+        ui.set_browse_kind(request.media_type.clone().into());
         ui.set_browse_loading(true);
         ui.set_browse_message("".into());
     }
     let ticket = ctx.issue_ticket(RequestKind::Browse);
     let sender = ctx.sender();
     spawn_work("browse", move || {
-        let result = fetch_popular(&kind);
+        let result = BrowseService::default()
+            .fetch_browse_page(&request)
+            .map_err(|error| error.to_string());
         if let Err(error) = &result {
-            tracing::warn!(%kind, %error, "Browse could not load");
+            tracing::warn!(kind = %request.media_type, page, %error, "Browse could not load");
         }
         sender.send(UiEvent::BrowseLoaded(ticket, result));
     });
 }
 
-fn fetch_popular(kind: &str) -> Result<Vec<BrowseItem>, String> {
-    let request = BrowseFilterRequest {
-        media_type: kind.to_owned(),
-        year: None,
-        sort_by: "popular".into(),
-        rating: None,
-        genres: Vec::new(),
-        genre: None,
-        page: 1,
-    };
-    Ok(BrowseService::default().fetch_browse_page(&request)?.items)
-}
-
-/// Opens Browse title `index`: finds it on the providers, then loads its page.
 pub(crate) fn open_browse_title(ctx: &BridgeContext, index: usize) {
     let Some(item) = ctx.session.borrow().browse_items.get(index).cloned() else {
         return;

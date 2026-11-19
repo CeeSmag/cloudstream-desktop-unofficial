@@ -3,6 +3,7 @@
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::browse_filter_callbacks::wire_browse_filters;
 use super::catalog_callbacks::wire_catalog;
 use super::cloudflare_callbacks::wire_cloudflare;
 use super::debug_logging::wire_debug_logging;
@@ -25,6 +26,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_home(ctx, ui);
     wire_library_actions(ctx, ui);
     wire_catalog(ctx, ui);
+    wire_browse_filters(ctx, ui);
     wire_details(ctx, ui);
     wire_player(ctx, ui);
     wire_player_tracks(ctx, ui);

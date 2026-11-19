@@ -2,6 +2,7 @@
 
 mod app_start;
 mod bridge_context;
+mod browse_filter_callbacks;
 mod browse_loading;
 mod callback_wiring;
 mod catalog_callbacks;

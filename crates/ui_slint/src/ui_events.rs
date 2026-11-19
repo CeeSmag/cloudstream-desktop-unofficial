@@ -17,7 +17,7 @@ pub(crate) enum UiEvent {
     },
     HomeLoaded(Ticket, Vec<(String, Vec<core_model::SearchResult>)>),
     SearchLoaded(Ticket, SearchSummary),
-    BrowseLoaded(Ticket, Result<Vec<app_services::BrowseItem>, String>),
+    BrowseLoaded(Ticket, Result<app_services::BrowsePage, String>),
     BrowseMatched(Ticket, BrowseMatch),
     DetailsLoaded(Ticket, Box<DetailsPage>),
     DetailsFailed(Ticket, String),

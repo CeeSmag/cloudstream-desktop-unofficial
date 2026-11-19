@@ -8,8 +8,9 @@ use crate::posters::{
 };
 use crate::startup_progress::{home_loading_view, plugin_loading_view, StartupView};
 use crate::ui_events::{DetailsPage, PosterKind};
-use crate::CloudStream;
-use app_services::BrowseItem;
+use crate::{BrowseFilter, CloudStream};
+use app_services::BrowsePage;
+use slint::ComponentHandle;
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::season_labels;
@@ -147,24 +148,34 @@ pub(crate) fn show_search(ctx: &BridgeContext, ui: &CloudStream, summary: &Searc
 pub(crate) fn show_browse(
     ctx: &BridgeContext,
     ui: &CloudStream,
-    result: Result<Vec<BrowseItem>, String>,
+    result: Result<BrowsePage, String>,
 ) {
     ui.set_browse_loading(false);
-    let items = match result {
-        Ok(items) => items,
+    let page = match result {
+        Ok(page) => page,
         Err(error) => {
             ui.set_browse_message(format!("Browse could not load: {error}").into());
             return;
         }
     };
+    let items = {
+        let mut session = ctx.session.borrow_mut();
+        if page.page <= 1 {
+            session.browse_items.clear();
+        }
+        session.browse_items.extend(page.items);
+        session.browse_page = (page.page, page.total_pages);
+        session.browse_items.clone()
+    };
     let message = if items.is_empty() {
-        "Nothing to show."
+        "Nothing matches these filters."
     } else {
         ""
     };
     ui.set_browse_message(message.into());
     ui.set_browse_items(posters_from_browse(&items));
-    ctx.session.borrow_mut().browse_items = items;
+    ui.global::<BrowseFilter>()
+        .set_has_more(page.page < page.total_pages);
     hydrate_poster_images(ctx, PosterKind::Browse);
 }
 

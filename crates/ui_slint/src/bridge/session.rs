@@ -3,6 +3,7 @@
 use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
+use crate::browse_filters::BrowseFilters;
 use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
 use crate::source_menu::SourceFilter;
@@ -51,6 +52,9 @@ pub(crate) struct Session {
     pub(crate) tickets: RequestTickets,
     /// The TMDB titles Browse shows, in the grid's order.
     pub(crate) browse_items: Vec<app_services::BrowseItem>,
+    /// What Browse shows, and the last page loaded with the number of pages.
+    pub(crate) browse_filters: BrowseFilters,
+    pub(crate) browse_page: (u32, u32),
     /// The episodes of the title page, in the provider's order (all seasons).
     pub(crate) episodes: Vec<EpisodeRow>,
     /// What to do when the playing stream fails or ends.
@@ -100,6 +104,8 @@ impl Default for Session {
             surface_size: (0, 0),
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),
+            browse_filters: BrowseFilters::default(),
+            browse_page: (0, 0),
             episodes: Vec::new(),
             watch: PlaybackWatch::default(),
             source_filter: SourceFilter::default(),
