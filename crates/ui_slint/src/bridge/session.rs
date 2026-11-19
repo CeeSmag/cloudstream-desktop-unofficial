@@ -11,7 +11,7 @@ use crate::source_menu::SourceFilter;
 
 use super::focus_screens::FocusScreen;
 use super::player_timeline::Timeline;
-use crate::request_tickets::RequestTickets;
+use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
 
 /// Asks for "delete all saved data" at the next start (built by the shell, which runs the wipe).
@@ -126,5 +126,39 @@ impl Default for Session {
             plugin_page: 0,
             focus: std::collections::HashMap::new(),
         }
+    }
+}
+
+impl Session {
+    /// Stops an in-flight open and drops its late answers (and skip lookups / key seeks).
+    /// Used when leaving or closing the player so `OpenReady` cannot reopen it.
+    pub(crate) fn abandon_open(&mut self) {
+        self.control.cancel_open();
+        self.tickets.cancel(RequestKind::Open);
+        self.tickets.cancel(RequestKind::Skips);
+        self.seeks.cancel();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn abandon_open_cancels_open_skips_and_waiting_seeks() {
+        let mut session = Session::default();
+        let open = session.tickets.issue(RequestKind::Open);
+        let skips = session.tickets.issue(RequestKind::Skips);
+        let _ = session.seeks.press(1_000, std::time::Instant::now());
+        let _ = session.seeks.press(2_000, std::time::Instant::now());
+        assert!(session.seeks.pending().is_some());
+        session.abandon_open();
+        assert!(!session.tickets.is_current(open));
+        assert!(!session.tickets.is_current(skips));
+        assert!(session.seeks.pending().is_none());
+        assert!(session
+            .control
+            .cancel
+            .load(std::sync::atomic::Ordering::SeqCst));
     }
 }

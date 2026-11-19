@@ -4,7 +4,6 @@ use player_api::PlaybackState;
 
 use slint::ComponentHandle;
 
-use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
 use crate::feedback_text::{volume_text, wheel_volume_delta};
@@ -100,10 +99,8 @@ fn toggle_pause(ctx: &BridgeContext) {
 fn close_player(ctx: &BridgeContext) {
     {
         let mut session = ctx.session.borrow_mut();
-        session.control.cancel_open();
-        session.tickets.cancel(RequestKind::Open);
+        session.abandon_open();
         session.away_key = None;
-        session.seeks.cancel();
     }
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
@@ -116,6 +113,8 @@ fn close_player(ctx: &BridgeContext) {
 }
 
 fn leave_player(ctx: &BridgeContext) {
+    // Drop any in-flight open so a late OpenReady cannot reopen the player.
+    ctx.session.borrow_mut().abandon_open();
     if let Some(playback) = &ctx.services.playback {
         let keep_ready = ctx.services.settings.keep_video_ready().unwrap_or(true);
         match ctx.services.settings.video_cache() {

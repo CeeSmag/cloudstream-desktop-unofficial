@@ -49,6 +49,11 @@ pub(crate) fn react_to_status(ctx: &BridgeContext, ui: &CloudStream, state: &Pla
 }
 
 fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>) {
+    {
+        let mut session = ctx.session.borrow_mut();
+        session.abandon_open();
+        session.away_key = None;
+    }
     if let Some(playback) = &ctx.services.playback {
         report("stop", playback.stop());
     }
