@@ -7,7 +7,7 @@ use slint::ComponentHandle;
 use crate::request_tickets::RequestKind;
 use crate::CloudStream;
 
-use crate::feedback_text::{seek_text, volume_text};
+use crate::feedback_text::{seek_text, volume_text, wheel_volume_delta};
 use crate::seek_bar::format_time;
 
 use super::bridge_context::BridgeContext;
@@ -29,6 +29,16 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
         let target = (status.position_ms + delta as i64).clamp(0, status.duration_ms.max(0));
         seek(&c, target, Some(delta as i64));
     });
+    wire_volume(ctx, ui);
+    let c = ctx.clone();
+    ui.on_close_player(move || close_player(&c));
+    let c = ctx.clone();
+    ui.on_leave_player(move || leave_player(&c));
+    wire_player_panels(ctx, ui);
+}
+
+/// The volume: the bar, the keys and the mouse wheel over the video.
+fn wire_volume(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_set_volume(move |volume| {
         let volume = volume.clamp(0.0, 130.0);
@@ -41,10 +51,17 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
         }
     });
     let c = ctx.clone();
-    ui.on_close_player(move || close_player(&c));
-    let c = ctx.clone();
-    ui.on_leave_player(move || leave_player(&c));
-    wire_player_panels(ctx, ui);
+    ui.on_wheel_volume(move |delta_y| {
+        let Some(ui) = c.window() else {
+            return;
+        };
+        let carry = c.session.borrow().wheel_carry;
+        let (delta, carry) = wheel_volume_delta(delta_y, carry);
+        c.session.borrow_mut().wheel_carry = carry;
+        if delta != 0.0 {
+            ui.invoke_set_volume((ui.get_volume() + delta).clamp(0.0, 130.0));
+        }
+    });
 }
 
 fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {

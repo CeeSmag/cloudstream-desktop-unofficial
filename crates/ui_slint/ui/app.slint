@@ -178,6 +178,7 @@ export component CloudStream inherits Window {
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
+    callback wheel-volume(float);
     callback close-player();
     callback leave-player();
     callback toggle-sources();
@@ -480,6 +481,7 @@ export component CloudStream inherits Window {
             seek-to(v) => { seek-to(v); }
             seek-by(v) => { seek-by(v); }
             set-volume(v) => { set-volume(v); }
+            wheel-volume(d) => { wheel-volume(d); }
             close-player => { close-player(); }
             leave-player => { leave-player(); }
             toggle-sources => { toggle-sources(); }

@@ -68,9 +68,37 @@ pub(crate) fn audio_only(status: &PlaybackStatus) -> bool {
     !status.has_video && matches!(status.state, PlaybackState::Playing | PlaybackState::Paused)
 }
 
+/// Wheel distance (logical pixels; Slint makes one mouse-wheel notch 60) per percent of volume:
+/// a notch is 5 %.
+pub(crate) const WHEEL_PX_PER_PERCENT: f32 = 12.0;
+
+/// Turns a wheel movement into a volume change in whole percent (up raises it). `carry` is the
+/// part of earlier movements that did not make a whole percent yet, so the small steps of a
+/// touchpad are not lost; the new carry comes back with the change (from the old wheelVolume.ts).
+pub(crate) fn wheel_volume_delta(delta_y: f32, carry: f32) -> (f32, f32) {
+    let total = carry + delta_y;
+    let delta = (total / WHEEL_PX_PER_PERCENT).trunc();
+    (delta, total - delta * WHEEL_PX_PER_PERCENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wheel_volume_delta_notches_and_touchpad_steps() {
+        assert_eq!(
+            wheel_volume_delta(60.0, 0.0),
+            (5.0, 0.0),
+            "one notch up is 5 %"
+        );
+        assert_eq!(wheel_volume_delta(-120.0, 0.0), (-10.0, 0.0));
+        let (first, carry) = wheel_volume_delta(7.0, 0.0);
+        assert_eq!(first, 0.0, "a small touchpad step waits");
+        let (second, carry) = wheel_volume_delta(7.0, carry);
+        assert_eq!(second, 1.0, "until steps add up to a percent");
+        assert!((carry - 2.0).abs() < 1e-6);
+    }
 
     #[test]
     fn seek_text_signs_and_rounds() {

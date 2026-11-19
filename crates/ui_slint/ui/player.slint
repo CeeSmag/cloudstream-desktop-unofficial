@@ -252,6 +252,8 @@ export component PlayerOverlay inherits Rectangle {
     callback seek-to(float);
     callback seek-by(float);
     callback set-volume(float);
+    /// The wheel turned over the video (logical pixels, up positive).
+    callback wheel-volume(float);
     callback close-player();
     callback leave-player();
     callback toggle-sources();
@@ -319,6 +321,11 @@ export component PlayerOverlay inherits Rectangle {
         double-clicked => {
             root.toggle-pause();
             root.toggle-fullscreen();
+        }
+        scroll-event(event) => {
+            root.show-chrome();
+            root.wheel-volume(event.delta-y / 1px);
+            return accept;
         }
         Image {
             width: 100%;

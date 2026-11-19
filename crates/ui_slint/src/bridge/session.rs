@@ -47,6 +47,8 @@ pub(crate) struct Session {
     pub(crate) shown_tracks: Vec<player_api::MediaTrack>,
     /// The playing stream's chapters, skip parts and skip button.
     pub(crate) timeline: Timeline,
+    /// Wheel movement that has not made a whole percent of volume yet.
+    pub(crate) wheel_carry: f32,
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
     pub(crate) tickets: RequestTickets,
@@ -104,6 +106,7 @@ impl Default for Session {
             last_frame: 0,
             shown_tracks: Vec::new(),
             timeline: Timeline::default(),
+            wheel_carry: 0.0,
             surface_size: (0, 0),
             tickets: RequestTickets::default(),
             browse_items: Vec::new(),
