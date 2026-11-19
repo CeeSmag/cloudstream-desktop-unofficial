@@ -39,6 +39,21 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     });
 }
 
+/// What the title page shows after close (loading must be off or the busy strip sticks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DetailsClosedFlags {
+    pub(crate) loading: bool,
+    pub(crate) open_busy: bool,
+}
+
+/// The UI flags after the viewer closes the title page.
+pub(crate) fn details_closed_flags() -> DetailsClosedFlags {
+    DetailsClosedFlags {
+        loading: false,
+        open_busy: false,
+    }
+}
+
 /// Closes the title page; its late answer and a video still opening from it are dropped.
 fn close_details(ctx: &BridgeContext) {
     let Some(ui) = ctx.window() else {
@@ -52,7 +67,9 @@ fn close_details(ctx: &BridgeContext) {
             session.tickets.cancel(RequestKind::Open);
         }
     }
-    ui.set_open_busy(false);
+    let flags = details_closed_flags();
+    ui.set_details_loading(flags.loading);
+    ui.set_open_busy(flags.open_busy);
     ui.set_open_status("".into());
     ui.set_details_title("".into());
     ui.set_episodes(empty_episodes());
@@ -216,5 +233,16 @@ mod tests {
         let details = DetailsTarget::default();
         let item = episode_item(&details, &[row("e", -1, None)], 0, "Show").expect("item");
         assert_eq!((item.season, item.episode), (None, None));
+    }
+
+    #[test]
+    fn details_closed_flags_clear_loading_and_open_busy() {
+        assert_eq!(
+            details_closed_flags(),
+            DetailsClosedFlags {
+                loading: false,
+                open_busy: false,
+            }
+        );
     }
 }
