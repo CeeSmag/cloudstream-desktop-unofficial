@@ -229,3 +229,51 @@ export component PosterGrid inherits ScrollView {
         }
     }
 }
+
+/// Wrapping posters without an inner ScrollView (expands downward inline on Home).
+export component InlinePosterGrid inherits Rectangle {
+    in property <[PosterItem]> items: [];
+    in property <int> columns: 4;
+    in property <int> focused-index: -1;
+    in property <string> remove-text: "";
+    callback open-at(int);
+    callback play-at(int);
+    callback bookmark-at(int);
+    callback remove-at(int);
+    callback focus-arrived(length, length);
+
+    width: root.columns * TileMetrics.step + 16px;
+    height: grid.preferred-height;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    background: transparent;
+
+    changed focused-index => {
+        if self.focused-index >= 0 {
+            root.focus-arrived(
+                self.absolute-position.y + floor(self.focused-index / max(1, root.columns)) * TileMetrics.row-step,
+                TileMetrics.row-step);
+        }
+    }
+
+    grid := FlexboxLayout {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        cross-axis-line-alignment: start;
+        padding: 10px;
+        spacing: Theme.space-2;
+        for item[i] in root.items: PosterTile {
+            title: item.title;
+            subtitle: item.subtitle;
+            artwork: item.image;
+            progress: item.progress;
+            focused: i == root.focused-index;
+            remove-text: root.remove-text;
+            clicked => { root.open-at(i); }
+            play-requested => { root.play-at(i); }
+            bookmark-requested => { root.bookmark-at(i); }
+            remove-requested => { root.remove-at(i); }
+        }
+    }
+}

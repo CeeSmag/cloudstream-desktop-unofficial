@@ -6,7 +6,6 @@ use core_model::{HomePage, SearchResult};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::background_work::spawn_work;
-use crate::focus_grid::{FocusGrid, FocusPoint};
 use crate::posters::posters_from_search;
 use crate::request_tickets::RequestKind;
 use crate::ui_events::{HomeSectionPage, PosterKind, UiEvent};
@@ -14,7 +13,6 @@ use crate::{CloudStream, HomeExpanded, PosterItem};
 
 use super::bridge_context::BridgeContext;
 use super::details_loading::load_details;
-use super::focus_screens::FocusScreen;
 use super::home_callbacks::row;
 use super::home_loading::HomeShelf;
 use super::poster_hydrate::hydrate_poster_images;
@@ -49,7 +47,7 @@ pub(crate) fn wire_home_expanded(ctx: &BridgeContext, ui: &CloudStream) {
     expanded.on_next_page(move || step_expanded_page(&c, 1));
 }
 
-/// Opens shelf `shelf_index` in the full-page vertical grid, reusing already-hydrated posters.
+/// Expands shelf `shelf_index` inline on Home, reusing already-hydrated posters.
 pub(crate) fn open_expanded_shelf(ctx: &BridgeContext, shelf_index: usize) {
     let Some(ui) = ctx.window() else {
         return;
@@ -67,14 +65,12 @@ pub(crate) fn open_expanded_shelf(ctx: &BridgeContext, shelf_index: usize) {
             page: 1,
             pages,
         });
-        reset_home_focus(&mut session.focus, &ui);
         shelf
     };
     let items = existing_shelf_posters(&ui, shelf_index)
         .unwrap_or_else(|| posters_from_search(&shelf.items));
-    let expanded = ui.global::<HomeExpanded>();
-    expanded.set_title(shelf.title.into());
-    expanded.set_open(true);
+    ui.global::<HomeExpanded>()
+        .set_shelf_index(i32::try_from(shelf_index).unwrap_or(-1));
     apply_page_view(
         &ui,
         items,
@@ -86,7 +82,7 @@ pub(crate) fn open_expanded_shelf(ctx: &BridgeContext, shelf_index: usize) {
     hydrate_poster_images(ctx, PosterKind::HomeExpanded);
 }
 
-/// Closes the expanded Home view and returns to the horizontal shelves.
+/// Collapses the inline expanded shelf so lower shelves reappear on Home.
 pub(crate) fn close_expanded_shelf(ctx: &BridgeContext) {
     {
         let mut session = ctx.session.borrow_mut();
@@ -95,7 +91,7 @@ pub(crate) fn close_expanded_shelf(ctx: &BridgeContext) {
     }
     if let Some(ui) = ctx.window() {
         let expanded = ui.global::<HomeExpanded>();
-        expanded.set_open(false);
+        expanded.set_shelf_index(-1);
         expanded.set_loading(false);
         expanded.set_message("".into());
     }
@@ -122,7 +118,7 @@ fn step_expanded_page(ctx: &BridgeContext, delta: i32) {
     if ui.global::<HomeExpanded>().get_loading() {
         return;
     }
-    let Some(step) = resolve_page_step(ctx, &ui, delta) else {
+    let Some(step) = resolve_page_step(ctx, delta) else {
         return;
     };
     match step {
@@ -136,7 +132,7 @@ fn step_expanded_page(ctx: &BridgeContext, delta: i32) {
     }
 }
 
-fn resolve_page_step(ctx: &BridgeContext, ui: &CloudStream, delta: i32) -> Option<PageStep> {
+fn resolve_page_step(ctx: &BridgeContext, delta: i32) -> Option<PageStep> {
     let mut session = ctx.session.borrow_mut();
     let state = session.home_expanded.as_mut()?;
     let target = if delta < 0 {
@@ -149,7 +145,6 @@ fn resolve_page_step(ctx: &BridgeContext, ui: &CloudStream, delta: i32) -> Optio
     }
     if let Some((items, has_next)) = state.pages.get(&target).cloned() {
         state.page = target;
-        reset_home_focus(&mut session.focus, ui);
         let meta = PageMeta {
             page: target,
             has_next,
@@ -221,7 +216,6 @@ pub(crate) fn show_home_section_page(
         }
         state.pages.insert(loaded.page, (items.clone(), has_next));
         state.page = loaded.page;
-        reset_home_focus(&mut session.focus, ui);
         true
     };
     if applied {
@@ -253,22 +247,12 @@ fn apply_page_view(ui: &CloudStream, items: ModelRc<PosterItem>, meta: PageMeta)
     expanded.set_has_prev(meta.page > 1);
     expanded.set_has_next(meta.has_next);
     expanded.set_count_text(expanded_count_text(count, meta.page, meta.has_next).into());
-    expanded.set_scroll_reset(expanded.get_scroll_reset().wrapping_add(1));
 }
 
 fn existing_shelf_posters(ui: &CloudStream, shelf_index: usize) -> Option<ModelRc<PosterItem>> {
     let section = ui.get_home_shelves().row_data(shelf_index)?;
     let cloned: Vec<PosterItem> = section.items.iter().collect();
     Some(ModelRc::new(VecModel::from(cloned)))
-}
-
-fn reset_home_focus(focus: &mut HashMap<FocusScreen, FocusGrid>, ui: &CloudStream) {
-    let start = FocusPoint { row: 0, col: 0 };
-    focus.entry(FocusScreen::Home).or_default().set(start);
-    if ui.get_tab() == 0 && ui.get_details_title().is_empty() {
-        ui.set_focus_row(0);
-        ui.set_focus_col(0);
-    }
 }
 
 /// Extracts the section matching `title` (or fallback index) from a provider's paged `HomePage`.
@@ -303,64 +287,5 @@ pub(crate) fn expanded_count_text(count: usize, page: u32, has_next: bool) -> St
 }
 
 #[cfg(test)]
-mod tests {
-    use core_model::HomePageSection;
-
-    use super::*;
-
-    fn section(name: &str, titles: &[&str]) -> HomePageSection {
-        HomePageSection {
-            name: name.to_owned(),
-            list: titles
-                .iter()
-                .map(|title| SearchResult {
-                    name: (*title).to_owned(),
-                    ..SearchResult::default()
-                })
-                .collect(),
-            is_horizontal_images: false,
-        }
-    }
-
-    #[test]
-    fn pick_section_items_matches_by_title_ignoring_case() {
-        let page = HomePage {
-            items: vec![
-                section("Trending", &["A"]),
-                section("Popular Movies", &["Dune", "Heat"]),
-            ],
-            has_next: true,
-        };
-        let (list, has_next) = pick_section_items(page, "popular movies", 0);
-        assert_eq!(list.len(), 2);
-        assert_eq!(list[0].name, "Dune");
-        assert!(has_next);
-    }
-
-    #[test]
-    fn pick_section_items_falls_back_to_single_section_or_index() {
-        let single = HomePage {
-            items: vec![section("", &["Only"])],
-            has_next: true,
-        };
-        let (list, has_next) = pick_section_items(single, "Popular Movies", 2);
-        assert_eq!(list.len(), 1);
-        assert!(has_next);
-
-        let empty = HomePage {
-            items: vec![section("Popular Movies", &[])],
-            has_next: true,
-        };
-        let (list, has_next) = pick_section_items(empty, "Popular Movies", 0);
-        assert!(list.is_empty());
-        assert!(!has_next, "empty trailing page clears has_next");
-    }
-
-    #[test]
-    fn expanded_count_text_formats_paged_and_unpaged_counts() {
-        assert_eq!(expanded_count_text(1, 1, false), "1 title");
-        assert_eq!(expanded_count_text(20, 1, false), "20 titles");
-        assert_eq!(expanded_count_text(20, 1, true), "Page 1 · 20 titles");
-        assert_eq!(expanded_count_text(12, 3, false), "Page 3 · 12 titles");
-    }
-}
+#[path = "home_expanded_tests.rs"]
+mod tests;

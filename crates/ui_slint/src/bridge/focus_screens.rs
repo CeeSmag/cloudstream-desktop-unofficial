@@ -81,10 +81,6 @@ pub(crate) fn screen_rows(ui: &CloudStream, screen: FocusScreen) -> Vec<usize> {
 }
 
 fn home_rows(ui: &CloudStream, columns: usize) -> Vec<usize> {
-    let expanded = ui.global::<HomeExpanded>();
-    if expanded.get_open() {
-        return grid_rows(expanded.get_items().row_count(), columns);
-    }
     let mut rows = Vec::new();
     let continue_count = ui.get_continue_items().row_count();
     let has_hero = !ui.get_hero_title().is_empty();
@@ -99,11 +95,15 @@ fn home_rows(ui: &CloudStream, columns: usize) -> Vec<usize> {
         ui.set_continue_row(-1);
     }
     ui.set_shelf_row_base(i32::try_from(rows.len()).unwrap_or(0));
-    rows.extend(
-        ui.get_home_shelves()
-            .iter()
-            .map(|shelf| shelf.items.row_count()),
-    );
+    let expanded = ui.global::<HomeExpanded>();
+    let expanded_idx = usize::try_from(expanded.get_shelf_index()).ok();
+    for (index, shelf) in ui.get_home_shelves().iter().enumerate() {
+        if expanded_idx == Some(index) {
+            rows.extend(grid_rows(expanded.get_items().row_count(), columns));
+            break;
+        }
+        rows.push(shelf.items.row_count());
+    }
     rows
 }
 

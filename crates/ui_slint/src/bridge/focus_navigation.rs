@@ -81,17 +81,20 @@ fn activate(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
 }
 
 fn activate_home(ui: &CloudStream, point: FocusPoint) {
-    let expanded = ui.global::<HomeExpanded>();
-    if expanded.get_open() {
-        expanded.invoke_open_item(point.row * ui.get_grid_columns() + point.col);
-        return;
-    }
     if point.row == ui.get_hero_row() {
         ui.invoke_resume_hero();
     } else if point.row == ui.get_continue_row() {
         ui.invoke_open_library_hit(point.col);
     } else {
-        ui.invoke_open_shelf_item(point.row - ui.get_shelf_row_base(), point.col);
+        let shelf_offset = point.row - ui.get_shelf_row_base();
+        let expanded = ui.global::<HomeExpanded>();
+        let expanded_idx = expanded.get_shelf_index();
+        if expanded_idx >= 0 && shelf_offset >= expanded_idx {
+            let grid_row = shelf_offset - expanded_idx;
+            expanded.invoke_open_item(grid_row * ui.get_grid_columns() + point.col);
+        } else {
+            ui.invoke_open_shelf_item(shelf_offset, point.col);
+        }
     }
 }
 
@@ -154,7 +157,7 @@ fn go_back(ctx: &BridgeContext, ui: &CloudStream, screen: FocusScreen) {
     if screen == FocusScreen::Details {
         return close_details(ctx, ui);
     }
-    if screen == FocusScreen::Home && ui.global::<HomeExpanded>().get_open() {
+    if screen == FocusScreen::Home && ui.global::<HomeExpanded>().get_shelf_index() >= 0 {
         ui.global::<HomeExpanded>().invoke_close();
         return;
     }

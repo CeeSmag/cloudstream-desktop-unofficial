@@ -7,8 +7,8 @@ use std::rc::Rc;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{
-    ComponentHandle, Image, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel, SharedPixelBuffer,
-    SharedString, VecModel,
+    ComponentHandle, Image, Model, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel,
+    SharedPixelBuffer, SharedString, VecModel,
 };
 use ui_slint::{
     AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, HomeExpanded, PaginationItem,
@@ -282,16 +282,17 @@ fn verify_home_views(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     ui.set_focus_visible(false);
     assert_non_blank(&render_frame(window, "02a_home_shelves"), "home_shelves");
 
+    let mut expanded_items: Vec<PosterItem> = sample_posters().iter().collect();
+    expanded_items.extend(sample_posters().iter());
     let expanded = ui.global::<HomeExpanded>();
-    expanded.set_open(true);
-    expanded.set_title("Popular Movies".into());
-    expanded.set_count_text("Page 1 · 5 titles".into());
-    expanded.set_items(sample_posters());
+    expanded.set_shelf_index(0);
+    expanded.set_count_text("Page 1 · 10 titles".into());
+    expanded.set_items(ModelRc::new(VecModel::from(expanded_items)));
     expanded.set_page(1);
     expanded.set_has_prev(false);
     expanded.set_has_next(true);
     assert_non_blank(&render_frame(window, "02b_home_expanded"), "home_expanded");
-    expanded.set_open(false);
+    expanded.set_shelf_index(-1);
 }
 
 fn populate_details(ui: &CloudStream) {
