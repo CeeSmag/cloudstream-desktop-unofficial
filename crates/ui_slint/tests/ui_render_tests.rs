@@ -624,9 +624,40 @@ fn verify_track_drawer_scroll(
     );
 }
 
+fn verify_details_backdrop_bottom_seamless(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    // Bright backdrop on a movie details view (Cast sits right beneath the 420px backdrop).
+    // Regression guard: the bottom edge of the backdrop (TopBar 74px + 420px = y 494)
+    // must blend smoothly into Theme.bg (#080b12) with no bright 1px seam.
+    ui.set_details_backdrop(sample_artwork(210, 210, 210));
+    ui.set_episode_total_count(0);
+    ui.set_episodes(ModelRc::new(VecModel::from(Vec::<EpisodeItem>::new())));
+    let frame = render_frame(window, "08b_details_movie");
+    let bg = Rgb8Pixel::new(0x08, 0x0b, 0x12);
+    // Sample far-right open area across the bottom of the 420px backdrop (y = 484..=498).
+    for y in 484..=498u32 {
+        for x in [900u32, 1050, 1200] {
+            let px = frame
+                .get((y * WIDTH + x) as usize)
+                .copied()
+                .unwrap_or(Rgb8Pixel::new(255, 255, 255));
+            let delta = px.r.abs_diff(bg.r) as u16
+                + px.g.abs_diff(bg.g) as u16
+                + px.b.abs_diff(bg.b) as u16;
+            assert!(
+                delta <= 3,
+                "unexpected seam pixel at ({x}, {y}): got ({}, {}, {}), expected Theme.bg (8, 11, 18)",
+                px.r,
+                px.g,
+                px.b
+            );
+        }
+    }
+}
+
 fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     populate_details(ui);
     assert_non_blank(&render_frame(window, "08_details"), "details");
+    verify_details_backdrop_bottom_seamless(ui, window);
     ui.set_details_title("".into());
     populate_player(ui);
     verify_player_scroll_isolation(ui, window);
