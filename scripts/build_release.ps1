@@ -219,12 +219,20 @@ function New-InstallPayload([string]$stage) {
     return $payload
 }
 
+function Find-Makensis {
+    $cmd = Get-Command makensis -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($root in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+        if (-not $root) { continue }
+        $candidate = Join-Path $root 'NSIS\makensis.exe'
+        if (Test-Path $candidate) { return $candidate }
+    }
+    throw 'makensis not found. Install NSIS (https://nsis.sourceforge.io/) or choco install nsis.'
+}
+
 function Copy-Installer([string]$stage) {
     Write-Step 'Packaging the NSIS installer'
-    $makensis = Get-Command makensis -ErrorAction SilentlyContinue
-    if (-not $makensis) {
-        throw 'makensis not found. Install NSIS (https://nsis.sourceforge.io/) or choco install nsis.'
-    }
+    $makensis = Find-Makensis
     $payload = New-InstallPayload $stage
     foreach ($name in 'cloudstream.exe', 'cloudstream-verify.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
         if (-not (Test-Path (Join-Path $payload $name))) { throw "$name is not in the installer payload." }
@@ -234,7 +242,7 @@ function Copy-Installer([string]$stage) {
     # NSIS wants forward slashes in /D paths.
     $payloadNsis = $payload.Replace('\', '/')
     $destNsis = $dest.Replace('\', '/')
-    Invoke-Native 'Compiling the installer (makensis)' 'makensis' @(
+    Invoke-Native 'Compiling the installer (makensis)' $makensis @(
         "/DVERSION=$version",
         "/DPAYLOAD_DIR=$payloadNsis",
         "/DOUT_FILE=$destNsis",
