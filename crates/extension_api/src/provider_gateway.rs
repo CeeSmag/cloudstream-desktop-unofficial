@@ -102,9 +102,4 @@ pub trait ProviderGateway: Send + Sync {
     fn set_resident_worker_limit(&self, limit: Option<usize>) {
         let _ = limit;
     }
-
-    /// Current resident-worker cap (`None` = unlimited).
-    fn resident_worker_limit(&self) -> Option<usize> {
-        None
-    }
 }

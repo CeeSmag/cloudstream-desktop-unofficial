@@ -117,24 +117,6 @@ fn pruning_a_folder_that_does_not_exist_is_fine() {
     let scratch = Scratch::new();
     let cache = scratch.cache(CacheLimits::default(), &Time::new());
     assert_eq!(cache.prune(), PruneReport::default());
-    assert_eq!(cache.size_bytes(), 0);
-    assert_eq!(cache.clear(), 0);
-}
-
-#[test]
-fn size_adds_up_the_files_and_clear_removes_them_all() {
-    let scratch = Scratch::new();
-    let cache = scratch.cache(CacheLimits::default(), &Time::new());
-    let first = cache.save("a", &many("a", 5)).expect("saved");
-    let second = cache.save("b", &many("b", 5)).expect("saved");
-    assert_eq!(cache.size_bytes(), first.bytes + second.bytes);
-    assert_eq!(cache.clear(), 2);
-    assert_eq!(cache.size_bytes(), 0);
-    assert!(scratch.files().is_empty());
-    assert!(
-        cache.save("c", &many("c", 1)).is_ok(),
-        "the cache works after a clear"
-    );
 }
 
 #[test]

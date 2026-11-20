@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 /// Cache key: canonical path + SID + rights string.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn grant_key(path: &str, sid: &str, rights: &str) -> String {
     format!("{path}\0{sid}\0{rights}")
 }
@@ -15,7 +14,6 @@ fn cache() -> &'static Mutex<HashSet<String>> {
 }
 
 /// Returns true when this grant was already applied in this process.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn already_granted(key: &str) -> bool {
     cache()
         .lock()
@@ -24,7 +22,6 @@ pub(crate) fn already_granted(key: &str) -> bool {
 }
 
 /// Records a successful grant for the rest of this process.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn note_granted(key: String) {
     cache()
         .lock()

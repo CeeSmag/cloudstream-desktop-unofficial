@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Public v3 API key used for TMDB discovery queries.
-pub const TMDB_API_KEY: &str = "e6333b32409e02a4a6eba6fb7ff866bb";
+pub(crate) const TMDB_API_KEY: &str = "e6333b32409e02a4a6eba6fb7ff866bb";
 /// Base URL of the TMDB v3 REST API.
 pub const TMDB_BASE_URL: &str = "https://api.themoviedb.org/3";
 const TMDB_POSTER_BASE: &str = "https://image.tmdb.org/t/p/w342";
@@ -137,7 +137,7 @@ pub struct TmdbPageResponse {
 }
 
 /// Resolves a genre name to its TMDB movie genre ID.
-pub fn movie_genre_id(name: &str) -> Option<u32> {
+pub(crate) fn movie_genre_id(name: &str) -> Option<u32> {
     let key = name.trim().to_ascii_lowercase();
     MOVIE_GENRES
         .iter()
@@ -146,7 +146,7 @@ pub fn movie_genre_id(name: &str) -> Option<u32> {
 }
 
 /// Resolves a genre name to a valid TMDB TV genre ID.
-pub fn tv_genre_id(name: &str) -> Option<u32> {
+pub(crate) fn tv_genre_id(name: &str) -> Option<u32> {
     let key = name.trim().to_ascii_lowercase();
     TV_GENRES.iter().find(|(k, _)| *k == key).map(|(_, id)| *id)
 }

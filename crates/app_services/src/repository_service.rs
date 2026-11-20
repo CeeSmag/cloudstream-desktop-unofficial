@@ -125,34 +125,6 @@ impl RepositoryService {
         Ok(self.client.fetch_plugins(&manifest))
     }
 
-    /// Looks up the icon of every saved repository that has not been looked at yet, a few at a
-    /// time. A repository that cannot be reached is tried again next time. Returns how many
-    /// repositories were looked at.
-    #[tracing::instrument(level = "debug", skip_all, err)]
-    pub fn refresh_missing_icons(&self) -> Result<usize, ServiceError> {
-        let pending = self.store.urls_without_icon_info()?;
-        let next = std::sync::atomic::AtomicUsize::new(0);
-        let looked_at = std::sync::atomic::AtomicUsize::new(0);
-        std::thread::scope(|scope| {
-            for _ in 0..ICON_WORKERS.min(pending.len()) {
-                scope.spawn(|| loop {
-                    let position = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    let Some(url) = pending.get(position) else {
-                        break;
-                    };
-                    match self.client.fetch_manifest(url) {
-                        Ok(manifest) => {
-                            self.remember_icon(url, &manifest);
-                            looked_at.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        }
-                        Err(error) => tracing::debug!(%url, %error, "could not read the repository to find its icon"),
-                    }
-                });
-            }
-        });
-        Ok(looked_at.load(std::sync::atomic::Ordering::SeqCst))
-    }
-
     /// Downloads the extensions of every saved repository (a few repositories at a time) so they
     /// can be listed. Does nothing when that was already done. Returns how many extensions
     /// there are. A repository that cannot be reached is left out until the next time.

@@ -103,35 +103,6 @@ impl TitleCache {
             report.evicted += usize::from(remove(&oldest.path));
         }
     }
-
-    /// The size of everything saved, temporary files included.
-    pub fn size_bytes(&self) -> u64 {
-        fs::read_dir(&self.folder)
-            .map(|entries| {
-                entries
-                    .flatten()
-                    .filter_map(|entry| entry.metadata().ok())
-                    .filter(|meta| meta.is_file())
-                    .map(|meta| meta.len())
-                    .sum()
-            })
-            .unwrap_or(0)
-    }
-
-    /// Removes every saved title; returns how many files went.
-    pub fn clear(&self) -> usize {
-        let _lock = self.write_lock();
-        let Ok(entries) = fs::read_dir(&self.folder) else {
-            return 0;
-        };
-        let removed = entries
-            .flatten()
-            .filter(|entry| entry.path().is_file())
-            .filter(|entry| remove(&entry.path()))
-            .count();
-        tracing::info!(removed, "saved sources cleared");
-        removed
-    }
 }
 
 fn is_old(path: &std::path::Path) -> bool {

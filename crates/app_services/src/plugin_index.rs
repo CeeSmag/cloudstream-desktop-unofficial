@@ -41,7 +41,7 @@ impl PluginIndex {
     }
 
     /// How many extensions are indexed (one that several repositories offer counts once for each).
-    pub fn plugin_count(&self) -> usize {
+    pub(crate) fn plugin_count(&self) -> usize {
         self.repositories
             .iter()
             .map(|repository| repository.plugins.len())

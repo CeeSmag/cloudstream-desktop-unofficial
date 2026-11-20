@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use core_model::stable_key;
 
 use crate::cache_limits::{CacheLimits, Verdict};
-use crate::cached_title::{CachedTitle, Freshness, LinkHealth};
+use crate::cached_title::{CachedTitle, Freshness};
 use crate::stored_file::{read_stored, write_stored, Miss, StoredFile, FORMAT_VERSION};
 use crate::title_cache_error::TitleCacheError;
 
@@ -224,36 +224,6 @@ impl TitleCache {
             links: stored.title.links.len(),
             bytes,
         })
-    }
-
-    /// Changes the saved title without renewing its save time, so notes about one link do not make
-    /// old links look fresh. Returns whether there was a usable file to change.
-    pub fn update(
-        &self,
-        title_key: &str,
-        change: impl FnOnce(&mut CachedTitle),
-    ) -> Result<bool, TitleCacheError> {
-        let _lock = self.write_lock();
-        let path = self.path_of(title_key);
-        let Ok(mut stored) = read_stored(&path, self.limits.max_file_bytes) else {
-            return Ok(false);
-        };
-        if !matches!(self.verdict(stored.saved_at), Verdict::Usable(..)) {
-            return Ok(false);
-        }
-        change(&mut stored.title);
-        self.write(title_key, &stored)?;
-        Ok(true)
-    }
-
-    /// Notes that the link at `url` turned out broken.
-    pub fn mark_broken(&self, title_key: &str, url: &str) -> Result<bool, TitleCacheError> {
-        self.update(title_key, |title| title.set_health(url, LinkHealth::Broken))
-    }
-
-    /// Notes that the link at `url` played well.
-    pub fn mark_played_well(&self, title_key: &str, url: &str) -> Result<bool, TitleCacheError> {
-        self.update(title_key, |title| title.set_played_well(url))
     }
 
     /// Removes the saved sources of the title (it was watched to the end). Returns whether there

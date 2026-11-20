@@ -261,10 +261,6 @@ impl ProviderGateway for PluginWorkerPool {
     fn set_resident_worker_limit(&self, limit: Option<usize>) {
         self.apply_resident_worker_limit(limit);
     }
-
-    fn resident_worker_limit(&self) -> Option<usize> {
-        self.limit()
-    }
 }
 
 /// First useful extract reply wins; otherwise the last error or empty success.

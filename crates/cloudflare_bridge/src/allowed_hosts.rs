@@ -55,7 +55,7 @@ impl AllowedHosts {
 }
 
 /// True when `host` has at least two non-empty labels (`site.test`, not `com` or `.test`).
-pub fn is_multi_label_host(host: &str) -> bool {
+pub(crate) fn is_multi_label_host(host: &str) -> bool {
     let host = normalize(host);
     !host.is_empty() && host.contains('.') && !host.split('.').any(str::is_empty)
 }

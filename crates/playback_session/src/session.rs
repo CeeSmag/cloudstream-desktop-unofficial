@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use app_services::StreamResolver;
-use core_model::{PlayableLink, SubtitleTrack};
+use core_model::PlayableLink;
 
 use crate::checked_open::{open_with, open_with_playing, OpenTarget};
 use crate::open_types::{title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
@@ -63,20 +63,6 @@ impl LiveSources {
             play_index: None,
             subtitles: Vec::new(),
         })
-    }
-
-    /// Links only (for UI source menus).
-    pub fn links(&self) -> Vec<PlayableLink> {
-        self.snapshot()
-            .links
-            .into_iter()
-            .map(|(link, _)| link)
-            .collect()
-    }
-
-    /// Subtitles gathered so far.
-    pub fn subtitles(&self) -> Vec<SubtitleTrack> {
-        self.snapshot().subtitles
     }
 }
 

@@ -87,6 +87,10 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
         Arc::new(UreqSubtitleFetcher::default()),
         LoadOptions::default(),
     ));
+    let title_cache = TitleCache::new(data.join("sources"), title_cache::CacheLimits::default());
+    if let Ok(valid_from) = parts.settings.sources_valid_from() {
+        title_cache.set_valid_from(valid_from);
+    }
     UiServices {
         repositories: RepositoryService::new(
             Arc::clone(&parts.fetcher),
@@ -105,10 +109,7 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
         ),
         settings: parts.settings,
         clock: parts.clock,
-        title_cache: Arc::new(TitleCache::new(
-            data.join("sources"),
-            title_cache::CacheLimits::default(),
-        )),
+        title_cache: Arc::new(title_cache),
         subtitles,
         subtitle_loader,
         artwork: build_artwork(&data.join("artwork")),

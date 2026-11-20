@@ -21,13 +21,6 @@ pub struct KeptTitle {
     pub(crate) ticket: u64,
 }
 
-impl KeptTitle {
-    /// The key of the title.
-    pub fn key(&self) -> &str {
-        &self.key
-    }
-}
-
 /// What [`TitleCache::save_kept`] did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeptSave {
@@ -69,17 +62,6 @@ impl TitleCache {
             return Ok(KeptSave::Replaced);
         }
         self.save_locked(&kept.key, title).map(KeptSave::Saved)
-    }
-
-    /// Removes like [`TitleCache::forget`], but only while `kept` is the latest title kept, so a
-    /// late removal of an older opening cannot delete what a newer one saved. Returns whether a
-    /// file was removed.
-    pub fn forget_kept(&self, kept: &KeptTitle) -> Result<bool, TitleCacheError> {
-        let latest = self.write_lock();
-        if *latest != kept.ticket {
-            return Ok(false);
-        }
-        self.forget_locked(&kept.key)
     }
 }
 

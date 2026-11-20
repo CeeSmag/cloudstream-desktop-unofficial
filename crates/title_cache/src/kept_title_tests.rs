@@ -32,8 +32,7 @@ fn keep_only_removes_the_other_titles_and_keeps_its_own() {
     let cache = cache_in(&scratch);
     cache.save(MOVIE_A, &many("a", 3)).expect("save a");
     cache.save(MOVIE_B, &many("b", 3)).expect("save b");
-    let kept = cache.keep_only(MOVIE_B);
-    assert_eq!(kept.key(), MOVIE_B);
+    let _kept = cache.keep_only(MOVIE_B);
     assert!(
         !is_saved(&cache, MOVIE_A),
         "the earlier video's sources are dropped"
@@ -72,26 +71,13 @@ fn opening_the_same_title_again_makes_the_older_opening_stale() {
     let scratch = Scratch::new();
     let cache = cache_in(&scratch);
     let first = cache.keep_only(MOVIE_A);
-    let refreshed = cache.keep_only(MOVIE_A);
-    cache.forget_kept(&refreshed).expect("forget");
+    let _refreshed = cache.keep_only(MOVIE_A);
+    cache.forget(MOVIE_A).expect("forget");
     assert_eq!(
         cache.save_kept(&first, &many("old", 3)).expect("save"),
         KeptSave::Replaced,
         "the old search must not bring back what a refresh dropped"
     );
-    assert!(!is_saved(&cache, MOVIE_A));
-}
-
-#[test]
-fn a_late_removal_of_an_older_opening_keeps_what_the_newer_one_saved() {
-    let scratch = Scratch::new();
-    let cache = cache_in(&scratch);
-    let first = cache.keep_only(MOVIE_A);
-    let second = cache.keep_only(MOVIE_A);
-    cache.save_kept(&second, &many("new", 3)).expect("save");
-    assert!(!cache.forget_kept(&first).expect("forget"));
-    assert!(is_saved(&cache, MOVIE_A));
-    assert!(cache.forget_kept(&second).expect("forget"));
     assert!(!is_saved(&cache, MOVIE_A));
 }
 
@@ -178,7 +164,7 @@ fn race_many_videos_opened_and_saved_at_once_leave_only_the_last_one() {
         scratch.files()
     );
     assert!(
-        is_saved(&cache, last.key()),
+        is_saved(&cache, &last.key),
         "the last video opened keeps its file"
     );
 }
@@ -200,12 +186,12 @@ fn race_a_late_save_never_survives_the_next_opening() {
             })
         };
         start.wait();
-        let next = cache.keep_only(MOVIE_B);
+        let _next = cache.keep_only(MOVIE_B);
         late_save.join().expect("the late save panicked");
         assert!(
             !is_saved(&cache, MOVIE_A),
             "round {round}: the previous video's file survived the next opening"
         );
-        cache.forget_kept(&next).expect("forget b");
+        cache.forget(MOVIE_B).expect("forget b");
     }
 }

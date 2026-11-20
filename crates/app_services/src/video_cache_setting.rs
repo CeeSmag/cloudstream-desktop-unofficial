@@ -51,20 +51,10 @@ impl VideoCache {
             behind_bytes: total - ahead,
         }
     }
-
-    /// The limits while the video waits after the viewer left the player: no further ahead read,
-    /// half the behind budget. Already-buffered ahead is kept by the player until trimmed.
-    pub fn while_away(self) -> CacheLimits {
-        let watching = self.while_watching();
-        CacheLimits {
-            ahead_bytes: 0,
-            behind_bytes: watching.behind_bytes / 2,
-        }
-    }
 }
 
 impl SettingsService {
-    /// The viewer's video cache: 1 GB with 75 % ahead until chosen. A stored value that is not one
+    /// The viewer's video cache: 256 MB with 75 % ahead until chosen. A stored value that is not one
     /// of the choices (edited by hand) counts as its default.
     pub fn video_cache(&self) -> Result<VideoCache, ServiceError> {
         let defaults = VideoCache::default();
@@ -143,15 +133,13 @@ mod tests {
     }
 
     #[test]
-    fn two_gb_half_ahead_is_one_gb_each_way_and_zero_ahead_while_away() {
+    fn two_gb_half_ahead_is_one_gb_each_way() {
         let choice = cache(2048, 50);
         let watching = choice.while_watching();
         assert_eq!(
             (watching.ahead_bytes, watching.behind_bytes),
             (1024 * MB, 1024 * MB)
         );
-        let away = choice.while_away();
-        assert_eq!((away.ahead_bytes, away.behind_bytes), (0, 512 * MB));
     }
 
     #[test]

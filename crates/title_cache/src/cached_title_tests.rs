@@ -79,23 +79,10 @@ fn normalizing_keeps_the_best_links_and_forgets_a_last_good_that_was_cut() {
             .collect(),
     );
     title.last_good = Some("u0".to_owned());
-    title.set_health("u0", LinkHealth::Broken);
+    title.links[0].health = LinkHealth::Broken;
     let kept = title.normalized(3);
     assert_eq!(kept.last_good, None);
     assert!(!kept.links.iter().any(|cached| cached.link.url == "u0"));
-}
-
-#[test]
-fn marking_a_link_broken_clears_it_as_last_good_and_unknown_links_are_ignored() {
-    let mut title = title(vec![cached("a", 720, LinkHealth::Working)]);
-    title.set_played_well("a");
-    assert_eq!(title.last_good.as_deref(), Some("a"));
-    title.set_health("missing", LinkHealth::Broken);
-    title.set_played_well("missing");
-    assert_eq!(title.last_good.as_deref(), Some("a"));
-    title.set_health("a", LinkHealth::Broken);
-    assert_eq!(title.last_good, None);
-    assert_eq!(title.links[0].health, LinkHealth::Broken);
 }
 
 #[test]

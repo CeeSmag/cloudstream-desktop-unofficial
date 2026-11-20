@@ -188,6 +188,11 @@ impl PlaybackService {
         self.player.set_surface_size(width, height);
     }
 
+    /// Sets how much of the stream the player keeps in memory.
+    pub fn set_cache_limits(&self, limits: player_api::CacheLimits) -> Result<(), ServiceError> {
+        Ok(self.player.set_cache_limits(limits)?)
+    }
+
     /// The newest picture, unless its serial is `last_seen_serial`.
     pub fn latest_frame(
         &self,

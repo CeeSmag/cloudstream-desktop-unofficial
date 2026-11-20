@@ -2,6 +2,7 @@ use std::fs;
 use std::time::Duration;
 
 use super::*;
+use crate::cached_title::LinkHealth;
 use crate::test_folder::{cached, many, title, Scratch, Time};
 
 const KEY: &str = "provider\nmovie-1";
@@ -234,51 +235,6 @@ fn saving_where_the_folder_cannot_be_made_fails_with_a_disk_error() {
     assert!(error.to_string().contains("cannot create"), "{error}");
     assert!(matches!(cache.load(KEY), Lookup::Miss(_)));
     assert!(fs::remove_file(&scratch.0).is_ok());
-}
-
-#[test]
-fn noting_a_link_does_not_make_old_links_look_fresh() {
-    let (_scratch, time, cache) = rig();
-    cache.save(KEY, &many("a", 3)).expect("saved");
-    time.advance(19 * MINUTE);
-    assert!(cache
-        .mark_broken(KEY, "https://h.test/a-2")
-        .expect("updated"));
-    time.advance(2 * MINUTE);
-    assert_eq!(hit(cache.load(KEY)).freshness, Freshness::Stale);
-}
-
-#[test]
-fn a_broken_link_moves_last_and_a_link_that_played_well_moves_first() {
-    let (_scratch, _time, cache) = rig();
-    cache.save(KEY, &many("a", 3)).expect("saved");
-    cache
-        .mark_broken(KEY, "https://h.test/a-2")
-        .expect("updated");
-    cache
-        .mark_played_well(KEY, "https://h.test/a-0")
-        .expect("updated");
-    let urls: Vec<_> = hit(cache.load(KEY))
-        .title
-        .links
-        .iter()
-        .map(|c| c.link.url.clone())
-        .collect();
-    assert_eq!(
-        urls,
-        [
-            "https://h.test/a-0",
-            "https://h.test/a-1",
-            "https://h.test/a-2"
-        ]
-    );
-}
-
-#[test]
-fn noting_a_link_of_a_title_that_is_not_saved_does_nothing() {
-    let (scratch, _time, cache) = rig();
-    assert!(!cache.mark_broken(KEY, "u").expect("no error"));
-    assert!(scratch.files().is_empty());
 }
 
 #[test]

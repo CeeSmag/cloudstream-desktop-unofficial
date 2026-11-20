@@ -99,28 +99,6 @@ impl CachedTitle {
             last_good,
         }
     }
-
-    /// Notes how the link at `url` checked out; ignored when the title has no such link.
-    pub fn set_health(&mut self, url: &str, health: LinkHealth) {
-        for cached in self
-            .links
-            .iter_mut()
-            .filter(|cached| cached.link.url == url)
-        {
-            cached.health = health;
-        }
-        if health == LinkHealth::Broken && self.last_good.as_deref() == Some(url) {
-            self.last_good = None;
-        }
-    }
-
-    /// Notes that the link at `url` played well.
-    pub fn set_played_well(&mut self, url: &str) {
-        self.set_health(url, LinkHealth::Working);
-        if self.links.iter().any(|cached| cached.link.url == url) {
-            self.last_good = Some(url.to_owned());
-        }
-    }
 }
 
 /// Whether saved links can be played at once or should be tested first.

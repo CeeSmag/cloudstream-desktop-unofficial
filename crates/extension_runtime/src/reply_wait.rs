@@ -15,13 +15,13 @@ use crate::rpc_message::parse_reply;
 /// Whoever is working for the call (the verification window) keeps pushing it a little way ahead
 /// while it works; when it stops, the call's own timeout applies again within seconds.
 #[derive(Debug, Default)]
-pub struct DeadlineHold {
+pub(crate) struct DeadlineHold {
     until: Mutex<Option<Instant>>,
 }
 
 impl DeadlineHold {
     /// Lets calls in flight run until at least `extra` from now.
-    pub fn extend(&self, extra: Duration) {
+    pub(crate) fn extend(&self, extra: Duration) {
         let candidate = Instant::now() + extra;
         let mut until = self.until.lock().unwrap_or_else(PoisonError::into_inner);
         if until.is_none_or(|current| candidate > current) {

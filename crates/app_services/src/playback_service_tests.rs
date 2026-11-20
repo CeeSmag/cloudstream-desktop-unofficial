@@ -206,3 +206,15 @@ fn the_players_detailed_log_follows_the_debug_switch_both_ways() {
     service.set_verbose_player_log(false);
     assert!(!player.verbose_log.load(std::sync::atomic::Ordering::SeqCst));
 }
+
+#[test]
+fn set_cache_limits_forwards_to_the_player() {
+    let (service, player, ..) = setup();
+    service
+        .set_cache_limits(player_api::CacheLimits {
+            ahead_bytes: 60,
+            behind_bytes: 20,
+        })
+        .expect("limits");
+    assert_eq!(*player.calls.lock().expect("lock"), ["cache 60 20"]);
+}

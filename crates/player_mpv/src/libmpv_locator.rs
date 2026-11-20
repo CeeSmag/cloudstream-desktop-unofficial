@@ -77,12 +77,6 @@ impl Sources {
     }
 }
 
-/// Finds all candidate paths where libmpv might live, ordered from highest to lowest
-/// preference.
-pub fn locate_libmpv_candidates() -> Vec<PathBuf> {
-    Sources::from_environment().candidates()
-}
-
 /// Finds the libmpv shared library: `CS_LIBMPV_PATH`, then next to the executable, then the
 /// working folder. On Linux/macOS the system loader path is tried as a last resort.
 pub fn locate_libmpv() -> Result<PathBuf, PlayerError> {

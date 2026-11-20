@@ -49,25 +49,6 @@ fn a_save_from_the_second_before_the_switch_is_not_used() {
 }
 
 #[test]
-fn notes_about_links_do_not_bring_an_invalidated_title_back() {
-    let (scratch, time, cache) = rig();
-    cache.save(KEY, &many("a", 2)).expect("saved");
-    time.advance(MINUTE);
-    cache.invalidate_now();
-    assert!(!cache
-        .mark_broken(KEY, "https://h.test/a-0")
-        .expect("no error"));
-    assert!(!cache
-        .mark_played_well(KEY, "https://h.test/a-1")
-        .expect("no error"));
-    assert_eq!(
-        scratch.files().len(),
-        1,
-        "left for the cleanup, not rewritten"
-    );
-}
-
-#[test]
 fn the_cleanup_removes_what_was_saved_before_the_switch_and_keeps_the_rest() {
     let (scratch, time, cache) = rig();
     cache.save("old-1", &many("a", 1)).expect("saved");

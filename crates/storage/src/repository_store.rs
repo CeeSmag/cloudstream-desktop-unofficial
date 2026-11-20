@@ -64,19 +64,6 @@ impl RepositoryStore {
         })
     }
 
-    /// Addresses of repositories whose icon has not been looked up yet.
-    #[tracing::instrument(level = "trace", skip_all, err)]
-    pub fn urls_without_icon_info(&self) -> Result<Vec<String>, StorageError> {
-        self.database
-            .with("list repositories without icon", |connection| {
-                let mut statement = connection.prepare(
-                    "SELECT url FROM repositories WHERE icon_url IS NULL ORDER BY added_at, rowid",
-                )?;
-                let rows = statement.query_map([], |row| row.get(0))?;
-                rows.collect()
-            })
-    }
-
     /// Removes a repository by URL.
     #[tracing::instrument(level = "trace", skip_all, fields(url = ?url), err)]
     pub fn remove(&self, url: &str) -> Result<(), StorageError> {
@@ -132,7 +119,6 @@ mod tests {
         let store = store();
         store.add(&entry("a", 1)).expect("add");
         store.add(&entry("b", 2)).expect("add");
-        assert_eq!(store.urls_without_icon_info().expect("pending"), ["a", "b"]);
         store.set_icon("a", Some("https://i/a.png")).expect("icon");
         store.set_icon("b", None).expect("none");
         let icons: Vec<Option<String>> = store
@@ -142,23 +128,6 @@ mod tests {
             .map(|e| e.icon_url)
             .collect();
         assert_eq!(icons, [Some("https://i/a.png".to_owned()), None]);
-    }
-
-    #[test]
-    fn repositories_stored_before_icons_existed_are_listed_as_unchecked() {
-        let store = store();
-        store
-            .database
-            .with("legacy row", |connection| {
-                connection
-                    .execute(
-                        "INSERT INTO repositories (url, name, added_at) VALUES ('old', 'Old', 1)",
-                        [],
-                    )
-                    .map(drop)
-            })
-            .expect("insert");
-        assert_eq!(store.urls_without_icon_info().expect("pending"), ["old"]);
     }
 
     #[test]

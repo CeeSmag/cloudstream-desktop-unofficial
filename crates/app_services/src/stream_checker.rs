@@ -9,7 +9,6 @@ use core_model::{PlayableLink, DEFAULT_STREAM_USER_AGENT};
 use extension_repo::{HttpProbe, ProbeResponse};
 
 use crate::subtitle_scan::subtitle_languages;
-use crate::CheckQueue;
 
 /// Upper bound on parallel stream checks.
 const MAX_WORKERS: usize = 12;
@@ -63,40 +62,6 @@ impl StreamChecker {
             Ok(response) => classify(&link.link_type, &response),
             Err(error) => LinkHealth::Broken(error.to_string()),
         }
-    }
-
-    /// Checks the streams that arrive in `queue` with several workers at once and reports each
-    /// result as soon as it is known; returns when the queue is closed and empty. `keep_going` is
-    /// asked before every new check, so nothing starts once the answers are no longer wanted (a
-    /// check already on its way finishes, within the probe time limit); `on_result` returning
-    /// `false` says the same from the other side. Whoever stops wanting answers must also
-    /// [`CheckQueue::stop`] the queue so idle workers wake up.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub fn check_queue(
-        &self,
-        queue: &CheckQueue,
-        keep_going: &(dyn Fn() -> bool + Sync),
-        on_result: &(dyn Fn(usize, LinkHealth) -> bool + Sync),
-    ) {
-        let workers = check_worker_count(
-            std::thread::available_parallelism()
-                .map(std::num::NonZeroUsize::get)
-                .unwrap_or(MIN_WORKERS),
-        );
-        std::thread::scope(|scope| {
-            for _ in 0..workers {
-                scope.spawn(|| {
-                    while keep_going() {
-                        let Some((index, link)) = queue.next() else {
-                            break;
-                        };
-                        if !on_result(index, self.check(&link)) {
-                            queue.stop();
-                        }
-                    }
-                });
-            }
-        });
     }
 }
 

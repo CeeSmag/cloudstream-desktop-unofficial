@@ -70,7 +70,6 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("ui_slint::bridge::extension", LogCategory::Extensions),
     ("ui_slint::repository_discovery", LogCategory::Extensions),
     ("app_services::stream_checker", LogCategory::Streams),
-    ("app_services::check_queue", LogCategory::Streams),
     ("app_services::link_search", LogCategory::Streams),
     ("app_services::stream_label", LogCategory::Streams),
     ("stream_proxy", LogCategory::Streams),

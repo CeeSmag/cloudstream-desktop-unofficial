@@ -83,17 +83,11 @@ fn import_discovered_adds_new_repositories_without_downloading_anything() {
 }
 
 #[test]
-fn the_icon_of_a_repository_is_saved_when_it_is_added_and_looked_up_for_old_ones() {
-    let files = HashMap::from([
-        (
-            "https://i/repo.json".to_owned(),
-            br#"{"name":"I","iconUrl":"https://i/icon.png","pluginLists":[]}"#.to_vec(),
-        ),
-        (
-            "https://n/repo.json".to_owned(),
-            br#"{"name":"N","pluginLists":[]}"#.to_vec(),
-        ),
-    ]);
+fn the_icon_of_a_repository_is_saved_when_it_is_added() {
+    let files = HashMap::from([(
+        "https://i/repo.json".to_owned(),
+        br#"{"name":"I","iconUrl":"https://i/icon.png","pluginLists":[]}"#.to_vec(),
+    )]);
     let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
     let service = RepositoryService::new(
         Arc::new(MapFetcher(files)),
@@ -102,28 +96,13 @@ fn the_icon_of_a_repository_is_saved_when_it_is_added_and_looked_up_for_old_ones
     );
     let added = service.add("https://i/repo.json").expect("adds");
     assert_eq!(added.icon_url.as_deref(), Some("https://i/icon.png"));
-
-    // Repositories found by an extension have no icon looked up yet.
-    service
-        .import_discovered(&[
-            discovered("N", "https://n/repo.json"),
-            discovered("Gone", "https://gone/repo.json"),
-        ])
-        .expect("imports");
-    let looked_at = service.refresh_missing_icons().expect("refreshes");
-    assert_eq!(looked_at, 1, "the unreachable one is left for next time");
     let icons: Vec<Option<String>> = service
         .list()
         .expect("list")
         .into_iter()
         .map(|e| e.icon_url)
         .collect();
-    assert_eq!(icons, [Some("https://i/icon.png".to_owned()), None, None]);
-    assert_eq!(
-        service.refresh_missing_icons().expect("again"),
-        0,
-        "nothing left to look up but the unreachable one"
-    );
+    assert_eq!(icons, [Some("https://i/icon.png".to_owned())]);
 }
 
 #[test]

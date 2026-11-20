@@ -2,13 +2,13 @@
 //! Unsafe FFI is confined to the Windows Job/AppContainer and Linux Landlock/rlimit modules.
 #![deny(unsafe_code)]
 
+#[cfg(any(windows, test))]
 mod acl_session_cache;
 mod call_timeouts;
 #[cfg(feature = "test-support")]
 pub mod fake_link_search;
 #[cfg(feature = "test-support")]
 pub mod fake_search_runtime;
-mod plugin_worker_limit;
 mod plugin_worker_maps;
 mod plugin_worker_pool;
 mod plugin_worker_resident;
@@ -50,9 +50,7 @@ mod sidecar_process_transport;
 mod sidecar_spawn_mode;
 mod sidecar_spawn_thread;
 
-pub use plugin_worker_limit::{format_limit, parse_limit};
 pub use plugin_worker_pool::PluginWorkerPool;
-pub use reply_wait::DeadlineHold;
 pub use rpc_provider_gateway::RpcProviderGateway;
 pub use rpc_transport::RpcTransport;
 pub use sidecar_launch_config::SidecarLaunchConfig;

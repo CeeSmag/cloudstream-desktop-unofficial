@@ -117,12 +117,6 @@ impl LibraryService {
         Ok(self.progress.for_show(provider, detail_url)?)
     }
 
-    /// Takes one item out of "continue watching" by forgetting its progress.
-    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
-    pub fn remove_progress(&self, provider: &str, media_key: &str) -> Result<bool, ServiceError> {
-        Ok(self.progress.remove(provider, media_key)?)
-    }
-
     /// Removes a show from Continue Watching: deletes its resume pointer and all episode watch
     /// progress records, returning all episode media keys that were removed.
     #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider, detail_url = ?detail_url), err)]
@@ -140,38 +134,6 @@ impl LibraryService {
         self.resume.remove(provider, detail_url)?;
         self.progress.remove_for_show(provider, detail_url)?;
         Ok(keys)
-    }
-
-    /// Flexible remover supporting either detail_url or fallback media_key.
-    #[tracing::instrument(level = "debug", skip_all, fields(provider = ?provider), err)]
-    pub fn remove_continue_watching_entry(
-        &self,
-        provider: &str,
-        detail_url: Option<&str>,
-        media_key: Option<&str>,
-    ) -> Result<Vec<String>, ServiceError> {
-        let resolved_url = match detail_url.filter(|u| !u.is_empty()) {
-            Some(u) => Some(u.to_owned()),
-            None => match media_key {
-                Some(key) => self
-                    .progress
-                    .get(provider, key)?
-                    .map(|p| p.detail_url)
-                    .filter(|u| !u.is_empty()),
-                None => None,
-            },
-        };
-        match resolved_url {
-            Some(url) => self.remove_continue_watching(provider, &url),
-            None => {
-                if let Some(key) = media_key {
-                    self.progress.remove(provider, key)?;
-                    Ok(vec![key.to_owned()])
-                } else {
-                    Ok(Vec::new())
-                }
-            }
-        }
     }
 
     /// Empties Continue Watching: forgets all resume pointers and progress records, returning

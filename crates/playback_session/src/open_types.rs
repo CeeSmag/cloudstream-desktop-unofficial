@@ -102,13 +102,6 @@ pub fn cached_title_from_open(opened: &CheckedOpen) -> CachedTitle {
     }
 }
 
-/// Saves a completed open into the title cache (best-effort).
-pub fn save_open(cache: &TitleCache, title_key: &str, opened: &CheckedOpen) {
-    if let Err(error) = cache.save(title_key, &cached_title_from_open(opened)) {
-        tracing::warn!(%error, "could not save title sources");
-    }
-}
-
 /// Saves only while `kept` is still the open title (leave/close after `keep_only`).
 pub fn save_open_kept(cache: &TitleCache, kept: &KeptTitle, opened: &CheckedOpen) {
     match cache.save_kept(kept, &cached_title_from_open(opened)) {

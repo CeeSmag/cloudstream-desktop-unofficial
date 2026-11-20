@@ -1,8 +1,4 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
-
-use extension_repo::RepoError;
 
 use super::*;
 
@@ -120,103 +116,6 @@ fn request_headers_default_user_agent_matches_cloudstream_chrome() {
         "User-Agent".to_owned(),
         core_model::DEFAULT_STREAM_USER_AGENT.to_owned()
     )));
-}
-
-#[test]
-fn check_queue_stops_early_when_the_answers_are_no_longer_wanted() {
-    let checker = StreamChecker::new(Arc::new(ScriptedProbe(HashMap::new())));
-    let queue = queue_of(200);
-    let seen = AtomicUsize::new(0);
-
-    checker.check_queue(&queue, &|| true, &|_, _| {
-        seen.fetch_add(1, Ordering::SeqCst);
-        false
-    });
-
-    assert!(
-        seen.load(Ordering::SeqCst) <= MAX_WORKERS,
-        "kept going after being told to stop"
-    );
-}
-
-#[test]
-fn check_queue_starts_nothing_once_keep_going_says_no() {
-    let checker = StreamChecker::new(Arc::new(ScriptedProbe(HashMap::new())));
-    let queue = queue_of(50);
-    let seen = AtomicUsize::new(0);
-
-    checker.check_queue(&queue, &|| false, &|_, _| {
-        seen.fetch_add(1, Ordering::SeqCst);
-        true
-    });
-
-    assert_eq!(
-        seen.load(Ordering::SeqCst),
-        0,
-        "a check started after cancellation"
-    );
-}
-
-fn queue_of(count: usize) -> CheckQueue {
-    let queue = CheckQueue::default();
-    queue.push((0..count).map(|index| (index, link("https://dead/x"))));
-    queue.close();
-    queue
-}
-
-/// Answers by URL; unknown URLs fail like an unreachable host.
-struct ScriptedProbe(HashMap<String, ProbeResponse>);
-
-impl HttpProbe for ScriptedProbe {
-    fn probe(&self, url: &str, _headers: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
-        self.0.get(url).cloned().ok_or(RepoError::Download {
-            url: url.to_owned(),
-            reason: "unreachable".to_owned(),
-        })
-    }
-}
-
-fn link(url: &str) -> PlayableLink {
-    PlayableLink {
-        url: url.to_owned(),
-        link_type: "VIDEO".to_owned(),
-        ..PlayableLink::default()
-    }
-}
-
-#[test]
-fn check_queue_reports_every_stream_under_the_index_the_caller_gave() {
-    let probe = ScriptedProbe(HashMap::from([(
-        "https://ok/a".to_owned(),
-        answer(206, "video/mp4", b"\0\0\0\x18ftyp"),
-    )]));
-    let checker = StreamChecker::new(Arc::new(probe));
-    let queue = CheckQueue::default();
-    queue.push((0..30).map(|index| {
-        let url = if index == 5 {
-            "https://ok/a"
-        } else {
-            "https://dead/x"
-        };
-        (index * 2, link(url))
-    }));
-    queue.close();
-    let results = Mutex::new(Vec::new());
-
-    checker.check_queue(&queue, &|| true, &|index, health| {
-        results.lock().expect("lock").push((index, health));
-        true
-    });
-
-    let mut results = results.into_inner().expect("lock");
-    results.sort_by_key(|(index, _)| *index);
-    assert_eq!(results.len(), 30);
-    let working: Vec<usize> = results
-        .iter()
-        .filter(|(_, h)| h.is_working())
-        .map(|(i, _)| *i)
-        .collect();
-    assert_eq!(working, [10]);
 }
 
 #[test]

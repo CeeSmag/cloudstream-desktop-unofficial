@@ -7,7 +7,6 @@ mod browse_match;
 mod browse_query;
 mod browse_service;
 mod catalog_service;
-mod check_queue;
 mod clear_key;
 mod clock;
 mod cloudflare_setting;
@@ -18,7 +17,6 @@ mod home_provider_setting;
 mod language_settings;
 mod library_service;
 mod link_search;
-mod playback_away;
 mod playback_resume;
 mod playback_service;
 mod playback_types;
@@ -44,10 +42,7 @@ mod ui_services;
 mod video_cache_setting;
 
 pub use browse_fetcher::{BrowseFetcher, UreqBrowseFetcher};
-pub use browse_genres::{
-    movie_genre_id, tv_genre_id, BrowseFilterRequest, BrowseItem, BrowsePage, TMDB_API_KEY,
-    TMDB_BASE_URL,
-};
+pub use browse_genres::{BrowseFilterRequest, BrowseItem, BrowsePage, TMDB_BASE_URL};
 pub use browse_match::pick_best_search_match;
 pub use browse_service::BrowseClient;
 
@@ -55,7 +50,6 @@ pub use browse_service::BrowseClient;
 pub type BrowseService = BrowseClient;
 
 pub use catalog_service::{CatalogService, ProviderSearchOutcome};
-pub use check_queue::CheckQueue;
 pub use clear_key::{decode_key_to_hex, normalize_clear_key, normalize_pipe_link};
 pub use clock::{Clock, SystemClock};
 pub use extension_load_report::{ExtensionLoadReport, LoadProgress};
@@ -83,7 +77,7 @@ pub use storage_cleanup::{
 };
 pub use storage_usage::{measure_storage, FolderUsage, StorageUsage, MEASURED_FOLDERS};
 pub use stream_checker::{check_worker_count, LinkHealth, StreamChecker};
-pub use stream_label::{describe_link, full_label, source_label, stream_host, stream_kind};
+pub use stream_label::{describe_link, full_label, source_label, stream_kind};
 pub use stream_resolver::{
     is_audio_only_url, link_rank, playable_links_best_first, StreamResolver,
 };

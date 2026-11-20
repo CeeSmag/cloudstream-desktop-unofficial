@@ -13,7 +13,7 @@ pub fn plugin_file_name(internal_name: &str) -> Result<String, RepoError> {
 }
 
 /// Ensures a stored `file_name` is exactly `<safe_stem>.cs3` (no traversal, no absolute path).
-pub fn validate_installed_file_name(file_name: &str) -> Result<(), RepoError> {
+pub(crate) fn validate_installed_file_name(file_name: &str) -> Result<(), RepoError> {
     if Path::new(file_name).is_absolute() {
         return Err(RepoError::UnsafeName(file_name.to_owned()));
     }

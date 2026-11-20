@@ -38,16 +38,6 @@ pub fn stream_kind(link: &PlayableLink) -> String {
     }
 }
 
-/// The host the stream is served from, for example `cdn.example.com`.
-pub fn stream_host(link: &PlayableLink) -> String {
-    link.url
-        .split("//")
-        .nth(1)
-        .and_then(|rest| rest.split(['/', '?', '#']).next())
-        .unwrap_or_default()
-        .to_owned()
-}
-
 fn file_extension(url: &str) -> Option<String> {
     let path = url.split(['?', '#']).next()?;
     let extension = path.rsplit('/').next()?.rsplit_once('.')?.1;
@@ -125,15 +115,6 @@ mod tests {
         assert_eq!(kind("https://h/a/master.m3u8?x=1", "M3U8"), "HLS");
         assert_eq!(kind("https://h/a/movie.mkv?sig=2", "VIDEO"), "MKV");
         assert_eq!(kind("https://h/download/12345", "VIDEO"), "Video");
-    }
-
-    #[test]
-    fn the_host_is_read_from_the_address() {
-        let link = PlayableLink {
-            url: "https://cdn.example.com:8443/a/b.mp4?x=1".into(),
-            ..PlayableLink::default()
-        };
-        assert_eq!(stream_host(&link), "cdn.example.com:8443");
     }
 
     #[test]

@@ -169,12 +169,6 @@ impl SubtitlePrefetch {
         summary.in_flight = state.in_flight;
         summary
     }
-
-    /// True while any file is waiting in the queue or currently being downloaded.
-    pub fn is_busy(&self) -> bool {
-        let state = self.shared.lock();
-        !state.waiting.is_empty() || state.in_flight > 0
-    }
 }
 
 impl Shared {
