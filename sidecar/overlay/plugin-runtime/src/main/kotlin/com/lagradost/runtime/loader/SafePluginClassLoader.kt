@@ -162,14 +162,3 @@ class SafePluginClassLoader(parent: ClassLoader, private val isTrusted: Boolean 
         return clazz
     }
 }
-
-@Deprecated("Use com.lagradost.runtime.permission.PluginPermissionAPI instead.")
-object PermissionManager {
-    fun hasPermission(pluginName: String, className: String): Boolean {
-        return com.lagradost.runtime.permission.PluginPermissionAPI.hasPermission(pluginName, className)
-    }
-
-    fun grantPermission(pluginName: String, permission: String) {
-        com.lagradost.runtime.permission.PluginPermissionAPI.grantPermission(pluginName, permission)
-    }
-}
