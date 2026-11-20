@@ -19,17 +19,22 @@ fn segment(kind: SkipKind, start_ms: i64, end_ms: i64) -> Segment {
 
 #[test]
 fn kind_of_title_reads_naming_words_and_short_forms() {
-    assert_eq!(kind_of_title("Opening"), Some(SkipKind::Intro));
-    assert_eq!(kind_of_title("Opening 2"), Some(SkipKind::Intro));
-    assert_eq!(kind_of_title("Intro1"), Some(SkipKind::Intro));
-    assert_eq!(kind_of_title("Opening Credits"), Some(SkipKind::Intro));
-    assert_eq!(kind_of_title("Ending"), Some(SkipKind::Credits));
-    assert_eq!(kind_of_title("End Credits"), Some(SkipKind::Credits));
-    assert_eq!(kind_of_title("Previously on..."), Some(SkipKind::Recap));
-    assert_eq!(kind_of_title("Next Time"), Some(SkipKind::Preview));
-    assert_eq!(kind_of_title("OP"), Some(SkipKind::Intro));
-    assert_eq!(kind_of_title("ED 2"), Some(SkipKind::Credits));
-    assert_eq!(kind_of_title("ED2"), Some(SkipKind::Credits));
+    let cases = [
+        ("Opening", SkipKind::Intro),
+        ("Opening 2", SkipKind::Intro),
+        ("Intro1", SkipKind::Intro),
+        ("Opening Credits", SkipKind::Intro),
+        ("Ending", SkipKind::Credits),
+        ("End Credits", SkipKind::Credits),
+        ("Previously on...", SkipKind::Recap),
+        ("Next Time", SkipKind::Preview),
+        ("OP", SkipKind::Intro),
+        ("ED 2", SkipKind::Credits),
+        ("ED2", SkipKind::Credits),
+    ];
+    for (title, expected) in cases {
+        assert_eq!(kind_of_title(title), Some(expected), "title: {title}");
+    }
 }
 
 #[test]

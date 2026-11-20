@@ -6,6 +6,14 @@ version.workspace = true
 license.workspace = true
 build = "build.rs"
 
+[features]
+# Wayland pulls in `calloop`, which enables `tracing/log` on Linux and inflates
+# `clippy::cognitive_complexity`. Default builds keep both X11 and Wayland (same as
+# `slint/backend-default`); `--no-default-features` drops Wayland so Linux can check
+# `cognitive_complexity` across the whole workspace.
+default = ["wayland"]
+wayland = ["slint/backend-winit-wayland"]
+
 [dependencies]
 app_services = { path = "../app_services" }
 app_updater = { path = "../app_updater" }
@@ -19,10 +27,10 @@ skip_times = { path = "../skip_times" }
 subtitle_store = { path = "../subtitle_store" }
 title_cache = { path = "../title_cache" }
 # Slint's defaults minus `system-tray`: the app has no tray icon, and the tray pulls in `ksni`
-# (Unlicense, not on the license list).
+# (Unlicense, not on the license list). `backend-winit-x11` + default `wayland` == `backend-default`.
 slint = { version = "1.19", default-features = false, features = [
     "std",
-    "backend-default",
+    "backend-winit-x11",
     "renderer-femtovg",
     "renderer-software",
     "accessibility",

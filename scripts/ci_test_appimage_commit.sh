@@ -4,7 +4,8 @@
 # report of which stage and command failed.
 #
 # Mirrors `.github/workflows/ci.yml` / `just gates` for what Linux can run:
-#   fmt, clippy, deny, audit, file lengths, cargo test --workspace
+#   fmt, clippy (Linux default + strict cognitive_complexity), deny, audit,
+#   file lengths, cargo test --workspace
 # Sidecar Kotlin tests stay Windows-only in CI; they are skipped here (noted).
 #
 # Usage:
@@ -128,13 +129,18 @@ echo "  [1b] cargo clippy --workspace --all-targets (Linux CI flags)"
 # Same allowance as CI's rust-linux job / justfile [unix] clippy.
 run cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
-echo "  [1c] cargo deny check"
+echo "  [1c] cargo clippy --workspace --all-targets --no-default-features (Windows CI cognitive_complexity gate)"
+# Drops ui_slint's optional Wayland backend (calloop -> tracing/log) so Linux enforces
+# clippy::cognitive_complexity identically to CI's Windows `Rust (Format, Clippy & Tests)` job.
+run cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+echo "  [1d] cargo deny check"
 run cargo deny check
 
-echo "  [1d] cargo audit"
+echo "  [1e] cargo audit"
 run cargo audit
 
-echo "  [1e] file-length unit tests + check (project-rules)"
+echo "  [1f] file-length unit tests + check (project-rules)"
 run python3 -m unittest discover -s scripts -p "*_test.py"
 run python3 scripts/check_file_lengths.py
 
