@@ -1,0 +1,40 @@
+# Configuration for `cargo-mutants` (RULES.md / QA suite).
+# Excludes only thin FFI, OS sandbox syscalls, GUI event loops, generated code,
+# and test/benchmark/fuzz harnesses.
+
+minimum_test_timeout = 30
+
+exclude_globs = [
+    # Thin libmpv FFI and render thread glue
+    "crates/player_mpv/src/mpv_api.rs",
+    "crates/player_mpv/src/mpv_api/properties.rs",
+    "crates/player_mpv/src/mpv_render_api.rs",
+    "crates/player_mpv/src/mpv_player.rs",
+    "crates/player_mpv/src/libmpv_locator.rs",
+    "crates/player_mpv/src/event_worker.rs",
+    # OS sandbox / Win32 / Landlock syscalls & test fake binary
+    "crates/extension_runtime/src/sidecar_app_container_*.rs",
+    "crates/extension_runtime/src/sidecar_job_object.rs",
+    "crates/extension_runtime/src/sidecar_linux_*.rs",
+    "crates/extension_runtime/src/bin/fake_sidecar.rs",
+    # Native WebView / OS windowing / binary entrypoints
+    "crates/cloudflare_window/src/main.rs",
+    "crates/cloudflare_window/src/browser_view.rs",
+    "crates/cloudflare_window/src/helper_app.rs",
+    "crates/cloudflare_window/src/site_window.rs",
+    "crates/app_shell/src/main.rs",
+    "crates/app_shell/src/service_wiring.rs",
+    "crates/app_shell/src/cloudflare_wiring.rs",
+    "crates/app_shell/src/cleanup_wiring.rs",
+    "crates/portable_launcher/src/main.rs",
+    # Slint GUI event loop wiring & generated bindings
+    "crates/ui_slint/src/bridge/*.rs",
+    "crates/ui_slint/src/windows_fonts.rs",
+    "crates/ui_slint/src/lib.rs",
+    # Non-production harnesses
+    "tests/**",
+    "fuzz/**",
+    "**/benches/**",
+    "**/tests/**",
+    "**/*_tests.rs",
+]

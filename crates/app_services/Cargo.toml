@@ -21,5 +21,13 @@ title_cache = { path = "../title_cache" }
 tracing.workspace = true
 ureq = "3"
 
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+proptest = "1"
+
+[[bench]]
+name = "link_ranking"
+harness = false
+
 [lints]
 workspace = true

@@ -1,0 +1,34 @@
+{
+  "ignore_filename_regex": [
+    "crates/player_mpv/src/(mpv_api(/properties)?|mpv_render_api|libmpv_locator|mpv_player|event_worker)\\.rs$",
+    "crates/extension_runtime/src/(sidecar_app_container_.*|sidecar_job_object|sidecar_linux_.*|bin/fake_sidecar)\\.rs$",
+    "crates/cloudflare_window/src/(main|browser_view|helper_app|helper_events|input_threads|site_window|site_window_check)\\.rs$",
+    "crates/app_shell/src/(main|service_wiring|cloudflare_wiring|cleanup_wiring)\\.rs$",
+    "crates/portable_launcher/src/main\\.rs$",
+    "crates/ui_slint/src/bridge/.*\\.rs$",
+    "crates/ui_slint/src/windows_fonts\\.rs$",
+    "crates/ui_slint/src/lib\\.rs$",
+    "_tests\\.rs$",
+    "/tests/",
+    "/benches/",
+    "/target/"
+  ],
+  "thresholds": {
+    "core_model": 75.0,
+    "extension_api": 70.0,
+    "extension_runtime": 60.0,
+    "extension_repo": 75.0,
+    "player_api": 75.0,
+    "storage": 80.0,
+    "subtitle_store": 80.0,
+    "skip_times": 80.0,
+    "stream_proxy": 75.0,
+    "title_cache": 80.0,
+    "app_services": 70.0,
+    "app_updater": 70.0,
+    "playback_session": 75.0,
+    "poster_artwork": 75.0,
+    "cloudflare_bridge": 75.0,
+    "ui_slint": 70.0
+  }
+}

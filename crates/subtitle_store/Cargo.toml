@@ -15,5 +15,13 @@ thiserror.workspace = true
 tracing.workspace = true
 ureq = "3"
 
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+proptest = "1"
+
+[[bench]]
+name = "subtitle_normalize"
+harness = false
+
 [lints]
 workspace = true

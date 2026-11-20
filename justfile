@@ -50,6 +50,59 @@ lengths:
 live:
     cargo test --workspace -- --ignored --test-threads=1
 
+# Strict cognitive_complexity clippy pass on Linux (drops Wayland -> tracing/log).
+clippy-strict:
+    cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+# Dead-code, unused dependencies (cargo-machete), and broken rustdoc links.
+dead-code:
+    bash scripts/check_dead_code.sh
+
+# Lint all shell scripts.
+shellcheck:
+    shellcheck scripts/*.sh
+
+# Enforce one-way crate architecture and zero cycles (RULES.md §2).
+arch:
+    python3 scripts/check_architecture.py
+
+# Audit RULES.md §8 unsafe_code allowlist and `// SAFETY:` comments.
+unsafe-audit:
+    python3 scripts/check_unsafe_audit.py
+
+# Gherkin / Cucumber behavioral test suite.
+bdd:
+    cargo test -p bdd_tests
+
+# Whole-workspace coverage (HTML + LCOV + JSON under target/coverage/) + thresholds.
+coverage:
+    bash scripts/coverage.sh --show-gaps 20
+
+# Mutation testing across the 6 core logic crates (or `--diff` for PR diff mode).
+mutants:
+    bash scripts/run_mutants.sh --core
+
+mutants-diff base="HEAD~1":
+    bash scripts/run_mutants.sh --diff "{{base}}"
+
+# Quality metrics summary (Markdown + target/quality/metrics.json).
+metrics:
+    python3 scripts/quality_metrics.py --markdown-out target/quality/metrics.md
+
+# Time-boxed fuzz corpus stress sanity check.
+fuzz-sanity:
+    bash scripts/run_fuzz_sanity.sh
+
+# Quick hot-path Criterion benchmark sanity run.
+bench-quick:
+    cargo bench -p subtitle_store --bench subtitle_normalize -- --quick
+    cargo bench -p app_services --bench link_ranking -- --quick
+    cargo bench -p stream_proxy --bench hls_rewrite -- --quick
+
+# Full deep QA pass (coverage, core mutants, geiger, metrics, fuzz sanity, quick benches).
+qa-full:
+    bash scripts/qa_full.sh
+
 # Rebuild and start the app.
 [windows]
 run:

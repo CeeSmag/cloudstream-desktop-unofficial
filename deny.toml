@@ -17,6 +17,7 @@ ignore = [
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: unmaintained, transitive via accesskit (Linux D-Bus only)" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: unmaintained, transitive via glib-macros in tauri (Linux)" },
     { id = "RUSTSEC-2026-0543", reason = "chrono: unmaintained (not vulnerable), required by i-slint-core 1.19; revisit with the next Slint release" },
+    { id = "RUSTSEC-2026-0542", reason = "humantime: unmaintained (not vulnerable), dev-only via cucumber BDD harness" },
     { id = "RUSTSEC-2026-0441", reason = "pin-utils: unmaintained (not vulnerable), via spin_on in slint-build / slint-macros at build time" },
 ]
 

@@ -1,0 +1,36 @@
+[package]
+name = "cloudstream-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+app_services = { path = "../crates/app_services" }
+core_model = { path = "../crates/core_model" }
+extension_repo = { path = "../crates/extension_repo" }
+libfuzzer-sys = "0.4"
+serde_json = "1"
+subtitle_store = { path = "../crates/subtitle_store" }
+
+[[bin]]
+name = "subtitle_normalize"
+path = "fuzz_targets/subtitle_normalize.rs"
+doc = false
+
+[[bin]]
+name = "m3u8_rewrite"
+path = "fuzz_targets/m3u8_rewrite.rs"
+doc = false
+
+[[bin]]
+name = "sidecar_rpc_reply"
+path = "fuzz_targets/sidecar_rpc_reply.rs"
+doc = false
+
+[[bin]]
+name = "repo_manifest"
+path = "fuzz_targets/repo_manifest.rs"
+doc = false

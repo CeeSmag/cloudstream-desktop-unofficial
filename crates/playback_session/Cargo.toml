@@ -13,5 +13,8 @@ thiserror.workspace = true
 title_cache = { path = "../title_cache" }
 tracing.workspace = true
 
+[dev-dependencies]
+extension_api = { path = "../extension_api" }
+
 [lints]
 workspace = true

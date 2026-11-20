@@ -1,0 +1,30 @@
+[package]
+name = "bdd_tests"
+description = "Gherkin / Cucumber behavioral test harness for end-to-end CloudStream user journeys."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+app_services = { path = "../../crates/app_services" }
+core_model = { path = "../../crates/core_model" }
+cucumber = "0.23"
+extension_api = { path = "../../crates/extension_api" }
+extension_repo = { path = "../../crates/extension_repo" }
+flate2 = "1"
+playback_session = { path = "../../crates/playback_session" }
+player_api = { path = "../../crates/player_api" }
+serde_json.workspace = true
+skip_times = { path = "../../crates/skip_times" }
+storage = { path = "../../crates/storage" }
+subtitle_store = { path = "../../crates/subtitle_store" }
+title_cache = { path = "../../crates/title_cache" }
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[[test]]
+name = "bdd"
+harness = false
+
+[lints]
+workspace = true
