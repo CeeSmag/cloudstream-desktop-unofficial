@@ -29,15 +29,29 @@ impl PlaylistOrigin {
             while !flag.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut s, _)) => {
+                        let _ = s.set_nonblocking(false);
                         let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
-                        let mut buf = [0u8; 1024];
-                        let _ = s.read(&mut buf);
+                        let mut req = Vec::with_capacity(512);
+                        let mut buf = [0u8; 512];
+                        while let Ok(n) = s.read(&mut buf) {
+                            if n == 0 {
+                                break;
+                            }
+                            if let Some(chunk) = buf.get(..n) {
+                                req.extend_from_slice(chunk);
+                            }
+                            if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() >= 8192 {
+                                break;
+                            }
+                        }
                         let resp = format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             playlist_body.len(),
                             playlist_body
                         );
                         let _ = s.write_all(resp.as_bytes());
+                        let _ = s.flush();
+                        let _ = s.shutdown(std::net::Shutdown::Write);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(3));
