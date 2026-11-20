@@ -248,18 +248,22 @@ export component DetailsOverlay inherits Rectangle {
 
         VerticalLayout {
             alignment: center;
-            cross-axis-alignment: center;
             spacing: 14px;
-            Spinner { width: 32px; height: 32px; indeterminate: true; }
+            HorizontalLayout {
+                alignment: center;
+                Spinner { width: 32px; height: 32px; indeterminate: true; }
+            }
             if root.title != "": Text {
                 text: root.title;
                 color: Theme.text;
                 font-size: 22px;
                 font-weight: 700;
+                horizontal-alignment: center;
             }
             MutedLabel {
                 text: root.plot == "" ? "Loading details…" : root.plot;
                 font-size: 14px;
+                horizontal-alignment: center;
             }
         }
     }
