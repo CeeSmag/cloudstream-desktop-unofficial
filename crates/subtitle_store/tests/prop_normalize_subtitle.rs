@@ -53,3 +53,38 @@ proptest! {
         prop_assert!(norm.text.contains(&cue));
     }
 }
+
+#[test]
+fn normalize_subtitle_unpacks_zip_with_extra_field_and_multibyte_length() {
+    // Build a stored ZIP entry whose payload is >256 bytes and includes a 6-byte extra field.
+    let mut srt = String::new();
+    for i in 1..=12 {
+        srt.push_str(&format!(
+            "{i}\n00:00:{i:02},000 --> 00:00:{i:02},500\nLine number {i} in zip payload.\n\n"
+        ));
+    }
+    let payload = srt.as_bytes();
+    assert!(payload.len() > 260);
+    let name = b"movie.srt";
+    let extra = b"EXTRA!";
+
+    let mut zip = Vec::new();
+    zip.extend_from_slice(&[0x50, 0x4B, 0x03, 0x04]); // local file header
+    zip.extend_from_slice(&20u16.to_le_bytes()); // version
+    zip.extend_from_slice(&0u16.to_le_bytes()); // flags
+    zip.extend_from_slice(&0u16.to_le_bytes()); // method = stored
+    zip.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    zip.extend_from_slice(&0u16.to_le_bytes()); // mod date
+    zip.extend_from_slice(&0u32.to_le_bytes()); // crc32
+    zip.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // compressed size (>256)
+    zip.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // uncompressed size
+    zip.extend_from_slice(&(name.len() as u16).to_le_bytes()); // name len
+    zip.extend_from_slice(&(extra.len() as u16).to_le_bytes()); // extra len (>0)
+    zip.extend_from_slice(name);
+    zip.extend_from_slice(extra);
+    zip.extend_from_slice(payload);
+
+    let norm = normalize_subtitle(&zip).expect("stored zip with extra field unpacks");
+    assert_eq!(norm.extension, "srt");
+    assert!(norm.text.contains("Line number 12 in zip payload."));
+}

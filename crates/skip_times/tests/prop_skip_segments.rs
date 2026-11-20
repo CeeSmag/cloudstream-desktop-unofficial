@@ -81,3 +81,45 @@ proptest! {
         }
     }
 }
+
+fn mal_query(ep: u32) -> SkipQuery {
+    SkipQuery {
+        ids: ExternalIds {
+            mal: Some("999".into()),
+            imdb: None,
+            tmdb: None,
+        },
+        kind: TitleKind::Anime,
+        season: Some(1),
+        episode: Some(ep),
+        duration_ms: 1_200_000,
+    }
+}
+
+#[test]
+fn skip_lookup_cache_holds_exact_64_entries_and_evicts_oldest_on_65th() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingFetcher(AtomicUsize);
+    impl SkipFetcher for CountingFetcher {
+        fn get_text(&self, _url: &str) -> Result<String, SkipError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(r#"{"found":false,"results":[]}"#.to_owned())
+        }
+    }
+
+    let fetcher = Arc::new(CountingFetcher(AtomicUsize::new(0)));
+    let lookup = SkipLookup::new(Arc::clone(&fetcher) as Arc<dyn SkipFetcher>);
+    for ep in 1..=64u32 {
+        assert!(lookup.find(&mal_query(ep)).expect("ok").is_empty());
+    }
+    let _ = lookup.find(&mal_query(1)).expect("ok");
+    let _ = lookup.find(&mal_query(64)).expect("ok");
+    assert_eq!(fetcher.0.load(Ordering::SeqCst), 64);
+
+    let _ = lookup.find(&mal_query(65)).expect("ok");
+    let _ = lookup.find(&mal_query(2)).expect("ok");
+    assert_eq!(fetcher.0.load(Ordering::SeqCst), 65);
+    let _ = lookup.find(&mal_query(1)).expect("ok");
+    assert_eq!(fetcher.0.load(Ordering::SeqCst), 66);
+}

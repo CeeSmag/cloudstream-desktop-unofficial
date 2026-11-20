@@ -77,3 +77,9 @@ fn nothing_comes_out_when_no_piece_has_cues_or_can_be_downloaded() {
         None
     );
 }
+
+#[test]
+fn media_lines_ignores_blank_and_comment_lines() {
+    let lines = media_lines("#EXTM3U\n\n  \n#EXTINF:5,\nseg1.vtt\n#EXT-X-ENDLIST\n");
+    assert_eq!(lines, vec!["seg1.vtt"]);
+}

@@ -115,3 +115,47 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn title_cache_accepts_exact_max_file_bytes_and_rejects_one_byte_over() {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("cs_exact_sz_{}_{}", std::process::id(), nanos));
+    let probe_cache = TitleCache::new(dir.clone(), CacheLimits::default());
+    let title = CachedTitle {
+        complete: true,
+        links: vec![make_link(0, 1080, LinkHealth::Working)],
+        last_good: None,
+    };
+    let report = probe_cache.save("exact", &title).expect("probe save");
+    let exact_bytes = report.bytes;
+
+    // Exact byte limit must succeed on both save and load.
+    let exact_cache = TitleCache::new(
+        dir.clone(),
+        CacheLimits {
+            max_file_bytes: exact_bytes,
+            ..CacheLimits::default()
+        },
+    );
+    exact_cache.save("exact", &title).expect("exact size saves");
+    assert!(matches!(exact_cache.load("exact"), Lookup::Hit(_)));
+
+    // One byte tighter must reject on save and report Miss::TooLarge on load of existing file.
+    let tight_cache = TitleCache::new(
+        dir.clone(),
+        CacheLimits {
+            max_file_bytes: exact_bytes - 1,
+            ..CacheLimits::default()
+        },
+    );
+    assert!(tight_cache.save("exact2", &title).is_err());
+    assert!(matches!(
+        tight_cache.load("exact"),
+        Lookup::Miss(title_cache::Miss::TooLarge)
+    ));
+
+    let _ = std::fs::remove_dir_all(dir);
+}

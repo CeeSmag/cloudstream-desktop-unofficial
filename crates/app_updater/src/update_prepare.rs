@@ -105,3 +105,56 @@ pub(crate) fn prepare_update(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn release(tag: &str, assets: Vec<GitHubAsset>) -> GitHubRelease {
+        GitHubRelease {
+            tag_name: tag.to_owned(),
+            name: None,
+            body: None,
+            assets,
+        }
+    }
+
+    #[test]
+    fn offers_update_checks_semver_and_rejects_unreadable_tags() {
+        assert!(offers_update("v99.0.0"));
+        assert!(!offers_update("v0.0.1"));
+        assert!(!offers_update(CURRENT_VERSION));
+        assert!(!offers_update("not-a-semver-tag"));
+    }
+
+    #[test]
+    fn choose_checked_file_rejects_not_newer_missing_asset_and_unsigned() {
+        assert!(matches!(
+            choose_checked_file(&release("v0.0.1", Vec::new())),
+            Err(UpdateError::NotNewer { .. })
+        ));
+        assert!(matches!(
+            choose_checked_file(&release("v99.0.0", Vec::new())),
+            Err(UpdateError::NoAsset)
+        ));
+        let asset = GitHubAsset {
+            name: format!("CloudStream-99.0.0-{}.AppImage", std::env::consts::ARCH),
+            browser_download_url: "https://example.invalid/app.AppImage".into(),
+            size: 1024,
+        };
+        let win_asset = GitHubAsset {
+            name: "CloudStream_99.0.0_x64-setup.exe".into(),
+            browser_download_url: "https://example.invalid/setup.exe".into(),
+            size: 1024,
+        };
+        let win_portable = GitHubAsset {
+            name: "CloudStream_99.0.0_x64_portable.exe".into(),
+            browser_download_url: "https://example.invalid/portable.exe".into(),
+            size: 1024,
+        };
+        assert!(matches!(
+            choose_checked_file(&release("v99.0.0", vec![asset, win_asset, win_portable])),
+            Err(UpdateError::NotSigned)
+        ));
+    }
+}

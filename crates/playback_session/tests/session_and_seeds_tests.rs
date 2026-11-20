@@ -479,3 +479,164 @@ fn live_sources_and_open_control_concurrent_race_invariants() {
     assert!(control.skip.load(Ordering::SeqCst));
     assert_eq!(live.snapshot().links.len(), 1);
 }
+
+#[test]
+fn fresh_and_stale_seeds_play_without_live_links_and_skip_broken_seeds() {
+    let server = MockHttpServer::start(vec![
+        (
+            "/broken_seed.mp4".into(),
+            404,
+            "text/plain".into(),
+            "no".into(),
+        ),
+        (
+            "/good_seed.mp4".into(),
+            200,
+            "video/mp4".into(),
+            "00000000ftypisom".into(),
+        ),
+    ]);
+    let dir = temp_dir("seed_only");
+    let now = Arc::new(Mutex::new(20_000u64));
+    let cache = Arc::new(TitleCache::with_clock(
+        dir.clone(),
+        CacheLimits::default(),
+        fixed_clock(Arc::clone(&now)),
+    ));
+    let key = title_key("Demo", "seed_only");
+    let broken_link = make_link(
+        "Broken 1080p",
+        server.url("/broken_seed.mp4"),
+        1080,
+        "VIDEO",
+    );
+    let good_link = make_link("Good 720p", server.url("/good_seed.mp4"), 720, "VIDEO");
+    cache
+        .save(
+            &key,
+            &CachedTitle {
+                complete: true,
+                links: vec![
+                    CachedLink {
+                        link: broken_link.clone(),
+                        health: LinkHealth::Broken,
+                    },
+                    CachedLink {
+                        link: good_link.clone(),
+                        health: LinkHealth::Working,
+                    },
+                ],
+                last_good: Some(good_link.url.clone()),
+            },
+        )
+        .expect("seed");
+
+    // Live gateway returns zero links; only the non-broken cached seed can play.
+    let empty_gw = Arc::new(ScriptedGateway::single(Vec::new(), Vec::new()));
+    let resolver = StreamResolver::new(empty_gw);
+    let control = OpenControl::default();
+
+    // 1. Fresh cache: broken seed must be skipped, working seed plays immediately.
+    let fresh = run_open(OpenRequest {
+        streams: &resolver,
+        provider: "Demo",
+        data: "seed_only",
+        media_key: "seed_only",
+        cache: Some(&cache),
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        control: &control,
+    })
+    .expect("fresh seed opens without live links");
+    assert_eq!(fresh.links.len(), 1);
+    assert_eq!(fresh.links[0].0.url, good_link.url);
+    assert_eq!(fresh.play_index, Some(0));
+
+    // 2. Stale cache (past 20m fresh_for, within 24h keep_for): probes & plays working seed.
+    *now.lock().expect("clock") += 7_200;
+    let stale = run_open(OpenRequest {
+        streams: &resolver,
+        provider: "Demo",
+        data: "seed_only",
+        media_key: "seed_only",
+        cache: Some(&cache),
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        control: &control,
+    })
+    .expect("stale seed opens without live links");
+    assert_eq!(stale.links.len(), 1);
+    assert_eq!(stale.links[0].0.url, good_link.url);
+    assert_eq!(stale.play_index, Some(0));
+
+    // 3. cached_title_from_open preserves Broken vs Working health accurately.
+    let mixed = CheckedOpen {
+        links: vec![
+            (
+                broken_link,
+                Some(app_services::LinkHealth::Broken("404".into())),
+            ),
+            (
+                good_link,
+                Some(app_services::LinkHealth::Working {
+                    size_bytes: Some(16),
+                    subtitles: Vec::new(),
+                }),
+            ),
+        ],
+        play_index: Some(1),
+        subtitles: Vec::new(),
+    };
+    let saved_title = cached_title_from_open(&mixed);
+    assert_eq!(saved_title.links[0].health, LinkHealth::Broken);
+    assert_eq!(saved_title.links[1].health, LinkHealth::Working);
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn run_open_deduplicates_identical_subtitle_urls() {
+    let server = MockHttpServer::start(vec![(
+        "/ok.mp4".into(),
+        200,
+        "video/mp4".into(),
+        "00000000ftypisom".into(),
+    )]);
+    let gw = Arc::new(ScriptedGateway::single(
+        vec![make_link("OK", server.url("/ok.mp4"), 720, "VIDEO")],
+        vec![
+            SubtitleTrack {
+                lang: "English".into(),
+                url: "https://subs.example/en.vtt".into(),
+                headers: None,
+            },
+            SubtitleTrack {
+                lang: "English (dup)".into(),
+                url: "https://subs.example/en.vtt".into(),
+                headers: None,
+            },
+            SubtitleTrack {
+                lang: "Arabic".into(),
+                url: "https://subs.example/ar.vtt".into(),
+                headers: None,
+            },
+        ],
+    ));
+    let resolver = StreamResolver::new(gw);
+    let control = OpenControl::default();
+    let opened = run_open(OpenRequest {
+        streams: &resolver,
+        provider: "Demo",
+        data: "sub_dedup",
+        media_key: "sub_dedup",
+        cache: None,
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        control: &control,
+    })
+    .expect("open succeeds");
+    assert_eq!(opened.subtitles.len(), 2);
+}

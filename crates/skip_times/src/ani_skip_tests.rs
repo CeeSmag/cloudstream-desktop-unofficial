@@ -77,3 +77,19 @@ fn unknown_types_are_ignored_and_not_found_is_empty() {
         .expect("ok")
         .is_empty());
 }
+
+#[test]
+fn recap_type_is_mapped_to_skip_kind_recap() {
+    let fetcher = ScriptedFetcher::answering(
+        r#"{"found":true,"results":[{"interval":{"startTime":10,"endTime":45},"skipType":"recap"}]}"#,
+    );
+    let found = segments(&fetcher, &query(TitleKind::Anime)).expect("ok");
+    assert_eq!(
+        found,
+        [SkipSegment {
+            kind: SkipKind::Recap,
+            start_ms: 10_000,
+            end_ms: 45_000,
+        }]
+    );
+}
