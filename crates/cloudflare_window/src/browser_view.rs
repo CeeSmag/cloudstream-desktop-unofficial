@@ -29,6 +29,7 @@ pub(crate) fn open_site_view(
             tracing::info!(%url, "refused a download in the verification window");
             false
         });
+    let builder = configure_verify_builder(builder);
     let webview = build_webview(builder, &window)?;
     ignore_verify_tls_errors(&webview);
     webview
@@ -89,3 +90,29 @@ fn ignore_verify_tls_errors(webview: &WebView) {
 
 #[cfg(not(target_os = "linux"))]
 fn ignore_verify_tls_errors(_webview: &WebView) {}
+
+/// Browser flags for Windows WebView2 so verification does not stall on self-signed or
+/// mismatched-authority redirect hosts (`net::ERR_CERT_AUTHORITY_INVALID`).
+#[cfg(any(target_os = "windows", test))]
+const WINDOWS_VERIFY_BROWSER_ARGS: &str = "--ignore-certificate-errors";
+
+#[cfg(target_os = "windows")]
+fn configure_verify_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
+    use wry::WebViewBuilderExtWindows;
+    builder.with_additional_browser_args(WINDOWS_VERIFY_BROWSER_ARGS)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_verify_builder(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_> {
+    builder
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WINDOWS_VERIFY_BROWSER_ARGS;
+
+    #[test]
+    fn windows_verify_browser_args_ignore_certificate_errors() {
+        assert!(WINDOWS_VERIFY_BROWSER_ARGS.contains("--ignore-certificate-errors"));
+    }
+}

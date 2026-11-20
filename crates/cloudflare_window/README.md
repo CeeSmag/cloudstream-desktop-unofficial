@@ -13,8 +13,8 @@ loop never runs inside the app's Slint loop. Started by `cloudflare_bridge::Veri
   page (no challenge = passed). If the site redirected elsewhere after the check, the cookie is used
   (no front-page reload — bad-TLS redirect hosts would loop).
 - After passing the window is hidden and runs the sidecar's browser fetches (`fetch_script`).
-- Linux: the verify WebKit context ignores TLS errors so a self-signed redirect host does not freeze
-  on WebKit's certificate page (`webkit2gtk`).
+- TLS errors: Linux ignores them on the verify WebKit context (`webkit2gtk`), and Windows passes
+  `--ignore-certificate-errors` to WebView2, so bad-cert redirect hosts do not stall verification.
 
 | Part | Responsibility |
 |---|---|
