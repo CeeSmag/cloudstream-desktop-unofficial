@@ -11,6 +11,7 @@ Read this file fully before every task. If a rule conflicts with a request, say 
 2. **Video player is mpv** (libmpv). No other player backend.
 3. **Extensions run at 100% fidelity**: providers, extractors, plugins, scripts, and their behavior must match the Kotlin reference.
 4. **Parity is proven by tests** (see §9), not assumed. A feature is not "done" until its parity test passes.
+5. **Cross-platform builds (Windows & Linux) stay green**: no change or new implementation may break the Windows or Linux build (compilation, lints, tests, or release packaging).
 
 > Decided: extensions run in an out-of-process **JVM sidecar** (`sidecar/cs-sidecar`: converted DEX bytecode against Android stubs). The Wasm route was spiked and not taken (retained under `spikes/wasmtime_host/`). Code against the `ProviderGateway` trait (§3), never the concrete runtime.
 > `player_mpv`: loads libmpv **dynamically** at runtime via `libloading` (`libmpv-2.dll` / `.so.2` / `.dylib`; see `libmpv_locator`). The libmpv C API is generally thread-safe. mpv is GPLv2+ (the client API is ISC): confirm the licensing consequences of linking before distribution.
@@ -131,6 +132,12 @@ both Windows and Linux — plus Kotlin sidecar tests; keep the gate lists in thi
 CI aligned. On Linux clippy runs with `-A clippy::cognitive_complexity`: a Wayland dependency (calloop)
 turns on `tracing/log` there, and clippy then counts the `log` branch every tracing macro expands to as
 complexity of the function. Windows enforces the lint. (`just clippy` on Unix uses the same `-A`.)
+
+**Windows and Linux build integrity (mandatory):**
+- No change or new implementation may break either the Windows or Linux build (debug, release, tests, clippy, or packaging scripts).
+- Gate OS-specific code, imports, syscalls, and tests with `#[cfg(windows)]` / `#[cfg(unix)]` (or `#[cfg(target_os = "...")]`) and put OS-specific crates under `[target.'cfg(...)'.dependencies]` in `Cargo.toml`.
+- Every `#[cfg(...)]` item called from shared code must have a compiling counterpart or fallback on the other OS (no unused imports, dead-code warnings under `-D warnings`, or missing symbols on either target).
+- Avoid OS-specific assumptions in shared code and tests (hardcoded path separators, shell commands, line endings, or environment variables). When editing platform-gated code or dependencies, audit both OS branches and confirm CI passes on both Windows and Linux.
 
 Required `clippy.toml` at the workspace root (limits mirror §4):
 
