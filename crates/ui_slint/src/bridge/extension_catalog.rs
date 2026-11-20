@@ -7,6 +7,7 @@ use app_services::PluginHit;
 use crate::background_work::spawn_work;
 use crate::plugin_filter::format_file_size;
 use crate::posters::{plugin_rows, string_model};
+use crate::text_sanitize::clean_display_text;
 use crate::ui_events::UiEvent;
 use crate::{AvailablePlugin, CloudStream};
 
@@ -93,9 +94,14 @@ pub(crate) fn available_row(
     }
     AvailablePlugin {
         key: plugin_key(hit).into(),
-        name: plugin.name.clone().into(),
+        name: clean_display_text(&plugin.name).into(),
         detail: parts.join(" · ").into(),
-        description: plugin.description.clone().unwrap_or_default().into(),
+        description: plugin
+            .description
+            .as_deref()
+            .map(clean_display_text)
+            .unwrap_or_default()
+            .into(),
         installed: installed.contains_key(&plugin.internal_name),
     }
 }

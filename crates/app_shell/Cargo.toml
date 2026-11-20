@@ -4,6 +4,7 @@ description = "Wiring only: builds the real implementations and starts the app."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "cloudstream"
@@ -29,6 +30,9 @@ title_cache = { path = "../title_cache" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ui_slint = { path = "../ui_slint" }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [lints]
 workspace = true

@@ -27,6 +27,7 @@ slint = { version = "1.19", default-features = false, features = [
     "renderer-software",
     "accessibility",
     "compat-1-2",
+    "unstable-fontique-012",
 ] }
 tracing.workspace = true
 

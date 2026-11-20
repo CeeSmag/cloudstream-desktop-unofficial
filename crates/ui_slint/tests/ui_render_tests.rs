@@ -370,7 +370,7 @@ fn populate_details(ui: &CloudStream) {
         duration: "".into(),
     });
     ui.set_details_plot(
-        "Beginning in a time of relative peace, we follow an ensemble cast of characters as they confront the re-emergence of evil to Middle-earth. From the darkest depths of the Misty Mountains, to the majestic forests of Lindon, to the breathtaking island kingdom of Numenor, these kingdoms and characters will carve out legacies that live on long after they are gone.".into(),
+        "[1 win & 7 nominations total] Beginning in a time of relative peace, we follow an ensemble cast of characters as they confront the re-emergence of evil to Middle-earth. From the darkest depths of the Misty Mountains, to the majestic forests of Lindon, to the breathtaking island kingdom of Numenor, these kingdoms and characters will carve out legacies that live on long after they are gone.".into(),
     );
     ui.set_details_tags(strings(&["Action", "Adventure", "Drama", "Fantasy"]));
     ui.set_details_poster(sample_artwork(48, 74, 118));

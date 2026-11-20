@@ -26,8 +26,10 @@ mod seek_scheduler;
 mod skip_segments;
 mod source_menu;
 mod startup_progress;
+mod text_sanitize;
 mod track_menu;
 mod ui_events;
+mod windows_fonts;
 
 pub use app_services::UiServices;
 pub use bridge::{run_desktop_app, run_desktop_app_with, AppExtras, DebugLogSwitch, WipeRequest};

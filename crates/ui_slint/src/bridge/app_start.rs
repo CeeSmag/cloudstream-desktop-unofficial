@@ -35,6 +35,7 @@ pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
 /// Same as [`run_desktop_app`], with Cloudflare / data-dir handles from the shell.
 pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(), String> {
     let ui = CloudStream::new().map_err(|error| error.to_string())?;
+    crate::windows_fonts::register_windows_fallback_fonts();
     let ctx = BridgeContext {
         ui: ui.as_weak(),
         services: Rc::new(services),

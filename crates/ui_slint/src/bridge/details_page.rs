@@ -4,6 +4,7 @@ use app_services::UiServices;
 use core_model::{CastMember, LoadDetails, WatchProgress};
 use slint::{ModelRc, VecModel};
 
+use crate::text_sanitize::clean_display_text;
 use crate::ui_events::{DetailsPage, EpisodeRow};
 use crate::{CastItem, DetailsMeta};
 
@@ -28,19 +29,16 @@ pub(crate) fn details_page(
         Some(data_url) if details.episodes.is_empty() => data_url.clone(),
         _ => target.url.clone(),
     };
-    let title = if details.name.is_empty() {
-        fallback_title
-    } else {
-        details.name.clone()
-    };
+    let (title, plot, tags) = clean_details_text(&details, &fallback_title);
+    let episodes = episode_rows(&details, &progress);
     DetailsPage {
         title,
-        plot: details.plot.clone().unwrap_or_default(),
+        plot,
         resume: pointer.as_ref().map(resume_label).unwrap_or_default(),
         resume_media_key: pointer.map(|pointer| pointer.media_key),
-        episodes: episode_rows(&details, &progress),
-        poster_url: details.poster_url.clone(),
-        background_url: details.background_poster_url.clone(),
+        episodes,
+        poster_url: details.poster_url,
+        background_url: details.background_poster_url,
         provider: target.provider,
         url: target.url,
         data,
@@ -49,13 +47,38 @@ pub(crate) fn details_page(
             &details.sync_data,
             details.unique_url.as_deref(),
         ),
-        media_type: details.media_type.clone().unwrap_or_default(),
+        media_type: details.media_type.unwrap_or_default(),
         year: details.year,
         rating: details.rating,
         duration_minutes: details.duration,
-        tags: details.tags.clone().unwrap_or_default(),
+        tags,
         cast_members: details.actors,
     }
+}
+
+fn clean_details_text(
+    details: &LoadDetails,
+    fallback_title: &str,
+) -> (String, String, Vec<String>) {
+    let raw_title = if details.name.is_empty() {
+        fallback_title
+    } else {
+        details.name.as_str()
+    };
+    let title = clean_display_text(raw_title);
+    let plot = details
+        .plot
+        .as_deref()
+        .map(clean_display_text)
+        .unwrap_or_default();
+    let tags = details
+        .tags
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .map(|tag| clean_display_text(tag))
+        .collect();
+    (title, plot, tags)
 }
 
 fn load_resume_pointer(services: &UiServices, target: &DetailsTarget) -> Option<WatchProgress> {
@@ -104,15 +127,20 @@ pub(crate) fn cast_items_model(members: &[CastMember]) -> ModelRc<CastItem> {
         .filter(|member| !member.name.trim().is_empty())
         .take(MAX_CAST)
         .map(|member| {
-            let trimmed = member.name.trim();
-            let initial = trimmed
+            let name = clean_display_text(member.name.trim());
+            let role = member
+                .role
+                .as_deref()
+                .map(|text| clean_display_text(text.trim()))
+                .unwrap_or_default();
+            let initial = name
                 .chars()
                 .next()
                 .map(|ch| ch.to_uppercase().to_string())
                 .unwrap_or_default();
             CastItem {
-                name: trimmed.into(),
-                role: member.role.as_deref().map(str::trim).unwrap_or("").into(),
+                name: name.into(),
+                role: role.into(),
                 initial: initial.into(),
                 photo_url: member.image.clone().unwrap_or_default().into(),
                 image: slint::Image::default(),
@@ -168,101 +196,50 @@ fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<Episod
     details
         .episodes
         .iter()
-        .map(|episode| {
-            let code = match (episode.season, episode.episode) {
-                (Some(season), Some(number)) => format!("S{season}E{number}"),
-                (None, Some(number)) => format!("E{number}"),
-                _ => String::new(),
-            };
-            let episode_label = match episode.episode {
-                Some(number) => format!("Episode {number}"),
-                None => "Episode".to_owned(),
-            };
-            let (fraction, watched) = progress
-                .iter()
-                .find(|seen| seen.media_key == episode.data)
-                .map_or((0.0, false), |seen| {
-                    episode_mark(seen.position_ms, seen.duration_ms)
-                });
-            EpisodeRow {
-                name: episode.name.clone().unwrap_or_else(|| code.clone()),
-                code,
-                episode_label,
-                watched,
-                progress: fraction,
-                description: episode.description.clone().unwrap_or_default(),
-                data: episode.data.clone(),
-                season: episode.season.unwrap_or(-1),
-                episode: episode.episode,
-                poster_url: episode.poster_url.clone(),
-            }
-        })
+        .map(|episode| episode_row(episode, progress))
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resume_label_formats_hours_minutes_and_movies() {
-        let hours = WatchProgress {
-            season: Some(3),
-            episode: Some(1),
-            position_ms: 8 * 60_000,
-            duration_ms: 70 * 60_000,
-            ..WatchProgress::default()
-        };
-        assert_eq!(resume_label(&hours), "Resume S3 E1 (1h 2m left)");
-        let mins = WatchProgress {
-            season: Some(1),
-            episode: Some(3),
-            position_ms: 10 * 60_000,
-            duration_ms: 33 * 60_000,
-            ..WatchProgress::default()
-        };
-        assert_eq!(resume_label(&mins), "Resume S1 E3 (23m left)");
-        let movie = WatchProgress::default();
-        assert_eq!(resume_label(&movie), "Resume");
-    }
-
-    #[test]
-    fn episode_mark_partial_watched_and_unknown() {
-        assert_eq!(episode_mark(0, 1_000), (0.0, false));
-        assert_eq!(episode_mark(500, 0), (0.0, false));
-        let (half, watched) = episode_mark(500, 1_000);
-        assert!((half - 0.5).abs() < 1e-6 && !watched);
-        assert!(episode_mark(800, 1_000).1, "80 % counts as watched");
-        assert!((episode_mark(2_000, 1_000).0 - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn format_details_meta_extracts_badges_and_facts() {
-        let page = DetailsPage {
-            title: "Severance".into(),
-            plot: String::new(),
-            resume: String::new(),
-            resume_media_key: None,
-            episodes: Vec::new(),
-            poster_url: None,
-            background_url: None,
-            provider: "CineStream".into(),
-            url: String::new(),
-            data: String::new(),
-            media_key: String::new(),
-            skip_ids: skip_times::ExternalIds::default(),
-            media_type: "TvSeries".into(),
-            year: Some(2022),
-            rating: Some(6800),
-            duration_minutes: Some(52),
-            tags: Vec::new(),
-            cast_members: Vec::new(),
-        };
-        let meta = format_details_meta(&page);
-        assert_eq!(meta.media_type.as_str(), "TVSERIES");
-        assert_eq!(meta.provider.as_str(), "CineStream");
-        assert_eq!(meta.year.as_str(), "2022");
-        assert_eq!(meta.rating.as_str(), "6.8");
-        assert_eq!(meta.duration.as_str(), "52 min");
+fn episode_row(episode: &core_model::EpisodeInfo, progress: &[WatchProgress]) -> EpisodeRow {
+    let code = match (episode.season, episode.episode) {
+        (Some(season), Some(number)) => format!("S{season}E{number}"),
+        (None, Some(number)) => format!("E{number}"),
+        _ => String::new(),
+    };
+    let episode_label = match episode.episode {
+        Some(number) => format!("Episode {number}"),
+        None => "Episode".to_owned(),
+    };
+    let (fraction, watched) = progress
+        .iter()
+        .find(|seen| seen.media_key == episode.data)
+        .map_or((0.0, false), |seen| {
+            episode_mark(seen.position_ms, seen.duration_ms)
+        });
+    let name = episode
+        .name
+        .as_deref()
+        .map(clean_display_text)
+        .unwrap_or_else(|| code.clone());
+    let description = episode
+        .description
+        .as_deref()
+        .map(clean_display_text)
+        .unwrap_or_default();
+    EpisodeRow {
+        name,
+        code,
+        episode_label,
+        watched,
+        progress: fraction,
+        description,
+        data: episode.data.clone(),
+        season: episode.season.unwrap_or(-1),
+        episode: episode.episode,
+        poster_url: episode.poster_url.clone(),
     }
 }
+
+#[cfg(test)]
+#[path = "details_page_tests.rs"]
+mod tests;

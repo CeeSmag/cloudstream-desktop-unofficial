@@ -26,6 +26,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
 | `bridge/cloudflare_*.rs` | the Cloudflare banner (`ui/cloudflare_banner.slint`) |
 | `bridge/extension_*.rs`, `bridge/repo_list.rs`, `bridge/plugin_list.rs`, `repository_discovery.rs` | repositories tab, repo drill-down, aggregator repo discovery, plugins catalog, trust & removal |
+| `text_sanitize.rs`, `windows_fonts.rs`, `ui/icon.png` | folds mathematical Unicode text, registers Windows fallback fonts, embeds window/taskbar icon |
 
 Navigation: the whole window is one `FocusScope`; keys a widget does not use bubble to it and go to
 `focus_navigation` (Home, grids, title page; Settings hands Down to its side menu, Tab to controls).
