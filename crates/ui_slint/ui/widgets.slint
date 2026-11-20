@@ -149,10 +149,6 @@ export component SideNav inherits Rectangle {
     forward-focus: fs;
     accessible-role: AccessibleRole.navigation;
 
-    public function select(index: int) {
-        root.current-item = index;
-    }
-
     VerticalLayout {
         padding: 14px;
         spacing: 10px;

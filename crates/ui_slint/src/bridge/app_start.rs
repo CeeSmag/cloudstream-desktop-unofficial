@@ -8,7 +8,7 @@ use app_services::UiServices;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::background_work::{spawn_work, EventPump};
-use crate::posters::{cache_choices, empty_episodes, empty_posters, empty_shelves};
+use crate::posters::{empty_episodes, empty_posters, empty_shelves};
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
@@ -28,12 +28,7 @@ const UI_TICK: Duration = Duration::from_millis(200);
 /// How often a new video frame is looked for (60 per second).
 const FRAME_TICK: Duration = Duration::from_millis(16);
 
-/// Runs the desktop app until its window closes.
-pub fn run_desktop_app(services: UiServices) -> Result<(), String> {
-    run_desktop_app_with(services, AppExtras::default())
-}
-
-/// Same as [`run_desktop_app`], with Cloudflare / data-dir handles from the shell.
+/// Runs the desktop app until its window closes, with Cloudflare / data-dir handles from the shell.
 pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(), String> {
     let ui = CloudStream::new().map_err(|error| error.to_string())?;
     crate::windows_fonts::register_windows_fallback_fonts();
@@ -83,7 +78,6 @@ fn set_empty_models(ui: &CloudStream) {
     ui.set_sources(ModelRc::new(
         VecModel::from(Vec::<crate::SourceItem>::new()),
     ));
-    ui.set_cache_sizes(cache_choices());
 }
 
 fn start_extensions(ctx: &BridgeContext) {

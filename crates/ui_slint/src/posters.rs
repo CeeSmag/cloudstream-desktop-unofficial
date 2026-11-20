@@ -5,7 +5,7 @@ use slint::{Image, ModelRc, VecModel};
 
 use crate::bridge::HomeShelf;
 use crate::text_sanitize::clean_display_text;
-use crate::{CastItem, EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection};
+use crate::{CastItem, EpisodeItem, PluginItem, PosterItem, ShelfSection};
 
 fn empty_image() -> Image {
     Image::default()
@@ -20,7 +20,6 @@ pub(crate) fn poster_from_search(item: &SearchResult) -> PosterItem {
         poster: item.poster_url.clone().unwrap_or_default().into(),
         poster_headers: encode_poster_headers(item.poster_headers.as_ref()).into(),
         media_key: item.url.clone().into(),
-        data: item.url.clone().into(),
         image: empty_image(),
         progress: 0.0,
     }
@@ -87,7 +86,6 @@ pub(crate) fn posters_from_browse(items: &[app_services::BrowseItem]) -> ModelRc
             poster: item.poster_url.clone().unwrap_or_default().into(),
             poster_headers: "".into(),
             media_key: item.id.clone().into(),
-            data: item.id.clone().into(),
             image: empty_image(),
             progress: 0.0,
         })
@@ -106,7 +104,6 @@ pub(crate) fn posters_from_bookmarks(items: &[Bookmark]) -> ModelRc<PosterItem> 
             poster: item.poster_url.clone().unwrap_or_default().into(),
             poster_headers: "".into(),
             media_key: item.url.clone().into(),
-            data: item.url.clone().into(),
             image: empty_image(),
             progress: 0.0,
         })
@@ -131,7 +128,6 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
                 poster: item.poster_url.clone().unwrap_or_default().into(),
                 poster_headers: "".into(),
                 media_key: item.media_key.clone().into(),
-                data: item.detail_url.clone().into(),
                 image: empty_image(),
                 progress,
             }
@@ -148,17 +144,6 @@ pub(crate) fn plugin_rows(installed: &[core_model::InstalledExtension]) -> Model
             detail: format!("v{}", ext.version).into(),
             file_name: ext.file_name.clone().into(),
             trusted: ext.trusted,
-        })
-        .collect();
-    ModelRc::new(VecModel::from(rows))
-}
-
-pub(crate) fn cache_choices() -> ModelRc<SettingChoice> {
-    let rows: Vec<SettingChoice> = app_services::VIDEO_CACHE_SIZES_MB
-        .iter()
-        .map(|mb| SettingChoice {
-            label: format!("{mb} MB").into(),
-            value: mb.to_string().into(),
         })
         .collect();
     ModelRc::new(VecModel::from(rows))

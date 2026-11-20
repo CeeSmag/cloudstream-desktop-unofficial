@@ -9,8 +9,6 @@ import { SourcePanel } from "source_panel.slint";
 
 export component PlayerOverlay inherits Rectangle {
     in property <string> title: "";
-    /// Active stream quality/kind badge (kept for bridge compatibility).
-    in property <string> source-badge: "";
     in property <image> video-frame;
     in property <float> position-ms: 0;
     in property <float> duration-ms: 1;
@@ -62,7 +60,6 @@ export component PlayerOverlay inherits Rectangle {
     callback set-volume(float);
     /// The wheel turned over the video (logical pixels, up positive).
     callback wheel-volume(float);
-    callback close-player();
     callback leave-player();
     callback toggle-sources();
     callback refresh-sources();

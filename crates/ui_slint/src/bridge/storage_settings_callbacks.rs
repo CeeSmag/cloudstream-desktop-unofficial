@@ -39,7 +39,6 @@ fn set_cache_size(ctx: &BridgeContext, value: &str) {
     cache.size_mb = size_mb;
     saved("video cache", ctx.services.settings.set_video_cache(cache));
     if let Some(ui) = ctx.window() {
-        ui.set_video_cache_label(format!("{size_mb} MB").into());
         ui.set_cache_size_value(format!("{size_mb} MB").into());
     }
     if let Some(playback) = &ctx.services.playback {

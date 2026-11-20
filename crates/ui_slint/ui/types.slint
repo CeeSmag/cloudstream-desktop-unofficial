@@ -7,7 +7,6 @@ export struct PosterItem {
     /// The provider's headers for the poster download, one `Name: value` per line.
     poster-headers: string,
     media-key: string,
-    data: string,
     image: image,
     progress: float,
 }
@@ -67,7 +66,6 @@ export struct SourceMenuInfo {
 
 export struct EpisodeItem {
     name: string,
-    code: string,
     /// `"Episode 1"` (or `"Episode"` when unnumbered).
     episode-label: string,
     data: string,
@@ -76,7 +74,6 @@ export struct EpisodeItem {
     /// How far it was watched, 0..1.
     progress: float,
     description: string,
-    season: int,
     /// Its place in the provider's full list (the shown list is filtered by season and chunk).
     index: int,
     /// Optional episode still URL (falls back to the show poster when empty).
@@ -105,11 +102,6 @@ export struct PluginItem {
     detail: string,
     file-name: string,
     trusted: bool,
-}
-
-export struct SettingChoice {
-    label: string,
-    value: string,
 }
 
 /// One row of the player's Audio or Subtitles menu.

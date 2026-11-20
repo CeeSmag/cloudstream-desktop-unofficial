@@ -61,7 +61,6 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
     ui.set_subtitles_loading(false);
     ui.set_subtitles_status("".into());
     ui.set_player_open_panel(0);
-    ui.set_player_source_badge("".into());
     ui.set_player_open(false);
     show_continue_watching(ctx, ui);
     if let Some(reason) = reason {

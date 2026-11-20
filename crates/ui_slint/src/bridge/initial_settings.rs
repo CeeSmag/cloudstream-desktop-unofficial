@@ -29,7 +29,6 @@ fn apply_switches(ui: &CloudStream, services: &UiServices) {
 fn apply_cache_choices(ui: &CloudStream, services: &UiServices) {
     match services.settings.video_cache() {
         Ok(cache) => {
-            ui.set_video_cache_label(format!("{} MB", cache.size_mb).into());
             ui.set_cache_size_value(format!("{} MB", cache.size_mb).into());
             ui.set_ahead_value(format!("{}%", cache.ahead_percent).into());
         }

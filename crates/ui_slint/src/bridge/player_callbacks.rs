@@ -23,8 +23,6 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     wire_seeking(ctx, ui);
     wire_volume(ctx, ui);
     let c = ctx.clone();
-    ui.on_close_player(move || close_player(&c));
-    let c = ctx.clone();
     ui.on_leave_player(move || leave_player(&c));
     wire_player_panels(ctx, ui);
 }
@@ -123,18 +121,6 @@ fn toggle_pause(ctx: &BridgeContext) {
     }
 }
 
-fn close_player(ctx: &BridgeContext) {
-    ctx.session.borrow_mut().abandon_open();
-    persist_playing_sources(ctx);
-    if let Some(playback) = &ctx.services.playback {
-        report("stop", playback.stop());
-    }
-    if let Some(ui) = ctx.window() {
-        reset_player_ui(ctx, &ui);
-        show_continue_watching(ctx, &ui);
-    }
-}
-
 fn leave_player(ctx: &BridgeContext) {
     // Drop any in-flight open so a late OpenReady cannot reopen the player.
     ctx.session.borrow_mut().abandon_open();
@@ -156,7 +142,6 @@ fn reset_player_ui(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_subtitles_loading(false);
     ui.set_subtitles_status("".into());
     ui.set_player_open_panel(0);
-    ui.set_player_source_badge("".into());
     ui.set_player_open(false);
 }
 

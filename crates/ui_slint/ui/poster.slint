@@ -13,8 +13,6 @@ export component PosterTile inherits Rectangle {
     /// The context menu's remove entry ("Remove from Library"); empty for none.
     in property <string> remove-text: "";
     callback clicked();
-    callback play-requested();
-    callback bookmark-requested();
     callback remove-requested();
 
     width: 160px;
@@ -145,8 +143,6 @@ export component PosterRow inherits Flickable {
     in property <int> focused-index: -1;
     in property <string> remove-text: "";
     callback open-at(int);
-    callback play-at(int);
-    callback bookmark-at(int);
     callback remove-at(int);
     /// The row got the focus; its position in the window, to scroll it into view.
     callback focus-arrived(length, length);
@@ -175,8 +171,6 @@ export component PosterRow inherits Flickable {
             focused: i == root.focused-index;
             remove-text: root.remove-text;
             clicked => { root.open-at(i); }
-            play-requested => { root.play-at(i); }
-            bookmark-requested => { root.bookmark-at(i); }
             remove-requested => { root.remove-at(i); }
         }
     }
@@ -191,8 +185,6 @@ export component PosterGrid inherits ScrollView {
     in property <int> scroll-reset: 0;
     in property <string> remove-text: "";
     callback open-at(int);
-    callback play-at(int);
-    callback bookmark-at(int);
     callback remove-at(int);
 
     changed scroll-reset => {
@@ -223,8 +215,6 @@ export component PosterGrid inherits ScrollView {
             focused: i == root.focused-index;
             remove-text: root.remove-text;
             clicked => { root.open-at(i); }
-            play-requested => { root.play-at(i); }
-            bookmark-requested => { root.bookmark-at(i); }
             remove-requested => { root.remove-at(i); }
         }
     }
@@ -235,11 +225,7 @@ export component InlinePosterGrid inherits Rectangle {
     in property <[PosterItem]> items: [];
     in property <int> columns: 4;
     in property <int> focused-index: -1;
-    in property <string> remove-text: "";
     callback open-at(int);
-    callback play-at(int);
-    callback bookmark-at(int);
-    callback remove-at(int);
     callback focus-arrived(length, length);
 
     width: root.columns * TileMetrics.step + 16px;
@@ -269,11 +255,7 @@ export component InlinePosterGrid inherits Rectangle {
             artwork: item.image;
             progress: item.progress;
             focused: i == root.focused-index;
-            remove-text: root.remove-text;
             clicked => { root.open-at(i); }
-            play-requested => { root.play-at(i); }
-            bookmark-requested => { root.bookmark-at(i); }
-            remove-requested => { root.remove-at(i); }
         }
     }
 }

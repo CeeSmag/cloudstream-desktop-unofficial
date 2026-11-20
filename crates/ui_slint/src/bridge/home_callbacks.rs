@@ -40,12 +40,6 @@ pub(crate) fn wire_home(ctx: &BridgeContext, ui: &CloudStream) {
             }
         }
     });
-    let weak = ctx.ui.clone();
-    ui.on_play_continue(move |index| {
-        if let Some(ui) = weak.upgrade() {
-            ui.invoke_open_library_hit(index);
-        }
-    });
 }
 
 fn select_tab(ctx: &BridgeContext, tab: i32) {

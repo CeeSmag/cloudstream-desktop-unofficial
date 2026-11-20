@@ -54,7 +54,7 @@ mod title_search;
 mod update_callbacks;
 
 pub use app_extras::{AppExtras, DebugLogSwitch, WipeRequest};
-pub use app_start::{run_desktop_app, run_desktop_app_with};
+pub use app_start::run_desktop_app_with;
 pub(crate) use extension_catalog::ExtensionsCatalog;
 pub(crate) use home_loading::HomeShelf;
 pub(crate) use subtitle_delivery::SubtitleLoadSnapshot;

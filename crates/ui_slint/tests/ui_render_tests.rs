@@ -104,7 +104,6 @@ fn sample_posters() -> ModelRc<PosterItem> {
                 poster: "".into(),
                 poster_headers: "".into(),
                 media_key: title.into(),
-                data: "".into(),
                 image: sample_artwork(r, g, b),
                 progress: prog,
             })
@@ -313,13 +312,11 @@ fn sample_details_episodes() -> ModelRc<EpisodeItem> {
         |idx: i32, name: &str, desc: &str, (watched, progress): (bool, f32), rgb: (u8, u8, u8)| {
             EpisodeItem {
                 name: name.into(),
-                code: format!("S1E{}", idx + 1).into(),
                 episode_label: format!("Episode {}", idx + 1).into(),
                 data: format!("ep{}", idx + 1).into(),
                 watched,
                 progress,
                 description: desc.into(),
-                season: 1,
                 index: idx,
                 poster: "".into(),
                 image: sample_episode_thumb(rgb.0, rgb.1, rgb.2),
@@ -532,7 +529,6 @@ fn populate_player(ui: &CloudStream) {
     ui.set_player_open(true);
     ui.set_video_frame(sample_video_frame());
     ui.set_player_title("Severance · S2 E4 — Woe's Hollow".into());
-    ui.set_player_source_badge("1080p · HLS".into());
     ui.set_duration_ms(3_120_000.0);
     ui.set_position_ms(690_000.0);
     ui.set_position_text("11:30".into());

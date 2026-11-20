@@ -52,13 +52,11 @@ pub(crate) fn show_episode_list(ctx: &BridgeContext, ui: &CloudStream) {
 fn to_episode_item(index: usize, row: &EpisodeRow) -> EpisodeItem {
     EpisodeItem {
         name: row.name.clone().into(),
-        code: row.code.clone().into(),
         episode_label: row.episode_label.clone().into(),
         data: row.data.clone().into(),
         watched: row.watched,
         progress: row.progress,
         description: row.description.clone().into(),
-        season: row.season,
         index: i32::try_from(index).unwrap_or(i32::MAX),
         poster: row.poster_url.clone().unwrap_or_default().into(),
         image: slint::Image::default(),

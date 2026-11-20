@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvButton, TvProgressBar } from "controls.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, SettingChoice, TrackChoice,
+    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, TrackChoice,
     RepositoryItem, AvailablePlugin, PaginationItem
 } from "types.slint";
 import { HomePage } from "home.slint";
@@ -19,7 +19,7 @@ export { PluginList } from "extensions_plugins.slint";
 export { RepoList, RepoDetail } from "extensions_repos.slint";
 export { HomeExpanded } from "home.slint";
 export { BrowseFilter } from "browse.slint";
-export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
+export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -95,7 +95,6 @@ export component CloudStream inherits Window {
     in-out property <int> episode-active-range: 0;
     in-out property <bool> player-open: false;
     in-out property <string> player-title: "";
-    in-out property <string> player-source-badge: "";
     in-out property <int> player-open-panel: 0;
     in-out property <float> position-ms: 0;
     in-out property <float> duration-ms: 1;
@@ -152,7 +151,6 @@ export component CloudStream inherits Window {
     in-out property <bool> plugins-loading: false;
     in-out property <bool> details-bookmarked: false;
     in property <[string]> providers: [];
-    in property <[SettingChoice]> cache-sizes: [];
     in property <[string]> cache-size-labels: [];
     in property <string> cache-size-value: "";
     in property <[string]> ahead-labels: [];
@@ -171,7 +169,6 @@ export component CloudStream inherits Window {
     in property <[TrackChoice]> audio-tracks: [];
     in property <[TrackChoice]> subtitle-tracks: [];
     in property <string> selected-provider: "";
-    in property <string> video-cache-label: "";
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
@@ -204,7 +201,6 @@ export component CloudStream inherits Window {
     callback seek-by(float);
     callback set-volume(float);
     callback wheel-volume(float);
-    callback close-player();
     callback leave-player();
     callback toggle-sources();
     callback skip-segment();
@@ -231,9 +227,7 @@ export component CloudStream inherits Window {
     callback set-subtitle-add(string);
     callback remove-subtitle(int);
     callback clean-storage();
-    callback wipe-data();
     callback confirm-wipe();
-    callback cancel-wipe();
     callback check-updates();
     callback apply-update();
     callback open-logs();
@@ -246,8 +240,6 @@ export component CloudStream inherits Window {
     callback cf-dismiss();
     callback dismiss-notice();
     callback resume-hero();
-    callback play-continue(int);
-    callback bookmark-continue(int);
     callback remove-continue(int);
     callback clear-continue();
     callback remove-bookmark(int);
@@ -257,7 +249,6 @@ export component CloudStream inherits Window {
     callback select-episode-range(int);
     callback select-audio-track(int);
     callback select-subtitle-track(int);
-    callback bookmark-item(string, string, string);
     callback toggle-fullscreen();
 
     // Explicit origin prevents Slint 1.19 from merging child/conditional LayoutInfo into Window
@@ -440,8 +431,6 @@ export component CloudStream inherits Window {
                 open-continue(i) => { open-library-hit(i); }
                 open-shelf(s, i) => { open-shelf-item(s, i); }
                 resume-hero => { resume-hero(); }
-                play-continue(i) => { play-continue(i); }
-                bookmark-continue(i) => { bookmark-continue(i); }
                 remove-continue(i) => { remove-continue(i); }
                 clear-continue => { clear-continue(); }
             }
@@ -546,7 +535,6 @@ export component CloudStream inherits Window {
         if player-open: PlayerOverlay {
             init => { self.focus(); }
             title: player-title;
-            source-badge: player-source-badge;
             video-frame: video-frame;
             position-ms: position-ms;
             duration-ms: duration-ms;
@@ -583,7 +571,6 @@ export component CloudStream inherits Window {
             seek-by(v) => { seek-by(v); }
             set-volume(v) => { set-volume(v); }
             wheel-volume(d) => { wheel-volume(d); }
-            close-player => { close-player(); }
             leave-player => { leave-player(); }
             toggle-sources => { toggle-sources(); }
             refresh-sources => { refresh-sources(); }
@@ -669,7 +656,6 @@ export component CloudStream inherits Window {
                                     kind: "secondary";
                                     clicked => {
                                         show-wipe-confirm = false;
-                                        cancel-wipe();
                                     }
                                 }
                                 TvButton {

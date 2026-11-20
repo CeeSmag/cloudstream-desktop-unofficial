@@ -108,7 +108,6 @@ fn sample_poster() -> PosterItem {
         poster: "".into(),
         poster_headers: "".into(),
         media_key: "sample".into(),
-        data: "".into(),
         image: slint::Image::default(),
         progress: 0.4,
     }

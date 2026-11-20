@@ -143,8 +143,6 @@ export component BrowsePage inherits VerticalLayout {
         scroll-reset: BrowseFilter.scroll-reset;
         focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
-        play-at(i) => { root.open-at(i); }
-        bookmark-at(i) => { root.open-at(i); }
     }
     if BrowseFilter.total-pages > 1: HorizontalLayout {
         alignment: center;
@@ -181,11 +179,6 @@ export component SearchPage inherits VerticalLayout {
 
     SectionTitle { text: "Search"; }
 
-    /// Puts the keyboard into the search box.
-    public function focus-box() {
-        search-box.focus();
-    }
-
     HorizontalLayout {
         spacing: 12px;
         cross-axis-alignment: center;
@@ -215,8 +208,6 @@ export component SearchPage inherits VerticalLayout {
         columns: root.columns;
         focused-index: root.focused-index;
         open-at(i) => { root.open-at(i); }
-        play-at(i) => { root.open-at(i); }
-        bookmark-at(i) => { root.open-at(i); }
     }
 }
 
@@ -255,7 +246,6 @@ export component LibraryPage inherits VerticalLayout {
         focused-index: root.focused-index;
         remove-text: "Remove from Library";
         open-at(i) => { root.open-at(i); }
-        play-at(i) => { root.open-at(i); }
         remove-at(i) => { root.remove-at(i); }
     }
 }

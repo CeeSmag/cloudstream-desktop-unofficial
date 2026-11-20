@@ -205,8 +205,6 @@ export component HomePage inherits ScrollView {
     callback open-continue(int);
     callback open-shelf(int, int);
     callback resume-hero();
-    callback play-continue(int);
-    callback bookmark-continue(int);
     callback remove-continue(int);
     callback clear-continue();
     property <bool> asking-clear: false;
@@ -287,8 +285,6 @@ export component HomePage inherits ScrollView {
                 focused-index: root.focus-in(root.continue-row);
                 focus-arrived(y, h) => { root.reveal(y, h); }
                 open-at(i) => { root.open-continue(i); }
-                play-at(i) => { root.play-continue(i); }
-                bookmark-at(i) => { root.bookmark-continue(i); }
                 remove-at(i) => { root.remove-continue(i); }
             }
         }
@@ -377,8 +373,6 @@ export component HomePage inherits ScrollView {
                     focused-index: root.focus-in(root.shelf-row-base + s);
                     focus-arrived(y, h) => { root.reveal(y, h); }
                     open-at(i) => { root.open-shelf(s, i); }
-                    play-at(i) => { root.open-shelf(s, i); }
-                    bookmark-at(i) => { root.open-shelf(s, i); }
                 }
 
                 if HomeExpanded.shelf-index == s: VerticalLayout {
@@ -399,8 +393,6 @@ export component HomePage inherits ScrollView {
                         focused-index: root.expanded-focus-in(s);
                         focus-arrived(y, h) => { root.reveal(y, h); }
                         open-at(i) => { HomeExpanded.open-item(i); }
-                        play-at(i) => { HomeExpanded.open-item(i); }
-                        bookmark-at(i) => { HomeExpanded.open-item(i); }
                     }
                     if HomeExpanded.has-prev || HomeExpanded.has-next: HorizontalLayout {
                         alignment: center;
