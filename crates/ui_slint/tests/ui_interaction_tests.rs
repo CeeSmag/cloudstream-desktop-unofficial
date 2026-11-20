@@ -205,6 +205,41 @@ fn verify_home_shelves(ui: &CloudStream) {
     assert_eq!(ui.get_home_shelves().row_count(), 1);
 }
 
+fn verify_updates_flow(ui: &CloudStream) {
+    ui.set_update_badge("Update v0.5.0".into());
+    ui.set_update_label("Version 0.5.0 is ready to install (you have 0.4.8).".into());
+    ui.set_update_version("v0.5.0 · 142.0 MB".into());
+    ui.set_update_notes("- Faster playback\n- Bug fixes".into());
+    ui.set_update_can_apply(true);
+    ui.set_update_busy(false);
+    ui.set_update_downloading(false);
+    ui.set_update_progress(0.0);
+
+    assert_eq!(ui.get_update_badge().as_str(), "Update v0.5.0");
+    assert_eq!(ui.get_update_version().as_str(), "v0.5.0 · 142.0 MB");
+    assert!(ui.get_update_notes().contains("Faster playback"));
+    assert!(ui.get_update_can_apply());
+
+    let applied = Rc::new(RefCell::new(0usize));
+    let applied_ref = Rc::clone(&applied);
+    ui.on_apply_update(move || *applied_ref.borrow_mut() += 1);
+    ui.invoke_apply_update();
+    assert_eq!(*applied.borrow(), 1);
+
+    let checked = Rc::new(RefCell::new(0usize));
+    let checked_ref = Rc::clone(&checked);
+    ui.on_check_updates(move || *checked_ref.borrow_mut() += 1);
+    ui.invoke_check_updates();
+    assert_eq!(*checked.borrow(), 1);
+
+    ui.set_tab(4);
+    ui.set_settings_page_index(0);
+    ui.set_pending_updates_scroll(true);
+    ui.set_updates_focus_request(1);
+    assert_eq!(ui.get_tab(), 4);
+    assert_eq!(ui.get_settings_page_index(), 0);
+}
+
 #[test]
 fn headless_ui_bindings_callbacks_and_navigation_flows() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -219,4 +254,5 @@ fn headless_ui_bindings_callbacks_and_navigation_flows() {
     verify_tracks_and_cloudflare(&ui);
     verify_extensions_and_shelves(&ui);
     verify_home_shelves(&ui);
+    verify_updates_flow(&ui);
 }

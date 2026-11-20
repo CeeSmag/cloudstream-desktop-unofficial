@@ -1,6 +1,6 @@
 //! Shows background results: one handler per kind of event.
 
-use crate::ui_events::UiEvent;
+use crate::ui_events::{UiEvent, UpdateViewState};
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -69,9 +69,12 @@ fn apply_player_or_system_event(ctx: &BridgeContext, ui: &CloudStream, event: Ui
             ui.set_notice(error.into());
         }
         UiEvent::Notice(text) => ui.set_notice(text.into()),
-        UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
+        UiEvent::UpdateState(state) => apply_update_state(ui, state),
+        UiEvent::UpdateDownloadProgress { label, percent } => {
+            ui.set_update_label(label.into());
+            ui.set_update_progress(f32::from(percent) / 100.0);
+        }
         UiEvent::StorageMeasured(usage) => show_storage_usage(ctx, ui, &usage),
-        UiEvent::UpdateBadge(badge) => ui.set_update_badge(badge.into()),
         UiEvent::ExtensionChanged {
             message,
             watch_repositories,
@@ -84,4 +87,15 @@ fn apply_player_or_system_event(ctx: &BridgeContext, ui: &CloudStream, event: Ui
         UiEvent::ReloadExtensionsCatalog => load_extensions_catalog(ctx),
         _ => {}
     }
+}
+
+fn apply_update_state(ui: &CloudStream, state: UpdateViewState) {
+    ui.set_update_label(state.label.into());
+    ui.set_update_badge(state.badge.into());
+    ui.set_update_version(state.version.into());
+    ui.set_update_notes(state.notes.into());
+    ui.set_update_can_apply(state.can_apply);
+    ui.set_update_busy(state.busy);
+    ui.set_update_downloading(state.downloading);
+    ui.set_update_progress(f32::from(state.progress_percent) / 100.0);
 }

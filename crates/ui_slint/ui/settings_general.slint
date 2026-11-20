@@ -1,3 +1,4 @@
+import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvBadge, TvButton, TvProgressBar, TvSegmented, TvSelect, TvSwitch } from "controls.slint";
@@ -19,8 +20,16 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> worker-value: "";
     in property <bool> debug-logging: false;
     in property <string> update-label: "";
+    in property <string> update-version: "";
+    in property <string> update-notes: "";
+    in property <bool> update-can-apply: false;
+    in property <bool> update-busy: false;
+    in property <bool> update-downloading: false;
+    in property <float> update-progress: 0;
     /// Vertical offset of the Diagnostics card inside this page (for jump-to-diagnostics scrolling).
     out property <length> diagnostics-y: diagnostics-card.y;
+    /// Vertical offset of the App updates card inside this page (for jump-to-updates scrolling).
+    out property <length> updates-y: updates-card.y;
 
     callback set-video-cache(string);
     callback set-ahead(string);
@@ -206,25 +215,63 @@ export component SettingsGeneralPage inherits VerticalLayout {
         }
     }
 
-    Card {
+    updates-card := Card {
         title: "App updates";
         subtitle: root.update-label;
         icon: Icons.download;
 
-        HorizontalLayout {
+        VerticalLayout {
             spacing: 10px;
-            alignment: start;
-            TvButton {
-                text: "Check for updates";
-                icon: Icons.refresh;
-                kind: "secondary";
-                clicked => { root.check-updates(); }
+            if root.update-version != "": HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                TvBadge {
+                    text: root.update-version;
+                    tone: "accent";
+                }
             }
-            TvButton {
-                text: "Apply update";
-                icon: Icons.download;
-                kind: "tonal";
-                clicked => { root.apply-update(); }
+            if root.update-notes != "": Rectangle {
+                height: min(notes-text.preferred-height + 24px, 160px);
+                border-radius: 10px;
+                background: Theme.input-bg;
+                border-width: 1px;
+                border-color: Theme.border;
+                ScrollView {
+                    x: 12px;
+                    y: 10px;
+                    width: parent.width - 24px;
+                    height: parent.height - 20px;
+                    notes-text := Text {
+                        width: parent.width - 8px;
+                        text: root.update-notes;
+                        color: Theme.text-secondary;
+                        font-size: 12.5px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if root.update-downloading: TvProgressBar {
+                progress: root.update-progress;
+                fill: Theme.accent;
+                bar-height: 8px;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                TvButton {
+                    text: "Check for updates";
+                    icon: Icons.refresh;
+                    kind: "secondary";
+                    enabled: !root.update-busy;
+                    clicked => { root.check-updates(); }
+                }
+                TvButton {
+                    text: root.update-downloading ? "Updating…" : "Update & restart";
+                    icon: Icons.download;
+                    kind: root.update-can-apply ? "primary" : "tonal";
+                    enabled: root.update-can-apply && !root.update-busy;
+                    clicked => { root.apply-update(); }
+                }
             }
         }
     }

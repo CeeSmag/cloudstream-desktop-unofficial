@@ -32,11 +32,13 @@ pub(crate) enum UiEvent {
     /// Online skip times for the stream the ticket was issued for.
     SkipTimesFound(Ticket, Vec<crate::skip_segments::Segment>),
     Notice(String),
-    UpdateLabel(String),
+    UpdateState(UpdateViewState),
+    UpdateDownloadProgress {
+        label: String,
+        percent: u8,
+    },
     /// The data folder was measured (Settings > Storage).
     StorageMeasured(app_services::StorageUsage),
-    /// The nav bar's update badge ("Update v0.5.0"); empty for none.
-    UpdateBadge(String),
     /// A plugin or repository change finished; the message says how.
     ExtensionChanged {
         message: String,
@@ -156,4 +158,17 @@ pub(crate) enum PosterKind {
     Continue,
     Shelf,
     HomeExpanded,
+}
+
+/// Snapshot of the Settings > App updates card and top-bar update pill.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct UpdateViewState {
+    pub(crate) label: String,
+    pub(crate) badge: String,
+    pub(crate) version: String,
+    pub(crate) notes: String,
+    pub(crate) can_apply: bool,
+    pub(crate) busy: bool,
+    pub(crate) downloading: bool,
+    pub(crate) progress_percent: u8,
 }

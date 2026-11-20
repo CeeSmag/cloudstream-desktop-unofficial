@@ -131,6 +131,8 @@ export component CloudStream inherits Window {
     in-out property <bool> debug-indicator-hovered: false;
     in-out property <int> diagnostics-focus-request: 0;
     in-out property <bool> pending-diagnostics-scroll: false;
+    in-out property <int> updates-focus-request: 0;
+    in-out property <bool> pending-updates-scroll: false;
     in-out property <int> extensions-tab: 0;
     in-out property <string> repo-url: "";
     in-out property <bool> player-chrome-visible: true;
@@ -175,6 +177,12 @@ export component CloudStream inherits Window {
     in property <bool> auto-subtitles: true;
     in property <string> storage-label: "";
     in property <string> update-label: "";
+    in property <string> update-version: "";
+    in property <string> update-notes: "";
+    in property <bool> update-can-apply: false;
+    in property <bool> update-busy: false;
+    in property <bool> update-downloading: false;
+    in property <float> update-progress: 0;
     in property <string> hero-title: "";
     in property <string> hero-subtitle: "";
     in property <image> hero-image;
@@ -348,7 +356,12 @@ export component CloudStream inherits Window {
                 select-tab(i) => { select-tab(i); }
                 set-provider(name) => { set-provider(name); }
                 update: root.update-badge;
-                update-clicked => { root.settings-page-index = 0; select-tab(4); }
+                update-clicked => {
+                    root.settings-page-index = 0;
+                    root.pending-updates-scroll = true;
+                    root.updates-focus-request += 1;
+                    select-tab(4);
+                }
                 open-debug-settings => {
                     root.debug-indicator-hovered = false;
                     root.settings-page-index = 0;
@@ -492,6 +505,12 @@ export component CloudStream inherits Window {
                 auto-subtitles: root.auto-subtitles;
                 storage-label: root.storage-label;
                 update-label: root.update-label;
+                update-version: root.update-version;
+                update-notes: root.update-notes;
+                update-can-apply: root.update-can-apply;
+                update-busy: root.update-busy;
+                update-downloading: root.update-downloading;
+                update-progress: root.update-progress;
                 plugins: root.plugins;
                 repositories: root.repositories;
                 available-plugins: root.available-plugins;
@@ -519,6 +538,8 @@ export component CloudStream inherits Window {
                 debug-logging: root.debug-logging;
                 diagnostics-request: root.diagnostics-focus-request;
                 pending-diagnostics-scroll <=> root.pending-diagnostics-scroll;
+                updates-request: root.updates-focus-request;
+                pending-updates-scroll <=> root.pending-updates-scroll;
                 storage-fraction: root.storage-fraction;
                 storage-over: root.storage-over;
                 storage-rows: root.storage-rows;

@@ -28,6 +28,22 @@ export component SettingsPage inherits Rectangle {
             root.pending-diagnostics-scroll = false;
         }
     }
+    /// Raised when the viewer clicks the top-bar Update pill to jump straight to App updates.
+    in property <int> updates-request: 0;
+    in-out property <bool> pending-updates-scroll: false;
+    property <length> updates-target-y: 0px;
+    changed updates-request => {
+        if root.page-index == 0 && root.updates-target-y > 0px {
+            scroll.content-y = -max(0px, root.updates-target-y - 24px);
+            root.pending-updates-scroll = false;
+        }
+    }
+    changed updates-target-y => {
+        if root.pending-updates-scroll && root.page-index == 0 && root.updates-target-y > 0px {
+            scroll.content-y = -max(0px, root.updates-target-y - 24px);
+            root.pending-updates-scroll = false;
+        }
+    }
     in property <[string]> cache-size-labels: [];
     in property <string> cache-size-value: "";
     in property <[string]> ahead-labels: [];
@@ -56,6 +72,12 @@ export component SettingsPage inherits Rectangle {
     in property <[string]> storage-rows: [];
     in property <string> storage-label: "";
     in property <string> update-label: "";
+    in property <string> update-version: "";
+    in property <string> update-notes: "";
+    in property <bool> update-can-apply: false;
+    in property <bool> update-busy: false;
+    in property <bool> update-downloading: false;
+    in property <float> update-progress: 0;
     in property <[PluginItem]> plugins: [];
     in property <[RepositoryItem]> repositories: [];
     in property <[AvailablePlugin]> available-plugins: [];
@@ -116,7 +138,11 @@ export component SettingsPage inherits Rectangle {
 
                 if root.page-index == 0: general := SettingsGeneralPage {
                     changed diagnostics-y => { root.diagnostics-target-y = self.diagnostics-y; }
-                    init => { root.diagnostics-target-y = self.diagnostics-y; }
+                    changed updates-y => { root.updates-target-y = self.updates-y; }
+                    init => {
+                        root.diagnostics-target-y = self.diagnostics-y;
+                        root.updates-target-y = self.updates-y;
+                    }
                     cache-size-labels: root.cache-size-labels;
                     cache-size-value: root.cache-size-value;
                     ahead-labels: root.ahead-labels;
@@ -131,6 +157,12 @@ export component SettingsPage inherits Rectangle {
                     worker-value: root.worker-value;
                     debug-logging: root.debug-logging;
                     update-label: root.update-label;
+                    update-version: root.update-version;
+                    update-notes: root.update-notes;
+                    update-can-apply: root.update-can-apply;
+                    update-busy: root.update-busy;
+                    update-downloading: root.update-downloading;
+                    update-progress: root.update-progress;
                     set-video-cache(v) => { root.set-video-cache(v); }
                     set-ahead(v) => { root.set-ahead(v); }
                     set-storage-cap(v) => { root.set-storage-cap(v); }
