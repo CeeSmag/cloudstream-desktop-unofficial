@@ -16,6 +16,12 @@ const CAPABILITY_INTERNET_CLIENT: &str = "S-1-15-3-1";
 const S_OK: i32 = 0;
 /// HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)
 const ERROR_ALREADY_EXISTS_HRESULT: i32 = -2147024713;
+/// HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
+const ERROR_FILE_NOT_FOUND_HRESULT: i32 = -2147024894;
+/// HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)
+const ERROR_PATH_NOT_FOUND_HRESULT: i32 = -2147024893;
+/// E_INVALIDARG (returned by DeleteAppContainerProfile on some Windows builds when absent)
+const E_INVALIDARG_HRESULT: i32 = -2147024809;
 const SE_GROUP_ENABLED: u32 = 0x0000_0004;
 
 /// AppContainer SID string (e.g. `S-1-15-2-...`) for the sidecar profile.
@@ -35,6 +41,28 @@ pub(crate) fn get_or_create_sidecar_container() -> Result<AppContainerSid, Gatew
         "CloudStream plugin sidecar",
         "Isolates the CloudStream JVM extension sidecar",
     )
+}
+
+/// Removes the sidecar AppContainer profile from the current Windows user profile.
+/// Succeeds when the profile does not exist.
+pub(crate) fn delete_sidecar_container() -> Result<(), GatewayError> {
+    delete_container(SIDECAR_CONTAINER_NAME)
+}
+
+fn delete_container(name: &str) -> Result<(), GatewayError> {
+    let wide_name = wide(name);
+    // SAFETY: `wide_name` is a valid null-terminated UTF-16 string.
+    let hr = unsafe { DeleteAppContainerProfile(wide_name.as_ptr()) };
+    if matches!(
+        hr,
+        S_OK | ERROR_FILE_NOT_FOUND_HRESULT | ERROR_PATH_NOT_FOUND_HRESULT | E_INVALIDARG_HRESULT
+    ) {
+        tracing::info!(container = name, "removed AppContainer profile");
+        return Ok(());
+    }
+    Err(GatewayError::Unavailable(format!(
+        "DeleteAppContainerProfile failed for '{name}' (HRESULT 0x{hr:08X})"
+    )))
 }
 
 fn get_or_create_container(
@@ -189,6 +217,7 @@ extern "system" {
         name: *const u16,
         app_container_sid: *mut *mut std::ffi::c_void,
     ) -> i32;
+    fn DeleteAppContainerProfile(name: *const u16) -> i32;
 }
 
 #[link(name = "advapi32")]
@@ -218,5 +247,14 @@ mod tests {
         );
         let again = get_or_create_sidecar_container().expect("derive");
         assert_eq!(sid, again);
+    }
+
+    #[test]
+    fn delete_container_removes_profile_and_is_idempotent() {
+        let name = format!("CloudStream.TestDelete.{}", std::process::id());
+        let sid = get_or_create_container(&name, "Test", "Test container").expect("create");
+        assert!(sid.as_str().starts_with("S-1-15-2-"));
+        delete_container(&name).expect("first delete");
+        delete_container(&name).expect("second delete must succeed when already absent");
     }
 }

@@ -58,3 +58,16 @@ pub use rpc_transport::RpcTransport;
 pub use sidecar_launch_config::SidecarLaunchConfig;
 pub use sidecar_process_transport::SidecarProcessTransport;
 pub use sidecar_spawn_thread::SidecarSpawner;
+
+/// Removes the Windows AppContainer profile created for the plugin sidecar, if any.
+/// On non-Windows platforms this is a no-op.
+pub fn delete_sidecar_app_container() -> Result<(), extension_api::GatewayError> {
+    #[cfg(windows)]
+    {
+        sidecar_app_container_profile::delete_sidecar_container()
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(())
+    }
+}

@@ -130,13 +130,17 @@ fn request_wipe(ctx: &BridgeContext) {
         None => Err(std::io::Error::other("this build cannot delete its data")),
     };
     match result {
-        Ok(()) => ctx
-            .sender()
-            .notice("All saved data will be deleted when you restart CloudStream"),
+        Ok(()) => {
+            if let Err(error) = slint::quit_event_loop() {
+                tracing::warn!(%error, "could not close window for data wipe");
+                ctx.sender()
+                    .notice("All saved data will be deleted when you restart CloudStream");
+            }
+        }
         Err(error) => {
             tracing::error!(%error, "could not schedule the data wipe");
             ctx.sender()
-                .notice(format!("Could not schedule the data wipe: {error}"));
+                .notice(format!("Could not delete saved data: {error}"));
         }
     }
 }
