@@ -6,6 +6,7 @@ use playback_session::{LiveSources, OpenControl};
 use crate::browse_filters::BrowseFilters;
 use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
+use crate::repository_discovery::RepositoryDiscovery;
 use crate::seek_scheduler::SeekScheduler;
 use crate::source_menu::SourceFilter;
 
@@ -102,6 +103,8 @@ pub(crate) struct Session {
     pub(crate) repo_detail_page: usize,
     /// Where the remote's focus is on each screen.
     pub(crate) focus: std::collections::HashMap<FocusScreen, FocusGrid>,
+    /// Background watcher collecting repositories added by aggregator plugins.
+    pub(crate) repository_discovery: RepositoryDiscovery,
 }
 
 /// Which title the details page shows.
@@ -166,6 +169,7 @@ impl Default for Session {
             plugin_page: 0,
             repo_detail_page: 0,
             focus: std::collections::HashMap::new(),
+            repository_discovery: RepositoryDiscovery::default(),
         }
     }
 }

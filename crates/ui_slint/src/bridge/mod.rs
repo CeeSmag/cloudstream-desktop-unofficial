@@ -37,6 +37,7 @@ mod plugin_list;
 mod poster_hydrate;
 mod preference_callbacks;
 mod repo_list;
+mod repository_discovery;
 mod session;
 mod skip_lookup_start;
 mod source_persist;

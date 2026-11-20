@@ -9,10 +9,11 @@ use super::catalog_events::{
     show_browse, show_details, show_home, show_search, show_startup_done, show_startup_progress,
 };
 use super::details_loading::show_details_failed;
-use super::extension_catalog::show_catalog;
+use super::extension_catalog::{load_extensions_catalog, show_catalog};
 use super::extension_changes::show_change_done;
 use super::home_expanded::show_home_section_page;
 use super::player_timeline::show_online_parts;
+use super::repository_discovery::show_discovered_repositories;
 use super::storage_usage_view::show_storage_usage;
 use super::stream_events::{
     on_open_finished, on_subtitle_ready, show_open_progress, show_open_update, start_ready_stream,
@@ -71,8 +72,16 @@ fn apply_player_or_system_event(ctx: &BridgeContext, ui: &CloudStream, event: Ui
         UiEvent::UpdateLabel(label) => ui.set_update_label(label.into()),
         UiEvent::StorageMeasured(usage) => show_storage_usage(ctx, ui, &usage),
         UiEvent::UpdateBadge(badge) => ui.set_update_badge(badge.into()),
-        UiEvent::ExtensionChanged(message) => show_change_done(ctx, ui, message),
+        UiEvent::ExtensionChanged {
+            message,
+            watch_repositories,
+        } => show_change_done(ctx, ui, message, watch_repositories),
         UiEvent::ExtensionsLoaded(catalog) => show_catalog(ctx, ui, *catalog),
+        UiEvent::RepositoriesDiscovered {
+            added,
+            repositories,
+        } => show_discovered_repositories(ctx, ui, added, repositories),
+        UiEvent::ReloadExtensionsCatalog => load_extensions_catalog(ctx),
         _ => {}
     }
 }

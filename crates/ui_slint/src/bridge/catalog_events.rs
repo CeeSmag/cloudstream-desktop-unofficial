@@ -27,6 +27,7 @@ use super::focus_screens::FocusScreen;
 use super::home_expanded::close_expanded_shelf;
 use super::home_loading::{load_home, HomeShelf};
 use super::poster_hydrate::{hydrate_poster_images, request_artwork};
+use super::repository_discovery::watch_discovered_repositories;
 use super::session::DetailsTarget;
 use super::title_search::{search_message, SearchSummary};
 
@@ -80,6 +81,7 @@ pub(crate) fn show_startup_done(
     show_library(ctx, ui);
     show_continue_watching(ctx, ui);
     load_home(ctx);
+    watch_discovered_repositories(ctx);
 }
 
 /// Shows the bookmarked titles in the Library.

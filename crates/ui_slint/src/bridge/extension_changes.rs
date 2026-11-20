@@ -12,6 +12,7 @@ use super::extension_catalog::{
     load_extensions_catalog, plugin_key, refresh_plugins, refresh_providers,
 };
 use super::home_loading::load_home;
+use super::repository_discovery::watch_discovered_repositories;
 
 type ExtensionChange = Box<dyn FnOnce(&UiServices) -> Result<String, String> + Send>;
 
@@ -31,6 +32,7 @@ pub(crate) fn install_plugin(ctx: &BridgeContext, key: &str) {
     run_change(
         ctx,
         &busy,
+        true,
         Box::new(move |services| {
             let providers = services
                 .extensions
@@ -52,6 +54,7 @@ pub(crate) fn add_repository(ctx: &BridgeContext, url: String) {
     run_change(
         ctx,
         "Adding the repository…",
+        false,
         Box::new(move |services| {
             let entry = services
                 .repositories
@@ -66,6 +69,7 @@ pub(crate) fn remove_repository(ctx: &BridgeContext, url: String) {
     run_change(
         ctx,
         "Removing the repository…",
+        false,
         Box::new(move |services| {
             services
                 .repositories
@@ -85,6 +89,7 @@ pub(crate) fn set_trusted(ctx: &BridgeContext, file: String, trusted: bool) {
     run_change(
         ctx,
         busy,
+        true,
         Box::new(move |services| {
             let extension = installed_by_file(services, &file)?;
             services
@@ -101,6 +106,7 @@ pub(crate) fn uninstall(ctx: &BridgeContext, file: String) {
     run_change(
         ctx,
         "Removing the plugin…",
+        false,
         Box::new(move |services| {
             let extension = installed_by_file(services, &file)?;
             services
@@ -113,23 +119,33 @@ pub(crate) fn uninstall(ctx: &BridgeContext, file: String) {
 }
 
 /// Runs `change` in the background with `busy` on screen; [`show_change_done`] follows.
-fn run_change(ctx: &BridgeContext, busy: &str, change: ExtensionChange) {
+fn run_change(ctx: &BridgeContext, busy: &str, watch_on_success: bool, change: ExtensionChange) {
     if let Some(ui) = ctx.window() {
         ui.set_extensions_busy(busy.into());
     }
     let services = ctx.owned_services();
     let sender = ctx.sender();
     spawn_work("extension-change", move || {
-        let message = change(&services).unwrap_or_else(|error| {
+        let outcome = change(&services);
+        let watch_repositories = watch_on_success && outcome.is_ok();
+        let message = outcome.unwrap_or_else(|error| {
             tracing::warn!(%error, "an extension change failed");
             error
         });
-        sender.send(UiEvent::ExtensionChanged(message));
+        sender.send(UiEvent::ExtensionChanged {
+            message,
+            watch_repositories,
+        });
     });
 }
 
 /// After a change: its message, then every list that depends on the plugins.
-pub(crate) fn show_change_done(ctx: &BridgeContext, ui: &CloudStream, message: String) {
+pub(crate) fn show_change_done(
+    ctx: &BridgeContext,
+    ui: &CloudStream,
+    message: String,
+    watch_repositories: bool,
+) {
     ui.set_extensions_busy("".into());
     ui.set_repo_url("".into());
     ui.set_notice(message.into());
@@ -137,6 +153,9 @@ pub(crate) fn show_change_done(ctx: &BridgeContext, ui: &CloudStream, message: S
     refresh_providers(ctx, ui);
     load_extensions_catalog(ctx);
     load_home(ctx);
+    if watch_repositories {
+        watch_discovered_repositories(ctx);
+    }
 }
 
 fn installed_by_file(services: &UiServices, file: &str) -> Result<InstalledExtension, String> {

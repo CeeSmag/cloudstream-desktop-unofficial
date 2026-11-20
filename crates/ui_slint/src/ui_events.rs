@@ -38,8 +38,18 @@ pub(crate) enum UiEvent {
     /// The nav bar's update badge ("Update v0.5.0"); empty for none.
     UpdateBadge(String),
     /// A plugin or repository change finished; the message says how.
-    ExtensionChanged(String),
+    ExtensionChanged {
+        message: String,
+        watch_repositories: bool,
+    },
     ExtensionsLoaded(Box<ExtensionsCatalog>),
+    /// Repositories discovered asynchronously by an aggregator plugin (such as Mega).
+    RepositoriesDiscovered {
+        added: usize,
+        repositories: Vec<core_model::RepositoryEntry>,
+    },
+    /// Discovered repositories have settled; reload the full plugin catalog once.
+    ReloadExtensionsCatalog,
 }
 
 impl UiEvent {

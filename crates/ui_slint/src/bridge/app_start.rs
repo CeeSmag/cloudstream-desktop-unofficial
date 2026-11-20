@@ -65,6 +65,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
         }
     });
     ui.run().map_err(|error| error.to_string())?;
+    ctx.session.borrow().repository_discovery.stop();
     drop(frames);
     drop(timer);
     Ok(())
