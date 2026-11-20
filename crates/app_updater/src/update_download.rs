@@ -11,7 +11,7 @@ use crate::update_assets::GitHubRelease;
 use crate::update_error::UpdateError;
 
 const GITHUB_RELEASES_API: &str =
-    "https://api.github.com/repos/CeeSmag/cloudstream-rs-egui/releases/latest";
+    "https://api.github.com/repos/CeeSmag/cloudstream-desktop-unofficial/releases/latest";
 /// The version of the running program.
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long the release check may take in total.

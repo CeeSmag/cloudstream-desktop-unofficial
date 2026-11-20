@@ -1,6 +1,6 @@
 # AGENTS.md — Developer & AI Agent Codebase Guide
 
-This document is the architectural index for **`cloudstream-rs-egui`** (native Slint UI fork of the CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_slint` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). `crates/ui_app` (egui) remains in-tree as a reference shell only. Sibling repo `cloudstream-desktop-unofficial` remains the dual Tauri/egui product. When this file and the code differ, the code wins.
+This document is the architectural index for **`cloudstream-desktop-unofficial`** (native Slint UI CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_slint` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). `crates/ui_app` (egui) remains in-tree as a reference shell only. When this file and the code differ, the code wins.
 
 ---
 

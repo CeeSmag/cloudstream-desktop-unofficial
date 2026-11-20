@@ -199,7 +199,7 @@ cat > "$APPDIR/usr/share/metainfo/com.cloudstream.desktop.metainfo.xml" <<EOF
   <summary>CloudStream desktop streaming application</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
-  <url type="homepage">https://github.com/CeeSmag/cloudstream-rs-egui</url>
+  <url type="homepage">https://github.com/CeeSmag/cloudstream-desktop-unofficial</url>
   <description>
     <p>CloudStream is a fast and responsive desktop streaming application with universal extension support.</p>
   </description>

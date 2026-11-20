@@ -27,11 +27,11 @@ struct GitHubAsset {
     browser_download_url: String,
 }
 
-/// Asks GitHub for the latest `CeeSmag/cloudstream-rs-egui` release newer than `current`.
+/// Asks GitHub for the latest `CeeSmag/cloudstream-desktop-unofficial` release newer than `current`.
 pub fn check_for_update(current: &str) -> Result<Option<UpdateInfo>, String> {
-    let url = "https://api.github.com/repos/CeeSmag/cloudstream-rs-egui/releases/latest";
+    let url = "https://api.github.com/repos/CeeSmag/cloudstream-desktop-unofficial/releases/latest";
     let response = ureq::get(url)
-        .header("User-Agent", "cloudstream-rs-egui")
+        .header("User-Agent", "cloudstream-desktop-unofficial")
         .header("Accept", "application/vnd.github+json")
         .call()
         .map_err(|error| error.to_string())?;
