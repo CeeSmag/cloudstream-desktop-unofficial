@@ -96,6 +96,7 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
 
 fn toggle_fullscreen(ui: &CloudStream) {
     let fullscreen = !ui.window().is_fullscreen();
+    tracing::debug!(fullscreen, "player fullscreen toggled");
     ui.window().set_fullscreen(fullscreen);
     ui.set_fullscreen(fullscreen);
     let (icon, text) = if fullscreen {
@@ -109,6 +110,7 @@ fn toggle_fullscreen(ui: &CloudStream) {
 fn toggle_pause(ctx: &BridgeContext) {
     if let Some(playback) = &ctx.services.playback {
         let paused = playback.tick().state == PlaybackState::Paused;
+        tracing::debug!(next_paused = !paused, "player pause toggled");
         report("pause", playback.set_paused(!paused));
         if let Some(ui) = ctx.window() {
             let (icon, text) = if paused {

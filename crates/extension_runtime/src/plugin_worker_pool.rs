@@ -246,17 +246,16 @@ impl ProviderGateway for PluginWorkerPool {
     }
 
     fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
-        self.debug_logging.store(enabled, Ordering::SeqCst);
+        if self.debug_logging.swap(enabled, Ordering::SeqCst) == enabled {
+            return Ok(());
+        }
         let mut last_error = None;
         for worker in self.all_workers() {
             if let Err(error) = worker.set_debug_logging(enabled) {
                 last_error = Some(error);
             }
         }
-        match last_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        last_error.map_or(Ok(()), Err)
     }
 
     fn set_resident_worker_limit(&self, limit: Option<usize>) {

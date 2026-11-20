@@ -12,6 +12,22 @@ export component SettingsPage inherits Rectangle {
     /// Raised by the app to hand the remote to the side menu.
     in property <int> menu-request: 0;
     changed menu-request => { menu.focus(); }
+    /// Raised when the viewer clicks the top-bar Debug indicator to jump straight to Diagnostics.
+    in property <int> diagnostics-request: 0;
+    in-out property <bool> pending-diagnostics-scroll: false;
+    property <length> diagnostics-target-y: 0px;
+    changed diagnostics-request => {
+        if root.page-index == 0 && root.diagnostics-target-y > 0px {
+            scroll.content-y = -max(0px, root.diagnostics-target-y - 24px);
+            root.pending-diagnostics-scroll = false;
+        }
+    }
+    changed diagnostics-target-y => {
+        if root.pending-diagnostics-scroll && root.page-index == 0 && root.diagnostics-target-y > 0px {
+            scroll.content-y = -max(0px, root.diagnostics-target-y - 24px);
+            root.pending-diagnostics-scroll = false;
+        }
+    }
     in property <[string]> cache-size-labels: [];
     in property <string> cache-size-value: "";
     in property <[string]> ahead-labels: [];
@@ -98,7 +114,9 @@ export component SettingsPage inherits Rectangle {
                 padding-bottom: 120px;
                 alignment: start;
 
-                if root.page-index == 0: SettingsGeneralPage {
+                if root.page-index == 0: general := SettingsGeneralPage {
+                    changed diagnostics-y => { root.diagnostics-target-y = self.diagnostics-y; }
+                    init => { root.diagnostics-target-y = self.diagnostics-y; }
                     cache-size-labels: root.cache-size-labels;
                     cache-size-value: root.cache-size-value;
                     ahead-labels: root.ahead-labels;

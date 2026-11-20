@@ -19,6 +19,8 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> worker-value: "";
     in property <bool> debug-logging: false;
     in property <string> update-label: "";
+    /// Vertical offset of the Diagnostics card inside this page (for jump-to-diagnostics scrolling).
+    out property <length> diagnostics-y: diagnostics-card.y;
 
     callback set-video-cache(string);
     callback set-ahead(string);
@@ -173,16 +175,17 @@ export component SettingsGeneralPage inherits VerticalLayout {
         }
     }
 
-    Card {
+    diagnostics-card := Card {
         title: "Diagnostics";
-        subtitle: "Detailed logs for troubleshooting providers and playback";
+        subtitle: "Detailed JSONL traces for troubleshooting UI, player, streams, plugins, and storage";
         icon: Icons.terminal;
+        warn: root.debug-logging;
 
         VerticalLayout {
             spacing: 10px;
             SettingRow {
                 label: "Write detailed debug logs";
-                description: "Records step-by-step traces to logs/debug. Leave off normally as files grow quickly.";
+                description: "Records step-by-step traces to logs/debug/*.jsonl (including mpv & sidecars). Uses extra CPU/disk I/O and files grow quickly; leave off normally.";
                 TvSwitch {
                     checked: root.debug-logging;
                     toggled => { root.set-debug-logging(self.checked); }

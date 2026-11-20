@@ -1,8 +1,9 @@
 # app_shell
 
 The `cloudstream` product binary. It finds the data folder, optionally wipes it, starts
-logging, builds services (`service_wiring.rs`), starts the Cloudflare watcher, and hands
-`UiServices` plus `AppExtras` to `ui_slint` (`run_desktop_app_with`).
+logging (`logs/cloudstream.log` plain text + optional `logs/debug/*.jsonl` per category), builds
+services (`service_wiring.rs`), starts the Cloudflare watcher, and hands `UiServices` plus
+`AppExtras` to `ui_slint` (`run_desktop_app_with`).
 
 Startup order in `main.rs`: `wipe_if_requested` → logging → `build_services` →
 `start_storage_cleanup` (dormant until Home arrives, then post-Home + hourly hygiene and storage-cap

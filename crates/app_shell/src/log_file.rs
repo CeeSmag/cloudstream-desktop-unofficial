@@ -38,7 +38,12 @@ impl LogFile {
             .append(true)
             .open(&self.path)?;
         self.written = file.metadata()?.len();
-        let marker = "---- debug logging started ----\n";
+        let marker = format!(
+            "{{\"event\":\"debug_session_started\",\"version\":\"{}\",\"os\":\"{}\",\"pid\":{}}}\n",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+            std::process::id()
+        );
         file.write_all(marker.as_bytes())?;
         self.written += marker.len() as u64;
         self.open = Some(file);
@@ -124,15 +129,24 @@ mod tests {
     }
 
     #[test]
-    fn an_open_file_appends_after_a_session_marker() {
+    fn an_open_file_appends_after_a_valid_json_session_marker() {
         let path = temp_path("open");
         let file = LogFile::shared(path.clone());
         lock(&file).open().expect("opens");
-        lock(&file).append(b"first line\n").expect("writes");
+        lock(&file)
+            .append(b"{\"msg\":\"first line\"}\n")
+            .expect("writes");
         lock(&file).close();
-        lock(&file).append(b"dropped\n").expect("ignored again");
+        lock(&file)
+            .append(b"{\"msg\":\"dropped\"}\n")
+            .expect("ignored again");
         let text = fs::read_to_string(&path).expect("readable");
-        assert!(text.contains("debug logging started"));
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let marker: serde_json::Value =
+            serde_json::from_str(lines.first().copied().unwrap_or("")).expect("valid json marker");
+        assert_eq!(marker["event"], "debug_session_started");
+        assert_eq!(marker["os"], std::env::consts::OS);
         assert!(text.contains("first line"));
         assert!(!text.contains("dropped"));
         let _ = fs::remove_dir_all(path.parent().expect("has parent"));

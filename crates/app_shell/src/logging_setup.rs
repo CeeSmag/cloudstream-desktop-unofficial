@@ -71,15 +71,16 @@ fn main_layer(
     }
 }
 
-/// One file per part of the app; every call of a function that is instrumented also leaves a
-/// line with how long it took.
+/// One JSON Lines file per part of the app; every instrumented span also records its duration.
 fn category_layer<S>(debug: &DebugLogs) -> (impl Layer<S> + Send + Sync, reload::Handle<Targets, S>)
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     let (switch, handle) = reload::Layer::new(category_filter(false));
     let layer = fmt::layer()
-        .with_ansi(false)
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
         .with_thread_names(true)
         .with_span_events(FmtSpan::CLOSE)
         .with_writer(debug.category_writer())
@@ -87,14 +88,16 @@ where
     (layer, handle)
 }
 
-/// The file with every warning and error.
+/// The JSON Lines file with every warning and error across all modules.
 fn problems_layer<S>(debug: &DebugLogs) -> (impl Layer<S> + Send + Sync, reload::Handle<Targets, S>)
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     let (switch, handle) = reload::Layer::new(problems_filter(false));
     let layer = fmt::layer()
-        .with_ansi(false)
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
         .with_thread_names(true)
         .with_writer(debug.problems_writer())
         .with_filter(switch);
@@ -106,4 +109,45 @@ fn open_log_file(log_file: &Path) -> std::io::Result<std::fs::File> {
         std::fs::create_dir_all(parent)?;
     }
     OpenOptions::new().create(true).append(true).open(log_file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_layers_emit_valid_jsonl_records_routed_by_category() {
+        let dir = std::env::temp_dir().join(format!("cs_jsonl_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let debug = DebugLogs::new(dir.clone());
+        let (cat_layer, cat_handle) = category_layer(&debug);
+        let (prob_layer, prob_handle) = problems_layer(&debug);
+        debug.install_switch(Box::new(move |enabled| {
+            let _ = cat_handle.reload(category_filter(enabled));
+            let _ = prob_handle.reload(problems_filter(enabled));
+        }));
+        let subscriber = Registry::default().with(cat_layer).with(prob_layer);
+        debug.set_enabled(true).expect("enable debug");
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug!(target: "ui_slint::bridge::catalog_callbacks", tab = 2, "tab switched");
+            tracing::warn!(target: "app_services::storage_cleanup::runner", files = 3, "cap hit");
+        });
+        debug.set_enabled(false).expect("disable debug");
+
+        for file in [
+            "ui-logs.jsonl",
+            "storage-logs.jsonl",
+            "warnings-and-errors.jsonl",
+        ] {
+            let content = std::fs::read_to_string(dir.join(file)).expect("read jsonl");
+            let lines: Vec<&str> = content.lines().collect();
+            assert!(lines.len() >= 2, "{file} should have marker + event");
+            for line in lines {
+                let parsed: serde_json::Value =
+                    serde_json::from_str(line).expect("every line must be valid JSON");
+                assert!(parsed.is_object());
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

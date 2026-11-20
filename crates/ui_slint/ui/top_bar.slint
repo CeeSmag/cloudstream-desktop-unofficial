@@ -105,12 +105,22 @@ export component TopBar inherits Rectangle {
     in property <string> status;
     /// "Update v0.5.0" when a newer release can be installed; empty for none.
     in property <string> update;
+    /// True while detailed debug logging is active (shows a persistent amber indicator).
+    in property <bool> debug-logging: false;
+    /// True while the pointer hovers over the debug indicator pill.
+    in-out property <bool> debug-hovered: false;
+    changed debug-logging => {
+        if !root.debug-logging {
+            root.debug-hovered = false;
+        }
+    }
     /// A narrow window: short logo, no provider chip or status (decided by the window's width).
     in property <bool> compact;
     in property <bool> wide;
     callback select-tab(int);
     callback set-provider(string);
     callback update-clicked();
+    callback open-debug-settings();
 
     property <[string]> nav-icons: [Icons.home, Icons.compass, Icons.search, Icons.bookmark, Icons.settings];
 
@@ -187,6 +197,52 @@ export component TopBar inherits Rectangle {
             overflow: elide;
             max-width: 280px;
             vertical-alignment: center;
+        }
+
+        if root.debug-logging: Rectangle {
+            height: 36px;
+            width: debug-row.preferred-width + 22px;
+            border-radius: 18px;
+            background: debug-touch.has-hover ? #f5b94240 : Theme.warn-soft;
+            border-width: 1px;
+            border-color: debug-touch.has-hover ? Theme.warn : #f5b94288;
+            animate background, border-color { duration: 120ms; }
+            accessible-role: AccessibleRole.button;
+            accessible-label: "Debug logging active — open Diagnostics settings";
+            accessible-action-default => { root.open-debug-settings(); }
+            debug-row := HorizontalLayout {
+                padding-left: 11px;
+                padding-right: 11px;
+                spacing: 6px;
+                alignment: center;
+                cross-axis-alignment: center;
+                Rectangle {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: Theme.warn;
+                }
+                TvIcon {
+                    commands: Icons.terminal;
+                    size: 14px;
+                    color: Theme.warn;
+                }
+                if !root.compact: Text {
+                    text: "Debug";
+                    color: Theme.warn;
+                    font-size: 13px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+            debug-touch := TouchArea {
+                mouse-cursor: pointer;
+                changed has-hover => { root.debug-hovered = self.has-hover; }
+                clicked => {
+                    root.debug-hovered = false;
+                    root.open-debug-settings();
+                }
+            }
         }
 
         if root.update != "": Rectangle {

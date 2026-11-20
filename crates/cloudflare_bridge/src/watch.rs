@@ -67,6 +67,7 @@ pub struct WatchConfig {
 /// Stops the background watcher when dropped.
 pub struct WatchHandle {
     stop: Arc<AtomicBool>,
+    debug_logging: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
     commands: Sender<String>,
     /// Events for the UI to drain.
@@ -79,6 +80,11 @@ impl WatchHandle {
         if self.commands.send(host.to_owned()).is_err() {
             tracing::warn!(%host, "the Cloudflare watcher is not running");
         }
+    }
+
+    /// Enables or disables verbose debug logging for the verification helper subprocess.
+    pub fn set_debug_logging(&self, enabled: bool) {
+        self.debug_logging.store(enabled, Ordering::SeqCst);
     }
 
     /// Asks the watcher thread to exit.
@@ -101,20 +107,30 @@ impl Drop for WatchHandle {
 /// Starts watching `config.dir`.
 pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
     let stop = Arc::new(AtomicBool::new(false));
+    let debug_logging = Arc::new(AtomicBool::new(false));
     let (events_tx, events) = mpsc::channel();
     let (commands, commands_rx) = mpsc::channel();
-    let stop_flag = Arc::clone(&stop);
+    let loop_flags = WatcherFlags {
+        stop: Arc::clone(&stop),
+        debug_logging: Arc::clone(&debug_logging),
+    };
     let join = thread::Builder::new()
         .name("cloudflare-watch".into())
-        .spawn(move || run_loop(config, &stop_flag, &events_tx, &commands_rx))
+        .spawn(move || run_loop(config, &loop_flags, &events_tx, &commands_rx))
         .map_err(|error| tracing::error!(%error, "could not start the Cloudflare watcher"))
         .ok();
     WatchHandle {
         stop,
+        debug_logging,
         join,
         commands,
         events,
     }
+}
+
+struct WatcherFlags {
+    stop: Arc<AtomicBool>,
+    debug_logging: Arc<AtomicBool>,
 }
 
 struct Watcher<'a> {
@@ -129,7 +145,7 @@ struct Watcher<'a> {
 
 fn run_loop(
     config: WatchConfig,
-    stop: &AtomicBool,
+    flags: &WatcherFlags,
     events: &Sender<CloudflareEvent>,
     commands: &Receiver<String>,
 ) {
@@ -137,10 +153,11 @@ fn run_loop(
         tracing::warn!(%error, "cannot create the Cloudflare exchange folder");
     }
     let (status_tx, statuses) = mpsc::channel();
+    let debug = Arc::clone(&flags.debug_logging);
     let mut watcher = Watcher {
         helper: config
             .helper
-            .map(|launch| VerifyHelper::new(launch, status_tx)),
+            .map(|launch| VerifyHelper::new(launch, status_tx, Arc::clone(&debug))),
         dir: config.dir,
         allowed: config.allowed,
         events,
@@ -148,7 +165,7 @@ fn run_loop(
         seen_fetches: HashSet::new(),
         next_app_request: 0,
     };
-    while !stop.load(Ordering::SeqCst) {
+    while !flags.stop.load(Ordering::SeqCst) {
         watcher.tick(commands, &statuses);
         thread::sleep(POLL);
     }

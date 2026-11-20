@@ -75,6 +75,7 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
     let Some(gigabytes) = leading_number(value) else {
         return;
     };
+    tracing::debug!(storage_cap_gb = gigabytes, "storage limit updated");
     saved(
         "storage limit",
         ctx.services.settings.set_storage_cap_gb(gigabytes),
@@ -122,6 +123,7 @@ fn clean_storage(ctx: &BridgeContext) {
     let Some(dir) = ctx.extras.borrow().data_dir.clone() else {
         return;
     };
+    tracing::info!("user requested manual storage cleanup");
     let cleanup = ctx.extras.borrow().cleanup.clone();
     ctx.sender().notice("Cleaning up…");
     let sender = ctx.sender();

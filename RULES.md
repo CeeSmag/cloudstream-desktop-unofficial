@@ -98,6 +98,15 @@ Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`), grouped by th
 - An extension crashing/panicking/timing out must **never** crash the app: isolate, log, mark the extension as failed, continue.
 - User-facing errors are human-readable; the technical detail goes to the log.
 
+### Debug Logging Wiring (mandatory)
+
+Settings → General → **Write detailed debug logs** must capture everything happening in the app so bugs can be reproduced and fixed from `logs/debug/*.jsonl` without adding ad-hoc prints:
+
+1. **Register every crate and module route**: Any new workspace crate that logs MUST be listed in `OWN_TARGETS` and mapped in `LogCategory::ROUTES` (`crates/app_shell/src/log_category.rs`). Unit tests in `log_category.rs` enforce that no logging crate is silently dropped.
+2. **Wire every verbose / subprocess / native diagnostic hook**: Any new player verbosity switch, sidecar/worker flag, proxy diagnostic mode, or helper subprocess (e.g. `player_mpv`, JVM sidecars, `cloudstream-verify`) MUST be wired into `ui_slint::bridge::debug_logging` so toggling Debug logging enables/disables it both live and on startup.
+3. **Log key transitions with structured fields**: Add `tracing::debug!` breadcrumbs at user actions, screen/state transitions, and background task boundaries (with structured fields like `tab`, `provider`, `state`, `elapsed_ms`; never secrets, tokens, or full cookies). When Debug logging is off, `LevelFilter::OFF` skips formatting so these cost nothing.
+4. **Structured JSON Lines format**: `logs/debug/*.jsonl` files MUST emit valid one-JSON-object-per-line records (including session markers) while `logs/cloudstream.log` stays concise, human-readable text.
+
 ## 7. Debuggability & Changeability
 
 - Small pure functions; side effects at the edges. Prefer returning values over mutating shared state.

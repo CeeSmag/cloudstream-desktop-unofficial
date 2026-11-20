@@ -335,12 +335,13 @@ export component Card inherits Rectangle {
     in property <string> subtitle: "";
     in property <string> icon: "";
     in property <bool> danger: false;
+    in property <bool> warn: false;
 
     background: root.danger ? #1d1218eb : Theme.panel-glass;
     vertical-stretch: 0;
     border-radius: Theme.radius-lg;
     border-width: 1px;
-    border-color: root.danger ? Theme.danger-border : Theme.border;
+    border-color: root.danger ? Theme.danger-border : (root.warn ? #f5b94288 : Theme.border);
     drop-shadow-blur: 18px;
     drop-shadow-color: #00000044;
 
@@ -355,15 +356,15 @@ export component Card inherits Rectangle {
                 width: 34px;
                 height: 34px;
                 border-radius: 10px;
-                background: root.danger ? Theme.danger-soft : Theme.accent-soft;
+                background: root.danger ? Theme.danger-soft : (root.warn ? Theme.warn-soft : Theme.accent-soft);
                 border-width: 1px;
-                border-color: root.danger ? Theme.danger-border : Theme.accent-border;
+                border-color: root.danger ? Theme.danger-border : (root.warn ? #f5b94288 : Theme.accent-border);
                 TvIcon {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     commands: root.icon;
                     size: 16px;
-                    color: root.danger ? Theme.danger : Theme.accent-hi;
+                    color: root.danger ? Theme.danger : (root.warn ? Theme.warn : Theme.accent-hi);
                 }
             }
             VerticalLayout {

@@ -129,6 +129,9 @@ export component CloudStream inherits Window {
     in-out property <string> cf-host: "";
     in-out property <string> cf-message: "";
     in-out property <int> settings-page-index: 0;
+    in-out property <bool> debug-indicator-hovered: false;
+    in-out property <int> diagnostics-focus-request: 0;
+    in-out property <bool> pending-diagnostics-scroll: false;
     in-out property <int> extensions-tab: 0;
     in-out property <string> repo-url: "";
     in-out property <bool> player-chrome-visible: true;
@@ -349,10 +352,19 @@ export component CloudStream inherits Window {
                 busy: root.home-loading || root.search-loading || root.browse-loading || root.details-loading
                     || root.open-busy || root.plugins-loading || root.extensions-busy != "";
                 status: root.open-busy ? root.status-line : "";
+                debug-logging: root.debug-logging;
+                debug-hovered <=> root.debug-indicator-hovered;
                 select-tab(i) => { select-tab(i); }
                 set-provider(name) => { set-provider(name); }
                 update: root.update-badge;
                 update-clicked => { root.settings-page-index = 0; select-tab(4); }
+                open-debug-settings => {
+                    root.debug-indicator-hovered = false;
+                    root.settings-page-index = 0;
+                    root.pending-diagnostics-scroll = true;
+                    root.diagnostics-focus-request += 1;
+                    select-tab(4);
+                }
             }
 
             if cf-state != 0: CloudflareBanner {
@@ -516,6 +528,8 @@ export component CloudStream inherits Window {
                 apply-update => { apply-update(); }
                 open-logs => { open-logs(); }
                 debug-logging: root.debug-logging;
+                diagnostics-request: root.diagnostics-focus-request;
+                pending-diagnostics-scroll <=> root.pending-diagnostics-scroll;
                 storage-fraction: root.storage-fraction;
                 storage-over: root.storage-over;
                 storage-rows: root.storage-rows;
@@ -670,6 +684,58 @@ export component CloudStream inherits Window {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if !starting && !player-open && root.debug-logging && root.debug-indicator-hovered: Rectangle {
+            x: max(16px, root.width - self.width - Theme.page-pad);
+            y: 78px;
+            width: min(360px, root.width - 32px);
+            height: debug-tip-body.preferred-height;
+            border-radius: Theme.radius;
+            background: Theme.panel-glass;
+            border-width: 1px;
+            border-color: #f5b94288;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #000000c0;
+            debug-tip-body := VerticalLayout {
+                padding: 14px;
+                spacing: 6px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    cross-axis-alignment: center;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: Theme.warn;
+                    }
+                    Text {
+                        text: "Debug logging is active";
+                        color: Theme.warn;
+                        font-size: 13.5px;
+                        font-weight: 700;
+                    }
+                }
+                Text {
+                    text: "CloudStream is recording detailed diagnostic traces (app, UI, player, streams, plugins, storage) to logs/debug/*.jsonl.";
+                    color: Theme.text-secondary;
+                    font-size: 12.5px;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: "Resource impact: increases CPU and disk writes, and log files grow quickly (up to 20 MB per file). Leave off during normal use.";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: "Click the Debug indicator to open Diagnostics settings.";
+                    color: Theme.accent-hi;
+                    font-size: 12px;
+                    font-weight: 600;
+                    wrap: word-wrap;
                 }
             }
         }

@@ -48,6 +48,7 @@ fn search_titles(ctx: &BridgeContext, query: String) {
     if query.is_empty() {
         return;
     }
+    tracing::debug!(query_len = query.len(), "ui search submitted");
     ui.set_search_loading(true);
     ui.set_search_message("".into());
     let preferred = ui.get_selected_provider().to_string();

@@ -52,6 +52,7 @@ fn select_tab(ctx: &BridgeContext, tab: i32) {
     let Some(ui) = ctx.window() else {
         return;
     };
+    tracing::debug!(from = ui.get_tab(), to = tab, "ui tab selected");
     if !ui.get_details_title().is_empty() {
         close_details(ctx);
     }
@@ -80,6 +81,7 @@ fn open_shelf_item(ctx: &BridgeContext, shelf: i32, index: i32) {
         .row_data(row(shelf))
         .and_then(|section| section.items.row_data(row(index)));
     if let Some(item) = item {
+        tracing::debug!(shelf, index, title = %item.title, provider = %item.provider, "opening home shelf item");
         load_details(ctx, &item);
     }
 }

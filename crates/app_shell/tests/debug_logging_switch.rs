@@ -23,21 +23,34 @@ fn write_one_message_of_each_kind() {
     tracing::debug!(target: "player_mpv::mpv_player", "loaded the file");
     tracing::info!(target: "sidecar", "plugin said hi");
     tracing::warn!(target: "extension_runtime::transport", "slow call");
-    tracing::error!(target: "webapp", "button failed");
+    tracing::error!(target: "ui_slint::bridge::catalog_callbacks", "button failed");
     tracing::debug!(target: "hyper::proto", "third party noise");
 }
 
-/// Every category got its own file with the level on each line.
+/// Every category got its own valid JSON Lines file with the level on each line.
 fn assert_messages_are_sorted(dir: &Path) {
-    let player = read(dir, "player-logs.txt");
+    let player = read(dir, "player-logs.jsonl");
     assert!(player.contains("DEBUG") && player.contains("loaded the file"));
-    assert!(read(dir, "sidecar-logs.txt").contains("INFO"));
-    assert!(read(dir, "extensions-logs.txt").contains("WARN"));
-    assert!(read(dir, "webapp-logs.txt").contains("ERROR"));
+    assert!(read(dir, "sidecar-logs.jsonl").contains("INFO"));
+    assert!(read(dir, "extensions-logs.jsonl").contains("WARN"));
+    assert!(read(dir, "ui-logs.jsonl").contains("ERROR"));
+    for name in [
+        "player-logs.jsonl",
+        "sidecar-logs.jsonl",
+        "extensions-logs.jsonl",
+        "ui-logs.jsonl",
+        "warnings-and-errors.jsonl",
+    ] {
+        for line in read(dir, name).lines() {
+            let parsed: serde_json::Value =
+                serde_json::from_str(line).expect("every debug log line must be valid JSON");
+            assert!(parsed.is_object());
+        }
+    }
 }
 
 fn assert_problems_file_holds_only_problems(dir: &Path) {
-    let problems = read(dir, "warnings-and-errors.txt");
+    let problems = read(dir, "warnings-and-errors.jsonl");
     assert!(problems.contains("slow call") && problems.contains("button failed"));
     assert!(
         !problems.contains("loaded the file"),
@@ -78,7 +91,7 @@ fn debug_files_fill_only_while_the_switch_is_on() {
     logs.set_enabled(false).expect("switches off");
     assert!(!tracing::enabled!(target: "player_mpv::mpv_player", Level::DEBUG));
     tracing::debug!(target: "player_mpv::mpv_player", "written after off");
-    tracing::error!(target: "webapp", "error after off");
+    tracing::error!(target: "ui_slint::bridge::catalog_callbacks", "error after off");
     assert_left_out(&logs, "written after off");
     assert_left_out(&logs, "error after off");
 

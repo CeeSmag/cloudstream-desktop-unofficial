@@ -224,6 +224,18 @@ fn check_banner_and_toast_states(ui: &CloudStream, adapter: &RecordingWindowAdap
     ui.set_notice("Saved to Library".into());
     assert_unbounded_window(adapter, "toast_notice");
     ui.set_notice("".into());
+
+    ui.set_debug_logging(true);
+    assert_unbounded_window(adapter, "top_bar_debug_indicator");
+    ui.set_debug_indicator_hovered(true);
+    assert_unbounded_window(adapter, "top_bar_debug_tooltip");
+    ui.set_debug_indicator_hovered(false);
+    ui.set_tab(4);
+    ui.set_settings_page_index(0);
+    ui.set_pending_diagnostics_scroll(true);
+    ui.set_diagnostics_focus_request(1);
+    assert_unbounded_window(adapter, "settings_diagnostics_jump");
+    ui.set_debug_logging(false);
 }
 
 #[test]

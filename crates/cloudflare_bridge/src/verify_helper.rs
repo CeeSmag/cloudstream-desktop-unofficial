@@ -8,7 +8,9 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 use crate::helper_protocol::{format_command, parse_status, HelperCommand, HelperStatus};
 
@@ -31,15 +33,21 @@ pub struct VerifyHelper {
     launch: HelperLaunch,
     running: Option<RunningHelper>,
     statuses: Sender<HelperStatus>,
+    debug_logging: Arc<AtomicBool>,
 }
 
 impl VerifyHelper {
     /// Nothing starts until the first command.
-    pub fn new(launch: HelperLaunch, statuses: Sender<HelperStatus>) -> Self {
+    pub fn new(
+        launch: HelperLaunch,
+        statuses: Sender<HelperStatus>,
+        debug_logging: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             launch,
             running: None,
             statuses,
+            debug_logging,
         }
     }
 
@@ -97,8 +105,12 @@ impl VerifyHelper {
     }
 
     fn start(&mut self) -> std::io::Result<()> {
-        let mut child = Command::new(&self.launch.program)
-            .args(&self.launch.args)
+        let mut command = Command::new(&self.launch.program);
+        command.args(&self.launch.args);
+        if self.debug_logging.load(Ordering::SeqCst) {
+            command.arg("--debug");
+        }
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -148,7 +160,19 @@ fn forward_statuses(stdout: std::process::ChildStdout, statuses: &Sender<HelperS
                     break;
                 }
             }
-            None => tracing::info!(%line, "verification helper"),
+            None => log_helper_line(&line),
         }
+    }
+}
+
+fn log_helper_line(line: &str) {
+    if line.contains(" ERROR ") {
+        tracing::error!(%line, "verification helper");
+    } else if line.contains(" WARN ") {
+        tracing::warn!(%line, "verification helper");
+    } else if line.contains(" DEBUG ") {
+        tracing::debug!(%line, "verification helper");
+    } else {
+        tracing::info!(%line, "verification helper");
     }
 }
