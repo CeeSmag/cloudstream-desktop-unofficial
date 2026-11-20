@@ -114,6 +114,8 @@ need rustfmt
 cargo clippy -V >/dev/null 2>&1 || die "clippy is missing (rustup component add clippy)"
 command -v cargo-deny >/dev/null 2>&1 || die "cargo-deny is missing (cargo install cargo-deny)"
 command -v cargo-audit >/dev/null 2>&1 || die "cargo-audit is missing (cargo install cargo-audit)"
+command -v cargo-machete >/dev/null 2>&1 || die "cargo-machete is missing (cargo install cargo-machete)"
+need shellcheck
 
 STARTED=$(date +%s)
 echo "ci_test_appimage_commit: repo=${REPO_ROOT}"
@@ -140,7 +142,17 @@ run cargo deny check
 echo "  [1e] cargo audit"
 run cargo audit
 
-echo "  [1f] file-length unit tests + check (project-rules)"
+echo "  [1f] dead-code / unused deps + broken rustdoc links"
+run bash "${SCRIPT_DIR}/check_dead_code.sh"
+
+echo "  [1g] shellcheck on scripts/*.sh"
+run shellcheck scripts/*.sh
+
+echo "  [1h] architecture & unsafe allowlist checks"
+run python3 scripts/check_architecture.py
+run python3 scripts/check_unsafe_audit.py
+
+echo "  [1i] file-length & QA script unit tests + file-length check (project-rules)"
 run python3 -m unittest discover -s scripts -p "*_test.py"
 run python3 scripts/check_file_lengths.py
 
@@ -148,11 +160,12 @@ echo "  note: CI sidecar Kotlin job is Windows-only; skipped on this Linux run."
 echo "  Stage 1 OK"
 
 # --- 2. All workspace tests ---------------------------------------------------------------------
-begin_stage 2 "All workspace tests (cargo test --workspace)"
+begin_stage 2 "All workspace tests (unit, integration, race, property, Slint, BDD)"
 
 if command -v cargo-nextest >/dev/null 2>&1; then
-    echo "  using cargo-nextest (same as just test on Unix when installed)"
-    run cargo nextest run --workspace
+    echo "  using cargo-nextest for Rust tests + cargo test for Cucumber BDD"
+    run cargo nextest run --workspace --exclude bdd_tests
+    run cargo test -p bdd_tests
 else
     run cargo test --workspace
 fi

@@ -123,14 +123,18 @@ Must pass before every commit:
 
 ```
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo deny check        # licenses/advisories
-cargo audit             # known vulnerabilities
-python scripts/check_file_lengths.py   # 300-line file limit (§4); clippy counts functions only
+cargo clippy --workspace --all-targets -- -D warnings          # Linux default uses -A clippy::cognitive_complexity + strict --no-default-features pass
+bash scripts/check_dead_code.sh                                # cargo-machete + cargo doc -D rustdoc::broken_intra_doc_links
+shellcheck scripts/*.sh                                        # shell script linting
+python3 scripts/check_architecture.py                          # one-way dependency direction, 0 cycles (§2)
+python3 scripts/check_unsafe_audit.py                          # unsafe allowlist + // SAFETY: comments (§8)
+cargo test --workspace                                         # T1/T2/race/property/Slint/BDD
+cargo deny check                                               # licenses/advisories
+cargo audit                                                    # known vulnerabilities
+python3 scripts/check_file_lengths.py                          # 300-line file limit (§4); clippy counts functions only
 ```
 
-`just gates` runs all of them (`fmt clippy test deny audit lengths`). The `lengths` recipe also runs
+`just gates` runs all of them (`fmt clippy clippy-strict dead-code shellcheck arch unsafe-audit test deny audit lengths` on Unix; `fmt clippy dead-code arch unsafe-audit test deny audit lengths` on Windows). Deep/nightly QA (`just qa-full` / `.github/workflows/quality-nightly.yml`) runs coverage (`scripts/coverage.sh`), mutation testing (`scripts/run_mutants.sh`), `cargo-geiger`, quality metrics (`scripts/quality_metrics.py`), fuzz corpus sanity (`scripts/run_fuzz_sanity.sh`), and Criterion benchmark sanity (`just bench-quick`). The `lengths` recipe also runs
 `python -m unittest discover -s scripts -p "*_test.py"` before the file-length check (same as CI's
 `project-rules` job). Files already over 300 lines when the check landed are listed in
 `scripts/file_length_baseline.txt`: they may shrink but not grow, and the baseline line must go once

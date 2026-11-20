@@ -79,11 +79,17 @@ jobs:
 
       # Without cognitive_complexity: on Linux a Wayland dependency (calloop) turns on `tracing/log`,
       # every tracing macro then expands to an extra `log` branch, and clippy counts those as the
-      # function's own complexity. The Windows job above checks the lint on the code as written.
-      - name: Clippy Warnings
+      # function's own complexity. The `--no-default-features` pass below checks it on Linux too.
+      - name: Clippy Warnings (default features)
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
-      - name: Workspace Tests
+      - name: Clippy Warnings (strict cognitive_complexity)
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+      - name: Rustdoc Broken Intra-Doc Links
+        run: RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --workspace --no-deps
+
+      - name: Workspace Tests (unit, integration, race, property, Slint, BDD)
         run: cargo test --workspace
 
   supply-chain:
@@ -107,18 +113,43 @@ jobs:
         run: cargo audit
 
   project-rules:
-    name: Project Rules (file lengths)
+    name: Project Rules (lengths, arch, unsafe, machete, shellcheck)
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Test the check
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+
+      - name: Setup Rust toolchain (for cargo metadata)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test QA & rule scripts
         run: python3 -m unittest discover -s scripts -p "*_test.py"
 
       - name: Rust files within 300 lines (RULES.md section 4)
         run: python3 scripts/check_file_lengths.py
+
+      - name: One-way crate architecture & 0 cycles (RULES.md section 2)
+        run: python3 scripts/check_architecture.py
+
+      - name: Unsafe allowlist & SAFETY comments (RULES.md section 8)
+        run: python3 scripts/check_unsafe_audit.py
+
+      - name: Unused dependencies (cargo machete)
+        run: |
+          mapfile -t MEMBERS < <(python3 -c 'import tomllib; print("\n".join(tomllib.load(open("Cargo.toml","rb"))["workspace"]["members"]))')
+          cargo machete "${MEMBERS[@]}"
+
+      - name: Shell script lint (shellcheck)
+        run: shellcheck scripts/*.sh
 
   sidecar-check:
     name: Sidecar (Kotlin & Gradle)

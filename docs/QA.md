@@ -76,4 +76,7 @@ A release tag (`v*`) may be published only when:
 ## 5. Documented Coverage Exclusions & Equivalent Mutants
 
 - **Coverage / Mutation Exclusions**: Explicitly listed in `scripts/coverage_config.json` and `.cargo/mutants.toml`. Restricted solely to thin `libmpv` FFI bindings, Win32 AppContainer / Linux Landlock syscall wrappers, native WebView window loops, Slint generated bindings / GUI bridge glue, and `main()` wiring entrypoints.
-- **Equivalent Mutants**: Recorded here after mutation runs when a surviving mutant cannot change observable behavior (for example, `tracing` instrumentation/log-only branches or redundant defensive clamps).
+- **Equivalent Mutants**: Recorded here after mutation runs when a surviving mutant cannot change observable behavior:
+  - `title_cache/src/title_prune.rs` (`log_report` & `kept_title.rs:41` / `title_cache.rs:110` `if removed > 0 { tracing::info!(...) }` guards): log-only side effects that do not alter return values or disk state.
+  - `subtitle_store/src/subtitle_prefetch.rs` (`Shared::log_summary`): log-only summary emitter.
+  - `skip_times/src/skip_fetcher.rs` (`UreqSkipFetcher::get_text`, `MAX_BYTES` arithmetic): live-network HTTP client covered by `tests/live_lookup.rs` (`#[ignore]`).

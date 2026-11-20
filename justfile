@@ -5,7 +5,11 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
 # CI (.github/workflows/ci.yml) runs the same checks, on Windows and Linux: change the two together.
 # Everything that must pass before a commit (RULES.md section 8).
-gates: fmt clippy test deny audit lengths
+[windows]
+gates: fmt clippy dead-code arch unsafe-audit test deny audit lengths
+
+[unix]
+gates: fmt clippy clippy-strict dead-code shellcheck arch unsafe-audit test deny audit lengths
 
 fmt:
     cargo fmt --all -- --check
@@ -20,14 +24,15 @@ clippy:
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings -A clippy::cognitive_complexity
 
-# Unit and integration tests; uses nextest when installed.
+# Unit, integration, race, property, Slint, and BDD tests; uses nextest when installed.
+# Cucumber (`bdd_tests`) uses `harness = false` and does not support nextest's `--list`.
 [windows]
 test:
-    cargo nextest run --workspace; if ($LASTEXITCODE -ne 0) { cargo test --workspace }
+    cargo nextest run --workspace --exclude bdd_tests; if ($LASTEXITCODE -eq 0) { cargo test -p bdd_tests } else { cargo test --workspace }
 
 [unix]
 test:
-    if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace; else cargo test --workspace; fi
+    if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace --exclude bdd_tests && cargo test -p bdd_tests; else cargo test --workspace; fi
 
 deny:
     cargo deny check
