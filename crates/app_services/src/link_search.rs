@@ -68,7 +68,11 @@ impl LinkSearch {
         let Some(id) = self.id.clone() else {
             return self.resolve_in_one_piece();
         };
-        let update = self.gateway.poll_link_search(&id, self.cursor, wait)?;
+        let update = match self.gateway.poll_link_search(&id, self.cursor, wait) {
+            Ok(update) => update,
+            Err(GatewayError::Transport(reason)) => return self.recover_from_crash(&reason),
+            Err(error) => return Err(error.into()),
+        };
         self.cursor = update.cursor();
         let mut batch = LinkBatch {
             links: playable_links_best_first(update.links),
@@ -80,6 +84,34 @@ impl LinkSearch {
             self.end_of_run(update.failure, &mut batch)?;
         }
         Ok(batch)
+    }
+
+    /// Handles a sidecar crash mid-search: keeps already-found streams or restarts fresh.
+    fn recover_from_crash(&mut self, reason: &str) -> Result<LinkBatch, ServiceError> {
+        if self.found > 0 {
+            tracing::warn!(
+                provider = %self.provider,
+                found = self.found,
+                %reason,
+                "sidecar exited mid-search; keeping streams already found"
+            );
+            return Ok(LinkBatch {
+                done: true,
+                ..LinkBatch::default()
+            });
+        }
+        if self.attempt < MAX_ATTEMPTS {
+            self.attempt += 1;
+            tracing::warn!(
+                provider = %self.provider,
+                attempt = self.attempt,
+                %reason,
+                "sidecar exited mid-search; starting a fresh link search"
+            );
+            self.begin_run()?;
+            return Ok(LinkBatch::default());
+        }
+        Err(GatewayError::Transport(reason.to_owned()).into())
     }
 
     /// Stops the search because nobody wants its streams any more.

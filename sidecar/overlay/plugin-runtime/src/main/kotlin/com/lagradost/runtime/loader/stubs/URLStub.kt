@@ -77,6 +77,10 @@ object URLStub {
             builder.addInterceptor(CloudflareSolver.interceptor)
         }
         builder.dns(SafeDns)
+        // Windows AppContainer enforces strict handle checks; OkHttp 5's Happy Eyeballs
+        // (FastFallbackExchangeFinder) closes losing TCP sockets while sun.nio.ch.Net.pollConnect
+        // is active, raising fatal EXCEPTION_INVALID_HANDLE (0xc0000008) in WS2_32.dll/ntdll.dll.
+        builder.fastFallback(false)
         return builder.build()
     }
 

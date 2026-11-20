@@ -7,7 +7,9 @@ use extension_api::GatewayError;
 use serde_json::Value;
 
 use crate::reply_wait::{await_reply, DeadlineHold, PendingCall};
-use crate::rpc_message::{encode_request, same_extension_load};
+use crate::rpc_message::{
+    encode_request, is_per_process_method, missing_sidecar_error, same_extension_load,
+};
 use crate::sidecar_process_kill::{discard_running, take_if_exited};
 use crate::sidecar_process_start::{start_sidecar, RunningSidecar};
 use crate::{RpcTransport, SidecarLaunchConfig};
@@ -92,10 +94,8 @@ impl SidecarProcessTransport {
             self.pid.store(0, Ordering::SeqCst);
         }
         if slot.is_none() {
-            if request.method == "take_added_repositories" {
-                return Err(GatewayError::Unavailable(
-                    "no sidecar running for take_added".to_owned(),
-                ));
+            if let Some(err) = missing_sidecar_error(request.method) {
+                return Err(err);
             }
             if self.closed.load(Ordering::SeqCst) {
                 return Err(GatewayError::Unavailable("the app is closing".to_owned()));
@@ -161,11 +161,11 @@ impl SidecarProcessTransport {
     ) -> Result<Value, GatewayError> {
         match self.run_call(slot, request) {
             Err(error) if matches!(error, GatewayError::Transport(_)) => {
-                if request.method == "take_added_repositories" {
+                if is_per_process_method(request.method) {
                     tracing::warn!(
                         method = request.method,
                         %error,
-                        "discarding sidecar after transport failure; not retrying take_added"
+                        "discarding sidecar after transport failure; not retrying per-process call"
                     );
                     self.discard_slot(slot);
                     Err(error)

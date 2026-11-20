@@ -13,6 +13,11 @@ import java.io.File
  */
 object CloudflareSetup {
     fun install() {
+        // Always disable OkHttp 5 fastFallback on shared clients: Windows AppContainer strict
+        // handle checks crash the JVM (0xc0000008) when Happy Eyeballs closes a racing socket
+        // while another thread is inside sun.nio.ch.Net.pollConnect.
+        disableFastFallback(app)
+        runCatching { disableFastFallback(insecureApp) }
         val dataDir = System.getProperty("cloudstream.data.dir")
         if (dataDir.isNullOrBlank()) {
             CloudflareSolver.log("WARN", "no data folder: Cloudflare verification is off")
@@ -24,9 +29,20 @@ object CloudflareSetup {
         CloudflareSolver.log("INFO", "verification is on; exchange folder ${CloudflareSolver.exchangeDir}; the app answers within ${CloudflareSolver.solveTimeoutMs / 1000}s at most")
     }
 
+    private fun disableFastFallback(requests: Requests) {
+        val client = requests.baseClient
+        if (!client.fastFallback) return
+        requests.baseClient = client.newBuilder().fastFallback(false).build()
+    }
+
     private fun addTo(requests: Requests) {
         val client = requests.baseClient
-        if (client.interceptors.contains(CloudflareSolver.interceptor)) return
-        requests.baseClient = client.newBuilder().addInterceptor(CloudflareSolver.interceptor).build()
+        val hasInterceptor = client.interceptors.contains(CloudflareSolver.interceptor)
+        if (hasInterceptor && !client.fastFallback) return
+        val builder = client.newBuilder().fastFallback(false)
+        if (!hasInterceptor) {
+            builder.addInterceptor(CloudflareSolver.interceptor)
+        }
+        requests.baseClient = builder.build()
     }
 }

@@ -132,3 +132,32 @@ fn cancelling_stops_the_search_in_the_runtime() {
     search(&gateway, "data").cancel();
     assert_eq!(*gateway.searches_cancelled.lock().expect("lock"), 1);
 }
+
+#[test]
+fn transport_crash_before_any_stream_restarts_search_on_fresh_sidecar() {
+    let gateway = streaming(vec![
+        Err(GatewayError::Transport("sidecar exited".into())),
+        Ok(update(vec![link("recovered", 1080)], true)),
+    ]);
+    let mut search = search(&gateway, "data");
+    let first = search.poll(Duration::ZERO).expect("restarted cleanly");
+    assert!(!first.done && first.links.is_empty());
+    let second = search.poll(Duration::ZERO).expect("second poll");
+    assert!(second.done && second.links.len() == 1);
+    assert_eq!(second.links[0].url, "recovered");
+    assert_eq!(*gateway.searches_started.lock().expect("lock"), 2);
+}
+
+#[test]
+fn transport_crash_after_streams_found_keeps_existing_streams_and_finishes() {
+    let gateway = streaming(vec![
+        Ok(update(vec![link("already-found", 720)], false)),
+        Err(GatewayError::Transport("sidecar exited".into())),
+    ]);
+    let mut search = search(&gateway, "data");
+    let first = search.poll(Duration::ZERO).expect("first batch");
+    assert_eq!(first.links.len(), 1);
+    let second = search.poll(Duration::ZERO).expect("finish cleanly");
+    assert!(second.done && second.failure.is_none());
+    assert_eq!(*gateway.searches_started.lock().expect("lock"), 1);
+}

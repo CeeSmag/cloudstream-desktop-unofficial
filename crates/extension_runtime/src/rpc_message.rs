@@ -61,6 +61,27 @@ pub(crate) fn same_extension_load(left: &Value, right: &Value) -> bool {
     }
 }
 
+/// RPCs tied to in-memory state of one running JVM; retrying them on a fresh JVM always fails.
+pub(crate) fn is_per_process_method(method: &str) -> bool {
+    matches!(
+        method,
+        "poll_link_search" | "cancel_link_search" | "take_added_repositories"
+    )
+}
+
+/// Error returned when a per-process RPC arrives with no live sidecar (avoiding a pointless restart).
+pub(crate) fn missing_sidecar_error(method: &str) -> Option<GatewayError> {
+    match method {
+        "take_added_repositories" => Some(GatewayError::Unavailable(
+            "no sidecar running for take_added".to_owned(),
+        )),
+        "poll_link_search" | "cancel_link_search" => Some(GatewayError::Transport(
+            "sidecar exited before link search finished".to_owned(),
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

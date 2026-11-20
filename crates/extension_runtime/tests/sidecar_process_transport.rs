@@ -228,6 +228,28 @@ fn shutdown_ends_the_sidecar_even_while_a_call_is_waiting_on_it() {
     );
 }
 
+#[test]
+fn poll_link_search_after_sidecar_exit_returns_transport_without_retrying_dead_id() {
+    let transport = transport();
+    let search_id = transport
+        .call("start_link_search", json!({"data": "1,20,0"}), SHORT)
+        .expect("start search");
+    assert_eq!(
+        transport.call("reply_then_die", Value::Null, SHORT),
+        Ok(json!("bye"))
+    );
+    std::thread::sleep(Duration::from_millis(100));
+    let outcome = transport.call(
+        "poll_link_search",
+        json!({"id": search_id, "fromLink": 0, "fromSubtitle": 0, "waitMs": 50}),
+        SHORT,
+    );
+    assert!(
+        matches!(outcome, Err(GatewayError::Transport(_))),
+        "must report Transport rather than retrying a dead UUID on a fresh JVM; got {outcome:?}"
+    );
+}
+
 /// Linux: a sidecar with the production process limits (process group, parent-death signal).
 #[cfg(target_os = "linux")]
 fn limited_transport(

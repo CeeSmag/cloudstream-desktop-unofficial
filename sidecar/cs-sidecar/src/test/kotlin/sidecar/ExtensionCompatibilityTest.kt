@@ -339,4 +339,10 @@ class ExtensionCompatibilityTest {
         val publicIp = InetAddress.getByAddress(byteArrayOf(1, 1, 1, 1))
         assertFalse(URLStub.isPrivateOrLocalAddress(publicIp), "1.1.1.1 must be recognized as public")
     }
+
+    @Test
+    fun `URLStub buildSafeOkHttpClient disables fastFallback for AppContainer safety`() {
+        val client = URLStub.buildSafeOkHttpClient(okhttp3.OkHttpClient.Builder())
+        assertFalse(client.fastFallback, "fastFallback must be disabled to prevent AppContainer 0xc0000008 Winsock crashes")
+    }
 }
