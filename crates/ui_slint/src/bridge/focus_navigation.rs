@@ -2,11 +2,11 @@
 
 use slint::{ComponentHandle, Model};
 
+use crate::episode_groups::MAX_SEASON_TABS;
 use crate::focus_grid::{Direction, FocusGrid, FocusPoint, NAV_ROW};
 use crate::{CloudStream, HomeExpanded, RepoDetail};
 
 use super::bridge_context::BridgeContext;
-use super::details_view::shown_episodes;
 use super::focus_screens::{
     current_screen, screen_rows, DetailsAction, DetailsButtons, FocusScreen,
 };
@@ -99,7 +99,8 @@ fn activate_home(ui: &CloudStream, point: FocusPoint) {
 }
 
 fn activate_details(ctx: &BridgeContext, ui: &CloudStream, point: FocusPoint) {
-    let seasons_row = if ui.get_season_labels().row_count() > 1 {
+    let season_count = ui.get_season_labels().row_count();
+    let seasons_row = if season_count > 1 && season_count <= MAX_SEASON_TABS {
         1
     } else {
         -1
@@ -126,15 +127,11 @@ fn activate_details(ctx: &BridgeContext, ui: &CloudStream, point: FocusPoint) {
             ui.invoke_season_chosen(label);
         }
     } else {
-        let shown = usize::try_from(point.row - episodes_row).unwrap_or(usize::MAX);
-        let original = {
-            let session = ctx.session.borrow();
-            shown_episodes(&session.episodes, ui.get_season_filter())
-                .get(shown)
-                .map(|(index, _)| *index)
-        };
-        if let Some(index) = original.and_then(|index| i32::try_from(index).ok()) {
-            ui.invoke_play_episode(index);
+        let cols = ui.get_episode_columns().max(1);
+        let shown =
+            usize::try_from((point.row - episodes_row) * cols + point.col).unwrap_or(usize::MAX);
+        if let Some(episode) = ui.get_episodes().row_data(shown) {
+            ui.invoke_play_episode(episode.index);
         }
     }
 }

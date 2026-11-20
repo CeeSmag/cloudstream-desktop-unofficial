@@ -3,15 +3,16 @@
 use app_services::{NextEpisode, PlaybackItem};
 use core_model::Bookmark;
 
-use crate::posters::empty_episodes;
+use crate::episode_groups::{first_episode_in_season, parse_season_label, MACRO_CHUNK_COUNT};
+use crate::posters::{empty_cast, empty_episodes};
 use crate::request_tickets::RequestKind;
 use crate::ui_events::EpisodeRow;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_library;
-use super::details_loading::parse_season_label;
-use super::details_view::{first_episode, show_episode_list};
+use super::details_artwork::forget_details_artwork;
+use super::details_view::show_episode_list;
 use super::focus_navigation::restore_focus;
 use super::home_callbacks::row;
 use super::session::DetailsTarget;
@@ -30,10 +31,41 @@ pub(crate) fn wire_details(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_toggle_bookmark(move || toggle_bookmark(&c));
     let c = ctx.clone();
     ui.on_skip_checks(move || c.session.borrow().control.skip_checks());
+    wire_episode_controls(ctx, ui);
+}
+
+fn wire_episode_controls(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_season_chosen(move |label| {
         if let Some(ui) = c.window() {
             ui.set_season_filter(parse_season_label(&label));
+            c.session.borrow_mut().details.episode_chunk = 0;
+            show_episode_list(&c, &ui);
+        }
+    });
+    let c = ctx.clone();
+    ui.on_toggle_episode_sort(move || {
+        if let Some(ui) = c.window() {
+            let mut session = c.session.borrow_mut();
+            session.details.episodes_descending = !session.details.episodes_descending;
+            session.details.episode_chunk = 0;
+            drop(session);
+            show_episode_list(&c, &ui);
+        }
+    });
+    let c = ctx.clone();
+    ui.on_select_episode_macro(move |macro_idx| {
+        if let Some(ui) = c.window() {
+            c.session.borrow_mut().details.episode_chunk = row(macro_idx) * MACRO_CHUNK_COUNT;
+            show_episode_list(&c, &ui);
+        }
+    });
+    let c = ctx.clone();
+    ui.on_select_episode_range(move |sub_idx| {
+        if let Some(ui) = c.window() {
+            let macro_idx = row(ui.get_episode_active_macro());
+            c.session.borrow_mut().details.episode_chunk =
+                macro_idx * MACRO_CHUNK_COUNT + row(sub_idx);
             show_episode_list(&c, &ui);
         }
     });
@@ -55,7 +87,7 @@ pub(crate) fn details_closed_flags() -> DetailsClosedFlags {
 }
 
 /// Closes the title page; its late answer and a video still opening from it are dropped.
-fn close_details(ctx: &BridgeContext) {
+pub(crate) fn close_details(ctx: &BridgeContext) {
     let Some(ui) = ctx.window() else {
         return;
     };
@@ -65,10 +97,8 @@ fn close_details(ctx: &BridgeContext) {
         if ui.get_open_busy() {
             session.abandon_open();
         }
-        if let Some(url) = session.details_artwork_url.take() {
-            ctx.services.artwork.forget_memory(&url);
-        }
     }
+    forget_details_artwork(ctx);
     let flags = details_closed_flags();
     ui.set_details_loading(flags.loading);
     ui.set_open_busy(flags.open_busy);
@@ -79,6 +109,9 @@ fn close_details(ctx: &BridgeContext) {
     ui.set_subtitles_status("".into());
     ui.set_details_title("".into());
     ui.set_details_poster(slint::Image::default());
+    ui.set_details_backdrop(slint::Image::default());
+    ui.set_details_cast_items(empty_cast());
+    ui.set_episode_total_count(0);
     ui.set_episodes(empty_episodes());
     restore_focus(ctx, &ui);
 }
@@ -114,8 +147,8 @@ fn toggle_bookmark(ctx: &BridgeContext) {
 
 /// Plays the first episode of the shown season, or the movie when the title lists no episodes.
 fn play_details(ctx: &BridgeContext) {
-    let season = ctx.window().map_or(-1, |ui| ui.get_season_filter());
-    let first = first_episode(&ctx.session.borrow().episodes, season);
+    let season = ctx.window().map_or(1, |ui| ui.get_season_filter());
+    let first = first_episode_in_season(&ctx.session.borrow().episodes, season);
     if let Some(index) = first {
         return play_episode(ctx, index);
     }

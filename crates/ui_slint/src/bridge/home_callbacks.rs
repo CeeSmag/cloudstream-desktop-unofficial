@@ -7,6 +7,7 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_callbacks::load_browse_if_empty;
 use super::catalog_events::show_library;
+use super::details_callbacks::close_details;
 use super::details_loading::load_details;
 use super::focus_navigation::restore_focus;
 use super::home_expanded::close_expanded_shelf;
@@ -51,6 +52,9 @@ fn select_tab(ctx: &BridgeContext, tab: i32) {
     let Some(ui) = ctx.window() else {
         return;
     };
+    if !ui.get_details_title().is_empty() {
+        close_details(ctx);
+    }
     ui.set_tab(tab);
     if tab == 0 {
         close_expanded_shelf(ctx);

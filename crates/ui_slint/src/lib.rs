@@ -9,6 +9,7 @@ mod background_work;
 mod bridge;
 mod browse_filters;
 mod check_text;
+mod episode_groups;
 mod feedback_text;
 mod focus_grid;
 mod pagination;

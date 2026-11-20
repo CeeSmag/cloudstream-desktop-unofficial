@@ -68,6 +68,8 @@ export struct SourceMenuInfo {
 export struct EpisodeItem {
     name: string,
     code: string,
+    /// `"Episode 1"` (or `"Episode"` when unnumbered).
+    episode-label: string,
     data: string,
     /// Seen to 80 % or more.
     watched: bool,
@@ -75,8 +77,27 @@ export struct EpisodeItem {
     progress: float,
     description: string,
     season: int,
-    /// Its place in the provider's full list (the shown list is filtered by season).
+    /// Its place in the provider's full list (the shown list is filtered by season and chunk).
     index: int,
+    /// Optional episode still URL (falls back to the show poster when empty).
+    poster: string,
+    image: image,
+}
+
+export struct CastItem {
+    name: string,
+    role: string,
+    initial: string,
+    photo-url: string,
+    image: image,
+}
+
+export struct DetailsMeta {
+    media-type: string,
+    provider: string,
+    year: string,
+    rating: string,
+    duration: string,
 }
 
 export struct PluginItem {

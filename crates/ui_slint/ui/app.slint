@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvButton, TvProgressBar } from "controls.slint";
 import {
-    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, PluginItem, SettingChoice, TrackChoice,
+    PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, SettingChoice, TrackChoice,
     RepositoryItem, AvailablePlugin, PaginationItem
 } from "types.slint";
 import { HomePage } from "home.slint";
@@ -19,7 +19,7 @@ export { PluginList } from "extensions_plugins.slint";
 export { RepoList, RepoDetail } from "extensions_repos.slint";
 export { HomeExpanded } from "home.slint";
 export { BrowseFilter } from "browse.slint";
-export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
+export { PosterItem, ShelfSection, SourceItem, SourceMenuInfo, FilterChip, SeekMark, SeekPreview, EpisodeItem, CastItem, DetailsMeta, PluginItem, SettingChoice, TrackChoice, RepositoryItem, AvailablePlugin, PaginationItem }
 
 export component CloudStream inherits Window {
     title: "CloudStream";
@@ -73,15 +73,25 @@ export component CloudStream inherits Window {
     in-out property <string> update-badge: "";
     in-out property <int> hero-index: -1;
     in-out property <[string]> details-tags: [];
-    in-out property <string> details-cast: "";
+    in-out property <[CastItem]> details-cast-items: [];
     in-out property <string> play-label: "Play";
+    in-out property <bool> show-secondary-play: false;
     in-out property <bool> details-loading: false;
     in-out property <image> details-poster;
+    in-out property <image> details-backdrop;
     in-out property <string> details-resume-key: "";
     in-out property <string> details-title: "";
     in-out property <string> details-plot: "";
-    in-out property <string> details-meta: "";
+    in-out property <DetailsMeta> details-meta-info;
     in-out property <string> resume-label: "";
+    in-out property <int> episode-columns: 3;
+    in-out property <int> episode-total-count: 0;
+    in-out property <bool> episodes-ascending: true;
+    in-out property <string> active-season-label: "";
+    in-out property <[string]> episode-macro-labels: [];
+    in-out property <int> episode-active-macro: 0;
+    in-out property <[string]> episode-range-labels: [];
+    in-out property <int> episode-active-range: 0;
     in-out property <bool> player-open: false;
     in-out property <string> player-title: "";
     in-out property <string> player-source-badge: "";
@@ -238,6 +248,9 @@ export component CloudStream inherits Window {
     callback clear-continue();
     callback remove-bookmark(int);
     callback season-chosen(string);
+    callback toggle-episode-sort();
+    callback select-episode-macro(int);
+    callback select-episode-range(int);
     callback select-audio-track(int);
     callback select-subtitle-track(int);
     callback bookmark-item(string, string, string);
@@ -338,7 +351,52 @@ export component CloudStream inherits Window {
                 dismiss => { cf-dismiss(); }
             }
 
-            if tab == 0: HomePage {
+            if details-title != "": DetailsOverlay {
+                vertical-stretch: 1;
+                title: details-title;
+                loading: details-loading;
+                poster: details-poster;
+                backdrop: details-backdrop;
+                resume-key: details-resume-key;
+                focus-visible: root.focus-visible;
+                focus-row: root.focus-row;
+                focus-col: root.focus-col;
+                bookmarked: details-bookmarked;
+                toggle-bookmark => { toggle-bookmark(); }
+                plot: details-plot;
+                meta-info: details-meta-info;
+                tags: details-tags;
+                cast-items: details-cast-items;
+                play-label: play-label;
+                resume-label: resume-label;
+                show-secondary-play: show-secondary-play;
+                open-busy: open-busy;
+                open-status: open-status;
+                open-title: open-title;
+                open-fraction: open-fraction;
+                can-skip-checks: can-skip-checks;
+                episodes: episodes;
+                episode-total-count: episode-total-count;
+                episode-columns: episode-columns;
+                episodes-ascending: episodes-ascending;
+                season-labels: season-labels;
+                active-season-label: active-season-label;
+                macro-labels: episode-macro-labels;
+                active-macro: episode-active-macro;
+                range-labels: episode-range-labels;
+                active-range: episode-active-range;
+                play => { play-details(); }
+                resume => { resume-details(); }
+                close => { close-details(); }
+                skip-checks => { skip-checks(); }
+                play-episode(i) => { play-episode(i); }
+                season-chosen(v) => { season-chosen(v); }
+                toggle-episode-sort => { toggle-episode-sort(); }
+                select-episode-macro(m) => { select-episode-macro(m); }
+                select-episode-range(r) => { select-episode-range(r); }
+            }
+
+            if details-title == "" && tab == 0: HomePage {
                 continue-items: root.continue-items;
                 shelves: root.home-shelves;
                 provider-name: root.selected-provider;
@@ -364,7 +422,7 @@ export component CloudStream inherits Window {
                 clear-continue => { clear-continue(); }
             }
 
-            if tab == 1: BrowsePage {
+            if details-title == "" && tab == 1: BrowsePage {
                 items: root.browse-items;
                 columns: root.grid-columns;
                 focused-index: root.focus-visible && root.focus-row >= 0 ? root.focus-row * root.grid-columns + root.focus-col : -1;
@@ -375,7 +433,7 @@ export component CloudStream inherits Window {
                 open-at(i) => { open-browse-hit(i); }
             }
 
-            if tab == 2: SearchPage {
+            if details-title == "" && tab == 2: SearchPage {
                 query <=> search-query;
                 items: root.search-items;
                 columns: root.grid-columns;
@@ -388,7 +446,7 @@ export component CloudStream inherits Window {
                 open-at(i) => { open-search-hit(i); }
             }
 
-            if tab == 3: LibraryPage {
+            if details-title == "" && tab == 3: LibraryPage {
                 items: root.library-items;
                 columns: root.grid-columns;
                 focused-index: root.focus-visible && root.focus-row >= 0 ? root.focus-row * root.grid-columns + root.focus-col : -1;
@@ -396,7 +454,7 @@ export component CloudStream inherits Window {
                 remove-at(i) => { remove-bookmark(i); }
             }
 
-            if tab == 4: SettingsPage {
+            if details-title == "" && tab == 4: SettingsPage {
                 page-index <=> settings-page-index;
                 menu-request: root.settings-menu-request;
                 cache-size-labels: root.cache-size-labels;
@@ -457,38 +515,6 @@ export component CloudStream inherits Window {
                 install-plugin(k) => { install-plugin(k); }
                 changed page-index => { settings-page-shown(self.page-index); }
             }
-        }
-
-        if details-title != "": DetailsOverlay {
-            title: details-title;
-            loading: details-loading;
-            poster: details-poster;
-            resume-key: details-resume-key;
-            focus-visible: root.focus-visible;
-            focus-row: root.focus-row;
-            focus-col: root.focus-col;
-            bookmarked: details-bookmarked;
-            toggle-bookmark => { toggle-bookmark(); }
-            plot: details-plot;
-            meta: details-meta;
-            tags: details-tags;
-            cast: details-cast;
-            play-label: play-label;
-            resume-label: resume-label;
-            open-busy: open-busy;
-            open-status: open-status;
-            open-title: open-title;
-            open-fraction: open-fraction;
-            can-skip-checks: can-skip-checks;
-            episodes: episodes;
-            season-labels: season-labels;
-            season-filter <=> season-filter;
-            play => { play-details(); }
-            resume => { resume-details(); }
-            close => { close-details(); }
-            skip-checks => { skip-checks(); }
-            play-episode(i) => { play-episode(i); }
-            season-chosen(v) => { season-chosen(v); }
         }
 
         if player-open: PlayerOverlay {

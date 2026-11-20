@@ -1,0 +1,478 @@
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { CastItem, EpisodeItem } from "types.slint";
+import { TvSelect } from "controls.slint";
+
+/// Compact pill for season tabs and episode range pagination.
+component FilterPill inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    in property <bool> focused: false;
+    callback clicked();
+
+    height: 30px;
+    width: label.preferred-width + 24px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 8px;
+    background: root.active ? Theme.accent : (touch.has-hover ? #ffffff18 : #ffffff0d);
+    border-width: root.focused ? 2px : 0px;
+    border-color: Theme.focus-ring;
+    drop-shadow-blur: root.focused ? 12px : (root.active ? 10px : 0px);
+    drop-shadow-color: root.focused ? Theme.focus-glow : #5b8cff44;
+    animate background, border-color { duration: 120ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.text;
+    accessible-checked: root.active;
+    accessible-action-default => { root.clicked(); }
+
+    label := Text {
+        text: root.text;
+        color: root.active || touch.has-hover ? #ffffff : Theme.muted;
+        font-size: 12.5px;
+        font-weight: root.active ? 600 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// One episode card with a 16:9 thumbnail, hover Play overlay, progress bar, and synopsis.
+component EpisodeCard inherits Rectangle {
+    in property <EpisodeItem> episode;
+    in property <image> fallback-poster;
+    in property <bool> focused: false;
+    in property <bool> resume-here: false;
+    callback clicked();
+
+    property <image> thumb-src: root.episode.image.width > 1 ? root.episode.image : root.fallback-poster;
+    property <bool> has-progress: root.episode.watched || root.episode.progress > 0.01;
+
+    height: 104px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: Theme.radius-lg;
+    clip: true;
+    background: root.focused ? Theme.panel-hi : (touch.has-hover ? #182032 : #121723bf);
+    border-width: root.focused ? 2px : (root.resume-here ? 1.5px : 1px);
+    border-color: root.focused ? Theme.focus-ring
+        : (root.resume-here ? Theme.accent
+        : (touch.has-hover ? Theme.accent-border : #ffffff0e));
+    drop-shadow-blur: root.focused ? 16px : (root.resume-here ? 14px : 0px);
+    drop-shadow-color: root.focused ? Theme.focus-glow : #5b8cff55;
+    animate background, border-color { duration: 130ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.episode.episode-label + " " + root.episode.name;
+    accessible-action-default => { root.clicked(); }
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+        cross-axis-alignment: start;
+
+        // 16:9 episode still thumbnail (vertically centered inside card)
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 128px;
+                height: 72px;
+                horizontal-stretch: 0;
+                vertical-stretch: 0;
+                border-radius: 10px;
+                clip: true;
+                background: Theme.bg;
+
+            if root.thumb-src.width > 1: Image {
+                width: 100%;
+                height: 100%;
+                source: root.thumb-src;
+                image-fit: cover;
+            }
+            if root.thumb-src.width <= 1: Text {
+                text: "EP";
+                color: #ffffff30;
+                font-size: 13px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            if touch.has-hover || root.focused: Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #080b1255;
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: Theme.accent;
+                    drop-shadow-blur: 10px;
+                    drop-shadow-color: #00000088;
+                    TvIcon {
+                        x: (parent.width - self.width) / 2 + 1px;
+                        y: (parent.height - self.height) / 2;
+                        commands: Icons.play;
+                        filled: true;
+                        size: 13px;
+                        color: #ffffff;
+                    }
+                }
+            }
+
+                if root.has-progress: Rectangle {
+                    x: 0px;
+                    y: parent.height - self.height;
+                    width: 100%;
+                    height: 4px;
+                    background: #ffffff30;
+                    Rectangle {
+                        x: 0px;
+                        width: parent.width * (root.episode.watched ? 1.0 : clamp(root.episode.progress, 0.03, 1.0));
+                        height: 100%;
+                        background: root.episode.watched ? Theme.ok : Theme.accent;
+                    }
+                }
+            }
+        }
+
+        // Episode caption, title, and 2-line synopsis
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 3px;
+            alignment: start;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                cross-axis-alignment: center;
+                Text {
+                    text: root.episode.episode-label;
+                    color: Theme.accent-hi;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                if root.episode.watched: HorizontalLayout {
+                    spacing: 3px;
+                    cross-axis-alignment: center;
+                    TvIcon {
+                        commands: Icons.check;
+                        size: 11px;
+                        color: Theme.ok;
+                    }
+                    Text {
+                        text: "WATCHED";
+                        color: Theme.ok;
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 0.4px;
+                        vertical-alignment: center;
+                    }
+                }
+                if !root.episode.watched && root.episode.progress > 0.01: Text {
+                    text: Math.round(root.episode.progress * 100) + "% watched";
+                    color: Theme.muted;
+                    font-size: 10.5px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+            }
+
+            Text {
+                text: root.episode.name;
+                color: touch.has-hover || root.focused ? #ffffff : Theme.text;
+                font-size: 13.5px;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            if root.episode.description != "": Rectangle {
+                height: 31px;
+                clip: true;
+                Text {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.episode.description;
+                    color: Theme.muted;
+                    font-size: 11.5px;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Episodes header (count, season picker, sort button), range pills, and multi-column card grid.
+export component EpisodeSection inherits VerticalLayout {
+    in property <[EpisodeItem]> episodes: [];
+    in property <int> total-count: 0;
+    in property <[string]> season-labels: [];
+    in property <string> active-season-label: "";
+    in property <bool> ascending: true;
+    in property <[string]> macro-labels: [];
+    in property <int> active-macro: 0;
+    in property <[string]> range-labels: [];
+    in property <int> active-range: 0;
+    in property <image> fallback-poster;
+    in property <string> resume-key: "";
+    in property <int> columns: 3;
+    in property <length> container-width: 1100px;
+    in property <bool> focus-visible: false;
+    in property <int> focus-row: 0;
+    in property <int> focus-col: 0;
+    in property <int> seasons-row: -1;
+    in property <int> episodes-row: 1;
+    callback play-episode(int);
+    callback season-chosen(string);
+    callback toggle-sort();
+    callback select-macro(int);
+    callback select-range(int);
+
+    property <int> cols: max(1, root.columns);
+    property <length> gap: 14px;
+    property <length> card-width: max(
+        260px,
+        floor(((root.container-width - (root.cols - 1) * root.gap - 2px) / root.cols) / 1px) * 1px
+    );
+
+    spacing: 14px;
+    alignment: start;
+
+    // Header bar: "Episodes (N)" on the left, season picker + sort toggle on the right
+    VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                cross-axis-alignment: center;
+                Text {
+                    text: "Episodes";
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "(" + root.total-count + ")";
+                    color: Theme.muted;
+                    font-size: 14px;
+                    font-weight: 400;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            HorizontalLayout {
+                spacing: 8px;
+                cross-axis-alignment: center;
+
+                if root.season-labels.length > 6: TvSelect {
+                    model: root.season-labels;
+                    current-value: root.active-season-label;
+                    selected(v) => { root.season-chosen(v); }
+                }
+
+                if root.season-labels.length > 1 && root.season-labels.length <= 6: HorizontalLayout {
+                    spacing: 6px;
+                    for label[i] in root.season-labels: FilterPill {
+                        text: label;
+                        active: label == root.active-season-label;
+                        focused: root.focus-visible && root.focus-row == root.seasons-row && root.focus-col == i;
+                        clicked => { root.season-chosen(label); }
+                    }
+                }
+
+                // Oldest-first / newest-first sort toggle
+                Rectangle {
+                    width: 32px;
+                    height: 30px;
+                    border-radius: 8px;
+                    background: sort-touch.has-hover ? #ffffff18 : #ffffff0d;
+                    animate background { duration: 120ms; }
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: root.ascending ? "Sort newest first" : "Sort oldest first";
+                    accessible-action-default => { root.toggle-sort(); }
+                    TvIcon {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        commands: root.ascending ? Icons.sort-asc : Icons.sort-desc;
+                        size: 16px;
+                        color: sort-touch.has-hover ? #ffffff : Theme.text-secondary;
+                    }
+                    sort-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.toggle-sort(); }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+    }
+
+    // 100-episode macro-group pills for long seasons
+    if root.macro-labels.length > 1: Rectangle {
+        width: root.container-width;
+        height: macro-flow.preferred-height;
+        macro-flow := FlexboxLayout {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            spacing: 8px;
+            cross-axis-line-alignment: start;
+            for label[i] in root.macro-labels: FilterPill {
+                text: label;
+                active: i == root.active-macro;
+                clicked => { root.select-macro(i); }
+            }
+        }
+    }
+
+    // 20-episode sub-range pills
+    if root.range-labels.length > 1: Rectangle {
+        width: root.container-width;
+        height: range-flow.preferred-height;
+        range-flow := FlexboxLayout {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            spacing: 8px;
+            cross-axis-line-alignment: start;
+            for label[i] in root.range-labels: FilterPill {
+                text: label;
+                active: i == root.active-range;
+                clicked => { root.select-range(i); }
+            }
+        }
+    }
+
+    // Responsive multi-column episode card grid
+    Rectangle {
+        width: root.container-width;
+        height: ep-grid.preferred-height;
+        background: transparent;
+
+        ep-grid := FlexboxLayout {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            spacing: root.gap;
+            cross-axis-line-alignment: start;
+            for episode[i] in root.episodes: EpisodeCard {
+                width: root.card-width;
+                episode: episode;
+                fallback-poster: root.fallback-poster;
+                resume-here: episode.data == root.resume-key && root.resume-key != "";
+                focused: root.focus-visible
+                    && root.focus-row >= root.episodes-row
+                    && (root.focus-row - root.episodes-row) * root.cols + root.focus-col == i;
+                clicked => { root.play-episode(episode.index); }
+            }
+        }
+    }
+}
+
+/// Horizontal scrolling cast row of circular portraits with names and roles.
+export component CastRow inherits VerticalLayout {
+    in property <[CastItem]> cast: [];
+
+    spacing: 14px;
+    alignment: start;
+
+    VerticalLayout {
+        spacing: 12px;
+        Text {
+            text: "Cast";
+            color: Theme.text;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+    }
+
+    Flickable {
+        height: 140px;
+        content-width: cast-strip.preferred-width;
+        cast-strip := HorizontalLayout {
+            spacing: 16px;
+            alignment: start;
+            padding-top: 4px;
+            for member in root.cast: VerticalLayout {
+                width: 92px;
+                spacing: 6px;
+                alignment: start;
+                cross-axis-alignment: center;
+
+                Rectangle {
+                    width: 76px;
+                    height: 76px;
+                    border-radius: 38px;
+                    clip: true;
+                    background: Theme.panel-hi;
+                    border-width: 1px;
+                    border-color: #ffffff1c;
+
+                    if member.image.width > 1: Image {
+                        width: 100%;
+                        height: 100%;
+                        source: member.image;
+                        image-fit: cover;
+                    }
+                    if member.image.width <= 1: Text {
+                        text: member.initial;
+                        color: Theme.muted;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    width: 100%;
+                    text: member.name;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+
+                if member.role != "": Text {
+                    width: 100%;
+                    text: member.role;
+                    color: Theme.muted;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

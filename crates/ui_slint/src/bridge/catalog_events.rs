@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::episode_groups::{chunk_for_key, initial_season, season_episodes, season_labels};
 use crate::focus_grid::FocusPoint;
 use crate::pagination::pagination_model;
 use crate::posters::{
@@ -16,8 +17,11 @@ use app_services::BrowsePage;
 use slint::ComponentHandle;
 
 use super::bridge_context::BridgeContext;
-use super::details_loading::season_labels;
-use super::details_view::{resume_season, show_details_artwork, show_episode_list};
+use super::details_artwork::{
+    forget_details_artwork, hydrate_cast_portraits, show_details_artwork,
+};
+use super::details_page::{cast_items_model, format_details_meta};
+use super::details_view::show_episode_list;
 use super::extension_catalog::refresh_plugins;
 use super::focus_screens::FocusScreen;
 use super::home_expanded::close_expanded_shelf;
@@ -186,42 +190,54 @@ pub(crate) fn show_browse(
 const MAX_TAGS: usize = 8;
 
 pub(crate) fn show_details(ctx: &BridgeContext, ui: &CloudStream, page: DetailsPage) {
+    forget_details_artwork(ctx);
     let bookmarked = ctx
         .services
         .library
         .is_bookmarked(&page.provider, &page.url);
-    {
-        let mut session = ctx.session.borrow_mut();
-        let poster_url = page
-            .poster_url
-            .or_else(|| session.details.poster_url.clone());
-        session.details = DetailsTarget {
-            provider: page.provider,
-            url: page.url,
-            data: page.data,
-            media_key: page.media_key,
-            poster_url,
-            resume_media_key: page.resume_media_key.clone(),
-            skip_ids: page.skip_ids,
-            media_type: page.media_type,
-        };
-        session.episodes.clone_from(&page.episodes);
-    }
+    let season = initial_season(&page.episodes, page.resume_media_key.as_deref());
+    let resume_chunk = page.resume_media_key.as_deref().and_then(|key| {
+        let sorted = season_episodes(&page.episodes, season, true);
+        chunk_for_key(&sorted, key)
+    });
+    let meta_info = format_details_meta(&page);
+    let cast_model = cast_items_model(&page.cast_members);
+    store_details_session(ctx, &page, resume_chunk.unwrap_or(0));
     ui.set_details_loading(false);
     ui.set_details_bookmarked(bookmarked.unwrap_or(false));
     ui.set_details_title(page.title.into());
     ui.set_details_plot(page.plot.into());
-    ui.set_details_meta(page.meta.into());
+    ui.set_details_meta_info(meta_info);
     ui.set_details_tags(string_model(page.tags.into_iter().take(MAX_TAGS)));
-    ui.set_details_cast(page.cast.join("  ·  ").into());
+    ui.set_details_cast_items(cast_model);
     ui.set_resume_label(page.resume.into());
-    let season = resume_season(
-        &ctx.session.borrow().episodes,
-        page.resume_media_key.as_deref(),
-    );
     ui.set_season_filter(season);
     ui.set_season_labels(string_model(season_labels(&page.episodes)));
-    ui.set_details_resume_key(page.resume_media_key.clone().unwrap_or_default().into());
+    ui.set_details_resume_key(page.resume_media_key.unwrap_or_default().into());
     show_episode_list(ctx, ui);
     show_details_artwork(ctx, ui);
+    hydrate_cast_portraits(ctx, ui);
+}
+
+fn store_details_session(ctx: &BridgeContext, page: &DetailsPage, episode_chunk: usize) {
+    let mut session = ctx.session.borrow_mut();
+    let poster_url = page
+        .poster_url
+        .clone()
+        .or_else(|| session.details.poster_url.clone());
+    session.details = DetailsTarget {
+        provider: page.provider.clone(),
+        url: page.url.clone(),
+        data: page.data.clone(),
+        media_key: page.media_key.clone(),
+        poster_url,
+        background_url: page.background_url.clone(),
+        resume_media_key: page.resume_media_key.clone(),
+        skip_ids: page.skip_ids.clone(),
+        media_type: page.media_type.clone(),
+        episodes_descending: false,
+        episode_chunk,
+        ephemeral_urls: Vec::new(),
+    };
+    session.episodes.clone_from(&page.episodes);
 }

@@ -11,9 +11,9 @@ use slint::{
     Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel,
 };
 use ui_slint::{
-    AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, FilterChip, HomeExpanded,
-    PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem,
-    SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
+    AvailablePlugin, BrowseFilter, CastItem, CloudStream, DetailsMeta, EpisodeItem, FilterChip,
+    HomeExpanded, PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList,
+    RepositoryItem, SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
 };
 
 const WIDTH: u32 = 1280;
@@ -296,40 +296,97 @@ fn verify_home_views(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     expanded.set_shelf_index(-1);
 }
 
+fn sample_episode_thumb(r: u8, g: u8, b: u8) -> Image {
+    let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(128, 72);
+    for (idx, px) in buf.make_mut_slice().iter_mut().enumerate() {
+        let x = (idx % 128) as u8;
+        let y = (idx / 128) as u8;
+        px.r = r.saturating_add(x / 5);
+        px.g = g.saturating_add(y / 2);
+        px.b = b.saturating_add(x / 4);
+    }
+    Image::from_rgb8(buf)
+}
+
+fn sample_details_episodes() -> ModelRc<EpisodeItem> {
+    let ep =
+        |idx: i32, name: &str, desc: &str, (watched, progress): (bool, f32), rgb: (u8, u8, u8)| {
+            EpisodeItem {
+                name: name.into(),
+                code: format!("S1E{}", idx + 1).into(),
+                episode_label: format!("Episode {}", idx + 1).into(),
+                data: format!("ep{}", idx + 1).into(),
+                watched,
+                progress,
+                description: desc.into(),
+                season: 1,
+                index: idx,
+                poster: "".into(),
+                image: sample_episode_thumb(rgb.0, rgb.1, rgb.2),
+            }
+        };
+    ModelRc::new(VecModel::from(vec![
+        ep(0, "A Shadow of the Past", "Galadriel is disturbed by signs of an ancient evil's return; Arondir makes an unsettling discovery.", (true, 1.0), (44, 62, 92)),
+        ep(1, "Adrift", "Galadriel finds a new ally; Elrond faces a cold reception from an old friend; Nori helps a Stranger.", (false, 0.42), (34, 72, 96)),
+        ep(2, "Adar", "Arondir finds himself a captive; Galadriel and Halbrand explore a legendary kingdom.", (false, 0.0), (64, 52, 76)),
+        ep(3, "The Great Wave", "Queen Regent Miriel's faith is tested; Isildur finds himself at a crossroads; Elrond uncovers a secret.", (false, 0.0), (38, 66, 86)),
+        ep(4, "Partings", "Nori questions her instincts; Elrond struggles to stay true to his oath; Halbrand weighs his destiny.", (false, 0.0), (78, 56, 48)),
+        ep(5, "Udun", "Adar and his army march on Ostirith as the villagers make their final stand.", (false, 0.0), (52, 46, 84)),
+    ]))
+}
+
+fn sample_details_cast() -> ModelRc<CastItem> {
+    let member = |name: &str, role: &str, initial: &str, image: Image| CastItem {
+        name: name.into(),
+        role: role.into(),
+        initial: initial.into(),
+        photo_url: "".into(),
+        image,
+    };
+    ModelRc::new(VecModel::from(vec![
+        member(
+            "Morfydd Clark",
+            "Galadriel",
+            "M",
+            sample_artwork(56, 78, 120),
+        ),
+        member("Robert Aramayo", "Elrond", "R", Image::default()),
+        member(
+            "Charlie Vickers",
+            "Halbrand",
+            "C",
+            sample_artwork(72, 58, 96),
+        ),
+    ]))
+}
+
 fn populate_details(ui: &CloudStream) {
-    ui.set_details_title("Severance".into());
-    ui.set_details_meta("2022–2025 · Drama, Sci-Fi · 8.7 ★ · 2 Seasons".into());
+    ui.set_details_title("The Lord of the Rings: The Rings of Power".into());
+    ui.set_details_meta_info(DetailsMeta {
+        media_type: "TVSERIES".into(),
+        provider: "CineStream".into(),
+        year: "2022".into(),
+        rating: "6.8".into(),
+        duration: "".into(),
+    });
     ui.set_details_plot(
-        "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.".into(),
+        "Beginning in a time of relative peace, we follow an ensemble cast of characters as they confront the re-emergence of evil to Middle-earth. From the darkest depths of the Misty Mountains, to the majestic forests of Lindon, to the breathtaking island kingdom of Numenor, these kingdoms and characters will carve out legacies that live on long after they are gone.".into(),
     );
-    ui.set_details_cast("Adam Scott · Britt Lower · Zach Cherry · Tramell Tillman".into());
-    ui.set_details_tags(strings(&["Sci-Fi", "Thriller", "Drama", "Mystery"]));
-    ui.set_details_poster(sample_artwork(28, 92, 108));
-    ui.set_resume_label("Resume S2 E4".into());
-    ui.set_season_labels(strings(&["All seasons", "Season 1", "Season 2"]));
-    ui.set_episodes(ModelRc::new(VecModel::from(vec![
-        EpisodeItem {
-            name: "Hello, Ms. Cobel".into(),
-            code: "S2 E1".into(),
-            data: "ep1".into(),
-            watched: true,
-            progress: 1.0,
-            description: "Mark returns to work under different circumstances.".into(),
-            season: 2,
-            index: 0,
-        },
-        EpisodeItem {
-            name: "Woe's Hollow".into(),
-            code: "S2 E4".into(),
-            data: "ep4".into(),
-            watched: false,
-            progress: 0.42,
-            description: "The team ventures outside the severed floor.".into(),
-            season: 2,
-            index: 3,
-        },
-    ])));
-    ui.set_details_resume_key("ep4".into());
+    ui.set_details_tags(strings(&["Action", "Adventure", "Drama", "Fantasy"]));
+    ui.set_details_poster(sample_artwork(48, 74, 118));
+    ui.set_details_backdrop(sample_episode_thumb(36, 52, 84));
+    ui.set_resume_label("Resume S3 E1 (1h 2m left)".into());
+    ui.set_play_label("Play S1 E1".into());
+    ui.set_show_secondary_play(true);
+    ui.set_details_bookmarked(false);
+    ui.set_season_labels(strings(&["Season 1", "Season 2", "Season 3"]));
+    ui.set_active_season_label("Season 1".into());
+    ui.set_episodes_ascending(true);
+    ui.set_episode_columns(3);
+    ui.set_episode_total_count(6);
+    ui.set_episodes(sample_details_episodes());
+    ui.set_details_cast_items(sample_details_cast());
+    ui.set_details_resume_key("ep2".into());
 }
 
 fn verify_settings_and_browse(ui: &CloudStream, window: &MinimalSoftwareWindow) {
@@ -646,4 +703,22 @@ fn verify_callbacks(ui: &CloudStream, worker_seen: &Rc<RefCell<String>>) {
     ui.on_set_volume(move |v| *vol_ref.borrow_mut() = v);
     ui.invoke_set_volume(65.0);
     assert!((*vol_seen.borrow() - 65.0).abs() < 0.01);
+    verify_details_callbacks(ui);
+}
+
+fn verify_details_callbacks(ui: &CloudStream) {
+    let sort_toggled = Rc::new(RefCell::new(0usize));
+    let sort_ref = sort_toggled.clone();
+    ui.on_toggle_episode_sort(move || *sort_ref.borrow_mut() += 1);
+    ui.invoke_toggle_episode_sort();
+    assert_eq!(*sort_toggled.borrow(), 1);
+
+    let range_seen = Rc::new(RefCell::new((-1, -1)));
+    let macro_ref = range_seen.clone();
+    ui.on_select_episode_macro(move |m| macro_ref.borrow_mut().0 = m);
+    let sub_ref = range_seen.clone();
+    ui.on_select_episode_range(move |r| sub_ref.borrow_mut().1 = r);
+    ui.invoke_select_episode_macro(2);
+    ui.invoke_select_episode_range(3);
+    assert_eq!(*range_seen.borrow(), (2, 3));
 }

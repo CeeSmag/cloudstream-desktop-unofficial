@@ -4,7 +4,7 @@ use core_model::{Bookmark, SearchResult, WatchProgress};
 use slint::{Image, ModelRc, VecModel};
 
 use crate::bridge::HomeShelf;
-use crate::{EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection};
+use crate::{CastItem, EpisodeItem, PluginItem, PosterItem, SettingChoice, ShelfSection};
 
 fn empty_image() -> Image {
     Image::default()
@@ -184,6 +184,10 @@ pub(crate) fn empty_shelves() -> ModelRc<ShelfSection> {
 
 pub(crate) fn empty_episodes() -> ModelRc<EpisodeItem> {
     ModelRc::new(VecModel::from(Vec::<EpisodeItem>::new()))
+}
+
+pub(crate) fn empty_cast() -> ModelRc<CastItem> {
+    ModelRc::new(VecModel::from(Vec::<CastItem>::new()))
 }
 
 #[cfg(test)]

@@ -90,8 +90,6 @@ pub(crate) struct Session {
     pub(crate) source_checks: Vec<SourceCheck>,
     /// Token from `TitleCache::keep_only` so leave/close can save only this title.
     pub(crate) kept_sources: Option<title_cache::KeptTitle>,
-    /// Details poster URL loaded ephemerally (forgotten on Back).
-    pub(crate) details_artwork_url: Option<String>,
     /// The saved repositories, in the database's order.
     pub(crate) repositories: Vec<core_model::RepositoryEntry>,
     /// The plugins the repositories offer, in the repositories' order.
@@ -114,11 +112,18 @@ pub(crate) struct DetailsTarget {
     pub(crate) data: String,
     pub(crate) media_key: String,
     pub(crate) poster_url: Option<String>,
+    pub(crate) background_url: Option<String>,
     /// The episode (or movie) the viewer left off at.
     pub(crate) resume_media_key: Option<String>,
     /// The title's ids in the skip-time databases, and the provider's kind of title.
     pub(crate) skip_ids: skip_times::ExternalIds,
     pub(crate) media_type: String,
+    /// When true, episodes are listed newest-first instead of oldest-first.
+    pub(crate) episodes_descending: bool,
+    /// Active 20-episode chunk index within the selected season.
+    pub(crate) episode_chunk: usize,
+    /// Ephemeral artwork URLs hydrated for this title page (forgotten on close).
+    pub(crate) ephemeral_urls: Vec<String>,
 }
 
 impl Default for Session {
@@ -155,7 +160,6 @@ impl Default for Session {
             source_filter: SourceFilter::default(),
             source_checks: Vec::new(),
             kept_sources: None,
-            details_artwork_url: None,
             repositories: Vec::new(),
             available: Vec::new(),
             installed_times: std::collections::HashMap::new(),

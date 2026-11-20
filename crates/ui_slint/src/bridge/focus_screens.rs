@@ -2,6 +2,7 @@
 
 use slint::{ComponentHandle, Model};
 
+use crate::episode_groups::{episode_columns_for_width, MAX_SEASON_TABS};
 use crate::focus_grid::grid_rows;
 use crate::{CloudStream, HomeExpanded};
 
@@ -48,12 +49,16 @@ pub(crate) fn logical_width(ui: &CloudStream) -> f32 {
     window.size().width as f32 / window.scale_factor().max(0.5)
 }
 
-/// Follows the window's width: grid columns and the top bar's narrow / wide layout.
+/// Follows the window's width: grid columns, episode card columns, and top-bar width class.
 pub(crate) fn follow_window_width(ui: &CloudStream) {
     let width = logical_width(ui);
     let columns = columns_for_width(width);
     if ui.get_grid_columns() != columns {
         ui.set_grid_columns(columns);
+    }
+    let ep_columns = episode_columns_for_width(width);
+    if ui.get_episode_columns() != ep_columns {
+        ui.set_episode_columns(ep_columns);
     }
     ui.set_narrow_window(width < NARROW_WIDTH);
     ui.set_wide_window(width > WIDE_WIDTH);
@@ -111,10 +116,13 @@ fn details_rows(ui: &CloudStream) -> Vec<usize> {
     let buttons = DetailsButtons::of(ui);
     let mut rows = vec![buttons.count()];
     let seasons = ui.get_season_labels().row_count();
-    if seasons > 1 {
+    if seasons > 1 && seasons <= MAX_SEASON_TABS {
         rows.push(seasons);
     }
-    rows.extend(std::iter::repeat_n(1, ui.get_episodes().row_count()));
+    let cols = usize::try_from(ui.get_episode_columns())
+        .unwrap_or(1)
+        .max(1);
+    rows.extend(grid_rows(ui.get_episodes().row_count(), cols));
     rows
 }
 
@@ -133,6 +141,7 @@ pub(crate) enum DetailsAction {
 pub(crate) struct DetailsButtons {
     pub(crate) loading: bool,
     pub(crate) has_resume: bool,
+    pub(crate) show_secondary_play: bool,
     pub(crate) opening: bool,
 }
 
@@ -141,6 +150,7 @@ impl DetailsButtons {
         Self {
             loading: ui.get_details_loading(),
             has_resume: !ui.get_resume_label().is_empty(),
+            show_secondary_play: ui.get_show_secondary_play(),
             opening: ui.get_open_busy(),
         }
     }
@@ -150,9 +160,12 @@ impl DetailsButtons {
         if self.loading {
             return vec![DetailsAction::Back];
         }
-        let mut order = vec![DetailsAction::Play];
+        let mut order = Vec::new();
         if self.has_resume {
             order.push(DetailsAction::Resume);
+        }
+        if !self.has_resume || self.show_secondary_play {
+            order.push(DetailsAction::Play);
         }
         order.extend([DetailsAction::Bookmark, DetailsAction::Back]);
         if self.opening {
@@ -172,40 +185,42 @@ mod tests {
 
     #[test]
     fn details_buttons_order_matches_the_page() {
-        let plain = DetailsButtons {
-            loading: false,
-            has_resume: false,
-            opening: false,
+        let buttons = |loading, has_resume, show_secondary_play, opening| DetailsButtons {
+            loading,
+            has_resume,
+            show_secondary_play,
+            opening,
         };
         assert_eq!(
-            plain.order(),
+            buttons(false, false, false, false).order(),
             [
                 DetailsAction::Play,
                 DetailsAction::Bookmark,
                 DetailsAction::Back
             ]
         );
-        let full = DetailsButtons {
-            loading: false,
-            has_resume: true,
-            opening: true,
-        };
         assert_eq!(
-            full.order(),
+            buttons(false, true, false, false).order(),
             [
-                DetailsAction::Play,
                 DetailsAction::Resume,
+                DetailsAction::Bookmark,
+                DetailsAction::Back
+            ]
+        );
+        assert_eq!(
+            buttons(false, true, true, true).order(),
+            [
+                DetailsAction::Resume,
+                DetailsAction::Play,
                 DetailsAction::Bookmark,
                 DetailsAction::Back,
                 DetailsAction::PlayNow
             ]
         );
-        let loading = DetailsButtons {
-            loading: true,
-            has_resume: true,
-            opening: false,
-        };
-        assert_eq!(loading.order(), [DetailsAction::Back]);
+        assert_eq!(
+            buttons(true, true, true, false).order(),
+            [DetailsAction::Back]
+        );
     }
 
     #[test]

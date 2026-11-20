@@ -1,108 +1,104 @@
-//! The title page's episode list (one season at a time) and its artwork.
+//! The title page's episode list (selected season, sort order, 20-episode ranges, and thumbnails).
 
 use slint::{ModelRc, VecModel};
 
+use crate::episode_groups::{
+    chunk_count, chunk_slice, first_episode_in_season, macro_labels, range_labels_for_macro,
+    season_episodes, season_label, MACRO_CHUNK_COUNT,
+};
+use crate::posters::string_model;
 use crate::ui_events::EpisodeRow;
 use crate::{CloudStream, EpisodeItem};
 
 use super::bridge_context::BridgeContext;
-use super::poster_hydrate::request_ephemeral_artwork;
+use super::details_artwork::hydrate_episode_thumbnails;
 
-/// Shows the episodes of the chosen season (all when no season is chosen).
+/// Rebuilds the visible episode cards, range pills, and Play/Resume button visibility.
 pub(crate) fn show_episode_list(ctx: &BridgeContext, ui: &CloudStream) {
     let season = ui.get_season_filter();
-    let rows: Vec<EpisodeItem> = shown_episodes(&ctx.session.borrow().episodes, season)
-        .into_iter()
-        .map(|(index, row)| EpisodeItem {
-            name: row.name.clone().into(),
-            code: row.code.clone().into(),
-            data: row.data.clone().into(),
-            watched: row.watched,
-            progress: row.progress,
-            description: row.description.clone().into(),
-            season: row.season,
-            index: i32::try_from(index).unwrap_or(i32::MAX),
-        })
+    let (ascending, chunk, resume_key, episodes) = {
+        let session = ctx.session.borrow();
+        (
+            !session.details.episodes_descending,
+            session.details.episode_chunk,
+            session.details.resume_media_key.clone(),
+            session.episodes.clone(),
+        )
+    };
+    let sorted = season_episodes(&episodes, season, ascending);
+    let total_chunks = chunk_count(sorted.len());
+    let clamped_chunk = chunk.min(total_chunks.saturating_sub(1));
+    ctx.session.borrow_mut().details.episode_chunk = clamped_chunk;
+    let active_macro = clamped_chunk / MACRO_CHUNK_COUNT;
+    let active_range = clamped_chunk % MACRO_CHUNK_COUNT;
+
+    let rows: Vec<EpisodeItem> = chunk_slice(&sorted, clamped_chunk)
+        .iter()
+        .map(|(index, row)| to_episode_item(*index, row))
         .collect();
+
     ui.set_episodes(ModelRc::new(VecModel::from(rows)));
-    let label = play_label(&ctx.session.borrow().episodes, season);
-    ui.set_play_label(label.into());
+    ui.set_episode_total_count(i32::try_from(sorted.len()).unwrap_or(i32::MAX));
+    ui.set_episodes_ascending(ascending);
+    ui.set_active_season_label(season_label(season).into());
+    ui.set_episode_macro_labels(string_model(macro_labels(&sorted)));
+    ui.set_episode_active_macro(i32::try_from(active_macro).unwrap_or(0));
+    ui.set_episode_range_labels(string_model(range_labels_for_macro(&sorted, active_macro)));
+    ui.set_episode_active_range(i32::try_from(active_range).unwrap_or(0));
+    update_play_buttons(ui, &episodes, season, resume_key.as_deref());
+    hydrate_episode_thumbnails(ctx, ui);
 }
 
-/// The season the title page opens on: the one of the episode the viewer left off at, so it is
-/// in view (like the old title page); -1 (every season) otherwise.
-pub(crate) fn resume_season(episodes: &[EpisodeRow], resume_key: Option<&str>) -> i32 {
-    let Some(key) = resume_key else {
-        return -1;
-    };
-    let seasons: std::collections::BTreeSet<i32> = episodes.iter().map(|row| row.season).collect();
-    if seasons.len() < 2 {
-        return -1;
+fn to_episode_item(index: usize, row: &EpisodeRow) -> EpisodeItem {
+    EpisodeItem {
+        name: row.name.clone().into(),
+        code: row.code.clone().into(),
+        episode_label: row.episode_label.clone().into(),
+        data: row.data.clone().into(),
+        watched: row.watched,
+        progress: row.progress,
+        description: row.description.clone().into(),
+        season: row.season,
+        index: i32::try_from(index).unwrap_or(i32::MAX),
+        poster: row.poster_url.clone().unwrap_or_default().into(),
+        image: slint::Image::default(),
     }
-    episodes
-        .iter()
-        .find(|row| row.data == key)
-        .map_or(-1, |row| row.season.max(-1))
 }
 
-/// The episode Play starts: the first of the shown season (by season, then episode number).
-pub(crate) fn first_episode(episodes: &[EpisodeRow], season: i32) -> Option<usize> {
-    shown_episodes(episodes, season)
-        .into_iter()
-        .min_by_key(|(index, row)| (row.season, row.episode.unwrap_or(i32::MAX), *index))
-        .map(|(index, _)| index)
+fn update_play_buttons(
+    ui: &CloudStream,
+    episodes: &[EpisodeRow],
+    season: i32,
+    resume_key: Option<&str>,
+) {
+    let first = first_episode_in_season(episodes, season);
+    ui.set_play_label(play_label(episodes, season).into());
+    let first_key = first
+        .and_then(|idx| episodes.get(idx))
+        .map(|ep| ep.data.as_str());
+    let show_secondary = match (resume_key, first_key) {
+        (Some(resume), Some(first_ep)) if !resume.is_empty() => resume != first_ep,
+        _ => false,
+    };
+    ui.set_show_secondary_play(show_secondary);
 }
 
-/// "Play S1 E1" for a show, "Play" for a movie.
+/// `"Play S1 E1"` for a show, `"Play"` for a movie.
 pub(crate) fn play_label(episodes: &[EpisodeRow], season: i32) -> String {
-    let first = first_episode(episodes, season).and_then(|index| episodes.get(index));
-    match first.map(|row| (row.season, row.episode)) {
-        Some((season, Some(number))) if season >= 0 => format!("Play S{season} E{number}"),
-        Some((_, Some(number))) => format!("Play E{number}"),
-        _ => "Play".to_owned(),
+    let first = first_episode_in_season(episodes, season).and_then(|index| episodes.get(index));
+    match first {
+        Some(row) => match row.episode {
+            Some(number) if season > 0 => format!("Play S{season} E{number}"),
+            Some(number) => format!("Play E{number}"),
+            None => "Play".to_owned(),
+        },
+        None => "Play".to_owned(),
     }
-}
-
-/// The episodes of `season` (-1 = all) with their place in the full list.
-pub(crate) fn shown_episodes(episodes: &[EpisodeRow], season: i32) -> Vec<(usize, &EpisodeRow)> {
-    episodes
-        .iter()
-        .enumerate()
-        .filter(|(_, row)| season < 0 || row.season == season)
-        .collect()
-}
-
-/// Loads the poster of the open title page (shown beside the title and blurred behind it).
-pub(crate) fn show_details_artwork(ctx: &BridgeContext, ui: &CloudStream) {
-    ui.set_details_poster(slint::Image::default());
-    let Some(url) = ctx.session.borrow().details.poster_url.clone() else {
-        ctx.session.borrow_mut().details_artwork_url = None;
-        return;
-    };
-    ctx.session.borrow_mut().details_artwork_url = Some(url.clone());
-    let title = ui.get_details_title();
-    request_ephemeral_artwork(ctx, &url, move |ui, image| {
-        if ui.get_details_title() == title {
-            ui.set_details_poster(image);
-        }
-    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn row(season: i32) -> EpisodeRow {
-        EpisodeRow {
-            name: String::new(),
-            code: String::new(),
-            data: String::new(),
-            watched: false,
-            season,
-            episode: None,
-            ..EpisodeRow::default()
-        }
-    }
 
     fn numbered(season: i32, episode: i32) -> EpisodeRow {
         EpisodeRow {
@@ -113,41 +109,11 @@ mod tests {
     }
 
     #[test]
-    fn resume_season_opens_where_the_viewer_left_off() {
-        let mut episodes = vec![numbered(1, 1), numbered(2, 1)];
-        if let Some(row) = episodes.get_mut(1) {
-            row.data = "s2e1".into();
-        }
-        assert_eq!(resume_season(&episodes, Some("s2e1")), 2);
-        assert_eq!(resume_season(&episodes, Some("gone")), -1);
-        assert_eq!(resume_season(&episodes, None), -1);
-        let one_season = [numbered(1, 1)];
-        assert_eq!(
-            resume_season(&one_season, Some("")),
-            -1,
-            "nothing to choose"
-        );
-    }
-
-    #[test]
-    fn first_episode_and_play_label_follow_the_shown_season() {
+    fn play_label_follows_selected_season() {
         let episodes = [numbered(2, 1), numbered(1, 2), numbered(1, 1)];
-        assert_eq!(first_episode(&episodes, -1), Some(2));
-        assert_eq!(play_label(&episodes, -1), "Play S1 E1");
-        assert_eq!(first_episode(&episodes, 2), Some(0));
+        assert_eq!(play_label(&episodes, 1), "Play S1 E1");
         assert_eq!(play_label(&episodes, 2), "Play S2 E1");
-        assert_eq!(play_label(&[], -1), "Play", "a movie");
-        assert_eq!(play_label(&[numbered(-1, 4)], -1), "Play E4");
-    }
-
-    #[test]
-    fn shown_episodes_keeps_original_indexes() {
-        let episodes = [row(1), row(2), row(1)];
-        let indexes: Vec<usize> = shown_episodes(&episodes, 1)
-            .into_iter()
-            .map(|(index, _)| index)
-            .collect();
-        assert_eq!(indexes, [0, 2]);
-        assert_eq!(shown_episodes(&episodes, -1).len(), 3);
+        assert_eq!(play_label(&[], 1), "Play", "a movie");
+        assert_eq!(play_label(&[numbered(0, 4)], 0), "Play E4");
     }
 }

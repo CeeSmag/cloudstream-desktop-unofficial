@@ -2,10 +2,15 @@
 
 use app_services::UiServices;
 use core_model::{CastMember, LoadDetails, WatchProgress};
+use slint::{ModelRc, VecModel};
 
 use crate::ui_events::{DetailsPage, EpisodeRow};
+use crate::{CastItem, DetailsMeta};
 
 use super::session::DetailsTarget;
+
+/// Maximum cast portraits displayed in the horizontal Cast strip.
+const MAX_CAST: usize = 20;
 
 /// The page for `details`, with where the viewer left off and which episodes they watched.
 pub(crate) fn details_page(
@@ -14,33 +19,28 @@ pub(crate) fn details_page(
     details: LoadDetails,
     fallback_title: String,
 ) -> DetailsPage {
-    let library = &services.library;
-    let pointer = match library.resume_pointer(&target.provider, &target.url) {
-        Ok(pointer) => pointer,
-        Err(error) => {
-            tracing::warn!(%error, "could not read where the title was left off");
-            None
-        }
-    };
-    let progress = library
+    let pointer = load_resume_pointer(services, &target);
+    let progress = services
+        .library
         .show_progress(&target.provider, &target.url)
         .unwrap_or_default();
     let data = match &details.data_url {
         Some(data_url) if details.episodes.is_empty() => data_url.clone(),
         _ => target.url.clone(),
     };
+    let title = if details.name.is_empty() {
+        fallback_title
+    } else {
+        details.name.clone()
+    };
     DetailsPage {
-        title: if details.name.is_empty() {
-            fallback_title
-        } else {
-            details.name.clone()
-        },
+        title,
         plot: details.plot.clone().unwrap_or_default(),
-        meta: details_meta(&details),
         resume: pointer.as_ref().map(resume_label).unwrap_or_default(),
         resume_media_key: pointer.map(|pointer| pointer.media_key),
         episodes: episode_rows(&details, &progress),
         poster_url: details.poster_url.clone(),
+        background_url: details.background_poster_url.clone(),
         provider: target.provider,
         url: target.url,
         data,
@@ -50,17 +50,76 @@ pub(crate) fn details_page(
             details.unique_url.as_deref(),
         ),
         media_type: details.media_type.clone().unwrap_or_default(),
+        year: details.year,
+        rating: details.rating,
+        duration_minutes: details.duration,
         tags: details.tags.clone().unwrap_or_default(),
-        cast: details.actors.iter().map(cast_text).collect(),
+        cast_members: details.actors,
     }
 }
 
-/// "Name (role)", or the name alone when the provider gives no role.
-pub(crate) fn cast_text(member: &CastMember) -> String {
-    match member.role.as_deref().map(str::trim) {
-        Some(role) if !role.is_empty() => format!("{} ({role})", member.name),
-        _ => member.name.clone(),
+fn load_resume_pointer(services: &UiServices, target: &DetailsTarget) -> Option<WatchProgress> {
+    match services
+        .library
+        .resume_pointer(&target.provider, &target.url)
+    {
+        Ok(pointer) => pointer,
+        Err(error) => {
+            tracing::warn!(%error, "could not read where the title was left off");
+            None
+        }
     }
+}
+
+/// Structured header badges and facts shown above the title.
+pub(crate) fn format_details_meta(page: &DetailsPage) -> DetailsMeta {
+    DetailsMeta {
+        media_type: page.media_type.trim().to_uppercase().into(),
+        provider: page.provider.clone().into(),
+        year: page
+            .year
+            .filter(|year| *year > 0)
+            .map(|year| year.to_string())
+            .unwrap_or_default()
+            .into(),
+        rating: page
+            .rating
+            .filter(|rating| *rating > 0)
+            .map(|rating| format!("{:.1}", f64::from(rating) / 1000.0))
+            .unwrap_or_default()
+            .into(),
+        duration: page
+            .duration_minutes
+            .filter(|minutes| *minutes > 0)
+            .map(|minutes| format!("{minutes} min"))
+            .unwrap_or_default()
+            .into(),
+    }
+}
+
+/// Converts provider cast members into Slint `CastItem` rows (capped at [`MAX_CAST`]).
+pub(crate) fn cast_items_model(members: &[CastMember]) -> ModelRc<CastItem> {
+    let rows: Vec<CastItem> = members
+        .iter()
+        .filter(|member| !member.name.trim().is_empty())
+        .take(MAX_CAST)
+        .map(|member| {
+            let trimmed = member.name.trim();
+            let initial = trimmed
+                .chars()
+                .next()
+                .map(|ch| ch.to_uppercase().to_string())
+                .unwrap_or_default();
+            CastItem {
+                name: trimmed.into(),
+                role: member.role.as_deref().map(str::trim).unwrap_or("").into(),
+                initial: initial.into(),
+                photo_url: member.image.clone().unwrap_or_default().into(),
+                image: slint::Image::default(),
+            }
+        })
+        .collect();
+    ModelRc::new(VecModel::from(rows))
 }
 
 /// From this share of an episode on it counts as watched.
@@ -76,41 +135,33 @@ pub(crate) fn episode_mark(position_ms: i64, duration_ms: i64) -> (f32, bool) {
     (fraction, fraction >= WATCHED_FRACTION)
 }
 
-/// "Resume S1 E3 · 23 min left" (the time only when the length is known).
+/// Remaining playback time such as `"1h 2m left"` or `"23m left"`, or `None` when finished/unknown.
+pub(crate) fn format_remaining_time(position_ms: i64, duration_ms: i64) -> Option<String> {
+    if duration_ms <= 0 || position_ms >= duration_ms {
+        return None;
+    }
+    let remaining_ms = (duration_ms - position_ms).max(0);
+    let total_minutes = ((remaining_ms as f64 / 60_000.0).round() as i64).max(1);
+    let hours = total_minutes / 60;
+    let minutes = total_minutes % 60;
+    Some(match (hours, minutes) {
+        (h, m) if h > 0 && m > 0 => format!("{h}h {m}m left"),
+        (h, _) if h > 0 => format!("{h}h left"),
+        (_, m) => format!("{m}m left"),
+    })
+}
+
+/// `"Resume S3 E1 (1h 2m left)"`, `"Resume (45m left)"`, or `"Resume"`.
 pub(crate) fn resume_label(pointer: &WatchProgress) -> String {
     let place = match (pointer.season, pointer.episode) {
         (Some(season), Some(episode)) => format!("Resume S{season} E{episode}"),
+        (None, Some(episode)) => format!("Resume E{episode}"),
         _ => "Resume".to_owned(),
     };
-    let left_minutes = (pointer.duration_ms - pointer.position_ms) / 60_000;
-    if pointer.duration_ms > 0 && left_minutes > 0 {
-        format!("{place} · {left_minutes} min left")
-    } else {
-        place
+    match format_remaining_time(pointer.position_ms, pointer.duration_ms) {
+        Some(time_left) => format!("{place} ({time_left})"),
+        None => place,
     }
-}
-
-/// "2024 · 2h 15m · ★ 7.8" from what the provider knows.
-pub(crate) fn details_meta(details: &LoadDetails) -> String {
-    let mut parts = Vec::new();
-    if let Some(year) = details.year {
-        parts.push(year.to_string());
-    }
-    if let Some(minutes) = details.duration.filter(|minutes| *minutes > 0) {
-        parts.push(match (minutes / 60, minutes % 60) {
-            (0, rest) => format!("{rest}m"),
-            (hours, 0) => format!("{hours}h"),
-            (hours, rest) => format!("{hours}h {rest}m"),
-        });
-    }
-    if let Some(rating) = details.rating.filter(|rating| *rating > 0) {
-        // Providers give the rating out of 10 000 (CloudStream's scale); shown out of 10.
-        parts.push(format!("★ {:.1}", f64::from(rating) / 1000.0));
-    }
-    if !details.episodes.is_empty() {
-        parts.push(format!("{} episodes", details.episodes.len()));
-    }
-    parts.join("  ·  ")
 }
 
 fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<EpisodeRow> {
@@ -123,6 +174,10 @@ fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<Episod
                 (None, Some(number)) => format!("E{number}"),
                 _ => String::new(),
             };
+            let episode_label = match episode.episode {
+                Some(number) => format!("Episode {number}"),
+                None => "Episode".to_owned(),
+            };
             let (fraction, watched) = progress
                 .iter()
                 .find(|seen| seen.media_key == episode.data)
@@ -131,13 +186,15 @@ fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<Episod
                 });
             EpisodeRow {
                 name: episode.name.clone().unwrap_or_else(|| code.clone()),
+                code,
+                episode_label,
                 watched,
                 progress: fraction,
                 description: episode.description.clone().unwrap_or_default(),
-                code,
                 data: episode.data.clone(),
                 season: episode.season.unwrap_or(-1),
                 episode: episode.episode,
+                poster_url: episode.poster_url.clone(),
             }
         })
         .collect()
@@ -147,25 +204,24 @@ fn episode_rows(details: &LoadDetails, progress: &[WatchProgress]) -> Vec<Episod
 mod tests {
     use super::*;
 
-    fn details(year: Option<i32>, duration: Option<i32>, rating: Option<i32>) -> LoadDetails {
-        LoadDetails {
-            year,
-            duration,
-            rating,
-            ..LoadDetails::default()
-        }
-    }
-
     #[test]
-    fn resume_label_shows_place_and_time_left() {
-        let pointer = WatchProgress {
+    fn resume_label_formats_hours_minutes_and_movies() {
+        let hours = WatchProgress {
+            season: Some(3),
+            episode: Some(1),
+            position_ms: 8 * 60_000,
+            duration_ms: 70 * 60_000,
+            ..WatchProgress::default()
+        };
+        assert_eq!(resume_label(&hours), "Resume S3 E1 (1h 2m left)");
+        let mins = WatchProgress {
             season: Some(1),
             episode: Some(3),
             position_ms: 10 * 60_000,
             duration_ms: 33 * 60_000,
             ..WatchProgress::default()
         };
-        assert_eq!(resume_label(&pointer), "Resume S1 E3 · 23 min left");
+        assert_eq!(resume_label(&mins), "Resume S1 E3 (23m left)");
         let movie = WatchProgress::default();
         assert_eq!(resume_label(&movie), "Resume");
     }
@@ -181,25 +237,32 @@ mod tests {
     }
 
     #[test]
-    fn cast_text_adds_the_role_when_known() {
-        let member = |role: Option<&str>| CastMember {
-            name: "Bryan Cranston".into(),
-            role: role.map(str::to_owned),
-            ..CastMember::default()
+    fn format_details_meta_extracts_badges_and_facts() {
+        let page = DetailsPage {
+            title: "Severance".into(),
+            plot: String::new(),
+            resume: String::new(),
+            resume_media_key: None,
+            episodes: Vec::new(),
+            poster_url: None,
+            background_url: None,
+            provider: "CineStream".into(),
+            url: String::new(),
+            data: String::new(),
+            media_key: String::new(),
+            skip_ids: skip_times::ExternalIds::default(),
+            media_type: "TvSeries".into(),
+            year: Some(2022),
+            rating: Some(6800),
+            duration_minutes: Some(52),
+            tags: Vec::new(),
+            cast_members: Vec::new(),
         };
-        assert_eq!(cast_text(&member(Some("Main"))), "Bryan Cranston (Main)");
-        assert_eq!(cast_text(&member(Some(" "))), "Bryan Cranston");
-        assert_eq!(cast_text(&member(None)), "Bryan Cranston");
-    }
-
-    #[test]
-    fn details_meta_joins_what_is_known() {
-        assert_eq!(
-            details_meta(&details(Some(2024), Some(135), Some(7800))),
-            "2024  ·  2h 15m  ·  ★ 7.8"
-        );
-        assert_eq!(details_meta(&details(None, Some(45), None)), "45m");
-        assert_eq!(details_meta(&details(None, Some(120), None)), "2h");
-        assert_eq!(details_meta(&details(None, None, None)), "");
+        let meta = format_details_meta(&page);
+        assert_eq!(meta.media_type.as_str(), "TVSERIES");
+        assert_eq!(meta.provider.as_str(), "CineStream");
+        assert_eq!(meta.year.as_str(), "2022");
+        assert_eq!(meta.rating.as_str(), "6.8");
+        assert_eq!(meta.duration.as_str(), "52 min");
     }
 }

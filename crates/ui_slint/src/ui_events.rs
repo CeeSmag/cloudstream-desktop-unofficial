@@ -70,12 +70,12 @@ impl UiEvent {
 pub(crate) struct DetailsPage {
     pub title: String,
     pub plot: String,
-    pub meta: String,
     pub resume: String,
     /// The episode (or movie) the viewer left off at.
     pub resume_media_key: Option<String>,
     pub episodes: Vec<EpisodeRow>,
     pub poster_url: Option<String>,
+    pub background_url: Option<String>,
     pub provider: String,
     pub url: String,
     pub data: String,
@@ -83,10 +83,14 @@ pub(crate) struct DetailsPage {
     /// The title's ids in the skip-time databases, and the provider's kind of title.
     pub skip_ids: skip_times::ExternalIds,
     pub media_type: String,
+    pub year: Option<i32>,
+    /// CloudStream rating scale (out of 10,000).
+    pub rating: Option<i32>,
+    pub duration_minutes: Option<i32>,
     /// The provider's genres and tags.
     pub tags: Vec<String>,
-    /// "Name (role)" of each cast member, in the provider's order.
-    pub cast: Vec<String>,
+    /// Cast members in the provider's order (with optional portraits and roles).
+    pub cast_members: Vec<core_model::CastMember>,
 }
 
 /// One episode line of a title page.
@@ -94,6 +98,8 @@ pub(crate) struct DetailsPage {
 pub(crate) struct EpisodeRow {
     pub name: String,
     pub code: String,
+    /// `"Episode 1"` (or `"Episode"` when unnumbered).
+    pub episode_label: String,
     pub data: String,
     /// Seen to 80 % or more.
     pub watched: bool,
@@ -105,6 +111,8 @@ pub(crate) struct EpisodeRow {
     pub season: i32,
     /// Episode number, if known.
     pub episode: Option<i32>,
+    /// Optional episode still / thumbnail address.
+    pub poster_url: Option<String>,
 }
 
 /// The provider's entry found for a Browse title, if any.
