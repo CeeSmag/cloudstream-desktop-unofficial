@@ -20,9 +20,9 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
 | `browse_filters.rs`, `pagination.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters/pagination, plugin & repository search/sort |
-| `bridge/home_expanded.rs` | Home expanded vertical section grid & provider pagination |
+| `episode_groups.rs`, `posters.rs`, `bridge/home_expanded.rs` | Episode season/chunk grouping, Slint poster models, Home expanded shelf grid |
 | `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs` | remote / keyboard navigation, Home banner |
-| `startup_progress.rs` | the start-up screen's text and bar |
+| `startup_progress.rs`, `discovery_progress.rs` | the start-up screen's text/bar and background repo-discovery progress |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
 | `bridge/cloudflare_*.rs` | the Cloudflare banner (`ui/cloudflare_banner.slint`) |
 | `bridge/extension_*.rs`, `bridge/repo_list.rs`, `bridge/plugin_list.rs`, `repository_discovery.rs` | repositories tab, repo drill-down, aggregator repo discovery, plugins catalog, trust & removal |
@@ -36,4 +36,4 @@ reading a size in Slint to choose a layout makes a binding loop.
 Notes: no `transform-scale` on tiles (FemtoVG drew nothing for it); no std `Slider` in the player
 (dragging drops its binding; `DragBar` instead).
 
-Test: `cargo test -p ui_slint` (pure logic). Screens: `slint-viewer --edition 1.19 --screenshot`.
+Test: `cargo test -p ui_slint` (unit + headless render & window constraint tests in `tests/`).

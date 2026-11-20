@@ -35,6 +35,6 @@ headless AWT; trusted + data dir → rlimit/pgid/headless without Landlock. Test
 `data.dir` stay plain spawn.
 
 **Public API:** see `src/lib.rs` (`PluginWorkerPool`, `SidecarLaunchConfig`,
-`SidecarProcessTransport`, `RpcProviderGateway`, `SidecarSpawner`, limit helpers).
+`SidecarProcessTransport`, `RpcProviderGateway`, `SidecarSpawner`, `delete_sidecar_app_container`).
 
 **Test:** `cargo test -p extension_runtime` (feature `test-support` for `fake_sidecar`).

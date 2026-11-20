@@ -1,14 +1,17 @@
 # player_mpv
 
-`VideoPlayer` backed by libmpv, loaded at runtime (`libmpv-2.dll` / `libmpv.so` / `libmpv.dylib`),
-so the app builds and starts without it and can report a clear error if it is missing.
+`VideoPlayer` backed by libmpv, loaded at runtime (`libmpv-2.dll` / `mpv-2.dll`, `libmpv.so.2` /
+`libmpv.so`, `libmpv.dylib`), so the app builds and starts without it and can report a clear error
+if it is missing.
 
-- **Unsafe:** confined to `src/mpv_api.rs` (FFI); everything else is safe Rust.
-- **Locating libmpv:** `CS_LIBMPV_PATH`, then the executable's folder, then the working folder.
+- **Unsafe:** confined to the libmpv FFI modules (`src/mpv_api.rs`, `src/mpv_api/properties.rs`,
+  `src/mpv_log.rs`, `src/mpv_render_api.rs`); everything else is safe Rust.
+- **Locating libmpv:** `CS_LIBMPV_PATH`, then the executable's folder, then the working folder, and
+  (on Linux/macOS) the bare library names via the system dynamic loader.
 - **Diagnostics:** 30 s after a stream loads, `playback_diagnostics` logs one `info` line (decoder,
   codec, frame rates, size, video output) and a `warn` if the video is decoded in software
   (`diagnostics_timer` decides when). A mpv log line that says the graphics device was lost or hardware
-  decoding failed (`hwdec_problem`) is logged as a `warn` too. Both go to `player-logs.txt`.
+  decoding failed (`hwdec_problem`) is logged as a `warn` too. Both go to `player-logs.jsonl`.
 - **Cache:** `cache_limits` sets the bytes kept ahead of and behind the playing position
   (`VideoPlayer::set_cache_limits`, any time) and, per stream, how far ahead mpv reads: one minute for
   HLS/DASH (many requests, HTTP 429 risk), ten hours for a plain file (only the byte limit counts).

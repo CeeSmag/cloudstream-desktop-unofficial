@@ -18,9 +18,9 @@ loop never runs inside the app's Slint loop. Started by `cloudflare_bridge::Veri
 
 | Part | Responsibility |
 |---|---|
-| `fetch_script` (lib) | the page scripts that run a request and read its answer back (ported from the Tauri shell) |
+| `fetch_script` (lib) | the page scripts (`script_text`) that run a request and read its answer back |
 | `verify_progress` (lib) | the pure next-step rule (wait / probe / pass on cookie / give up) |
-| `verify_open_url` (lib) | which address to load (challenge page vs front page for media / foreign hosts) |
+| `verify_open_url` (lib) | which address to load (`verify_open_url`, `short_address`) |
 | `site_window`, `site_window_check`, `page_fetches`, `browser_view` | one site's window, its check tick, running requests, building the view |
 | `helper_app`, `helper_events`, `input_threads`, `outbox` | the event loop, stdin and fetch-file threads, answers |
 

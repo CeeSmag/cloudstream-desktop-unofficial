@@ -16,3 +16,4 @@ screens (draw model, emit UiAction) -> actions (spawn work on TaskRunner) -> UiE
 - `screens/` and `widgets/` only draw; they never call services.
 - `actions/` is the only place that calls `app_services`.
 - `task_runner.rs` runs work on threads and turns panics into notices.
+- **Test:** excluded from workspace (`Cargo.toml` `exclude = ["crates/ui_app"]`); reference only.
