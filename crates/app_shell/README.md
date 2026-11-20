@@ -4,11 +4,12 @@ The `cloudstream` product binary. It finds the data folder, optionally wipes it,
 logging, builds services (`service_wiring.rs`), starts the Cloudflare watcher, and hands
 `UiServices` plus `AppExtras` to `ui_slint` (`run_desktop_app_with`).
 
-Startup order in `main.rs`: `wipe_if_requested` → logging → `build_services` → stale update
-cleanup thread → `start_cloudflare_watch` → Slint UI. "Delete all saved data" closes the app,
-removes the Windows AppContainer profile, and spawns a self-deleting `%TEMP%` helper (`wipe_helper`)
-to remove the entire `data_dir` (including unpacked portable `runtime-*`), with `delete_all_data.pending`
-kept as a next-launch fallback.
+Startup order in `main.rs`: `wipe_if_requested` → logging → `build_services` →
+`start_storage_cleanup` (dormant until Home arrives, then post-Home + hourly hygiene and storage-cap
+enforcement; manual "Clean up storage now" resets the hourly cadence) → `start_cloudflare_watch` →
+Slint UI. "Delete all saved data" closes the app, removes the Windows AppContainer profile, and
+spawns a self-deleting `%TEMP%` helper (`wipe_helper`) to remove the entire `data_dir` (including
+unpacked portable `runtime-*`), with `delete_all_data.pending` kept as a next-launch fallback.
 
 `build_services` wires SQLite stores, a `PluginWorkerPool` gateway (or `UnavailableGateway`),
 extension/catalog/library/settings services, `TitleCache` / `SubtitleCache`, poster

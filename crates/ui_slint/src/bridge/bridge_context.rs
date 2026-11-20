@@ -9,7 +9,8 @@ use crate::background_work::{EventPump, UiSender};
 use crate::request_tickets::{RequestKind, Ticket};
 use crate::CloudStream;
 
-use super::session::{AppExtras, Session};
+use super::app_extras::AppExtras;
+use super::session::Session;
 
 /// Shared handles of the UI thread. Cloning is cheap (reference counts only).
 #[derive(Clone)]

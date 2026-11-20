@@ -1,5 +1,6 @@
 //! Connects the Slint window to the application services.
 
+mod app_extras;
 mod app_start;
 mod bridge_context;
 mod browse_filter_callbacks;
@@ -52,9 +53,9 @@ mod subtitle_languages;
 mod title_search;
 mod update_callbacks;
 
+pub use app_extras::{AppExtras, DebugLogSwitch, WipeRequest};
 pub use app_start::{run_desktop_app, run_desktop_app_with};
 pub(crate) use extension_catalog::ExtensionsCatalog;
 pub(crate) use home_loading::HomeShelf;
-pub use session::{AppExtras, DebugLogSwitch, WipeRequest};
 pub(crate) use subtitle_delivery::SubtitleLoadSnapshot;
 pub(crate) use title_search::SearchSummary;

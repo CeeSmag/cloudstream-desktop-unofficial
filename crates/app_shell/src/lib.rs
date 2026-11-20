@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod app_paths;
+mod cleanup_wiring;
 mod cloudflare_wiring;
 mod data_wipe;
 mod debug_logs;
@@ -16,6 +17,7 @@ mod unavailable_gateway;
 mod wipe_helper;
 
 pub use app_paths::AppPaths;
+pub use cleanup_wiring::start_storage_cleanup;
 pub use cloudflare_wiring::start_cloudflare_watch;
 pub use data_wipe::{request_wipe, running_folder_name, wipe_if_requested, RetryPlan, WipeOutcome};
 pub use debug_logs::{DebugLogs, LogFileInfo};

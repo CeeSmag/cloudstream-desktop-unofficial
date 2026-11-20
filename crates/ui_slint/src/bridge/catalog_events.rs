@@ -66,13 +66,17 @@ pub(crate) fn show_startup_done(
             ui.set_selected_provider(first.clone().into());
             show_startup_view(ui, &home_loading_view(&first));
             let weak = ctx.ui.clone();
+            let cleanup = ctx.extras.borrow().cleanup.clone();
             slint::Timer::single_shot(STARTUP_HOME_WAIT, move || {
                 if let Some(ui) = weak.upgrade() {
                     ui.set_starting(false);
                 }
+                if let Some(cleanup) = cleanup {
+                    cleanup.notify_home_ready();
+                }
             });
         }
-        None => ui.set_starting(false),
+        None => mark_home_arrived(ctx, ui),
     }
     if let Some(error) = error {
         ui.set_notice(error.into());
@@ -133,9 +137,16 @@ pub(crate) fn show_home(ctx: &BridgeContext, ui: &CloudStream, sections: &[HomeS
     close_expanded_shelf(ctx);
     ctx.session.borrow_mut().home_shelves = sections.to_vec();
     ui.set_home_loading(false);
-    ui.set_starting(false);
+    mark_home_arrived(ctx, ui);
     ui.set_home_shelves(shelves_from_sections(sections));
     hydrate_poster_images(ctx, PosterKind::Shelf);
+}
+
+fn mark_home_arrived(ctx: &BridgeContext, ui: &CloudStream) {
+    ui.set_starting(false);
+    if let Some(cleanup) = ctx.extras.borrow().cleanup.as_ref() {
+        cleanup.notify_home_ready();
+    }
 }
 
 pub(crate) fn show_search(ctx: &BridgeContext, ui: &CloudStream, summary: &SearchSummary) {

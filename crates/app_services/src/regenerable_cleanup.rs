@@ -14,6 +14,14 @@ pub struct CleanupReport {
     pub bytes: u64,
 }
 
+impl CleanupReport {
+    /// Combines another cleanup pass into this report.
+    pub fn add(&mut self, other: Self) {
+        self.files = self.files.saturating_add(other.files);
+        self.bytes = self.bytes.saturating_add(other.bytes);
+    }
+}
+
 /// Removes every file in the regenerable folders of `data_dir` (the folders stay).
 pub fn clean_regenerable(data_dir: &Path) -> CleanupReport {
     let mut report = CleanupReport::default();

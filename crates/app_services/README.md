@@ -19,6 +19,7 @@ tested with fakes and wired to real implementations only in `app_shell`. The UI-
 | `LibraryService` | Bookmarks, continue-watching (max 20), resume pointers |
 | `SettingsService` | Typed settings (see below) |
 | `measure_storage` / `clean_regenerable` | Data-folder size breakdown and regenerable cleanup |
+| `CleanupScheduler` / `CleanupHandle` / `StorageCleanupRunner` | Single-worker post-Home + hourly hygiene, storage-cap enforcement, and manual cleanup (resets hourly cadence) |
 
 ### Settings (`SettingsService` + sibling modules)
 

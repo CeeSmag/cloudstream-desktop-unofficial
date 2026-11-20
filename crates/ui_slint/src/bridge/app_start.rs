@@ -12,6 +12,7 @@ use crate::posters::{cache_choices, empty_episodes, empty_posters, empty_shelves
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
+use super::app_extras::AppExtras;
 use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
@@ -20,7 +21,7 @@ use super::event_dispatch::drain_events;
 use super::focus_screens::follow_window_width;
 use super::initial_settings::apply_settings_to_ui;
 use super::player_polling::{poll_player, show_latest_frame};
-use super::session::{AppExtras, Session};
+use super::session::Session;
 
 /// How often the UI thread picks up background results and reads the player's status.
 const UI_TICK: Duration = Duration::from_millis(200);

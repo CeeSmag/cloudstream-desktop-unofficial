@@ -116,21 +116,10 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
     }
 }
 
-/// The poster loader, with downloaded files kept in `dir` (trimmed once at start, off this thread).
+/// The poster loader, with downloaded files kept in `dir` (trimmed by the post-Home cleanup worker).
 fn build_artwork(dir: &Path) -> Arc<ArtworkLoader> {
-    let disk = DiskCache::new(dir);
-    let pruned = disk.clone();
-    let started = std::thread::Builder::new()
-        .name("artwork-prune".into())
-        .spawn(move || {
-            let removed = pruned.prune();
-            tracing::info!(removed, "old poster files removed");
-        });
-    if let Err(error) = started {
-        tracing::warn!(%error, "poster files not trimmed this run");
-    }
     let config = ArtworkLoaderConfig {
-        disk: Some(disk),
+        disk: Some(DiskCache::new(dir)),
         ..ArtworkLoaderConfig::default()
     };
     Arc::new(ArtworkLoader::new(

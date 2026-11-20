@@ -196,6 +196,11 @@ impl PlaybackService {
         self.player.latest_frame(last_seen_serial)
     }
 
+    /// Current player snapshot without saving watch progress (safe to call from background tasks).
+    pub fn status(&self) -> PlaybackStatus {
+        self.player.status()
+    }
+
     /// Polls the player; call about once a second. Saves progress when due and returns the snapshot.
     pub fn tick(&self) -> PlaybackStatus {
         let status = self.player.status();

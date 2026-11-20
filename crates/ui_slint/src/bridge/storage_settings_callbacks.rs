@@ -82,7 +82,18 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
     if let Some(ui) = ctx.window() {
         ui.set_storage_value(format!("{gigabytes} GB").into());
     }
-    measure_storage_usage(ctx);
+    let cleanup = ctx.extras.borrow().cleanup.clone();
+    let dir = ctx.extras.borrow().data_dir.clone();
+    match (cleanup, dir) {
+        (Some(handle), Some(dir)) => {
+            let sender = ctx.sender();
+            spawn_work("storage-cap-enforce", move || {
+                let _ = handle.enforce_cap_now();
+                sender.send(UiEvent::StorageMeasured(measure_storage(&dir)));
+            });
+        }
+        _ => measure_storage_usage(ctx),
+    }
 }
 
 fn set_worker_limit(ctx: &BridgeContext, value: SharedString) {
@@ -111,10 +122,14 @@ fn clean_storage(ctx: &BridgeContext) {
     let Some(dir) = ctx.extras.borrow().data_dir.clone() else {
         return;
     };
+    let cleanup = ctx.extras.borrow().cleanup.clone();
     ctx.sender().notice("Cleaning up…");
     let sender = ctx.sender();
-    spawn_work("storage-cleanup", move || {
-        let report = clean_regenerable(&dir);
+    spawn_work("storage-cleanup-now", move || {
+        let report = match cleanup {
+            Some(handle) => handle.run_manual_now(),
+            None => clean_regenerable(&dir),
+        };
         sender.send(UiEvent::StorageMeasured(measure_storage(&dir)));
         let megabytes = report.bytes / (1024 * 1024);
         sender.notice(format!(
