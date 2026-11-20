@@ -5,7 +5,7 @@ name: CI
 #   cargo deny + cargo audit         file lengths (scripts/check_file_lengths.py)
 #   sidecar tests
 # Weekly, only the advisory checks run again, so a new advisory shows up without a push.
-# Product UI is egui (app_shell); the Tauri frontend is not part of product CI.
+# Product UI is Slint (ui_slint + app_shell); the archived Tauri frontend is not part of product CI.
 
 on:
   push:

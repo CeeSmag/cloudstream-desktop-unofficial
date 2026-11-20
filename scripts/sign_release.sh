@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes SHA256SUMS for the release files in a folder and signs it with minisign, so the app's
-# updater accepts them (ui_app update check + signed SHA256SUMS). Used by the release workflow and
+# updater accepts them (app_updater check + signed SHA256SUMS). Used by the release workflow and
 # by hand (Linux, or Git Bash on Windows with minisign installed).
 #
 #   scripts/sign_release.sh dist                     # sign with the key named below

@@ -44,7 +44,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Fault-Tolerant Resilience**: No unhandled panics (`unwrap`, `expect`, `panic!`, `indexing_slicing` denied). Fallible paths have explicit fallbacks or structured errors.
 - **Application Frontend (this fork)**: `app_shell` / `ui_slint` — native desktop shell with a retained-mode Slint GUI and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
 - **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`open_with` / `run_open`), waits for a full search+check (or skip / 60s total cap; 30s empty fail), then plays the **best** working stream by `link_rank`; fresh `title_cache` seeds can start at once; wired from `ui_slint`.
-- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, and after allow-host runs `cloudstream-verify` (`cloudflare_window`); Slint confirm UI writes cookie/result files.
+- **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, and after allow-host runs `cloudstream-verify` (`cloudflare_window`) which writes the cookie/result files; the Slint confirm banner (`ui/cloudflare_banner.slint`) calls `WatchHandle::allow` / `decline`.
 - **Legacy reference**: `archive/desktop_tauri` (former Tauri + React shell) is kept for porting remaining features; it is **not** a workspace member.
 
 ---
@@ -58,25 +58,25 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Dependencies**: `serde`
 - **Responsibility**: Pure domain types shared across the workspace. Zero I/O, zero network, fast compilation.
 - **Public Types**:
-  - `Bookmark`: `provider`, `url`, `title: name`, `poster_url`, `media_type`, `added_at: i64`.
-  - `DiscoveredRepository`: `name`, `url`.
-  - `HomePage`: `items: Vec<HomePageSection>`.
-  - `HomePageSection`: `name: String`, `items: Vec<SearchResult>`.
-  - `InstalledExtension`: `file_name`, `internal_name`, `repository_url: Option<String>`, `version: i32`, `trusted: bool`, `icon_url: Option<String>`, `installed_at_ms: i64` (0 when unknown / pre-migration).
+  - `Bookmark`: `provider`, `url`, `name`, `poster_url`, `media_type`, `added_at_ms: i64`.
+  - `DiscoveredRepository`: `name`, `url`, `icon_url: Option<String>`.
+  - `HomePage`: `items: Vec<HomePageSection>`, `has_next: bool`.
+  - `HomePageSection`: `name: String`, `list: Vec<SearchResult>`, `is_horizontal_images: bool`.
+  - `InstalledExtension`: `file_name`, `internal_name`, `repository_url: Option<String>`, `version: i64`, `trusted: bool`, `icon_url: Option<String>`, `installed_at_ms: i64` (0 when unknown / pre-migration).
   - `LinkSearchCursor`: `links: usize`, `subtitles: usize`.
-  - `LinkSearchUpdate`: `links: Vec<PlayableLink>`, `subtitles: Vec<SubtitleTrack>`, `is_done: bool`, `next_link: usize`, `next_subtitle: usize`, `cursor() -> LinkSearchCursor`.
-  - `LoadDetails`: Title `name`, `url`, `api_name`, `media_type`, `data_url`, `poster_url`, `year`, `plot`, `tags: Option<Vec<String>>`, `episodes: Vec<EpisodeInfo>`, `background_poster_url`, `rating: Option<i32>`, `duration: Option<i32>`, `actors: Vec<CastMember>`.
-  - `EpisodeInfo`: `data: String` (provider payload), `name`, `season: Option<i32>`, `episode: Option<i32>`, `poster_url`, `description`.
+  - `LinkSearchUpdate`: `links: Vec<PlayableLink>`, `subtitles: Vec<SubtitleTrack>`, `done: bool`, `success: bool`, `failure: Option<String>`, `next_link: usize`, `next_subtitle: usize`, `cursor() -> LinkSearchCursor`.
+  - `LoadDetails`: Title `name`, `url`, `api_name`, `media_type: Option<String>`, `data_url`, `poster_url`, `year`, `plot`, `tags: Option<Vec<String>>`, `episodes: Vec<EpisodeInfo>`, `background_poster_url`, `rating: Option<i32>`, `duration: Option<i32>`, `actors: Vec<CastMember>`, `sync_data: BTreeMap<String, String>`, `unique_url: Option<String>`.
+  - `EpisodeInfo`: `data: String` (provider payload), `name: Option<String>`, `season: Option<i32>`, `episode: Option<i32>`, `poster_url: Option<String>`, `description: Option<String>`.
   - `CastMember`: `name: String`, `image: Option<String>`, `role: Option<String>`.
   - `PlayableLink`: `source`, `name`, `url`, `referer: String`, `quality: i32`, `headers: HashMap<String, String>`, `link_type` (`VIDEO`/`M3U8`/`DASH`/`TORRENT`/`MAGNET`), optional ClearKey `kid`/`key`.
   - `PlayableLinks`: `success: bool`, `links: Vec<PlayableLink>`, `subtitles: Vec<SubtitleTrack>`.
-  - `SubtitleTrack`: Provider subtitle item (`lang: String`, `url: String`).
-  - `PluginListing`: `name`, `internal_name`, `version: i32`, `authors: Vec<String>`, `description: Option<String>`, `url: String`, `icon_url: Option<String>`.
+  - `SubtitleTrack`: Provider subtitle item (`lang: String`, `url: String`, `headers: Option<HashMap<String, String>>`).
+  - `PluginListing`: `name`, `internal_name`, `version: i64`, `authors: Vec<String>`, `description: Option<String>`, `url: String`, `icon_url: Option<String>`, `file_size: Option<u64>`, `status: Option<i32>`, `language: Option<String>`, `tv_types: Vec<String>`.
   - `ProviderInfo`: `name: String`, `main_url: String`, `lang: String`, `types: Vec<String>`, `has_main_page: bool`, `main_page: Vec<MainPageEntry>`.
   - `MainPageEntry`: `name: String`, `data: String`, `horizontal_images: bool`.
-  - `RepositoryEntry`: `url: String`, `name: String`, `icon_url: Option<String>`.
-  - `SearchResult`: `name`, `url`, `poster_url`, `api_name`, `media_type`, `year: Option<i32>`.
-  - `SearchPage`: `items: Vec<SearchResult>`.
+  - `RepositoryEntry`: `url: String`, `name: String`, `added_at_ms: i64`, `icon_url: Option<String>`.
+  - `SearchResult`: `name`, `url`, `poster_url`, `poster_headers: Option<HashMap<String, String>>`, `api_name`, `media_type`, `year: Option<i32>`.
+  - `SearchPage`: `items: Vec<SearchResult>`, `has_next: bool`.
   - `WatchProgress`: `provider`, `media_key`, `title`, `detail_url`, `poster_url`, `position_ms: i64`, `duration_ms: i64`, `updated_at_ms: i64`, `season: Option<i32>`, `episode: Option<i32>`, `fraction_watched() -> f32`.
   - `ResumePointer`: `provider: String`, `detail_url: String`, `media_key: String`, `title: String`, `poster_url: Option<String>`, `season: Option<i32>`, `episode: Option<i32>`, `updated_at_ms: i64`.
   - `stable_key(text: &str) -> String`: Deterministic 16-character hex hash based on FNV constants for safe file/cache keys.
@@ -87,9 +87,9 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Dependencies**: `core_model`, `thiserror`
 - **Responsibility**: Trait definitions and error types between the app core and extension runtimes.
 - **Trait `ProviderGateway: Send + Sync`**:
- - `load_extension(path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, GatewayError>`
- - `unload_extension(path: &Path) -> Result<(), GatewayError>`: drops a loaded plugin so uninstall+reinstall registers providers again without restarting
- - `search(provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>`
+  - `load_extension(path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, GatewayError>`
+  - `unload_extension(path: &Path) -> Result<(), GatewayError>`: drops a loaded plugin so uninstall+reinstall registers providers again without restarting
+  - `search(provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError>`
   - `main_page(provider: &str, page: u32, entry: &MainPageEntry) -> Result<Option<HomePage>, GatewayError>`
   - `load(provider: &str, url: &str) -> Result<Option<LoadDetails>, GatewayError>`
   - `load_links(provider: &str, data: &str) -> Result<PlayableLinks, GatewayError>`
@@ -98,7 +98,10 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `cancel_link_search(id: &str) -> Result<(), GatewayError>`
   - `extract(url: &str, referer: Option<&str>) -> Result<PlayableLinks, GatewayError>`
   - `take_added_repositories() -> Result<Vec<DiscoveredRepository>, GatewayError>`
+  - `extend_call_deadline(extra: Duration)`
+  - `shutdown()`
   - `set_debug_logging(enabled: bool) -> Result<(), GatewayError>`
+  - `set_resident_worker_limit(limit: Option<usize>)`
 - **Error `GatewayError`**:
   - `Unavailable(String)`: Runtime not started or missing.
   - `Timeout { method: String, seconds: u64 }`: Call deadline exceeded.
@@ -121,17 +124,22 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `tracks() -> Vec<MediaTrack>`
   - `select_track(kind: TrackKind, id: Option<i64>) -> Result<(), PlayerError>`
   - `add_subtitles(subtitles: &[SubtitleSource])`
+  - `pending_subtitles() -> usize`
   - `set_preferred_audio(language: Option<Language>)`
   - `set_preferred_subtitles(languages: &[Language])`
+  - `set_verbose_log(enabled: bool)`
+  - `chapters() -> Vec<Chapter>`
   - `is_embedded() -> bool`
   - `set_surface_size(width: u32, height: u32)`
   - `latest_frame(last_seen_serial: u64) -> Option<Arc<VideoFrame>>`
 - **Types**:
-  - `TrackKind`: Enum with `Audio`, `Subtitle`.
-  - `SubtitleSource`: Local file path/URL and label for external subtitle attachment.
-  - `PlaybackRequest`: Title, URL, `kind` (`StreamKind`: `Unknown`, `Video`, `Hls`, `Dash`, from the provider's link type by `build_request`), referer, custom HTTP headers, start position in ms, and initial subtitles.
-  - `PlaybackStatus`: State (`PlaybackState`: `Idle`, `Loading`, `Playing`, `Paused`, `Ended`, `Failed`), duration, position, volume.
-  - `Language`: ISO 639-1 / 639-2 codes, with helpers `all_languages()`, `find_language()`, and `ENGLISH`.
+  - `TrackKind`: Enum with `Audio`, `Subtitle`. `MediaTrack`: `id: i64`, `kind: TrackKind`, `language: Option<String>`, `title: Option<String>`, `selected: bool`.
+  - `SubtitleSource`: Local file path/URL (`url: String`) and language label (`language: String`) for external subtitle attachment.
+  - `PlaybackRequest`: Title, URL, `kind` (`StreamKind`: `Unknown`, `Video`, `Hls`, `Dash`, from the provider's link type by `build_request`), referer, custom HTTP headers, start position in ms, initial subtitles, and optional ClearKey DRM (`clear_key: Option<String>`).
+  - `PlaybackStatus`: State (`PlaybackState`: `Idle`, `Loading`, `Playing`, `Paused`, `Ended`, `Failed(String)`), `position_ms: i64`, `duration_ms: i64`, `has_video: bool`, `buffered_ms: i64`, `is_buffering: bool`, `buffer_percent: Option<u32>`.
+  - `CacheLimits`: `ahead_bytes: u64`, `behind_bytes: u64`.
+  - `Chapter`: `title: String`, `start_ms: i64`.
+  - `Language`: ISO 639-1 / 639-2 codes, with helpers `all_languages()`, `find_language()`, `describe_languages()`, and `ENGLISH`.
   - `VideoFrame`: Width, height, monotonically increasing `serial: u64`, and RGBA byte buffer.
   - `PlayerError`: `Unavailable(String)`, `Command { command: String, reason: String }`.
 
@@ -159,11 +167,11 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - *Version 4*:
     - `ALTER TABLE installed_extensions ADD COLUMN installed_at INTEGER NOT NULL DEFAULT 0;`
 - **Stores**:
-  - `SettingsStore`: `get(key)`, `set(key, value)`, `remove(key)`.
-  - `RepositoryStore`: `add(entry, added_at)`, `remove(url)`, `list()`, `set_icon_url(url, icon_url)`.
-  - `InstalledExtensionStore`: `add(ext)`, `remove(file_name)`, `list()`, `set_trusted(file_name, trusted)`, `set_icon_url(file_name, icon_url)`.
+  - `SettingsStore`: `get(key)`, `set(key, value)`.
+  - `RepositoryStore`: `add(entry)`, `list()`, `set_icon(url, icon)`, `remove(url)`.
+  - `InstalledExtensionStore`: `upsert(ext)`, `list()`, `set_icon_if_missing(internal_name, icon)`, `remove(file_name)`.
   - `BookmarkStore`: `add(bookmark)`, `remove(provider, url)`, `contains(provider, url)`, `list()`.
-  - `WatchProgressStore`: `save(progress)`, `get(provider, media_key)`, `recent(limit)`, `remove(provider, media_key)`, `episodes_for_show(provider, detail_url)`, `remove_for_show(provider, detail_url)`, `all_media_keys()`, `clear()`.
+  - `WatchProgressStore`: `save(progress)`, `get(provider, media_key)`, `recent(limit)`, `for_show(provider, detail_url)`, `remove(provider, media_key)`, `episodes_for_show(provider, detail_url)`, `remove_for_show(provider, detail_url)`, `all_media_keys()`, `clear()`.
   - `ResumeStore`: `save(pointer)`, `get(provider, detail_url)`, `remove(provider, detail_url)`, `recent(limit)`, `all()`, `clear()`.
   - All stores wrap queries over `Arc<Database>`.
 - **Error**: `StorageError` (`Io { path, source }`, `Sql { operation, source }`).
@@ -172,14 +180,14 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 #### `crates/subtitle_store`
 - **Location**: `crates/subtitle_store/`
 - **Dependencies**: `core_model`, `flate2 = "1"`, `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
-- **Storage Location**: `<data_dir>/subtitles/<url_hash>.vtt` (default retention: 7 days).
+- **Storage Location**: `<data_dir>/subtitles/files/<stable_key>.<ext>` and per-title lists in `<data_dir>/subtitles/titles/<stable_key>.jsonl` (default retention: 7 days).
 - **Modules & Types**:
-  - `normalize_subtitle.rs`: `normalize_subtitle(bytes) -> Result<NormalizedSubtitle, NormalizeError>`. Unpacks `.zip` archives, decompresses `.gz` streams, strips UTF-8 BOM, decodes UTF-16 LE/BE and Windows-1252 to UTF-8, rejects HTML error/challenge responses, parses SRT/VTT.
+  - `normalize_subtitle.rs`: `normalize_subtitle(bytes) -> Result<NormalizedSubtitle, NormalizeError>`. Unpacks `.zip` archives, decompresses `.gz` streams, strips UTF-8 BOM, decodes UTF-16 LE/BE and Windows-1252 to UTF-8, rejects HTML error/challenge responses, parses SRT/VTT/ASS.
   - `hls_subtitles.rs`: `flatten_playlist(text, base_url, fetcher)` flattens segmented M3U8 subtitle playlists into a unified WebVTT stream.
-  - `subtitle_cache.rs`: `SubtitleCache::new(dir, ttl)` manages on-disk storage with LRU and TTL pruning (`prune() -> usize`). Stores files as `<dir>/<sha256>.vtt`.
+  - `subtitle_cache.rs` & `subtitle_cache_keep.rs`: `SubtitleCache::new(dir, ttl)` manages on-disk storage with TTL pruning (`prune() -> usize`) and single-title retention (`keep_only_title`, `remember_for_title`, `cached_for_title`, `discard_unclaimed`). Stores files as `<dir>/files/<stable_key>.<ext>` using `core_model::stable_key` (16-char FNV hex).
   - `subtitle_fetcher.rs`: Trait `SubtitleFetcher` and `UreqSubtitleFetcher` enforcing size limits and provider request headers.
   - `subtitle_loader.rs`: `SubtitleLoader` coordinates cache lookup -> HTTP fetch -> normalize -> disk save. `LoadOptions` (default 3 attempts, 400ms exponential backoff).
-  - `subtitle_prefetch.rs`: `SubtitlePrefetch` multi-threaded background fetcher prioritizing tracks matching the user's preferred language rankings (`LanguageRank`), stoppable via `KeepGoing`. Ranks of `SKIP_DOWNLOAD_RANK` are not queued; the desktop app ranks non-preferred languages that way and attaches at most 12 external files per stream (`subtitle_attach_limits`).
+  - `subtitle_prefetch.rs`: `SubtitlePrefetch` multi-threaded background fetcher prioritizing tracks matching the user's preferred language rankings (`LanguageRank`), stoppable via `KeepGoing`. Ranks of `SKIP_DOWNLOAD_RANK` are not queued. In `ui_slint::bridge::subtitle_delivery`, preferred languages rank `0..preferred.len()` (up to `MAX_PREFERRED_EXTERNAL = 12` files) and other languages rank `preferred.len()` (up to `MAX_OTHER_EXTERNAL = 12`, at most 2 per language).
 
 #### `crates/poster_artwork`
 - **Location**: `crates/poster_artwork/` (README lists every part)
@@ -191,16 +199,16 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Dependencies**: `core_model`, `serde`, `serde_json`, `thiserror`, `tracing`
 - **Storage Location**: `<data_dir>/sources/<hash of provider+media_key>.json`
 - **Limits (`cache_limits.rs`)**:
-  - `fresh_duration`: 20 minutes (links tried immediately without re-searching).
-  - `stale_duration`: 24 hours (best 3 links tested with 3s probe timeout).
+  - `fresh_for`: 20 minutes (links tried immediately without re-searching).
+  - `keep_for`: 24 hours (best 3 links tested with 3s probe timeout).
   - `max_titles`: 50 entries (LRU eviction).
-  - `max_links_per_title`: 200 links.
-  - `max_file_size`: 1 MB.
-- **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`); notes (`mark_broken`, ...) never revive such a file. In the Slint product, `ui_slint` bridge extension-settings callbacks call `TitleCache::invalidate_now()` and `SettingsService::set_sources_valid_from` when the viewer picks a different provider. (The archived Tauri shell had `provider_switched` / `sources_cleanup`.)
-- **Only the open video keeps its sources**: `TitleCache::keep_only(key)` removes every other title's file and hands out a `KeptTitle`; `save_kept` / `forget_kept` refuse once a newer `keep_only` was called (same write lock), so the background checks of a replaced video cannot bring its file back. In the Slint product, `ui_slint::bridge::stream_opening` calls `TitleCache::keep_only` and `SubtitleCache::keep_only_title` when a video is opened; `playback_session` persists through the kept title. (Archived Tauri used `SourceManager` / `LinkLedger`.)
+  - `max_links`: 200 links.
+  - `max_file_bytes`: 1 MB.
+- **Provider switch**: `TitleCache::invalidate_now()` / `set_valid_from(secs)` make every save from before that time unusable (`Miss::Invalidated`, file removed by the next `prune`, counted in `PruneReport::invalidated`). In the Slint product, `ui_slint::bridge::catalog_callbacks` calls `TitleCache::invalidate_now()` and `SettingsService::set_sources_valid_from` when the viewer picks a different provider, and `app_shell::service_wiring` restores `sources_valid_from` into `TitleCache::set_valid_from` at startup.
+- **Only the open video keeps its sources**: `TitleCache::keep_only(key)` removes every other title's file and hands out a `KeptTitle`; `save_kept` refuses once a newer `keep_only` was called (same write lock), so the background checks of a replaced video cannot bring its file back. In the Slint product, `ui_slint::bridge::stream_opening` calls `TitleCache::keep_only` and `SubtitleCache::keep_only_title` when a video is opened; `playback_session` persists through the kept title. (Archived Tauri used `SourceManager` / `LinkLedger`.)
 - **Atomic File Operations**: Writes to temporary `.tmp` files and renames into place, preventing corruption on app crash.
 - **Types & Methods**:
-  - `TitleCache`: `load(key) -> Lookup`, `save(key, title) -> Result<SaveReport, TitleCacheError>`, `update(key, fn)`, `mark_broken(key, url)`, `forget(key)`, `clear()`, `prune() -> PruneReport`.
+  - `TitleCache`: `load(key) -> Lookup`, `save(key, title) -> Result<SaveReport, TitleCacheError>`, `keep_only(key) -> KeptTitle`, `save_kept(kept, title) -> Result<KeptSave, TitleCacheError>`, `invalidate_now()`, `set_valid_from(secs)`, `forget(key)`, `prune() -> PruneReport`.
   - `Lookup`: `Hit(CacheHit)` or `Miss(Miss)`. `CacheHit` carries `CachedTitle`, `Freshness` (`Fresh`, `Stale`), and `age`.
   - `CachedTitle`: `complete: bool`, `links: Vec<CachedLink>`, `last_good: Option<String>`. `playing_order() -> Vec<&CachedLink>`.
   - `CachedLink`: `link: PlayableLink`, `health: LinkHealth` (`Working`, `Broken`, `Unchecked`).
@@ -218,7 +226,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/extension_runtime`
 - **Location**: `crates/extension_runtime/`
-- **Dependencies**: `core_model`, `extension_api`, `serde`, `serde_json`, `tracing`
+- **Dependencies**: `core_model`, `extension_api`, `serde`, `serde_json`, `tracing` (plus `libc = "0.2"` on Linux)
 - **Binary**: `fake_sidecar` (`src/bin/fake_sidecar.rs`, enabled via `test-support` feature).
 - **Modules & Constants**:
   - `call_timeouts.rs`: `PROVIDER_CALL_TIMEOUT` (60s), `LINK_RESOLVE_TIMEOUT` (150s), `EXTENSION_LOAD_TIMEOUT` (180s for DEX bytecode conversion).
@@ -228,16 +236,18 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `rpc_provider_gateway.rs`: `RpcProviderGateway<T>` implements `ProviderGateway`. Flags slow calls (>10s) and filters repetitive background polls (`main_page`, `take_added_repositories`, `poll_link_search`) to debug logs.
   - `plugin_worker_pool.rs` / `plugin_worker_maps.rs` / `plugin_worker_resident.rs`: `PluginWorkerPool` — one sidecar JVM per loaded `.cs3`, with an optional resident cap (Settings `plugin_worker_limit`, default 1 on new installs; existing installs migrate to unlimited). Parked workers keep provider routes and revive on first call; routes by provider / link-search id; `extract` fans out across live workers; wired from `app_shell` instead of a single shared transport.
   - `sidecar_spawn_thread.rs`: `SidecarSpawner`, one long-lived thread that forks every sidecar of a `PluginWorkerPool` (`SidecarLaunchConfig::with_spawner`). Linux sends the sidecar's `PR_SET_PDEATHSIG(SIGKILL)` when the *thread* that forked it ends, so forking from short-lived UI worker threads killed the JVM after nearly every call (`exited on its own … unix_wait_status(9)` in the log).
+  - `delete_sidecar_app_container()`: Removes the Windows AppContainer profile created for the plugin sidecar on data wipe (no-op on non-Windows).
   - `fake_link_search.rs` & `fake_search_runtime.rs`: Deterministic doubles for streaming link search protocol testing.
 
 #### `crates/extension_repo`
 - **Location**: `crates/extension_repo/`
 - **Dependencies**: `core_model`, `serde`, `serde_json`, `thiserror`, `tracing`, `ureq = "3"`
 - **Modules & Types**:
-  - `repository_client.rs`: `RepositoryClient<F: HttpFetcher>` fetches manifests (`repo.json`) and plugin listings (`plugins.json`).
-  - `extension_installer.rs`: `ExtensionInstaller<F: HttpFetcher>` downloads `.cs3` plugins to `<data_dir>/extensions/` using atomic `.cs3.part` writes and path sanitization (`safe_file_name.rs`).
+  - `repository_client.rs` & `repository_manifest.rs`: `RepositoryClient<F: HttpFetcher>` fetches manifests (`repo.json` -> `RepositoryManifest`) and plugin listings (`plugins.json`).
+  - `extension_installer.rs` & `plugin_download_guard.rs`: `ExtensionInstaller<F: HttpFetcher>` downloads `.cs3` plugins to `<data_dir>/extensions/` using atomic `.cs3.part` writes, host/HTTPS/ZIP/size checks, and path sanitization (`safe_file_name.rs`: `plugin_file_name`, `plugin_path_in`).
+  - `http_fetcher.rs`: Trait `HttpFetcher` and `UreqFetcher`.
   - `http_probe.rs`: Trait `HttpProbe` and `UreqProbe` (8s timeout, probes first 32 KB via HTTP `Range: bytes=0-32767` to verify video/playlist streams). Returns `ProbeResponse` (`status`, `content_type`, `head`, `total_bytes`).
-  - `repo_error.rs`: `RepoError` (`Download { url, reason }`, `Invalid { url, reason }`, `Disk { path, source }`, `UnsafeName(String)`).
+  - `repo_error.rs`: `RepoError` (`Download { url, reason }`, `Invalid { url, reason }`, `Rejected { url, reason }`, `Disk { path, source }`, `UnsafeName(String)`).
 
 #### `sidecar/cs-sidecar`
 - **Location**: `sidecar/cs-sidecar/`
@@ -247,12 +257,13 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (product: `cloudflare_bridge` + Slint banner; archived detail under `archive/desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
   - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
+  - `sidecar/ExtensionPathJail.kt`, `sidecar/NoOpPreferencesFactory.kt`, `sidecar/SidecarLog.kt`: Enforces `<data>/extensions` path jail, provides no-op `java.util.prefs` for AppContainer compatibility, and gates sidecar stderr diagnostics behind the debug-logging switch.
   - `sidecar/LinkSearches.kt`: Coordinates asynchronous streaming link searches and channel buffers.
-  - `sidecar/AddedRepositories.kt`: Buffers repositories discovered/added dynamically by extensions.
+  - `sidecar/AddedRepositories.kt`, `plugins/Repository.kt`, `plugins/RepositoryManager.kt`, `ui/settings/extensions/RepositoryData.kt`: Buffers repositories discovered/added dynamically by extensions.
   - `network/CloudflareKiller.kt`: Intercepts and resolves Cloudflare challenges.
-  - `syncproviders/`: Stubs for CloudStream account and sync providers (`AccountManager`, `SyncStubs`, `SimklApi`).
+  - `syncproviders/`: Stubs for CloudStream account and sync providers (`AccountManager`, `SyncStubs`, `SimklApi`, `providers/AniListApi`, `providers/MalApi`).
 - **Tests (`src/test/kotlin/`)**:
-  - `sidecar/LinkSearchesTest.kt`: Multi-threaded race tests verifying streaming link search concurrency.
+  - `sidecar/LinkSearchesTest.kt`, `sidecar/ExtensionCompatibilityTest.kt`, `stubs/CloudflareSolverTest.kt`, and overlay `ShadowUiTransformTest.kt`.
 - **Build Script**: `scripts/setup_sidecar.ps1` clones the pinned reference client into `C:\cs3d\repo` and compiles the distribution.
 
 #### `crates/stream_proxy`
@@ -274,19 +285,19 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/cloudflare_bridge` and `crates/cloudflare_window`
 - **Bridge** (no GUI): file formats of the sidecar exchange (`request-`/`result-`, `fetch-`/`fetchresult-`), `AllowedHosts` (sites the viewer pressed Verify for, saved as setting `cloudflare_allowed_hosts`), the helper protocol, `VerifyHelper` (starts `cloudstream-verify` on demand) and `spawn_watcher`, which answers every request at once: not allowed → "ask again" and a `NeedsPermission` event for the UI's banner (`ui/cloudflare_banner.slint`); allowed → the helper. Started by `app_shell::start_cloudflare_watch` (helper next to the program, or `CS_VERIFY_HELPER`; browser profile `<data>/cloudflare_browser`).
-- **Window** (`cloudstream-verify`, tao + wry): one window per site on its front page, downloads refused; passes on `cf_clearance` + User-Agent + a probe from inside the page; then hidden and used for browser fetches. Linux needs the system's WebKitGTK 4.1 (not bundled in the AppImage); Windows uses WebView2.
+- **Window** (`cloudstream-verify`, tao + wry): one window per site (loads the sidecar's challenged URL when it is `http(s)` on that host/subdomain and not a media/segment path, else the site's front page via `verify_open_url`), downloads refused; passes on `cf_clearance` + User-Agent + a probe from inside the page; then hidden and used for browser fetches. Linux needs the system's WebKitGTK 4.1 (not bundled in the AppImage); Windows uses WebView2.
 
 ### Chunk 4: Video Player Engine (libmpv)
 
 #### `crates/player_mpv`
 - **Location**: `crates/player_mpv/`
 - **Dependencies**: `core_model` (`redact_url` for the log), `player_api`, `libloading = "0.8"`, `tracing`
-- **Unsafe Scope**: Confined strictly to `src/mpv_api.rs` with `// SAFETY:` justifications.
+- **Unsafe Scope**: Confined strictly to the libmpv FFI modules (`src/mpv_api.rs`, `src/mpv_api/properties.rs`, `src/mpv_log.rs`, `src/mpv_render_api.rs`) with `// SAFETY:` justifications.
 - **Dynamic Locator (`libmpv_locator.rs`)**: Candidates in order: `CS_LIBMPV_PATH` (if the file exists), the directory of `current_exe()`, `current_dir()`, then (Linux/macOS) the bare names for the system loader. `MpvPlayer::auto_detect` tries each until one loads; `locate_libmpv()` returns the first. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows. When nothing is found the error lists every path searched.
 - **Player Configuration (`player_configuration.rs`)**:
   - `PlayerOptions`: `headless: bool` (`vo=null, ao=null`), `embedded: bool` (`vo=libmpv`), `wid: Option<i64>` (`vo=gpu, hwdec=auto-safe`).
   - Sets common options: `idle=yes`, `keep-open=no`, `osc=no`, `input-default-bindings=no`, `hwdec=auto-copy-safe` (embedded/canvas overrides to `auto-safe` to avoid a second copy surface), `ytdl=no`, `alang=eng,en`, `force-seekable=yes` (progressive HTTP streams often omit a size; without it seek-bar jumps fail while short arrow seeks still work from cache).
-  - Debugging: setting `CS_MPV_LOG` passes `terminal=yes` and `msg-level=all=v` for native mpv console diagnostics and raises the mpv event-log level forwarded into `player-logs.txt`. The Settings debug-logging switch does not enable that flood.
+  - Debugging: setting `CS_MPV_LOG` passes `terminal=yes` and `msg-level=all=v` for native mpv console diagnostics and keeps the mpv event-log level forwarded into `player-logs.jsonl` at `"v"`. The Settings debug-logging switch also raises the mpv event-log level (`VideoPlayer::set_verbose_log(true)`) into `player-logs.jsonl` without enabling `terminal=yes`.
 - **Rendering Modes**:
   1. *Embedded Software Renderer*: Uses libmpv's render API (`vo=libmpv`) to blit frames into an RGBA memory buffer (`VideoFrame`). Enables frontend canvas/glass overlay.
   2. *Window Attachment (`vo=gpu`)*: Attaches directly to a native window handle (`wid: Option<i64>`).
@@ -294,7 +305,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Track & Subtitle Management**:
   - `preferred_audio.rs`: Automatically activates audio tracks matching ISO language preference (`AudioChoice::Switch { id }`).
   - `preferred_subtitles.rs`: Selects preferred subtitle languages once streams load without overriding manual user track picks, guarded by stream generation counters (`chosen_for`, `changed_by_viewer_for`).
-  - Buffering: `PlaybackStatus.buffered_ms` / `is_buffering` / `buffer_percent` come from mpv's `paused-for-cache`, `cache-buffering-state` and `demuxer-cache-duration`; `StatusTracker` clears them when the stream ends or restarts. The page shows `BufferingIndicator.tsx` and the buffered stretch on `SeekBar.tsx`.
+  - Buffering: `PlaybackStatus.buffered_ms` / `is_buffering` / `buffer_percent` come from mpv's `paused-for-cache`, `cache-buffering-state` and `demuxer-cache-duration`; `StatusTracker` clears them when the stream ends or restarts. In the Slint product, `ui_slint::feedback_text` / `ui/player.slint` show the waiting/buffering pill and `ui_slint::seek_bar` (`bridge/player_timeline.rs`) drives the buffered stretch on the timeline.
   - `cache_limits.rs`: `set_cache_limits` (`player_api::CacheLimits`: bytes ahead / behind, `demuxer-max-bytes` / `demuxer-max-back-bytes`, changeable while a stream is loaded) and per-stream read-ahead time (`apply_read_ahead`: 60/30 s for HLS/DASH against HTTP 429, 10 h for plain files). Real libmpv (`cache_limit_live_tests.rs`, `CS_CACHE_VIDEO`): a lowered behind limit trims at once; a lowered ahead limit keeps what was read; a raised one fills once playback goes on.
   - `pending_subtitles.rs`: Queues subtitle tracks arriving asynchronously while mpv is initializing.
   - Diagnostics: `diagnostics_timer.rs` (fires once per loaded stream after 30 s, injected clock) and `playback_diagnostics.rs` (reads `hwdec-current`, `video-codec`, `container-fps`, `estimated-vf-fps`, `video-params/w|h`, `current-vo`; one `info` line, a `warn` for software decoding) are driven from `event_worker.rs`. `hwdec_problem.rs` classifies mpv log lines about a lost graphics device or failed hardware decoding; `mpv_log::forward` returns it and `wait_event` hands it to the event thread as `MpvEvent::HardwareProblem`, which logs a `warn` (no shared state). Test with real libmpv: `tests/t4_playback_diagnostics.rs`.
@@ -305,18 +316,21 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/app_services`
 - **Location**: `crates/app_services/`
-- **Dependencies**: `core_model`, `extension_api`, `extension_repo`, `player_api`, `storage`, `thiserror`, `tracing`
-- **Public Services**:
-  - `CatalogService`: `search(providers, query) -> Vec<ProviderSearchOutcome>`, `home(provider, entry) -> Result<Option<HomePage>>`, `details(provider, url) -> Result<LoadDetails>`.
-  - `ExtensionService`: `install(listing, repo_url)`, `uninstall(file_name)`, `set_trusted(file_name, trusted)`, `load_installed(progress_cb)`, `providers()`, `installed()`, `set_debug_logging(enabled)`.
-  - `RepositoryService`: `repositories()`, `add(url)`, `remove(url)`, `plugins(url)`, `import_discovered()`, `refresh_icons()`.
+- **Dependencies**: `core_model`, `extension_api`, `extension_repo`, `player_api`, `poster_artwork`, `serde`, `serde_json`, `skip_times`, `storage`, `subtitle_store`, `thiserror`, `title_cache`, `tracing`, `ureq = "3"`
+- **Public Services & Modules**:
+  - `CatalogService`: `search(providers, query) -> Vec<ProviderSearchOutcome>`, `home(provider, entry) -> Result<Option<HomePage>>`, `home_page(provider, page, entry) -> Result<Option<HomePage>>`, `details(provider, url) -> Result<LoadDetails>`.
+  - `BrowseService` (`BrowseClient`): Queries TMDB Discover API (`browse_service.rs`, `browse_fetcher.rs`, `browse_genres.rs`, `browse_query.rs`) and matches selected cards against installed providers (`browse_match.rs`: `pick_best_search_match`).
+  - `ExtensionService`: `install(listing, repo_url)`, `uninstall(&InstalledExtension)`, `set_trusted(&InstalledExtension, trusted)`, `load_installed()`, `load_installed_reporting(on_progress)`, `providers()`, `providers_of(file_name)`, `installed()`, `take_added_repositories()`, `remember_icons(offered)`, `extend_call_deadline(extra)`, `shutdown()`, `set_debug_logging(enabled)`, `set_resident_worker_limit(limit)`.
+  - `RepositoryService`: `list()`, `add(url)`, `remove(url)`, `plugins(url)`, `import_discovered(found)`, `prepare_plugin_catalog()`, `all_plugins()`.
   - `PluginIndex`: In-memory searchable index of all plugins across all registered repositories.
-  - `StreamResolver`: Initiates streaming link resolution via `ProviderGateway::start_link_search` with automatic retry logic; sorts candidates using `playable_links_best_first` and `link_rank`.
-  - `StreamChecker`: Concurrently probes video streams with `check_worker_count(available_parallelism)` clamped to 2…12 workers using HTTP Range probes (`Range: bytes=0-32767` via `extension_repo::UreqProbe`). Request headers mirror the player: link headers + referer + `core_model::DEFAULT_STREAM_USER_AGENT` (Chrome desktop) unless the link already sets User-Agent. Evaluates `LinkHealth` (`Working { size_bytes, subtitles }`, `Broken(String)`).
-  - `CheckQueue`: Thread-safe priority queue sorting streams by resolution/quality (`push`, `close`, `stop`, `next`).
-  - `PlaybackService`: Coordinates `VideoPlayer`, `WatchProgressStore`, and `ResumeStore`. Manages `start()`, `start_at()`, `resume_position_ms()`, `set_paused()`, `seek_to()`, `set_volume()`, `tracks()`, `select_track()`, `latest_frame()`. Progress automatically updates every 5,000 ms (`SAVE_EVERY_MS = 5_000`). Advances resume pointer to `next_episode` when progress reaches ≥ 90% (`NEXT_WATCH_EPISODE_PERCENTAGE = 0.90`), or removes pointer if last episode/movie; that rule is the pure `playback_resume::resume_change`.
-  - `LibraryService`: Bookmarks, continue-watching, and resume pointers. `continue_watching()` returns one card per show, newest first, carrying season/episode and progress from `ResumeStore`. `resume_pointer(provider, detail_url)` finds resume position for details page. `remove_continue_watching(provider, detail_url)` and `clear_continue_watching()` remove resume pointers and episode progress rows. Max 20 items in continue-watching.
-  - `SettingsService`: Typed getters/setters for disabled providers, audio language, subtitle language list (up to 3: `MAX_PREFERRED_SUBTITLES = 3`), auto-subtitles, and debug logging. One `impl SettingsService` per group of settings: `settings_service.rs` (providers, debug logging, autoplay, skip lookup, provider-switch time), `language_settings.rs` (audio, subtitles, auto-subtitles), `storage_cap_setting.rs`, `stream_proxy_setting.rs`, `video_cache_setting.rs` (`VideoCache`: size 128 MB-4 GB, default 256 MB, and ahead share 25/50/75/90 %, default 75; `while_watching()` / `while_away()` give the player's `CacheLimits`, away = `ahead_bytes: 0` and half behind), `keep_video_ready_setting.rs` (leave player keeps stream paused; on by default), `plugin_worker_setting.rs` (`plugin_worker_limit`: 1/2/unlimited; migrate-default keeps unlimited for existing installs).
+  - `StreamResolver` & `LinkSearch`: Initiates streaming link resolution via `ProviderGateway::start_link_search` with automatic retry logic and extractor fallback; sorts candidates using `playable_links_best_first` and `link_rank`.
+  - `StreamChecker`: Probes video streams (with `check_worker_count(available_parallelism)` clamped to 2…12 workers) using HTTP Range probes (`Range: bytes=0-32767` via `extension_repo::UreqProbe`). Request headers mirror the player: link headers + referer + `core_model::DEFAULT_STREAM_USER_AGENT` (Chrome desktop) unless the link already sets User-Agent. Evaluates `LinkHealth` (`Working { size_bytes, subtitles }`, `Broken(String)`).
+  - `clear_key` & `stream_label`: ClearKey DRM key normalization (`decode_key_to_hex`, `normalize_clear_key`, `normalize_pipe_link`) and stream labels/kinds (`describe_link`, `full_label`, `source_label`, `stream_kind`).
+  - `PlaybackService`: Coordinates `VideoPlayer`, `WatchProgressStore`, and `ResumeStore`. Manages `start()`, `start_at()`, `resume_position_ms()`, `set_paused()`, `seek_to()`, `set_volume()`, `set_cache_limits()`, `add_subtitles()`, `pending_subtitles()`, `set_preferred_audio()`, `set_preferred_subtitles()`, `set_verbose_player_log()`, `stop()`, `tracks()`, `chapters()`, `select_track()`, `is_embedded()`, `set_surface_size()`, `latest_frame()`, `status()`, `tick()`. Progress automatically updates every 5,000 ms (`SAVE_EVERY_MS = 5_000`). Advances resume pointer to `next_episode` when progress reaches ≥ 90% (`NEXT_WATCH_EPISODE_PERCENTAGE = 0.90`), or removes pointer if last episode/movie; that rule is the pure `playback_resume::resume_change`.
+  - `LibraryService`: Bookmarks (`add_bookmark`, `remove_bookmark`, `is_bookmarked`, `bookmarks`), continue-watching, and resume pointers. `continue_watching()` returns one card per show, newest first, carrying season/episode and progress from `ResumeStore`. `resume_pointer(provider, detail_url)` finds resume position for details page; `show_progress(provider, detail_url)` returns per-episode progress. `remove_continue_watching(provider, detail_url)` and `clear_continue_watching()` remove resume pointers and episode progress rows. Max 20 items in continue-watching.
+  - `SettingsService`: Typed getters/setters for disabled providers, audio language, subtitle language list (up to 3: `MAX_PREFERRED_SUBTITLES = 3`), auto-subtitles, and debug logging. One `impl SettingsService` per group of settings: `settings_service.rs` (providers, debug logging, autoplay, skip lookup, provider-switch time), `language_settings.rs` (audio, subtitles, auto-subtitles), `storage_cap_setting.rs`, `stream_proxy_setting.rs`, `video_cache_setting.rs` (`VideoCache`: size 128 MB-4 GB, default 256 MB, and ahead share 25/50/75/90 %, default 75; `while_watching()` gives the player's `CacheLimits`), `plugin_worker_setting.rs` (`plugin_worker_limit`: 1/2/unlimited; migrate-default keeps unlimited for existing installs), `cloudflare_setting.rs` (`cloudflare_allowed_hosts`, `allow_cloudflare_host`), `home_provider_setting.rs` (`home_provider`, `set_home_provider`).
+  - `storage_cleanup`, `storage_usage`, `regenerable_cleanup`: Background and manual storage hygiene (`CleanupScheduler`, `CleanupHandle`, `StorageCleanupRunner`, `enforce_storage_cap`, `plan_evictions`, `measure_storage`, `clean_regenerable`).
+  - `UiServices`: Composition bundle passed from `app_shell` to `ui_slint`.
   - `Clock` Trait: `SystemClock` for production, mockable clock for deterministic tests.
   - `RequestRouter` / `RoutedPlayer`: `RoutedPlayer` wraps any `VideoPlayer` and lets a `RequestRouter` change the request before every `play` (the stream proxy, wired in `app_shell`); `stop` stops the player first and then lets the router go. It forwards **every** method of `VideoPlayer`, defaults included: add new trait methods there too (`routed_player_tests.rs` lists them).
   - `SettingsService::stream_proxy()` / `set_stream_proxy()` (`stream_proxy_setting.rs`): the "Play HLS streams through a local helper" switch, on by default, option name `stream_proxy`.
@@ -324,11 +338,13 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/playback_session`
 - **Location**: `crates/playback_session/`
+- **Dependencies**: `app_services`, `core_model`, `extension_repo`, `thiserror`, `title_cache`, `tracing`
 - **Responsibility**: Shell-agnostic stream open: search + `StreamChecker` probes, TitleCache seeds, live source updates, refresh. Product entry points: `open_with` / `run_open` / `refresh_sources`; UI wiring in `ui_slint::bridge::stream_opening`.
 - **Gate**: announce ready on full search+all checks, viewer skip, or 60s total; fail empty after 30s with no streams; pick **best** working by `link_rank` (not first-checked).
 
 #### `crates/app_updater`
 - **Location**: `crates/app_updater/`
+- **Dependencies**: `minisign-verify = "0.3.0"`, `semver = "1"`, `serde`, `serde_json`, `sha2 = "0.10"`, `thiserror`, `tracing`, `ureq = "3"`
 - **Responsibility**: GitHub release check, signed `SHA256SUMS` verify (`update_signing_key.pub`), download + install helper for installer / portable / AppImage. Slint calls `check_latest` / `download_and_install` from `bridge/update_callbacks.rs` (not Tauri IPC).
 
 ---
@@ -340,11 +356,12 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Binary**: `cloudstream` (`src/main.rs`)
 - **Key Modules & Paths**:
   - `app_paths.rs`: Locates data directory: `CS_DATA_DIR` -> `%LOCALAPPDATA%\CloudStreamRs` (Windows) -> `~/.local/share/cloudstream-rs` (Linux). Holds `database_file()`, `extensions_dir()`, `log_file()`.
-  - `logging_setup.rs`: Initializes `tracing-subscriber` logging to `<data>/logs/cloudstream.log` and reloadable debug/problem category layers in `<data>/logs/debug/` (`DebugLogs`).
-  - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME` or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`.
-  - `data_wipe.rs`: the fallback of "Delete all saved data" when the helper cannot start. `request_wipe` writes `delete_all_data.pending`; `wipe_if_requested` (called first thing in `app_shell` `main`, before logging) removes everything in the data folder except the marker and the running program's own `runtime-*` folder (`running_folder_name`; older `runtime-*` folders go too), retrying for about 10 s while the old process exits, and removes the marker last so a halfway wipe repeats.
+  - `logging_setup.rs`, `log_category.rs`, `debug_logs.rs`, `log_file.rs`: Initializes `tracing-subscriber` logging to `<data>/logs/cloudstream.log` and reloadable structured JSON Lines debug/problem category layers in `<data>/logs/debug/*.jsonl` (`DebugLogs`, `LogCategory`).
+  - `sidecar_discovery.rs`: Locates JVM sidecar via `CS_SIDECAR_HOME`, bundled install, `target/bundle-cache/cs-sidecar-dist`, or default `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`. Detects JDK 21 in `C:\Program Files\Java`, `Eclipse Adoptium`, `Microsoft`, `/usr/lib/jvm`, or `target/bundle-cache`.
+  - `wipe_helper.rs` & `data_wipe.rs`: "Delete all saved data" writes `delete_all_data.pending`, removes the Windows AppContainer profile, and spawns a detached `%TEMP%` script (`wipe_helper::spawn_wipe_helper`) that waits for the app to exit, stops sidecar Java processes, and removes the entire `data_dir` (including unpacked portable `runtime-*`). If the helper cannot start, `data_wipe::wipe_if_requested` (called first thing in `app_shell` `main`, before logging) performs the wipe on next launch.
+  - `cleanup_wiring.rs` & `cloudflare_wiring.rs`: Starts the background storage cleanup scheduler (`start_storage_cleanup`) and Cloudflare challenge watcher (`start_cloudflare_watch`).
   - `unavailable_gateway.rs`: Graceful fallback gateway when sidecar is not installed so UI runs cleanly without crashing.
-  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` for the Slint product shell.
+  - `service_wiring.rs`: Dependency injection constructor root (`build_services(&paths, &options) -> Result<UiServices>`). Degrades gracefully if sidecar or libmpv are missing. It wraps the mpv player in a `RoutedPlayer` for the Slint product shell and restores `SettingsService::sources_valid_from` into `TitleCache`.
   - `stream_proxy_router.rs`: the `RequestRouter` that sends HLS (provider says `Hls`, or the address ends in `.m3u8`) and progressive/unknown streams that carry custom headers or a referer through `stream_proxy` when the setting is on (never DASH). The proxy starts on the first such stream, the player gets the proxy's address and no headers, and a stream the proxy cannot open plays directly. This replaces plugin-local FlixProxy-style servers for header injection.
   - Plugin sandbox (defense in depth):
     - **Install:** `ExtensionInstaller` requires HTTPS, download host bound to the repository (or GitHub family / subdomain), ZIP magic (`PK`), and a matching published `file_size` when present (`plugin_download_guard`).
@@ -358,13 +375,13 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/ui_slint`
 - **Location**: `crates/ui_slint/`
-- **Dependencies**: `slint = "1.19"` (edition 1.19, no `system-tray`), `playback_session`, `player_api`, `app_services`, `app_updater`, `poster_artwork`, `cloudflare_bridge`, `skip_times`
+- **Dependencies**: `slint = "1.19"` (edition 1.19, no `system-tray`), `app_services`, `app_updater`, `cloudflare_bridge`, `core_model`, `open = "5"`, `playback_session`, `player_api`, `poster_artwork`, `skip_times`, `subtitle_store`, `title_cache`, `tracing`
 - **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks. Layout of the bridge, request tickets, playback watch and known Slint pitfalls: `crates/ui_slint/README.md`.
 - **Ported from the old Tauri UI** (pure rules with tests, named after the TS files they replace): the player's Sources menu (`source_menu.rs`: broken hidden, best first, kind / size / preferred-subtitle tags, 1080p / 2160p filter with size sort, "only with subtitles" filter), track menus with preferred languages first and picks by id (`track_menu.rs`), feedback pop-up and buffering text (`feedback_text.rs`), seek bar extras (`seek_bar.rs`), skip prompts from chapters plus online times from `UiServices::skips` (`skip_segments.rs`, `bridge/skip_lookup_start.rs`), spaced-out key seeks (`seek_scheduler.rs`), the opening panel (`check_text.rs`), Browse filters (`browse_filters.rs`), plugin search / filter / sort (`plugin_filter.rs`), the per-provider Home banner (`resume_hero.rs`). Slint globals `PluginList` and `BrowseFilter` hold those lists' controls. Settings: removable subtitle-language chips, a debug-logging switch (`AppExtras::debug_logs`), storage usage (`app_services::measure_storage`).
 
 #### `crates/ui_app` (reference only)
 - **Location**: `crates/ui_app/`
-- **Dependencies**: `egui = "0.37"`, `eframe = "0.37"`, `egui_extras`, `image`, `player_api`, `app_services`
+- **Dependencies**: `egui = "0.37"`, `eframe = "0.37"`, `egui_extras`, `image`, `app_services`, `cloudflare_bridge`, `core_model`, `extension_api`, `open = "5"`, `playback_session`, `player_api`, `semver = "1"`, `serde`, `serde_json`, `tracing`, `ureq = "3"`
 - **Status**: Former product UI; kept for porting reference. Listed in Cargo.toml `exclude` (not a workspace member — fontconfig `dlopen` conflicts with Slint `fontique`). Product binary uses `ui_slint`.
 - **Architecture**: Unidirectional reactive pattern:
   - `screens/` and `widgets/` render state and emit `UiAction`.
@@ -416,28 +433,31 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### `crates/portable_launcher`
 - **Location**: `crates/portable_launcher/`
-- **Responsibility**: The single-file Windows portable exe. The release script compiles a tar.gz of the whole app into it (`CS_PAYLOAD_ARCHIVE`, see `build.rs`); on start it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>\` once and launches `cloudstream.exe` (`cloudstream` on non-Windows) from there. `build.rs` embeds `crates/app_shell/icons/icon.ico` as its icon.
+- **Responsibility**: The single-file Windows portable exe. The release script compiles a tar.gz of the whole app into it (`CS_PAYLOAD_ARCHIVE`, see `build.rs`); on start it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>-<payload_id>\` once and launches `cloudstream.exe` (`cloudstream` on non-Windows) from there. `build.rs` embeds `crates/app_shell/icons/icon.ico` as its icon.
 
 ---
 
 ### Chunk 7: Scripts, Tooling & External Repositories
 
-#### Automation Scripts (`scripts/`)
+#### Automation Scripts (`scripts/` & `tools/`)
 - `scripts/setup_sidecar.ps1`:
   - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`.
-  - Overlays `sidecar/cs-sidecar` and builds the sidecar distribution with JDK 21.
+  - Overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_shadowui_cache_version.py`, and builds the sidecar distribution with JDK 21.
+- `scripts/patch_shadowui_cache_version.py`:
+  - Syncs `ExtensionLoader.kt` cache version check with `ShadowUiTransform.VERSION` after the sidecar overlay is applied.
 - `scripts/test_sidecar.ps1`:
   - Runs JUnit test suites for the Kotlin sidecar.
 - `scripts/record_sidecar_replies.py`:
   - Executes the JVM sidecar with CineStream extension and saves sanitized golden JSON responses to `crates/extension_runtime/tests/fixtures/sidecar_replies/`.
-
 - `scripts/build_release.ps1` (Windows PC):
- - Builds `CloudStream_<ver>_x64-setup.exe` (NSIS via `scripts/windows_installer.nsi`) and `CloudStream_<ver>_x64_portable.exe` into `dist/` (`-Kind installer|portable`).
- - Compiles `app_shell` (`cloudstream.exe`); stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer payload or portable payload.
+  - Builds `CloudStream_<ver>_x64-setup.exe` (NSIS via `scripts/windows_installer.nsi`) and `CloudStream_<ver>_x64_portable.exe` into `dist/` (`-Kind installer|portable`).
+  - Compiles `app_shell` (`cloudstream.exe`) and `cloudflare_window` (`cloudstream-verify.exe`); stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer payload or portable payload.
 - `scripts/check_file_lengths.py`: fails on a Rust file outside the tests over 300 lines (clippy only counts functions). Files that were already over are in `scripts/file_length_baseline.txt`: they may shrink, not grow, and their line must go once they are split. Tests: `scripts/check_file_lengths_test.py`.
 - `scripts/sign_release.sh`: writes `SHA256SUMS` for the release files in a folder, signs it with minisign (`MINISIGN_SECRET_KEY`/`_FILE`, `MINISIGN_PASSWORD`) and checks it against `crates/app_updater/update_signing_key.pub`. The in-app updater refuses releases without it. Run by `release.yml` on tags; by hand see `docs/RELEASING.md`.
 - `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU from `app_shell` (`cloudstream`); `--install-deps` installs Slint/GTK/X11/Wayland, libmpv, WebKitGTK 4.1 (Cloudflare helper), and JDK 21 tools on Debian/Ubuntu (no Node).
+- `scripts/ci_test_appimage_commit.sh` (Linux PC): runs local CI gates (`fmt`, `clippy`, `deny`, `audit`, file lengths), `cargo test --workspace`, builds the Linux AppImage, and commits.
 - `scripts/vendor/vulkan/`: the vendored x64 Vulkan loader (`vulkan-1.dll`), its Apache-2.0 license and rebuild steps. libmpv imports it; PCs without a GPU driver have none.
+- `tools/extension_recorder/`: Windows audit tool (`recorder.py`, `record_extensions.ps1`, `record_extensions.cmd`, `analyze_failures.py`, `verify_fixes.py`) that crawls repositories via `cs-sidecar` and test-loads `.cs3` plugins across concurrent workers.
 
 #### GitHub Actions (`.github/workflows/`)
 - `ci.yml`: on every push and pull request to `main`: format, clippy and Rust tests on Windows; clippy and Rust tests on Linux (`rust-linux`, Slint/WebKitGTK deps, Unix-only code); `cargo deny` + `cargo audit` (`supply-chain`, also weekly); the file-length check (`project-rules`); sidecar Kotlin tests. **No** npm/Tauri frontend CI (archive only). `just gates` covers fmt/clippy/test/deny/audit/lengths (not the sidecar job).
@@ -498,8 +518,7 @@ flowchart TD
     
     PlayCached --> BgSearch[Fresh search continues]
     FullSearch --> Gate[Open gate: full search+check / skip / 60s total; 30s empty fail]
-    Gate --> CheckQueue[CheckQueue: priority by quality]
-    CheckQueue --> StreamChecker[StreamChecker: Range probe + Chrome UA]
+    Gate --> StreamChecker[StreamChecker: concurrent Range probes + Chrome UA]
     
     Gate -- Best working ready --> StartMpv[MpvPlayer::play via RoutedPlayer / proxy]
     StartMpv --> Monitor[ui_slint playback_watch]
@@ -612,7 +631,7 @@ flowchart LR
 | **egui shell (reference only)** | `crates/ui_app/` (workspace `exclude`) |
 | **Archived Tauri shell** | `archive/desktop_tauri/` (not a workspace member) |
 | **Service Construction Root** | `crates/app_shell/src/service_wiring.rs` |
-| **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs` |
+| **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs`, `log_category.rs`, `debug_logs.rs` |
 | **Sidecar Process Transport** | `crates/extension_runtime/src/sidecar_process_transport.rs` |
 | **Local stream proxy** | `crates/stream_proxy/`; wiring `crates/app_shell/src/stream_proxy_router.rs` |
 | **Default stream User-Agent** | `crates/core_model/src/stream_user_agent.rs` (`DEFAULT_STREAM_USER_AGENT`) |
@@ -623,7 +642,7 @@ flowchart LR
 | **SQLite Schema Migrations** | `crates/storage/src/schema_migrations.rs` |
 | **Subtitle Cleaner & Decompressor** | `crates/subtitle_store/src/normalize_subtitle.rs` |
 | **Stream Title Disk Cache** | `crates/title_cache/src/title_cache.rs` |
-| **Delete all saved data** | `crates/app_shell/src/data_wipe.rs`; Slint Settings General |
+| **Delete all saved data** | `crates/app_shell/src/wipe_helper.rs`, `data_wipe.rs`; Slint Settings General |
 | **Release scripts & workflow** | `scripts/build_release.ps1`, `scripts/build_release.sh`, `.github/workflows/release.yml`, `docs/RELEASING.md` |
 | **Portable exe launcher** | `crates/portable_launcher/` (launches `cloudstream.exe`) |
 | **Workspace Coding Invariants** | `RULES.md` |
@@ -712,7 +731,7 @@ All code must pass these quality gates before commit:
 | **Complexity** | Clippy `cognitive_complexity` | ≤ 10 per function. |
 | **Panics / Unwraps**| Clippy restrictions | Deny `unwrap_used`, `expect_used`, `panic`, `unreachable`, `todo`. |
 | **Indexing** | Clippy `indexing_slicing` | Denied. Must use `.get()` or pattern matching. |
-| **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except `player_mpv/src/mpv_api.rs`. |
+| **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except localized `#[allow(unsafe_code)]` in `player_mpv` (libmpv FFI), `extension_runtime` (OS sandbox spawn), and `ui_slint` (generated Slint bindings). |
 | **Token Safety** | `core_model::redact_url` | Never log sensitive tokens or complete signed stream links. |
 | **License Check** | `cargo deny check` | Validates GPL-3.0 compatibility and dependency advisories. |
 | **Vulnerabilities** | `cargo audit` | Known security advisories for the locked dependencies. |
@@ -755,7 +774,11 @@ scripts/build_release.sh
 - `CS_SIDECAR_HOME`: Directory containing `cs-sidecar` distribution (`bin/cs-sidecar.bat`).
 - `CS_SIDECAR_JAVA_HOME`: JDK 21 installation path for the sidecar.
 - `CS_LIBMPV_PATH`: Explicit file path to `libmpv-2.dll` / `libmpv.so`.
-- `CS_MPV_LOG`: When set, enables verbose internal libmpv console logging (`terminal=yes, msg-level=all=v`) and forwards verbose mpv event logs into `player-logs.txt` (not tied to the Settings debug switch).
-- `CS_TEST_CINESTREAM_CS3`: Path to CineStream `.cs3` extension file used by `scripts/record_sidecar_replies.py`.
+- `CS_VERIFY_HELPER`: Explicit file path to the `cloudstream-verify` binary (`cloudflare_window`).
+- `CS_MPV_LOG`: When set, enables verbose internal libmpv console logging (`terminal=yes, msg-level=all=v`) and keeps verbose mpv event logs (`"v"`) forwarded into `player-logs.jsonl` even when the Settings debug switch is off.
+- `CS_PORTABLE_EXE`: Set by `portable_launcher` to the outer portable `.exe` path so `app_updater` and `wipe_helper` know the portable binary location.
+- `CS_PAYLOAD_ARCHIVE` / `CS_PAYLOAD_ID`: Used at compile time by `crates/portable_launcher/build.rs` to embed the compressed runtime archive and its fingerprint.
+- `CS_OUT_DIR`: Output directory override for `scripts/build_release.sh` and `scripts/ci_test_appimage_commit.sh`.
+- `CS_TEST_CINESTREAM_CS3`, `CS_CACHE_VIDEO`, `CS_BENCH_VIDEO`, `CS_TEST_VIDEO_URL`, `CS_TEST_SUBTITLE_URL`, `CS_TEST_TS_SEGMENT`: Inputs for live/ignored T4 integration tests and `scripts/record_sidecar_replies.py`.
 - Packages (`scripts/build_release.ps1`) carry `libmpv-2.dll`, `sidecar\` and `jre\` next to the program; the app finds them there (`sidecar_discovery::bundled_install`). A `portable.txt` next to the program makes it keep its data in `data\` beside it (`app_paths::portable_data_dir`).
 - `RUST_LOG`: Tracing filter directive (e.g. `RUST_LOG=cloudstream=debug,ui_slint=debug,playback_session=debug`).

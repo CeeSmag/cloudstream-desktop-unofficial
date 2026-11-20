@@ -1,4 +1,4 @@
-# Builds the Windows (x64) release files for the egui shell:
+# Builds the Windows (x64) release files for the Slint desktop shell (app_shell + ui_slint):
 #
 #   CloudStream_<ver>_x64-setup.exe       installer (NSIS)
 #   CloudStream_<ver>_x64_portable.exe    single-file portable

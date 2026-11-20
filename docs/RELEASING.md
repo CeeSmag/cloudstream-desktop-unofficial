@@ -40,7 +40,7 @@ three files. To check by hand: download all of them into one folder and run
 2. Run the gates (see `RULES.md` §8): `just gates` (or the equivalent cargo/python commands).
 3. Commit, push to `main`, then push the tag:
    ```bash
-   git tag v0.3.4 && git push origin v0.3.4
+   git tag v0.4.8 && git push origin v0.4.8
    ```
 4. The **Release build** workflow (`.github/workflows/release.yml`) builds everything and creates a **draft**
    release with all the files: Windows x64 on `windows-latest`, the AppImages on native x86_64 and ARM
@@ -97,7 +97,7 @@ sidecar and a Java 21 runtime, so the app runs on a clean PC.
 - **Linux `libmpv`**: the AppImage keeps a bundled copy under `usr/lib/mpv/` and points `CS_LIBMPV_PATH` at it;
   if that copy cannot load, the app falls back to the system's libmpv.
 - **The portable exe** is a small launcher (`crates/portable_launcher`) with the whole app packed inside; on first
-  run it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>` and starts `cloudstream.exe` from there. It carries the
+  run it unpacks to `%LOCALAPPDATA%\CloudStreamRs\runtime-<version>-<payload_id>` and starts `cloudstream.exe` from there. It carries the
   CloudStream icon from `crates/app_shell/icons/icon.ico`.
 - **The sidecar** is built from a pinned commit of the reference desktop client plus our `sidecar/` overlay.
 

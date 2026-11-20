@@ -75,7 +75,7 @@ Open the repository, install one or more plugins, then pick a provider from the 
 - Switch providers with the dropdown in the top-right of the window.  
 - If a stream fails, the app tries other working sources automatically.  
 - Prefer trusted repositories only; you can remove a repository or uninstall a plugin anytime under **Settings → Extensions**.  
-- **Delete all saved data** (Settings → General) wipes local settings, history, and caches and restarts the app.
+- **Delete all saved data** (Settings → General) closes the app and runs a background wipe helper to remove all local settings, plugins, history, and caches.
 
 ---
 

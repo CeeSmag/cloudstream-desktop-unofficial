@@ -4,7 +4,7 @@ Manual checks after launch → Home → player work on the Slint product (`app_s
 
 ## Plugins / RAM
 
-- [ ] Fresh install (or cleared `plugin_worker_limit`): Settings > General > **Plugin processes** → **Resident workers** defaults to **1** (choices: 1 / 2 / Unlimited). Existing installs that already had data migrate to Unlimited until chosen.
+- [ ] Fresh install (or cleared `plugin_worker_limit`): Settings > General > **Plugin processes (low-end PC)** → **Resident plugin JVMs** defaults to **1** (choices: 1 / 2 / Unlimited). Existing installs that already had data migrate to Unlimited until chosen.
 - [ ] With 3+ plugins installed and Resident workers = **1**, after Home is idle: at most **one** `java` / sidecar process.
 - [ ] Switching provider once: a second JVM starts, the previous one is parked; live count stays ≤ the chosen limit.
 - [ ] Trusted plugin spawn logs plain / non-AppContainer (Windows) or non-Landlock (Linux); Job / rlimit still apply.
@@ -17,10 +17,10 @@ Manual checks after launch → Home → player work on the Slint product (`app_s
 
 ## Settings (General / Preferences)
 
-- [ ] Settings > General > **Video cache**: Size offers **128 MB**…**4 GB** (default **256 MB**); **Read-ahead** offers 25 / 50 / 75 / 90 % (default **75 %**). On a low-end PC, set Size to **128 MB**.
-- [ ] Changing Size or Read-ahead while a video plays applies the new limits without restart.
-- [ ] Settings > General > **Storage** → Limit offers **1–10 GB** (default **2 GB**); **Clean up storage now** finishes without freezing the UI.
-- [ ] Preferences > Playback: **Local HLS helper (stream proxy)** can be left on (default) or switched off for comparison on a weak CPU.
+- [ ] Settings > General > **Video cache**: **Cache size** offers **128 MB**…**4 GB** (default **256 MB**); **Read ahead** offers 25 / 50 / 75 / 90 % (default **75 %**). On a low-end PC, set **Cache size** to **128 MB**.
+- [ ] Changing **Cache size** or **Read ahead** while a video plays applies the new limits without restart.
+- [ ] Settings > General > **Storage limit** → **Maximum cache & log storage** offers **1–10 GB** (default **2 GB**); **Clean up storage now** finishes without freezing the UI.
+- [ ] Settings > Preferences > **Playback**: **Play HLS streams through a local helper** can be left on (default) or switched off for comparison on a weak CPU.
 
 ## Player
 

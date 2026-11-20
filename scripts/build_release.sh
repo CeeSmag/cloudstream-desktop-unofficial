@@ -7,7 +7,7 @@
 #   --install-deps  install the build tools first (Debian/Ubuntu, needs root or sudo)
 # Results land in ./dist (or $CS_OUT_DIR).
 #
-# This fork ships the egui shell (`cloudstream` from app_shell). The Windows files are built by
+# This fork ships the Slint desktop shell (`cloudstream` from app_shell + ui_slint). The Windows files are built by
 # scripts/build_release.ps1. GitHub builds all of them (.github/workflows/release.yml), on Debian 12
 # so the AppImage runs on most distros.
 set -euo pipefail
