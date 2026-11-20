@@ -75,6 +75,7 @@ impl Drop for LaunchAttributes {
         if self.attr_buf.is_empty() {
             return;
         }
+        // SAFETY: `attr_buf` was initialized by `InitializeProcThreadAttributeList` and has not yet been deleted.
         unsafe {
             DeleteProcThreadAttributeList(self.attr_buf.as_mut_ptr().cast());
         }
@@ -125,6 +126,7 @@ unsafe fn add_attribute(update: AttributeUpdate<'_>) -> Result<(), GatewayError>
 }
 
 fn attr_error(api: &str) -> GatewayError {
+    // SAFETY: `GetLastError` reads the calling thread's last Win32 error code with no side effects.
     let code = unsafe { GetLastError() };
     GatewayError::Unavailable(format!(
         "cannot start the sidecar inside an AppContainer ({api} failed, Win32 {code})"

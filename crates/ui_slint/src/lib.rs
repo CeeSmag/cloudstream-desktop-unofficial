@@ -38,6 +38,7 @@ pub use bridge::{run_desktop_app_with, AppExtras, DebugLogSwitch, WipeRequest};
 /// strict lints (no unwrap, no indexing, line limits) do not apply to it.
 #[allow(
     unsafe_code,
+    unreachable_pub,
     clippy::all,
     clippy::pedantic,
     clippy::unwrap_used,

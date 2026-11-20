@@ -152,7 +152,7 @@ pub(crate) fn tv_genre_id(name: &str) -> Option<u32> {
 }
 
 /// Resolves multiple genre names into a deduplicated comma-separated `with_genres` query value.
-pub fn resolve_genre_param(genres: &[String], is_tv: bool) -> Option<String> {
+pub(crate) fn resolve_genre_param(genres: &[String], is_tv: bool) -> Option<String> {
     let mut ids: Vec<u32> = Vec::new();
     for g in genres {
         let resolved = if is_tv {
@@ -178,13 +178,13 @@ pub fn resolve_genre_param(genres: &[String], is_tv: bool) -> Option<String> {
 }
 
 /// Extracts the 4-digit year prefix from an ISO date string (`YYYY-MM-DD`).
-pub fn extract_year(date_str: Option<&str>) -> Option<i32> {
+pub(crate) fn extract_year(date_str: Option<&str>) -> Option<i32> {
     let raw = date_str?.trim();
     raw.get(..4).and_then(|y| y.parse::<i32>().ok())
 }
 
 /// Converts a raw TMDB item into a [`BrowseItem`], returning `None` if id or title is missing.
-pub fn convert_raw_item(raw: TmdbRawItem, default_type: &str) -> Option<BrowseItem> {
+pub(crate) fn convert_raw_item(raw: TmdbRawItem, default_type: &str) -> Option<BrowseItem> {
     let id = raw.id?;
     let name = raw
         .title

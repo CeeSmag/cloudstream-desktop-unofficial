@@ -109,17 +109,20 @@ fn launch_command_line(
 ) -> Result<AppContainerProcess, GatewayError> {
     let mut app_sid = ptr::null_mut();
     let wide_sid = wide(sid.as_str());
+    // SAFETY: `wide_sid` is NUL-terminated UTF-16 and `app_sid` is a valid out-pointer.
     if unsafe { ConvertStringSidToSidW(wide_sid.as_ptr(), &mut app_sid) } == 0 {
         return Err(launch_error("ConvertStringSidToSidW(container)"));
     }
     let mut cap_sid = ptr::null_mut();
     let wide_cap = wide(CAPABILITY_INTERNET_CLIENT);
+    // SAFETY: `wide_cap` is NUL-terminated UTF-16; on failure `app_sid` is freed via `LocalFree`.
     if unsafe { ConvertStringSidToSidW(wide_cap.as_ptr(), &mut cap_sid) } == 0 {
         unsafe {
             LocalFree(app_sid);
         }
         return Err(launch_error("ConvertStringSidToSidW(capability)"));
     }
+    // SAFETY: both SIDs came from `ConvertStringSidToSidW`, stay alive for `launch_with_sids`, and are freed right after.
     let outcome = unsafe { launch_with_sids(command_line, working_dir, app_sid, cap_sid) };
     unsafe {
         LocalFree(app_sid);
@@ -259,10 +262,12 @@ fn create_pipe(
         descriptor: ptr::null_mut(),
         inherit: 1,
     };
+    // SAFETY: `read`, `write`, and `attributes` are valid pointers initialized for `CreatePipe`.
     if unsafe { CreatePipe(&mut read, &mut write, &mut attributes, 0) } == 0 {
         return Err(launch_error("CreatePipe"));
     }
     let parent = if parent_writes { write } else { read };
+    // SAFETY: `parent` is a valid pipe handle from `CreatePipe`; both handles are closed on error.
     if unsafe { SetHandleInformation(parent, HANDLE_FLAG_INHERIT, 0) } == 0 {
         unsafe {
             CloseHandle(read);
@@ -281,6 +286,7 @@ fn wide(text: &str) -> Vec<u16> {
 }
 
 fn launch_error(api: &str) -> GatewayError {
+    // SAFETY: `GetLastError` reads the calling thread's last Win32 error code with no side effects.
     let code = unsafe { GetLastError() };
     GatewayError::Unavailable(format!(
         "cannot start the sidecar inside an AppContainer ({api} failed, Win32 {code})"

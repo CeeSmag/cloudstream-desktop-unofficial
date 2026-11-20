@@ -53,7 +53,7 @@ impl AppPaths {
 }
 
 /// Marks a folder as a portable install: everything the app stores goes next to the program.
-pub const PORTABLE_MARKER: &str = "portable.txt";
+pub(crate) const PORTABLE_MARKER: &str = "portable.txt";
 
 /// Where each way of choosing the data folder points, when it applies.
 #[derive(Debug, Default)]

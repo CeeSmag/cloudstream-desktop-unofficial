@@ -47,7 +47,7 @@ pub struct PlaybackItem {
 }
 
 /// Converts playable link and subtitle data into an mpv playback request.
-pub fn build_request(
+pub(crate) fn build_request(
     title: &str,
     link: &PlayableLink,
     subtitles: &[SubtitleTrack],
@@ -88,7 +88,7 @@ fn stream_kind_of(link_type: &str) -> StreamKind {
 }
 
 /// Maps subtitle tracks to player subtitle sources.
-pub fn subtitle_sources(subtitles: &[SubtitleTrack]) -> Vec<SubtitleSource> {
+pub(crate) fn subtitle_sources(subtitles: &[SubtitleTrack]) -> Vec<SubtitleSource> {
     subtitles
         .iter()
         .map(|track| SubtitleSource {

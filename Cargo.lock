@@ -1083,7 +1083,6 @@ dependencies = [
 name = "cloudflare_bridge"
 version = "0.4.8"
 dependencies = [
- "thiserror 2.0.21",
  "tracing",
 ]
 

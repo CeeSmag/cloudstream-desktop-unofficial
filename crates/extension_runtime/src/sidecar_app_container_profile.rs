@@ -191,6 +191,7 @@ fn wide(text: &str) -> Vec<u16> {
 }
 
 fn ac_error(api: &str) -> GatewayError {
+    // SAFETY: `GetLastError` reads the calling thread's last Win32 error code with no side effects.
     let code = unsafe { GetLastError() };
     GatewayError::Unavailable(format!(
         "cannot prepare the AppContainer ({api} failed, Win32 {code})"

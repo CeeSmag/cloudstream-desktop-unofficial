@@ -189,7 +189,7 @@ impl<'a> MakeWriter<'a> for ProblemsWriter {
 
 /// What the category files record: everything of ours, warnings and errors of anyone else.
 /// Off means nothing at all, which also lets the program skip building the log arguments.
-pub fn category_filter(enabled: bool) -> Targets {
+pub(crate) fn category_filter(enabled: bool) -> Targets {
     if !enabled {
         return Targets::new().with_default(LevelFilter::OFF);
     }
@@ -201,7 +201,7 @@ pub fn category_filter(enabled: bool) -> Targets {
 }
 
 /// What the problems file records: warnings and errors, from every module.
-pub fn problems_filter(enabled: bool) -> Targets {
+pub(crate) fn problems_filter(enabled: bool) -> Targets {
     let level = if enabled {
         LevelFilter::WARN
     } else {

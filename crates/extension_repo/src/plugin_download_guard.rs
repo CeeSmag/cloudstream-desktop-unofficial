@@ -15,7 +15,7 @@ const GITHUB_FAMILY: &[&str] = &[
 
 /// Why a download URL or payload was refused before it is stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DownloadReject {
+pub(crate) enum DownloadReject {
     /// Scheme is missing or not `https`.
     NotHttps,
     /// Host could not be read from the URL.
@@ -30,7 +30,7 @@ pub enum DownloadReject {
 
 impl DownloadReject {
     /// Short reason for logs and [`crate::RepoError`].
-    pub fn reason(&self) -> String {
+    pub(crate) fn reason(&self) -> String {
         match self {
             Self::NotHttps => "download URL must use https".into(),
             Self::MissingHost => "download URL has no host".into(),
@@ -44,7 +44,10 @@ impl DownloadReject {
 }
 
 /// Checks that `download_url` is HTTPS and hosted with `repository_url`.
-pub fn check_download_url(download_url: &str, repository_url: &str) -> Result<(), DownloadReject> {
+pub(crate) fn check_download_url(
+    download_url: &str,
+    repository_url: &str,
+) -> Result<(), DownloadReject> {
     let download_host = https_host(download_url)?;
     let repository_host = https_host(repository_url)?;
     if hosts_compatible(download_host, repository_host) {
@@ -55,7 +58,10 @@ pub fn check_download_url(download_url: &str, repository_url: &str) -> Result<()
 }
 
 /// Checks published size (when present) and ZIP magic before the file is renamed into place.
-pub fn check_download_bytes(bytes: &[u8], file_size: Option<u64>) -> Result<(), DownloadReject> {
+pub(crate) fn check_download_bytes(
+    bytes: &[u8],
+    file_size: Option<u64>,
+) -> Result<(), DownloadReject> {
     if let Some(expected) = file_size {
         let actual = bytes.len() as u64;
         if expected != actual {

@@ -79,7 +79,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `SearchPage`: `items: Vec<SearchResult>`, `has_next: bool`.
   - `WatchProgress`: `provider`, `media_key`, `title`, `detail_url`, `poster_url`, `position_ms: i64`, `duration_ms: i64`, `updated_at_ms: i64`, `season: Option<i32>`, `episode: Option<i32>`, `fraction_watched() -> f32`.
   - `ResumePointer`: `provider: String`, `detail_url: String`, `media_key: String`, `title: String`, `poster_url: Option<String>`, `season: Option<i32>`, `episode: Option<i32>`, `updated_at_ms: i64`.
-  - `stable_key(text: &str) -> String`: Deterministic 16-character hex hash based on FNV constants for safe file/cache keys.
+  - `stable_key(text: &str) -> String`: Deterministic 32-character hex hash (128-bit FNV) for safe file/cache keys.
   - `redact_url(url: &str) -> String`: `host#fingerprint` of a stream address for logs (no path, query, credentials or port). Used by `player_mpv` (and the archived Tauri shell) wherever an address is logged. Also see `DEFAULT_STREAM_USER_AGENT` (Chrome desktop string shared with stream checks / stream proxy).
 
 #### `crates/extension_api`

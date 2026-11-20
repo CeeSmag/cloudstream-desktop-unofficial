@@ -16,7 +16,7 @@ const DEFAULT_MATROSKA_LANGUAGE: &str = "eng";
 
 /// The languages of the subtitles inside a stream, as the stream names them (`eng`, `en`,
 /// `English`), without repeats, judged from its first bytes.
-pub fn subtitle_languages(head: &[u8]) -> Vec<String> {
+pub(crate) fn subtitle_languages(head: &[u8]) -> Vec<String> {
     let found = if head.starts_with(&EBML_MAGIC) {
         matroska_languages(head)
     } else {

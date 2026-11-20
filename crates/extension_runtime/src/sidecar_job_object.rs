@@ -126,6 +126,7 @@ fn assign_raw_process(
 }
 
 fn job_error(api: &str) -> GatewayError {
+    // SAFETY: `GetLastError` reads the calling thread's last Win32 error code with no side effects.
     let code = unsafe { GetLastError() };
     GatewayError::Unavailable(format!(
         "cannot constrain the extension sidecar with a Windows Job Object ({api} failed, Win32 {code})"

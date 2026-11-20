@@ -1,5 +1,6 @@
 //! Cucumber BDD test entry point for CloudStream core user journeys.
 #![allow(
+    unreachable_pub,
     clippy::expect_used,
     clippy::indexing_slicing,
     clippy::too_many_lines,

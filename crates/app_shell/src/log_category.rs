@@ -1,11 +1,11 @@
 //! Which debug log file a message belongs in, judged by the module that wrote it.
 
 /// File that collects every warning and error of every category.
-pub const PROBLEMS_FILE: &str = "warnings-and-errors.jsonl";
+pub(crate) const PROBLEMS_FILE: &str = "warnings-and-errors.jsonl";
 
 /// Our own crates and the pseudo target of the sidecar; their debug/trace output is kept while
 /// debug logging is on. Other crates only show warnings and errors.
-pub const OWN_TARGETS: &[&str] = &[
+pub(crate) const OWN_TARGETS: &[&str] = &[
     "app_services",
     "app_shell",
     "app_updater",
@@ -31,7 +31,7 @@ pub const OWN_TARGETS: &[&str] = &[
 
 /// A part of the app with its own structured JSON Lines debug log file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LogCategory {
+pub(crate) enum LogCategory {
     /// Start-up, catalog/browse/library/settings services, updates, artwork, skips.
     App,
     /// Slint desktop user interface: screens, navigation, focus, and user actions.
@@ -89,7 +89,7 @@ const ROUTES: &[(&str, LogCategory)] = &[
 
 impl LogCategory {
     /// Every category, in the order they are listed to the user.
-    pub const ALL: [LogCategory; 8] = [
+    pub(crate) const ALL: [LogCategory; 8] = [
         LogCategory::App,
         LogCategory::Ui,
         LogCategory::Player,
@@ -101,7 +101,7 @@ impl LogCategory {
     ];
 
     /// The category of messages written by `target` (a module path).
-    pub fn for_target(target: &str) -> Self {
+    pub(crate) fn for_target(target: &str) -> Self {
         ROUTES
             .iter()
             .find(|(prefix, _)| target.starts_with(prefix))
@@ -109,7 +109,7 @@ impl LogCategory {
     }
 
     /// Name of the JSON Lines file this category is written to.
-    pub fn file_name(self) -> &'static str {
+    pub(crate) fn file_name(self) -> &'static str {
         match self {
             LogCategory::App => "app-logs.jsonl",
             LogCategory::Ui => "ui-logs.jsonl",
@@ -123,7 +123,7 @@ impl LogCategory {
     }
 
     /// What the category covers, for diagnostics displays.
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             LogCategory::App => "App, catalog and updates",
             LogCategory::Ui => "User interface",

@@ -436,10 +436,7 @@ fn check_and_pick_and_cancelled_open_behave_cleanly() {
         on_ready: &|_| {},
         control: &control,
     });
-    assert!(matches!(
-        cancelled,
-        Err(playback_session::OpenError::Empty)
-    ));
+    assert!(matches!(cancelled, Err(playback_session::OpenError::Empty)));
 }
 
 #[test]

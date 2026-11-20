@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Marker the settings page leaves to ask for a wipe at the next start.
-pub const WIPE_MARKER: &str = "delete_all_data.pending";
+pub(crate) const WIPE_MARKER: &str = "delete_all_data.pending";
 
 /// The name of the folder (inside `data_dir`) the running program was unpacked into, when it runs from
 /// there (`runtime-<version>` of the portable exe). The wipe must leave exactly this folder, it is what

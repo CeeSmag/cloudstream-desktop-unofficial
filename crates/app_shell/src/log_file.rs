@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 const MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
 
 /// A log file shared between the layer that writes it and the controls that open and close it.
-pub type SharedLogFile = Arc<Mutex<LogFile>>;
+pub(crate) type SharedLogFile = Arc<Mutex<LogFile>>;
 
 /// A text file in the debug log folder.
 pub struct LogFile {
@@ -92,7 +92,7 @@ impl LogFile {
 }
 
 /// Locks a shared file, ignoring a poisoned lock: logging must never take the app down.
-pub fn lock(file: &SharedLogFile) -> MutexGuard<'_, LogFile> {
+pub(crate) fn lock(file: &SharedLogFile) -> MutexGuard<'_, LogFile> {
     file.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
