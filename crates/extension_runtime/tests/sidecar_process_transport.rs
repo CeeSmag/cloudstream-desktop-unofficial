@@ -303,3 +303,50 @@ fn sidecar_started_by_short_lived_caller_thread_dies_without_spawner() {
         "expected a fresh process"
     );
 }
+
+#[cfg(windows)]
+#[test]
+fn trusted_install_starts_java_without_a_batch_launcher() {
+    let folder = std::env::temp_dir().join(format!("cs direct java {}", std::process::id()));
+    let bin = folder.join("bin");
+    let lib = folder.join("lib");
+    std::fs::create_dir_all(&bin).expect("bin");
+    std::fs::create_dir_all(&lib).expect("lib");
+    std::fs::write(lib.join("test.jar"), []).expect("jar fixture");
+    std::fs::copy(env!("CARGO_BIN_EXE_fake_sidecar"), bin.join("java.exe")).expect("java fixture");
+    let config = SidecarLaunchConfig::for_install(&folder, Some(&folder))
+        .with_data_dir(&folder)
+        .without_os_fs_sandbox();
+    let result = SidecarProcessTransport::new(config).call("ping", Value::Null, SHORT);
+    std::fs::remove_dir_all(&folder).expect("cleanup");
+    assert_eq!(result, Ok(json!("pong")));
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_worker_has_rpc_pipes_without_an_attached_console() {
+    let probe = r#"
+        Add-Type -Name ConsoleProbe -Namespace Worker -MemberDefinition '
+          [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+          public static extern System.IntPtr GetConsoleWindow();'
+        $request = [Console]::ReadLine() | ConvertFrom-Json
+        $hasConsole = [Worker.ConsoleProbe]::GetConsoleWindow() -ne [IntPtr]::Zero
+        [Console]::WriteLine((@{id=$request.id;result=$hasConsole} | ConvertTo-Json -Compress))
+    "#;
+    let transport = SidecarProcessTransport::new(SidecarLaunchConfig {
+        program: "powershell.exe".into(),
+        args: vec![
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            probe.into(),
+        ],
+        environment: Vec::new(),
+        os_fs_sandbox: false,
+        spawner: None,
+    });
+    assert_eq!(
+        transport.call("console", Value::Null, Duration::from_secs(20)),
+        Ok(json!(false))
+    );
+}

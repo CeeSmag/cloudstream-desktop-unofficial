@@ -15,7 +15,7 @@ startup calls (`load_extension`, settings).
   unlimited): excess workers are parked (JVM stopped; providers stay listed) and revived
   on first call. Workers with an open link search are not parked.
 - Trusted plugins use `SidecarLaunchConfig::without_os_fs_sandbox` (skip AppContainer /
-  Landlock; keep heap and Job/rlimit). Untrusted keep the OS FS jail.
+  Landlock; keep heap and Job/rlimit). Windows starts the worker JVM directly without a console. Untrusted workers keep the OS filesystem jail.
 - Forks every child on a long-lived `SidecarSpawner` thread so Linux
   `PR_SET_PDEATHSIG(SIGKILL)` tracks the pool, not a short-lived UI worker thread.
 

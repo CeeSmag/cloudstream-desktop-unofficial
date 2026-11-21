@@ -82,11 +82,11 @@ fn start_app_container(config: &SidecarLaunchConfig) -> Result<RunningSidecar, G
 
 #[cfg(windows)]
 fn start_windows_plain(config: &SidecarLaunchConfig) -> Result<RunningSidecar, GatewayError> {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     use crate::sidecar_job_object::SidecarJobObject;
 
-    let mut command = Command::new(&config.program);
+    let mut command = crate::sidecar_app_container_cmdline::plain_command(config)?;
     command
         .args(&config.args)
         .envs(config.environment.iter().map(|(k, v)| (k, v)))
