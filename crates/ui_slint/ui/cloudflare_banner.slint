@@ -37,7 +37,7 @@ export component CloudflareBanner inherits Rectangle {
         text := Text {
             text: root.state == 1 ? root.host + " needs a quick “verify you are human” check before it can be used."
                 : root.state == 2 ? "Checking " + root.host + ". Open verification if the site needs your input."
-                : root.state == 3 ? root.host + " is verified. Try again."
+                : root.state == 3 ? root.host + " is verified."
                 : root.host + " could not be verified: " + root.message;
             color: Theme.text;
             font-size: 13.5px;
