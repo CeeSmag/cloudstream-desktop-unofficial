@@ -30,6 +30,7 @@ impl LocalHttp {
             while !flag.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut s, _)) => {
+                        let _ = s.set_nonblocking(false);
                         let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
                         let mut buf = [0u8; 2048];
                         let n = s.read(&mut buf).unwrap_or(0);

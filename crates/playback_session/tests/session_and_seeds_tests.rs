@@ -44,6 +44,8 @@ impl MockHttpServer {
             while !stop_flag.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Windows: accepted sockets inherit the listener's non-blocking mode.
+                        let _ = stream.set_nonblocking(false);
                         let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
                         let mut buf = [0u8; 2048];
                         let n = stream.read(&mut buf).unwrap_or(0);

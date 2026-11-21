@@ -11,7 +11,7 @@ use crate::update_assets::GitHubRelease;
 use crate::update_error::UpdateError;
 
 const GITHUB_RELEASES_API: &str =
-    "https://api.github.com/repos/CeeSmag/cloudstream-desktop-unofficial/releases/latest";
+    "https://api.github.com/repos/CeeSmag/cloudstream-desktop-unofficial/releases?per_page=10";
 /// The version of the running program.
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long the release check may take in total.
@@ -50,7 +50,13 @@ fn user_agent() -> String {
     format!("CloudStream-Desktop/{CURRENT_VERSION}")
 }
 
-/// Asks GitHub for the latest release.
+/// The newest published release, pre-releases included (GitHub lists newest first). The
+/// `/releases/latest` endpoint is not used: it never returns a pre-release.
+pub(crate) fn newest_published(releases: Vec<GitHubRelease>) -> Option<GitHubRelease> {
+    releases.into_iter().find(|release| !release.draft)
+}
+
+/// Asks GitHub for the newest published release, pre-releases included.
 pub(crate) fn fetch_latest_release() -> Result<GitHubRelease, UpdateError> {
     let response = http_agent(REQUEST_TIMEOUT)
         .get(GITHUB_RELEASES_API)
@@ -58,7 +64,11 @@ pub(crate) fn fetch_latest_release() -> Result<GitHubRelease, UpdateError> {
         .header("Accept", "application/vnd.github.v3+json")
         .call()
         .map_err(|error| UpdateError::request("check for updates", error))?;
-    serde_json::from_reader(response.into_body().into_reader()).map_err(UpdateError::Metadata)
+    let releases: Vec<GitHubRelease> = serde_json::from_reader(response.into_body().into_reader())
+        .map_err(UpdateError::Metadata)?;
+    newest_published(releases).ok_or_else(|| {
+        UpdateError::Stream(std::io::Error::other("GitHub lists no published release"))
+    })
 }
 
 fn content_length(response: &ureq::http::Response<ureq::Body>) -> u64 {
@@ -157,6 +167,21 @@ fn make_executable(_path: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newest_published_skips_drafts_and_keeps_prereleases() {
+        let releases: Vec<GitHubRelease> = serde_json::from_str(
+            r#"[{"tag_name":"v2","draft":true,"assets":[]},
+                {"tag_name":"v1","prerelease":true,"assets":[]}]"#,
+        )
+        .unwrap();
+        assert_eq!(newest_published(releases).unwrap().tag_name, "v1");
+    }
+
+    #[test]
+    fn newest_published_only_drafts_returns_none() {
+        assert!(newest_published(Vec::new()).is_none());
+    }
 
     #[test]
     fn copy_with_progress_several_chunks_copies_all_and_reports_rising_totals() {

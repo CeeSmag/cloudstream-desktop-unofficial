@@ -113,6 +113,7 @@ mod tests {
     fn release(tag: &str, assets: Vec<GitHubAsset>) -> GitHubRelease {
         GitHubRelease {
             tag_name: tag.to_owned(),
+            draft: false,
             name: None,
             body: None,
             assets,

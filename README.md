@@ -1,5 +1,7 @@
 # CloudStream RS
 
+> **Note:** This is a hobby project. It is under active development and may contain bugs. Use it at your own risk.
+
 [![CI](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?label=release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest)

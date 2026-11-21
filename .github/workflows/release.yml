@@ -127,6 +127,6 @@ jobs:
             exit 0
           fi
           gh release create "${{ github.ref_name }}" files/* \
-            --repo "${{ github.repository }}" --draft \
+            --repo "${{ github.repository }}" --draft --prerelease \
             --title "CloudStream RS ${{ github.ref_name }}" \
             --notes "Draft created by the Release build workflow. Edit the notes, then publish."

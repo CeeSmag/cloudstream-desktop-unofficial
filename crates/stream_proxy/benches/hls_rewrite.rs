@@ -30,6 +30,7 @@ fn start_origin(body: String) -> Option<(String, Arc<AtomicBool>, thread::JoinHa
         while !flag.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
                     let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
                     let mut buf = [0u8; 512];
                     let _ = stream.read(&mut buf);

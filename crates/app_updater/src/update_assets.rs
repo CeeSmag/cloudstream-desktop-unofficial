@@ -8,6 +8,9 @@ use serde::Deserialize;
 pub(crate) struct GitHubRelease {
     /// The release's tag, e.g. `v0.4.2`.
     pub(crate) tag_name: String,
+    /// True for an unpublished draft; the updater never offers one.
+    #[serde(default)]
+    pub(crate) draft: bool,
     /// The release's title.
     pub(crate) name: Option<String>,
     /// The release notes.
