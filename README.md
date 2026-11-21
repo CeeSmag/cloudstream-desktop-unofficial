@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml/badge.svg)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?label=release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest)
+[![Latest Pre-release](https://img.shields.io/github/v/release/CeeSmag/cloudstream-desktop-unofficial?include_prereleases&label=pre-release)](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases)
 
 A desktop app for watching shows and movies through **plugins** you choose. It is a rewrite of [CloudStream](https://github.com/recloudstream/cloudstream) for Windows and Linux. Product builds ship the `cloudstream` binary from `app_shell` with a native **Slint** UI (`ui_slint`) and libmpv playback — no WebView / Tauri chrome.
 
@@ -23,7 +23,7 @@ A desktop app for watching shows and movies through **plugins** you choose. It i
 
 ## Download
 
-Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases/latest):
+Get the latest build from the [Releases page](https://github.com/CeeSmag/cloudstream-desktop-unofficial/releases) (all builds are pre-releases):
 
 | File | For |
 |---|---|
