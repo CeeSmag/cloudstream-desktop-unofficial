@@ -80,6 +80,7 @@ def check_windows(proc, folder, port):
         time.sleep(0.02)
     send("show", host, "one")
     window = wait_visible(host)
+    assert ctypes.windll.user32.GetForegroundWindow() != window, "Show without a foreground grant activated the helper"
     assert set(visible_windows(proc.pid)) == {host}
     ctypes.windll.user32.PostMessageW(window, 0x0010, 0, 0)  # WM_CLOSE
     assert statuses.get(timeout=5)[:2] == ["failed", host]

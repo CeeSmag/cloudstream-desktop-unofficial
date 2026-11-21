@@ -36,6 +36,33 @@ pub struct VerifyHelper {
     debug_logging: Arc<AtomicBool>,
 }
 
+fn write_command(child: &mut RunningHelper, command: &HelperCommand) -> std::io::Result<()> {
+    let line = format_command(command);
+    #[cfg(windows)]
+    let line = {
+        let mut line = line;
+        let target = match command {
+            HelperCommand::Present(request) => Some((&request.host, &request.id)),
+            HelperCommand::Show { host, id } => Some((host, id)),
+            _ => None,
+        };
+        if let Some((host, id)) = target {
+            let pid = child.child.id();
+            let granted = winsafe::AllowSetForegroundWindow(Some(pid)).is_ok();
+            tracing::debug!(pid, %id, granted, "verification foreground grant");
+            if granted {
+                line.push_str(&format_command(&HelperCommand::Activate {
+                    host: host.clone(),
+                    id: id.clone(),
+                }));
+            }
+        }
+        line
+    };
+    child.stdin.write_all(line.as_bytes())?;
+    child.stdin.flush()
+}
+
 impl VerifyHelper {
     /// Nothing starts until the first command.
     pub fn new(
@@ -76,16 +103,12 @@ impl VerifyHelper {
 
     /// Sends `command`, starting the helper if needed and once more if the pipe broke.
     pub fn send(&mut self, command: &HelperCommand) -> std::io::Result<()> {
-        let line = format_command(command);
         for attempt in 0..2 {
             if !self.is_running() {
                 self.start()?;
             }
             let written = match self.running.as_mut() {
-                Some(running) => running
-                    .stdin
-                    .write_all(line.as_bytes())
-                    .and_then(|()| running.stdin.flush()),
+                Some(running) => write_command(running, command),
                 None => Err(std::io::Error::other(
                     "the verification helper did not start",
                 )),
@@ -106,12 +129,12 @@ impl VerifyHelper {
 
     pub(crate) fn show_if_running(&mut self, host: &str, id: &str) -> std::io::Result<()> {
         if let Some(child) = self.running.as_mut() {
-            child.stdin.write_all(
-                format_command(&HelperCommand::Show {
-                    host: host.to_owned(),
-                    id: id.to_owned(),
-                })
-                .as_bytes(),
+            write_command(
+                child,
+                &HelperCommand::Show {
+                    host: host.into(),
+                    id: id.into(),
+                },
             )?;
         }
         Ok(())

@@ -142,7 +142,7 @@ impl SiteWindow {
         };
         out.answer_all(&std::mem::take(&mut self.waiting), &passed);
         self.phase = Phase::Passed;
-        self.window.set_visible(false);
+        self.hide();
         tracing::info!(host = %self.host, "the check passed; the window is hidden and kept for browser fetches");
         out.status(&HelperStatus::Passed {
             host: self.host.clone(),
@@ -155,7 +155,7 @@ impl SiteWindow {
             &Outcome::Declined(reason.to_owned()),
         );
         self.phase = Phase::Idle;
-        self.window.set_visible(false);
+        self.hide();
         tracing::info!(host = %self.host, %reason, "the check was not passed");
         out.status(&HelperStatus::Failed {
             host: self.host.clone(),

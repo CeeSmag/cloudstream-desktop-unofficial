@@ -24,6 +24,8 @@ loop never runs inside the app's Slint loop. Started by `cloudflare_bridge::Veri
 | `site_window`, `site_window_check`, `page_fetches`, `browser_view` | one site's window, its check tick, running requests, building the view |
 | `helper_app`, `helper_events`, `input_threads`, `outbox` | the event loop, stdin and fetch-file threads, answers |
 
+On Windows a viewer action shows the window without activation. The helper requests foreground once if the app grants its process permission.
+
 Test the Windows window lifecycle with `python scripts/check_verify_window.py target/debug/cloudstream-verify.exe` after `cargo build -p cloudflare_window`.
 Run `cargo test -p cloudflare_window` for the T1 suite. The window itself was checked by hand against a real
 Cloudflare-protected site (managed challenge passed, cookies and User-Agent handed back).

@@ -96,11 +96,23 @@ impl SiteWindow {
         });
     }
 
+    fn hide(&self) {
+        #[cfg(windows)]
+        crate::windows_presentation::hide(&self.window);
+        #[cfg(not(windows))]
+        self.window.set_visible(false);
+    }
+
     /// Presents only a check that is still active.
     pub(crate) fn present(&self, id: &str) {
         if self.waiting.iter().any(|pending| pending == id) {
-            self.window.set_visible(true);
-            self.window.set_focus();
+            #[cfg(windows)]
+            crate::windows_presentation::show(&self.window);
+            #[cfg(not(windows))]
+            {
+                self.window.set_visible(true);
+                self.window.set_focus();
+            }
             tracing::debug!(host = %self.host, "viewer opened verification");
         }
     }
@@ -129,7 +141,7 @@ impl SiteWindow {
     /// The viewer closed the window: a passed site's window is only hidden (kept for fetches).
     pub(crate) fn close_requested(&mut self, out: &Outbox) {
         match self.phase {
-            Phase::Idle | Phase::Passed => self.window.set_visible(false),
+            Phase::Idle | Phase::Passed => self.hide(),
             Phase::Verifying(_) => {
                 self.fail(out, "the viewer closed the verification window");
             }

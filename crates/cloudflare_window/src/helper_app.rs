@@ -97,6 +97,9 @@ impl HelperState {
                     site.present(&id);
                 }
             }
+            HelperEvent::Command(HelperCommand::Activate { host, id }) => {
+                self.activate(&host, &id);
+            }
             HelperEvent::Command(HelperCommand::Quit) | HelperEvent::InputClosed => {
                 for site in self.sites.values_mut() {
                     site.abandon(&self.outbox);
@@ -121,6 +124,17 @@ impl HelperState {
                 }
             }
         }
+    }
+
+    fn activate(&self, host: &str, id: &str) {
+        #[cfg(windows)]
+        if let Some(site) = self.sites.get(host) {
+            if site.waiting.iter().any(|pending| pending == id) {
+                crate::windows_presentation::activate(&site.window);
+            }
+        }
+        #[cfg(not(windows))]
+        tracing::debug!(%host, %id, "ignoring Windows activation command");
     }
 
     fn verify(

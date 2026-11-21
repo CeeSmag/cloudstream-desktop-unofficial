@@ -23,5 +23,8 @@ wry = { version = "=0.57.1", default-features = false, features = ["os-webview",
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", default-features = false, features = ["v2_38"] }
 
+[target.'cfg(windows)'.dependencies]
+winsafe = { version = "=0.0.19", features = ["user"] }
+
 [lints]
 workspace = true

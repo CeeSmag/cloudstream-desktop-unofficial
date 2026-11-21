@@ -2,7 +2,7 @@
 //!
 //! Usage: `cloudstream-verify --exchange <dir> --profile <dir>`. It reads commands on stdin
 //! (`cloudflare_bridge::HelperCommand`), prints statuses on stdout, and exits when stdin closes.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod browser_view;
@@ -12,6 +12,8 @@ mod input_threads;
 mod outbox;
 mod page_fetches;
 mod site_window;
+#[cfg(windows)]
+mod windows_presentation;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

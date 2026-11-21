@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # RULES.md §8 allowlist: localized unsafe only in player_mpv (libmpv FFI),
 # extension_runtime (OS sandbox spawn), and ui_slint's generated Slint bindings.
 UNSAFE_ALLOWLIST_FILES: dict[str, set[str]] = {
+    "cloudflare_window": {"crates/cloudflare_window/src/windows_presentation.rs"},
     "player_mpv": {
         "crates/player_mpv/src/mpv_api.rs",
         "crates/player_mpv/src/mpv_api/properties.rs",

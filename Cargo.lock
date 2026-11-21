@@ -1084,6 +1084,7 @@ name = "cloudflare_bridge"
 version = "0.5.2"
 dependencies = [
  "tracing",
+ "winsafe",
 ]
 
 [[package]]
@@ -1096,6 +1097,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "webkit2gtk",
+ "winsafe",
  "wry",
 ]
 
@@ -8206,6 +8208,12 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "version_check",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"

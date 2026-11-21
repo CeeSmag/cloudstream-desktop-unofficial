@@ -19,6 +19,13 @@ pub enum HelperCommand {
         /// A request belonging to the check the viewer saw.
         id: String,
     },
+    /// Activate the shown check after the parent grants this helper foreground permission.
+    Activate {
+        /// Site of the shown check.
+        host: String,
+        /// Request associated with the viewer action.
+        id: String,
+    },
     /// Close every window and exit.
     Quit,
 }
@@ -66,6 +73,9 @@ pub fn format_command(command: &HelperCommand) -> String {
             field(&request.url)
         ),
         HelperCommand::Show { host, id } => format!("show\t{}\t{}\n", field(host), field(id)),
+        HelperCommand::Activate { host, id } => {
+            format!("activate\t{}\t{}\n", field(host), field(id))
+        }
         HelperCommand::Quit => "quit\n".to_owned(),
     }
 }
@@ -74,6 +84,10 @@ pub fn format_command(command: &HelperCommand) -> String {
 pub fn parse_command(line: &str) -> Option<HelperCommand> {
     let mut parts = line.trim_end_matches(['\n', '\r']).split('\t');
     match parts.next()? {
+        "activate" => Some(HelperCommand::Activate {
+            host: parts.next()?.into(),
+            id: parts.next()?.into(),
+        }),
         "quit" => Some(HelperCommand::Quit),
         "show" => Some(HelperCommand::Show {
             host: parts.next()?.to_owned(),
@@ -150,7 +164,14 @@ mod tests {
 
     #[test]
     fn command_round_trip() {
-        for command in [HelperCommand::Verify(request()), HelperCommand::Quit] {
+        for command in [
+            HelperCommand::Verify(request()),
+            HelperCommand::Activate {
+                host: "test.example".into(),
+                id: "r1".into(),
+            },
+            HelperCommand::Quit,
+        ] {
             assert_eq!(parse_command(&format_command(&command)), Some(command));
         }
     }
