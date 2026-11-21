@@ -22,6 +22,12 @@ fn verify_site(ctx: &BridgeContext) {
         return;
     };
     let host = ui.get_cf_host().to_string();
+    if ui.get_cf_state() == 2 {
+        if let Some(watch) = ctx.extras.borrow().cloudflare.as_ref() {
+            watch.show_check(&host, &ui.get_cf_request_id());
+        }
+        return;
+    }
     saved(
         "Cloudflare site",
         ctx.services.settings.allow_cloudflare_host(&host),
@@ -29,6 +35,7 @@ fn verify_site(ctx: &BridgeContext) {
     match ctx.extras.borrow().cloudflare.as_ref() {
         Some(watch) => {
             watch.verify_now(&host);
+            ui.set_cf_request_id("".into());
             ui.set_cf_state(2);
         }
         None => {

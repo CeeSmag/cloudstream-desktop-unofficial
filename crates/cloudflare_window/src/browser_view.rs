@@ -17,12 +17,14 @@ pub(crate) fn open_site_view(
     let window = WindowBuilder::new()
         .with_title(format!("Verify {host} — CloudStream"))
         .with_inner_size(tao::dpi::LogicalSize::new(960.0, 720.0))
+        .with_focused(false)
         .with_visible(false)
         .build(target)
         .map_err(|error| format!("cannot open a window: {error}"))?;
     // Start blank so TLS-ignore can be applied on the shared WebKit context before the first
     // navigation; otherwise a self-signed redirect paints WebKit's error page immediately.
     let builder = WebViewBuilder::new_with_web_context(context)
+        .with_focused(false)
         .with_url("about:blank")
         .with_download_started_handler(|url, _path| {
             let url = cloudflare_window::short_address(&url);

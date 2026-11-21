@@ -19,20 +19,22 @@ pub(crate) struct CloudflareBannerView {
     pub(crate) state: i32,
     pub(crate) host: String,
     pub(crate) message: String,
+    request_id: String,
 }
 
 /// The banner for `event`.
 pub(crate) fn banner_for(event: CloudflareEvent) -> CloudflareBannerView {
-    let (state, host, message) = match event {
-        CloudflareEvent::NeedsPermission { host } => (1, host, String::new()),
-        CloudflareEvent::Verifying { host } => (2, host, String::new()),
-        CloudflareEvent::Passed { host } => (3, host, String::new()),
-        CloudflareEvent::Failed { host, reason } => (4, host, reason),
+    let (state, host, message, request_id) = match event {
+        CloudflareEvent::NeedsPermission { host } => (1, host, String::new(), String::new()),
+        CloudflareEvent::Verifying { host, id } => (2, host, String::new(), id),
+        CloudflareEvent::Passed { host } => (3, host, String::new(), String::new()),
+        CloudflareEvent::Failed { host, reason } => (4, host, reason, String::new()),
     };
     CloudflareBannerView {
         state,
         host,
         message,
+        request_id,
     }
 }
 
@@ -51,6 +53,7 @@ pub(crate) fn drain_cloudflare(ctx: &BridgeContext, ui: &CloudStream) {
             after_verified(ctx, ui, &view.host);
         }
         ui.set_cf_state(view.state);
+        ui.set_cf_request_id(view.request_id.into());
         ui.set_cf_host(view.host.into());
         ui.set_cf_message(view.message.into());
     }
@@ -84,7 +87,11 @@ mod tests {
             1
         );
         assert_eq!(
-            banner_for(CloudflareEvent::Verifying { host: host() }).state,
+            banner_for(CloudflareEvent::Verifying {
+                host: host(),
+                id: "r1".into()
+            })
+            .state,
             2
         );
         assert_eq!(

@@ -13,6 +13,7 @@ mod fetch_exchange;
 mod helper_protocol;
 mod verify_helper;
 mod watch;
+mod watch_event;
 
 pub use allowed_hosts::AllowedHosts;
 pub use exchange::{
@@ -27,4 +28,5 @@ pub use helper_protocol::{
     format_command, format_status, parse_command, parse_status, HelperCommand, HelperStatus,
 };
 pub use verify_helper::{HelperLaunch, VerifyHelper};
-pub use watch::{spawn_watcher, CloudflareEvent, WatchConfig, WatchHandle};
+pub use watch::{spawn_watcher, WatchConfig, WatchHandle};
+pub use watch_event::CloudflareEvent;

@@ -104,8 +104,27 @@ impl VerifyHelper {
         ))
     }
 
+    pub(crate) fn show_if_running(&mut self, host: &str, id: &str) -> std::io::Result<()> {
+        if let Some(child) = self.running.as_mut() {
+            child.stdin.write_all(
+                format_command(&HelperCommand::Show {
+                    host: host.to_owned(),
+                    id: id.to_owned(),
+                })
+                .as_bytes(),
+            )?;
+        }
+        Ok(())
+    }
+
     fn start(&mut self) -> std::io::Result<()> {
         let mut command = Command::new(&self.launch.program);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
         command.args(&self.launch.args);
         if self.debug_logging.load(Ordering::SeqCst) {
             command.arg("--debug");

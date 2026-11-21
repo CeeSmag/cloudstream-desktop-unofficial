@@ -8,8 +8,17 @@ use crate::VerifyRequest;
 /// What the app asks the helper to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelperCommand {
-    /// Open (or show again) the site's window and answer request `id` when the check is passed.
+    /// Start or join a background check and answer request `id` when the check is passed.
     Verify(VerifyRequest),
+    /// Start a check at the viewer's request and present its window.
+    Present(VerifyRequest),
+    /// Present an ongoing check for this host, if it still exists.
+    Show {
+        /// The site named by the viewer.
+        host: String,
+        /// A request belonging to the check the viewer saw.
+        id: String,
+    },
     /// Close every window and exit.
     Quit,
 }
@@ -19,6 +28,8 @@ pub enum HelperCommand {
 pub enum HelperStatus {
     /// The window for the site is open and waits for the viewer.
     WindowOpen {
+        /// The request waiting for this check.
+        id: String,
         /// The site.
         host: String,
     },
@@ -43,12 +54,18 @@ fn field(text: &str) -> String {
 /// The line for `command`, newline included.
 pub fn format_command(command: &HelperCommand) -> String {
     match command {
-        HelperCommand::Verify(request) => format!(
-            "verify\t{}\t{}\t{}\n",
+        HelperCommand::Verify(request) | HelperCommand::Present(request) => format!(
+            "{}\t{}\t{}\t{}\n",
+            if matches!(command, HelperCommand::Present(_)) {
+                "present"
+            } else {
+                "verify"
+            },
             field(&request.id),
             field(&request.host),
             field(&request.url)
         ),
+        HelperCommand::Show { host, id } => format!("show\t{}\t{}\n", field(host), field(id)),
         HelperCommand::Quit => "quit\n".to_owned(),
     }
 }
@@ -58,14 +75,23 @@ pub fn parse_command(line: &str) -> Option<HelperCommand> {
     let mut parts = line.trim_end_matches(['\n', '\r']).split('\t');
     match parts.next()? {
         "quit" => Some(HelperCommand::Quit),
-        "verify" => {
+        "show" => Some(HelperCommand::Show {
+            host: parts.next()?.to_owned(),
+            id: parts.next()?.to_owned(),
+        }),
+        verb @ ("verify" | "present") => {
             let text = format!(
                 "id={}\nhost={}\nurl={}\n",
                 parts.next()?,
                 parts.next()?,
                 parts.next()?
             );
-            crate::parse_request(&text).map(HelperCommand::Verify)
+            let request = crate::parse_request(&text)?;
+            Some(if verb == "present" {
+                HelperCommand::Present(request)
+            } else {
+                HelperCommand::Verify(request)
+            })
         }
         _ => None,
     }
@@ -74,7 +100,7 @@ pub fn parse_command(line: &str) -> Option<HelperCommand> {
 /// The line for `status`, newline included.
 pub fn format_status(status: &HelperStatus) -> String {
     match status {
-        HelperStatus::WindowOpen { host } => format!("open\t{}\n", field(host)),
+        HelperStatus::WindowOpen { host, id } => format!("open\t{}\t{}\n", field(host), field(id)),
         HelperStatus::Passed { host } => format!("passed\t{}\n", field(host)),
         HelperStatus::Failed { host, reason } => {
             format!("failed\t{}\t{}\n", field(host), field(reason))
@@ -88,7 +114,10 @@ pub fn parse_status(line: &str) -> Option<HelperStatus> {
     let kind = parts.next()?;
     let host = parts.next().filter(|host| !host.is_empty())?.to_owned();
     match kind {
-        "open" => Some(HelperStatus::WindowOpen { host }),
+        "open" => Some(HelperStatus::WindowOpen {
+            host,
+            id: parts.next()?.to_owned(),
+        }),
         "passed" => Some(HelperStatus::Passed { host }),
         "failed" => Some(HelperStatus::Failed {
             host,
@@ -101,6 +130,15 @@ pub fn parse_status(line: &str) -> Option<HelperStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interactive_and_background_commands_have_distinct_wire_intent() {
+        let background = HelperCommand::Verify(request());
+        let line = format_command(&background).replacen("verify", "present", 1);
+        let interactive = parse_command(&line).expect("presentation command");
+        assert_ne!(interactive, background);
+        assert_eq!(format_command(&interactive), line);
+    }
 
     fn request() -> VerifyRequest {
         VerifyRequest {
@@ -129,6 +167,7 @@ mod tests {
     fn status_round_trip_and_tabs_in_reason_are_flattened() {
         let statuses = [
             HelperStatus::WindowOpen {
+                id: "r1".into(),
                 host: "a.test".into(),
             },
             HelperStatus::Passed {

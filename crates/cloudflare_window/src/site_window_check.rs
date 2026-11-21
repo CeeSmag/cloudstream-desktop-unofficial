@@ -9,7 +9,7 @@ use cloudflare_window::verify_progress::{
     VerifyProgress,
 };
 
-use super::{Phase, SiteWindow, REPORT_EVERY, SHOW_AFTER};
+use super::{Phase, SiteWindow, REPORT_EVERY};
 use crate::browser_view::read_cookies;
 use crate::helper_events::HelperEvent;
 use crate::outbox::Outbox;
@@ -50,7 +50,6 @@ impl SiteWindow {
             });
         }
         let step = next_step(progress, seen, Instant::now());
-        self.maybe_show_for_human(&seen);
         match step {
             Step::Wait => {}
             Step::Probe => self.start_probe(),
@@ -59,18 +58,6 @@ impl SiteWindow {
             Step::PassOnCookie => self.pass_off_site(out),
             Step::GiveUp => self.fail(out, "the check was not passed in time"),
         }
-    }
-
-    /// After the grace period, show any check that has not passed yet — leftover `cf_clearance`
-    /// must not hide an unfinished Managed/interactive challenge (`__cf_chl_*` still in the URL).
-    fn maybe_show_for_human(&mut self, _seen: &Observation) {
-        if self.shown || self.verify_started.elapsed() < SHOW_AFTER {
-            return;
-        }
-        self.window.set_visible(true);
-        self.window.set_focus();
-        self.shown = true;
-        tracing::info!(host = %self.host, "verification still waiting; showing the window");
     }
 
     fn pass_off_site(&mut self, out: &Outbox) {
@@ -167,7 +154,8 @@ impl SiteWindow {
             &std::mem::take(&mut self.waiting),
             &Outcome::Declined(reason.to_owned()),
         );
-        self.phase = Phase::Verifying(VerifyProgress::starting(Instant::now()));
+        self.phase = Phase::Idle;
+        self.window.set_visible(false);
         tracing::info!(host = %self.host, %reason, "the check was not passed");
         out.status(&HelperStatus::Failed {
             host: self.host.clone(),

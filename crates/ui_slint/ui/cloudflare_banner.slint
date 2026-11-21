@@ -36,7 +36,7 @@ export component CloudflareBanner inherits Rectangle {
 
         text := Text {
             text: root.state == 1 ? root.host + " needs a quick “verify you are human” check before it can be used."
-                : root.state == 2 ? "Verifying " + root.host + " in a browser window — finish the check there if it asks."
+                : root.state == 2 ? "Checking " + root.host + ". Open verification if the site needs your input."
                 : root.state == 3 ? root.host + " is verified. Try again."
                 : root.host + " could not be verified: " + root.message;
             color: Theme.text;
@@ -47,8 +47,8 @@ export component CloudflareBanner inherits Rectangle {
             horizontal-stretch: 1;
         }
 
-        if root.state == 1 || root.state == 4: TvButton {
-            text: root.state == 1 ? "Verify" : "Try again";
+        if root.state == 1 || root.state == 2 || root.state == 4: TvButton {
+            text: root.state == 1 ? "Verify" : (root.state == 2 ? "Open verification" : "Try again");
             kind: "primary";
             compact: true;
             clicked => { root.verify(); }

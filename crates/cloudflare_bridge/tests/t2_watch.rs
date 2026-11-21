@@ -18,8 +18,9 @@ fn folder(name: &str) -> PathBuf {
 fn fake_helper(dir: &Path) -> HelperLaunch {
     let script = format!(
         r#"while IFS="$(printf '\t')" read -r kind id host url; do
+  printf '%s\n' "$url" > "{dir}/$kind-$id.received"
   case "$kind" in
-    verify) printf 'open\t%s\n' "$host"
+    verify|present) printf 'open\t%s\t%s\n' "$host" "$id"
             printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$id.tmp"
             mv "{dir}/result-$id.tmp" "{dir}/result-$id.txt"
             printf 'passed\t%s\n' "$host";;
@@ -98,6 +99,8 @@ fn allowed_site_burst_is_verified_by_the_helper_each_request_answered_once() {
         let path = dir.join(format!("result-b{index}.txt"));
         let answer = wait_for_file(&path, Duration::from_secs(5)).expect("answer");
         assert!(answer.starts_with("ok=true"), "{answer}");
+        assert!(dir.join(format!("verify-b{index}.received")).is_file());
+        assert!(!dir.join(format!("present-b{index}.received")).exists());
     }
     let mut passed = 0;
     while let Ok(event) = watch.events.recv_timeout(Duration::from_millis(500)) {
@@ -115,7 +118,7 @@ fn allowed_site_burst_is_verified_by_the_helper_each_request_answered_once() {
 }
 
 #[test]
-fn verify_now_allows_the_site_and_opens_its_front_page() {
+fn verify_button_presents_the_requested_site_and_preserves_its_url() {
     let dir = folder("now");
     let allowed = AllowedHosts::default();
     let watch = spawn_watcher(WatchConfig {
@@ -123,6 +126,11 @@ fn verify_now_allows_the_site_and_opens_its_front_page() {
         allowed: allowed.clone(),
         helper: Some(fake_helper(&dir)),
     });
+    request(&dir, "first", "site.test");
+    assert!(matches!(
+        watch.events.recv_timeout(Duration::from_secs(3)),
+        Ok(CloudflareEvent::NeedsPermission { .. })
+    ));
     watch.verify_now("site.test");
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut saw_passed = false;
@@ -135,6 +143,15 @@ fn verify_now_allows_the_site_and_opens_its_front_page() {
         }
     }
     assert!(saw_passed);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("present-app-1.received"))
+            .expect("viewer command")
+            .trim(),
+        "https://site.test/api/video.m3u8"
+    );
+    watch.show_check("site.test", "app-1");
+    assert!(wait_for_file(&dir.join("show-site.test.received"), Duration::from_secs(3)).is_some());
+    assert!(!dir.join("present-app-2.received").exists());
     assert!(allowed.is_allowed("site.test"));
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);

@@ -19,10 +19,8 @@ use crate::page_fetches::PageFetches;
 
 /// How often a waiting window says what it sees.
 pub(super) const REPORT_EVERY: Duration = Duration::from_secs(5);
-/// Keep the window hidden this long so Managed challenges can auto-pass without a popup.
-pub(super) const SHOW_AFTER: Duration = Duration::from_secs(3);
-
 pub(super) enum Phase {
+    Idle,
     Verifying(VerifyProgress),
     Passed,
 }
@@ -39,9 +37,6 @@ pub(crate) struct SiteWindow {
     pub(super) fetches: PageFetches,
     pub(super) proxy: EventLoopProxy<HelperEvent>,
     pub(super) last_report: Instant,
-    /// When the current verify attempt started (for delayed show).
-    pub(super) verify_started: Instant,
-    pub(super) shown: bool,
 }
 
 /// What a window needs to be built.
@@ -74,8 +69,6 @@ impl SiteWindow {
             fetches: PageFetches::default(),
             proxy: parts.proxy,
             last_report: now,
-            verify_started: now,
-            shown: false,
         })
     }
 
@@ -86,19 +79,30 @@ impl SiteWindow {
 
     /// Request `id` waits for this site's check; reloads the challenged page when safe.
     pub(crate) fn begin(&mut self, id: String, challenge_url: &str, out: &Outbox) {
-        self.waiting.push(id);
-        if matches!(self.phase, Phase::Passed) {
+        if self.waiting.contains(&id) {
+            return;
+        }
+        self.waiting.push(id.clone());
+        if !matches!(self.phase, Phase::Verifying(_)) {
             self.phase = Phase::Verifying(VerifyProgress::starting(Instant::now()));
+            let page = page_to_open(&self.host, challenge_url);
+            if let Err(error) = self.webview.load_url(&page) {
+                tracing::warn!(%error, host = %self.host, "cannot load the verification page");
+            }
         }
-        let page = page_to_open(&self.host, challenge_url);
-        if let Err(error) = self.webview.load_url(&page) {
-            tracing::warn!(%error, host = %self.host, "cannot load the verification page");
-        }
-        self.verify_started = Instant::now();
-        self.shown = false;
         out.status(&cloudflare_bridge::HelperStatus::WindowOpen {
+            id,
             host: self.host.clone(),
         });
+    }
+
+    /// Presents only a check that is still active.
+    pub(crate) fn present(&self, id: &str) {
+        if self.waiting.iter().any(|pending| pending == id) {
+            self.window.set_visible(true);
+            self.window.set_focus();
+            tracing::debug!(host = %self.host, "viewer opened verification");
+        }
     }
 
     /// Runs the sidecar's request in this window (only once the check passed).
@@ -125,10 +129,9 @@ impl SiteWindow {
     /// The viewer closed the window: a passed site's window is only hidden (kept for fetches).
     pub(crate) fn close_requested(&mut self, out: &Outbox) {
         match self.phase {
-            Phase::Passed => self.window.set_visible(false),
+            Phase::Idle | Phase::Passed => self.window.set_visible(false),
             Phase::Verifying(_) => {
                 self.fail(out, "the viewer closed the verification window");
-                self.window.set_visible(false);
             }
         }
     }

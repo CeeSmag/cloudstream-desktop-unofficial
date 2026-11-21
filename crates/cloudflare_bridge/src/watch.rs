@@ -3,14 +3,12 @@
 //! Every request is answered without delay:
 //! - a site the viewer has not allowed gets "ask again" at once (the plugin fails fast) and the UI
 //!   is told, so it can offer a Verify button;
-//! - an allowed site goes to the verification helper, which opens one window per site on the site's
-//!   front page (never the request's own address: that was often a video or an API call, and the old
-//!   UI opened it in the system browser for every request, which downloaded it again and again).
+//! - allowed sites are checked in a hidden window. The viewer can open the active check.
 //!
 //! Browser fetches are answered by the helper; while no helper runs, they are answered "no window"
 //! at once so the sidecar verifies again instead of waiting 90 s.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -22,37 +20,10 @@ use crate::exchange::{pending_requests, write_result, Outcome, VerifyRequest};
 use crate::fetch_exchange::{pending_fetches, write_fetch_result, FetchOutcome};
 use crate::helper_protocol::{HelperCommand, HelperStatus};
 use crate::verify_helper::{HelperLaunch, VerifyHelper};
-use crate::AllowedHosts;
+use crate::{AllowedHosts, CloudflareEvent};
 
 /// How often the folder is looked at.
 const POLL: Duration = Duration::from_millis(250);
-
-/// Something the UI should show about a site's Cloudflare check.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CloudflareEvent {
-    /// The site needs a check and the viewer has not allowed it yet (offer Verify).
-    NeedsPermission {
-        /// The site.
-        host: String,
-    },
-    /// A verification window is open for the site.
-    Verifying {
-        /// The site.
-        host: String,
-    },
-    /// The check was passed.
-    Passed {
-        /// The site.
-        host: String,
-    },
-    /// The check was not passed.
-    Failed {
-        /// The site.
-        host: String,
-        /// Why, for the viewer.
-        reason: String,
-    },
-}
 
 /// What the watcher needs.
 pub struct WatchConfig {
@@ -69,15 +40,38 @@ pub struct WatchHandle {
     stop: Arc<AtomicBool>,
     debug_logging: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
-    commands: Sender<String>,
+    commands: Sender<ViewerAction>,
     /// Events for the UI to drain.
     pub events: Receiver<CloudflareEvent>,
+}
+
+enum ViewerAction {
+    Verify(String),
+    Show { host: String, id: String },
 }
 
 impl WatchHandle {
     /// Opens the verification window for `host` now (the viewer pressed Verify).
     pub fn verify_now(&self, host: &str) {
-        if self.commands.send(host.to_owned()).is_err() {
+        if self
+            .commands
+            .send(ViewerAction::Verify(host.to_owned()))
+            .is_err()
+        {
+            tracing::warn!(%host, "the Cloudflare watcher is not running");
+        }
+    }
+
+    /// Presents the active check for the viewer.
+    pub fn show_check(&self, host: &str, id: &str) {
+        if self
+            .commands
+            .send(ViewerAction::Show {
+                host: host.to_owned(),
+                id: id.to_owned(),
+            })
+            .is_err()
+        {
             tracing::warn!(%host, "the Cloudflare watcher is not running");
         }
     }
@@ -140,6 +134,7 @@ struct Watcher<'a> {
     events: &'a Sender<CloudflareEvent>,
     seen_requests: HashSet<String>,
     seen_fetches: HashSet<String>,
+    challenge_urls: HashMap<String, String>,
     next_app_request: u64,
 }
 
@@ -147,7 +142,7 @@ fn run_loop(
     config: WatchConfig,
     flags: &WatcherFlags,
     events: &Sender<CloudflareEvent>,
-    commands: &Receiver<String>,
+    commands: &Receiver<ViewerAction>,
 ) {
     if let Err(error) = std::fs::create_dir_all(&config.dir) {
         tracing::warn!(%error, "cannot create the Cloudflare exchange folder");
@@ -163,6 +158,7 @@ fn run_loop(
         events,
         seen_requests: HashSet::new(),
         seen_fetches: HashSet::new(),
+        challenge_urls: HashMap::new(),
         next_app_request: 0,
     };
     while !flags.stop.load(Ordering::SeqCst) {
@@ -172,21 +168,38 @@ fn run_loop(
 }
 
 impl Watcher<'_> {
-    fn tick(&mut self, commands: &Receiver<String>, statuses: &Receiver<HelperStatus>) {
+    fn tick(&mut self, commands: &Receiver<ViewerAction>, statuses: &Receiver<HelperStatus>) {
         for request in pending_requests(&self.dir, &mut self.seen_requests) {
-            self.route(request);
+            self.route(request, false);
         }
-        for host in commands.try_iter() {
-            self.verify_now(&host);
+        for action in commands.try_iter() {
+            match action {
+                ViewerAction::Verify(host) => self.verify_now(&host),
+                ViewerAction::Show { host, id } => {
+                    if let Some(helper) = self.helper.as_mut() {
+                        if let Err(error) = helper.show_if_running(&host, &id) {
+                            self.emit(CloudflareEvent::Failed {
+                                host,
+                                reason: error.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
         }
         for status in statuses.try_iter() {
-            self.emit(event_for(status));
+            if let HelperStatus::Passed { host } = &status {
+                self.challenge_urls.remove(host);
+            }
+            self.emit(status.into());
         }
         self.answer_orphan_fetches();
     }
 
-    fn route(&mut self, request: VerifyRequest) {
+    fn route(&mut self, request: VerifyRequest, present: bool) {
         tracing::info!(host = %request.host, id = %request.id, "a site needs Cloudflare verification");
+        self.challenge_urls
+            .insert(request.host.clone(), request.url.clone());
         let allowed = self.allowed.is_allowed(&request.host);
         if !allowed {
             let reason = format!(
@@ -199,13 +212,17 @@ impl Watcher<'_> {
         }
         let host = request.host.clone();
         let sent = match self.helper.as_mut() {
-            Some(helper) => helper.send(&HelperCommand::Verify(request.clone())),
+            Some(helper) => helper.send(&if present {
+                HelperCommand::Present(request.clone())
+            } else {
+                HelperCommand::Verify(request.clone())
+            }),
             None => Err(std::io::Error::other(
                 "this build has no verification window",
             )),
         };
         match sent {
-            Ok(()) => self.emit(CloudflareEvent::Verifying { host }),
+            Ok(()) => tracing::debug!(%host, id = %request.id, "verification requested"),
             Err(error) => {
                 tracing::warn!(%host, %error, "cannot open the verification window");
                 let reason = format!("the verification window could not open: {error}");
@@ -220,10 +237,14 @@ impl Watcher<'_> {
         let request = VerifyRequest {
             id: format!("app-{}", self.next_app_request),
             host: host.to_owned(),
-            url: format!("https://{host}/"),
+            url: self
+                .challenge_urls
+                .get(host)
+                .cloned()
+                .unwrap_or_else(|| format!("https://{host}/")),
         };
         self.allowed.allow(host);
-        self.route(request);
+        self.route(request, true);
     }
 
     fn answer_orphan_fetches(&mut self) {
@@ -243,14 +264,6 @@ impl Watcher<'_> {
         if self.events.send(event).is_err() {
             tracing::debug!("the UI no longer listens to Cloudflare events");
         }
-    }
-}
-
-fn event_for(status: HelperStatus) -> CloudflareEvent {
-    match status {
-        HelperStatus::WindowOpen { host } => CloudflareEvent::Verifying { host },
-        HelperStatus::Passed { host } => CloudflareEvent::Passed { host },
-        HelperStatus::Failed { host, reason } => CloudflareEvent::Failed { host, reason },
     }
 }
 

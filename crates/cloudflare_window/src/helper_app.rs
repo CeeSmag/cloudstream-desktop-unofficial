@@ -86,7 +86,17 @@ impl HelperState {
         flow: &mut ControlFlow,
     ) {
         match event {
-            HelperEvent::Command(HelperCommand::Verify(request)) => self.verify(request, target),
+            HelperEvent::Command(HelperCommand::Verify(request)) => {
+                self.verify(request, target, false)
+            }
+            HelperEvent::Command(HelperCommand::Present(request)) => {
+                self.verify(request, target, true)
+            }
+            HelperEvent::Command(HelperCommand::Show { host, id }) => {
+                if let Some(site) = self.sites.get(&host) {
+                    site.present(&id);
+                }
+            }
             HelperEvent::Command(HelperCommand::Quit) | HelperEvent::InputClosed => {
                 for site in self.sites.values_mut() {
                     site.abandon(&self.outbox);
@@ -113,7 +123,12 @@ impl HelperState {
         }
     }
 
-    fn verify(&mut self, request: VerifyRequest, target: &EventLoopWindowTarget<HelperEvent>) {
+    fn verify(
+        &mut self,
+        request: VerifyRequest,
+        target: &EventLoopWindowTarget<HelperEvent>,
+        present: bool,
+    ) {
         let reuse = self.sites.contains_key(&request.host);
         if !reuse {
             let parts = WindowParts {
@@ -130,7 +145,10 @@ impl HelperState {
             }
         }
         if let Some(site) = self.sites.get_mut(&request.host) {
-            site.begin(request.id, &request.url, &self.outbox);
+            site.begin(request.id.clone(), &request.url, &self.outbox);
+            if present {
+                site.present(&request.id);
+            }
         }
     }
 
