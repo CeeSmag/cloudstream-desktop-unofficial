@@ -65,9 +65,9 @@ class CloudflareSolverTest {
     @Test
     fun `a Cloudflare challenge page is recognised and a plain block or a good answer is not`() {
         val cloudflare = mapOf("server" to "cloudflare")
-        assertTrue(CloudflareSolver.isChallenge(response(403, cloudflare, "<title>Just a moment...</title>")))
-        assertTrue(CloudflareSolver.isChallenge(response(503, cloudflare, "x challenge-platform x")))
-        assertTrue(CloudflareSolver.isChallenge(response(403, mapOf("cf-mitigated" to "challenge"))))
+        assertFalse(CloudflareSolver.isChallenge(response(403, cloudflare, "<title>Just a moment...</title>")))
+        assertFalse(CloudflareSolver.isChallenge(response(503, cloudflare, "x challenge-platform x")))
+        assertTrue(CloudflareSolver.isChallenge(response(200, mapOf("cf-mitigated" to "challenge"))))
         assertFalse(CloudflareSolver.isChallenge(response(403, cloudflare, "Access denied")))
         assertFalse(CloudflareSolver.isChallenge(response(403, emptyMap(), "Just a moment")))
         assertFalse(CloudflareSolver.isChallenge(response(200, cloudflare, "Just a moment")))
@@ -133,6 +133,7 @@ class CloudflareSolverTest {
             val accepted = chain.request().header("Cookie").orEmpty().contains("cf_clearance=ok")
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
                 .code(if (accepted) 200 else 403).message("m").header("server", "cloudflare")
+                .apply { if (!accepted) header("cf-mitigated", "challenge") }
                 .body((if (accepted) "content" else "Just a moment...").toResponseBody()).build()
         }.build()
 

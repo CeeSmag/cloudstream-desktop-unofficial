@@ -59,8 +59,6 @@ object CloudflareSolver {
     var clock: () -> Long = { System.currentTimeMillis() }
 
     private const val POLL_MS = 300L
-    private const val PEEK_BYTES = 64 * 1024L
-    private val CHALLENGE_MARKERS = listOf("Just a moment", "challenge-platform", "cf-chl", "_cf_chl_opt")
 
     private val clearances = ConcurrentHashMap<String, Clearance>()
     private val declined = ConcurrentHashMap<String, Declined>()
@@ -143,17 +141,8 @@ object CloudflareSolver {
     }
 
     /** True when [response] is a Cloudflare challenge page (not a plain block, which no browser can pass). */
-    fun isChallenge(response: Response): Boolean {
-        if (response.code != 403 && response.code != 503) return false
-        if (response.header("cf-mitigated").equals("challenge", ignoreCase = true)) return true
-        if (response.header("server")?.startsWith("cloudflare", ignoreCase = true) != true) return false
-        val page = try {
-            response.peekBody(PEEK_BYTES).string()
-        } catch (_: Throwable) {
-            return false
-        }
-        return CHALLENGE_MARKERS.any { page.contains(it) }
-    }
+    fun isChallenge(response: Response): Boolean =
+        response.header("cf-mitigated").equals("challenge", ignoreCase = true)
 
     private fun describe(response: Response) =
         "status ${response.code}, server=${response.header("server")}, cf-mitigated=${response.header("cf-mitigated")}"
