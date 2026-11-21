@@ -35,5 +35,6 @@ reading a size in Slint to choose a layout makes a binding loop.
 
 Notes: no `transform-scale` on tiles (FemtoVG drew nothing for it); no std `Slider` in the player
 (dragging drops its binding; `DragBar` instead).
+The player's Back button exits fullscreen and returns to a maximized details page.
 
 Test: `cargo test -p ui_slint` (unit + headless render & window constraint tests in `tests/`).

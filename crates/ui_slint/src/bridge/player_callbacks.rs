@@ -23,8 +23,26 @@ pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     wire_seeking(ctx, ui);
     wire_volume(ctx, ui);
     let c = ctx.clone();
-    ui.on_leave_player(move || leave_player(&c));
+    wire_leave_player(ui, move || leave_player(&c));
     wire_player_panels(ctx, ui);
+}
+
+fn wire_leave_player(ui: &CloudStream, leave: impl Fn() + 'static) {
+    let weak = ui.as_weak();
+    ui.on_leave_player(move || {
+        if let Some(ui) = weak.upgrade() {
+            let window = ui.window();
+            let fullscreen = window.is_fullscreen();
+            tracing::debug!(fullscreen, "player back requested");
+            if fullscreen {
+                window.set_fullscreen(false);
+                // Apply the new state before a resize can sync the old one back from Winit.
+                window.set_maximized(true);
+                ui.set_fullscreen(false);
+            }
+        }
+        leave();
+    });
 }
 
 /// The volume: the bar, the keys and the mouse wheel over the video.
@@ -151,3 +169,7 @@ pub(crate) fn report<E: std::fmt::Display>(command: &str, result: Result<(), E>)
         tracing::warn!(command, %error, "a player command failed");
     }
 }
+
+#[cfg(test)]
+#[path = "player_callbacks_tests.rs"]
+mod tests;
