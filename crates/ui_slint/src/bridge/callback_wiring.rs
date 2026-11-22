@@ -13,6 +13,7 @@ use super::focus_navigation::wire_navigation;
 use super::home_callbacks::wire_home;
 use super::home_expanded::wire_home_expanded;
 use super::library_actions::wire_library_actions;
+use super::performance_callbacks::wire_performance_settings;
 use super::player_callbacks::wire_player;
 use super::player_timeline::wire_timeline;
 use super::player_track_callbacks::wire_player_tracks;
@@ -38,6 +39,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_preferences(ctx, ui);
     wire_debug_logging(ctx, ui);
     wire_storage_settings(ctx, ui);
+    wire_performance_settings(ctx, ui);
     wire_extension_settings(ctx, ui);
     wire_repo_list(ctx, ui);
     wire_plugin_list(ctx, ui);

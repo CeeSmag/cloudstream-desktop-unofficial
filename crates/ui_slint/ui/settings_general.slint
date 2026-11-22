@@ -18,6 +18,12 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> storage-label: "";
     in property <[string]> worker-labels: [];
     in property <string> worker-value: "";
+    in property <[string]> perf-profile-labels: [];
+    in property <string> perf-profile-value: "";
+    in property <string> perf-pc-text: "";
+    in property <string> perf-state-text: "";
+    in property <string> perf-warning: "";
+    in property <bool> perf-can-reset: false;
     in property <bool> debug-logging: false;
     in property <string> update-label: "";
     in property <string> update-version: "";
@@ -35,6 +41,8 @@ export component SettingsGeneralPage inherits VerticalLayout {
     callback set-ahead(string);
     callback set-storage-cap(string);
     callback set-worker-limit(string);
+    callback set-performance-profile(string);
+    callback reset-performance();
     callback clean-storage();
     callback set-debug-logging(bool);
     callback open-logs();
@@ -52,6 +60,47 @@ export component SettingsGeneralPage inherits VerticalLayout {
             text: "Playback buffering, local disk limits, plugin runtime processes, diagnostics, and updates.";
             font-size: 13.5px;
             wrap: word-wrap;
+        }
+    }
+
+    Card {
+        title: "Performance & memory";
+        subtitle: "Match CloudStream to this PC: plugin processes, video cache and storage";
+        icon: Icons.cpu;
+        warn: root.perf-warning != "";
+
+        VerticalLayout {
+            spacing: 6px;
+            MutedLabel {
+                text: root.perf-pc-text;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+            SettingRow {
+                label: "Profile";
+                description: root.perf-state-text;
+                TvSelect {
+                    width: 190px;
+                    model: root.perf-profile-labels;
+                    current-value: root.perf-profile-value;
+                    selected(value) => { root.set-performance-profile(value); }
+                }
+            }
+            if root.perf-warning != "": Text {
+                text: root.perf-warning;
+                color: Theme.warn;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                TvButton {
+                    text: "Reset to recommended";
+                    compact: true;
+                    enabled: root.perf-can-reset;
+                    clicked => { root.reset-performance(); }
+                }
+            }
         }
     }
 

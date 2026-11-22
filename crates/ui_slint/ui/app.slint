@@ -165,6 +165,12 @@ export component CloudStream inherits Window {
     in property <string> storage-value: "";
     in property <[string]> worker-labels: [];
     in property <string> worker-value: "";
+    in property <[string]> perf-profile-labels: [];
+    in property <string> perf-profile-value: "";
+    in property <string> perf-pc-text: "";
+    in property <string> perf-state-text: "";
+    in property <string> perf-warning: "";
+    in property <bool> perf-can-reset: false;
     in property <[string]> audio-labels: [];
     in property <string> audio-value: "";
     in property <[string]> subtitle-labels: [];
@@ -235,6 +241,8 @@ export component CloudStream inherits Window {
     callback set-ahead(string);
     callback set-storage-cap(string);
     callback set-worker-limit(string);
+    callback set-performance-profile(string);
+    callback reset-performance();
     callback set-audio(string);
     callback set-subtitle-add(string);
     callback remove-subtitle(int);
@@ -497,6 +505,12 @@ export component CloudStream inherits Window {
                 storage-value: root.storage-value;
                 worker-labels: root.worker-labels;
                 worker-value: root.worker-value;
+                perf-profile-labels: root.perf-profile-labels;
+                perf-profile-value: root.perf-profile-value;
+                perf-pc-text: root.perf-pc-text;
+                perf-state-text: root.perf-state-text;
+                perf-warning: root.perf-warning;
+                perf-can-reset: root.perf-can-reset;
                 provider-labels: root.providers;
                 selected-provider: root.selected-provider;
                 audio-labels: root.audio-labels;
@@ -528,6 +542,8 @@ export component CloudStream inherits Window {
                 set-ahead(v) => { set-ahead(v); }
                 set-storage-cap(v) => { set-storage-cap(v); }
                 set-worker-limit(v) => { set-worker-limit(v); }
+                set-performance-profile(v) => { set-performance-profile(v); }
+                reset-performance() => { reset-performance(); }
                 set-provider(v) => { set-provider(v); }
                 set-audio(v) => { set-audio(v); }
                 set-subtitle-add(v) => { set-subtitle-add(v); }

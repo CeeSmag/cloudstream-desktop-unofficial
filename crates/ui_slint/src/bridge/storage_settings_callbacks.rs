@@ -9,6 +9,7 @@ use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
+use super::performance_callbacks::show_performance;
 use super::player_callbacks::report;
 use super::preference_callbacks::saved;
 use super::storage_usage_view::measure_storage_usage;
@@ -40,6 +41,7 @@ fn set_cache_size(ctx: &BridgeContext, value: &str) {
     saved("video cache", ctx.services.settings.set_video_cache(cache));
     if let Some(ui) = ctx.window() {
         ui.set_cache_size_value(format!("{size_mb} MB").into());
+        show_performance(&ui, &ctx.services);
     }
     if let Some(playback) = &ctx.services.playback {
         report(
@@ -61,6 +63,7 @@ fn set_cache_ahead(ctx: &BridgeContext, value: &str) {
     saved("video cache", ctx.services.settings.set_video_cache(cache));
     if let Some(ui) = ctx.window() {
         ui.set_ahead_value(format!("{percent}%").into());
+        show_performance(&ui, &ctx.services);
     }
     if let Some(playback) = &ctx.services.playback {
         report(
@@ -81,6 +84,7 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
     );
     if let Some(ui) = ctx.window() {
         ui.set_storage_value(format!("{gigabytes} GB").into());
+        show_performance(&ui, &ctx.services);
     }
     let cleanup = ctx.extras.borrow().cleanup.clone();
     let dir = ctx.extras.borrow().data_dir.clone();
@@ -106,6 +110,7 @@ fn set_worker_limit(ctx: &BridgeContext, value: SharedString) {
     ctx.services.extensions.set_resident_worker_limit(limit);
     if let Some(ui) = ctx.window() {
         ui.set_worker_value(value);
+        show_performance(&ui, &ctx.services);
     }
 }
 

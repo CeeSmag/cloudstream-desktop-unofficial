@@ -53,6 +53,8 @@ Peak of the whole process tree, PSS:
 |---|---|---|---|---|
 | S1 idle Home, 2 plugins | **1338.5** | app 896.5, jvm 442.0 | 2 | stable over 120 s; second run: app 893 MiB |
 | S1 after step 3b-1 (10 posters per collapsed shelf, expanded pages of 20) | **816.8** | app 356.3, jvm 460.4 | 2 | app process -540 MiB (-60%) vs the row above; same data copy, same binary otherwise |
+| S1 with profiles, Auto on this 31 GB PC (High-end: 4 resident plugin processes) | 801.0 | app 370.5, jvm 430.5 | 2 | same as before for this PC, as intended: a big PC is not restricted |
+| S1 with profiles, Low-end forced | **639.2** | app 361.3, jvm 277.9 | 1 | one resident plugin process: -162 MiB vs Auto here |
 | S2-S6 | not measured yet | | | |
 
 Findings from S1 (these replace the estimates in the first version of the plan):
@@ -86,4 +88,5 @@ and the switch that turns it back off. A step stays only if its delta is real.
 
 | Step | Change | Measured delta | Rollback switch |
 |---|---|---|---|
-| 3b-1 | A collapsed Home shelf builds and loads only its first 10 posters (`COLLAPSED_SHELF_POSTERS`); the expanded grid shows pages of 20 (`EXPANDED_PAGE_SIZE`) over a `ShelfPager` that keeps the titles' text and asks the provider for more only when it runs out; collapsing clears the expanded model (it used to keep its pictures alive). Alternative considered: scroll-window hydration of the expanded grid; a page is simpler and bounds memory by construction. | S1 app process 896 -> 356 MiB; tree 1338 -> 817 MiB. Confirms decoded posters were the main cost. | Raise the two constants in `crates/ui_slint/src/shelf_pager.rs` (no runtime switch yet; they move to `MemoryBudget` in step 3a) |
+| 3b-1 | A collapsed Home shelf builds and loads only its first 10 posters (`COLLAPSED_SHELF_POSTERS`); the expanded grid shows pages of 20 (`EXPANDED_PAGE_SIZE`) over a `ShelfPager` that keeps the titles' text and asks the provider for more only when it runs out; collapsing clears the expanded model (it used to keep its pictures alive). Alternative considered: scroll-window hydration of the expanded grid; a page is simpler and bounds memory by construction. | S1 app process 896 -> 356 MiB; tree 1338 -> 817 MiB. Confirms decoded posters were the main cost. | Change the two constants in `crates/ui_slint/src/shelf_pager.rs` (by decision they are fixed for every PC, not a setting) |
+| S1 | Limits follow a profile (Auto reads RAM; Low-end / Balanced / High-end by name); the viewer's choices override; Settings > General has a Performance & memory card (profile, PC facts, state, warning, Reset). One-time migration drops the plugin limit the old app wrote itself. Alternative considered: a fixed 1 resident plugin process for everyone (the earlier decision): it would restrict big PCs, so it became Auto. | Low-end vs Auto on the 31 GB test PC: 639 vs 801 MiB at idle Home | Choose the "Auto" profile, or pick the limit by hand in its card (a stored choice always wins) |

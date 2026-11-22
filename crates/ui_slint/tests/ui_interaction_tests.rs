@@ -240,6 +240,35 @@ fn verify_updates_flow(ui: &CloudStream) {
     assert_eq!(ui.get_settings_page_index(), 0);
 }
 
+fn verify_performance_card(ui: &CloudStream) {
+    ui.set_perf_profile_labels(strings(&[
+        "Auto (recommended)",
+        "Low-end",
+        "Balanced",
+        "High-end",
+    ]));
+    ui.set_perf_profile_value("Auto (recommended)".into());
+    ui.set_perf_pc_text("This PC: 8 GB RAM, 4 cores".into());
+    ui.set_perf_state_text("Following the Balanced preset for this PC".into());
+    ui.set_perf_warning("".into());
+    ui.set_perf_can_reset(false);
+    assert_eq!(ui.get_perf_profile_labels().row_count(), 4);
+    assert_eq!(ui.get_perf_profile_value().as_str(), "Auto (recommended)");
+    assert!(!ui.get_perf_can_reset());
+
+    let chosen = Rc::new(RefCell::new(String::new()));
+    let chosen_ref = Rc::clone(&chosen);
+    ui.on_set_performance_profile(move |label| *chosen_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_performance_profile("Low-end".into());
+    assert_eq!(chosen.borrow().as_str(), "Low-end");
+
+    let resets = Rc::new(RefCell::new(0usize));
+    let resets_ref = Rc::clone(&resets);
+    ui.on_reset_performance(move || *resets_ref.borrow_mut() += 1);
+    ui.invoke_reset_performance();
+    assert_eq!(*resets.borrow(), 1);
+}
+
 #[test]
 fn headless_ui_bindings_callbacks_and_navigation_flows() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -255,4 +284,5 @@ fn headless_ui_bindings_callbacks_and_navigation_flows() {
     verify_extensions_and_shelves(&ui);
     verify_home_shelves(&ui);
     verify_updates_flow(&ui);
+    verify_performance_card(&ui);
 }

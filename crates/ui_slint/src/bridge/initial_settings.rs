@@ -3,6 +3,7 @@
 use app_services::UiServices;
 use player_api::all_languages;
 
+use super::performance_callbacks::show_performance;
 use super::preference_callbacks::apply_player_language_preferences;
 use super::subtitle_languages::show_subtitle_languages;
 use crate::posters::string_model;
@@ -11,11 +12,17 @@ use crate::CloudStream;
 /// Copies every saved setting into the window's properties and the player.
 pub(crate) fn apply_settings_to_ui(ui: &CloudStream, services: &UiServices) {
     apply_switches(ui, services);
-    apply_cache_choices(ui, services);
-    apply_storage_and_workers(ui, services);
+    show_tuning_values(ui, services);
+    show_performance(ui, services);
     apply_languages(ui, services);
     apply_player_language_preferences(services);
     ui.set_update_label("Updates not checked yet".into());
+}
+
+/// Shows the video cache, storage limit and plugin process limit in force, with their choices.
+pub(crate) fn show_tuning_values(ui: &CloudStream, services: &UiServices) {
+    apply_cache_choices(ui, services);
+    apply_storage_and_workers(ui, services);
 }
 
 fn apply_switches(ui: &CloudStream, services: &UiServices) {

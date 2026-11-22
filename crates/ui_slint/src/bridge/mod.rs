@@ -28,6 +28,7 @@ mod home_expanded;
 mod home_loading;
 mod initial_settings;
 mod library_actions;
+mod performance_callbacks;
 mod playback_reactions;
 mod player_callbacks;
 mod player_feedback;

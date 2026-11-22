@@ -14,6 +14,7 @@ mod episode_groups;
 mod feedback_text;
 mod focus_grid;
 mod pagination;
+mod performance_text;
 mod playback_watch;
 mod plugin_filter;
 mod posters;
