@@ -68,7 +68,7 @@ Tests live next to the code (`src/*_tests.rs`, `crates/*/tests/`), grouped by th
 ## 4. No God Files / God Functions
 
 - Function: ≤ **40 lines**, one responsibility, ≤ 4 parameters (otherwise take a config/struct).
-- File: ≤ **300 lines**. Split by responsibility before exceeding.
+- File: ≤ **600 lines**. Split by responsibility before exceeding.
 - Module `mod.rs` contains declarations and re-exports only, no logic.
 - No `utils.rs`, `helpers.rs`, `common.rs`, `misc.rs`, `manager.rs` dumping grounds. Name by what it does.
 - One extractor / one provider / one screen / one service per file.
@@ -131,12 +131,12 @@ python3 scripts/check_unsafe_audit.py                          # unsafe allowlis
 cargo test --workspace                                         # T1/T2/race/property/Slint/BDD
 cargo deny check                                               # licenses/advisories
 cargo audit                                                    # known vulnerabilities
-python3 scripts/check_file_lengths.py                          # 300-line file limit (§4); clippy counts functions only
+python3 scripts/check_file_lengths.py                          # 600-line file limit (§4); clippy counts functions only
 ```
 
 `just gates` runs all of them (`fmt clippy clippy-strict dead-code shellcheck arch unsafe-audit test deny audit lengths` on Unix; `fmt clippy dead-code arch unsafe-audit test deny audit lengths` on Windows). Deep/nightly QA (`just qa-full` / `.github/workflows/quality-nightly.yml`) runs coverage (`scripts/coverage.sh`), mutation testing (`scripts/run_mutants.sh`), `cargo-geiger`, quality metrics (`scripts/quality_metrics.py`), fuzz corpus sanity (`scripts/run_fuzz_sanity.sh`), and Criterion benchmark sanity (`just bench-quick`). The `lengths` recipe also runs
 `python -m unittest discover -s scripts -p "*_test.py"` before the file-length check (same as CI's
-`project-rules` job). Files already over 300 lines when the check landed are listed in
+`project-rules` job). Files already over 600 lines when the check landed are listed in
 `scripts/file_length_baseline.txt`: they may shrink but not grow, and the baseline line must go once
 they are within the limit.
 

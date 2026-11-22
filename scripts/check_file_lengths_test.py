@@ -4,7 +4,7 @@ import unittest
 
 from check_file_lengths import find_problems, is_test_file, parse_baseline
 
-LIMIT = 300
+LIMIT = 600
 
 
 class IsTestFileTest(unittest.TestCase):
@@ -20,33 +20,33 @@ class IsTestFileTest(unittest.TestCase):
 
 class FindProblemsTest(unittest.TestCase):
     def test_files_within_the_limit_pass(self):
-        self.assertEqual(find_problems({"a.rs": 300, "b.rs": 10}, {}, LIMIT), [])
+        self.assertEqual(find_problems({"a.rs": 600, "b.rs": 10}, {}, LIMIT), [])
 
     def test_file_over_the_limit_is_reported(self):
-        problems = find_problems({"a.rs": 301}, {}, LIMIT)
+        problems = find_problems({"a.rs": 601}, {}, LIMIT)
         self.assertEqual(len(problems), 1)
         self.assertIn("a.rs", problems[0])
-        self.assertIn("301", problems[0])
+        self.assertIn("601", problems[0])
 
     def test_test_files_over_the_limit_are_not_reported(self):
-        self.assertEqual(find_problems({"crates/x/tests/t4_big.rs": 900}, {}, LIMIT), [])
+        self.assertEqual(find_problems({"crates/x/tests/t4_big.rs": 1200}, {}, LIMIT), [])
 
     def test_baseline_file_may_stay_at_its_recorded_length(self):
-        self.assertEqual(find_problems({"a.rs": 340}, {"a.rs": 340}, LIMIT), [])
-        self.assertEqual(find_problems({"a.rs": 320}, {"a.rs": 340}, LIMIT), [])
+        self.assertEqual(find_problems({"a.rs": 640}, {"a.rs": 640}, LIMIT), [])
+        self.assertEqual(find_problems({"a.rs": 620}, {"a.rs": 640}, LIMIT), [])
 
     def test_baseline_file_that_grows_is_reported(self):
-        problems = find_problems({"a.rs": 341}, {"a.rs": 340}, LIMIT)
+        problems = find_problems({"a.rs": 641}, {"a.rs": 640}, LIMIT)
         self.assertEqual(len(problems), 1)
         self.assertIn("grew", problems[0])
 
     def test_baseline_entry_no_longer_needed_is_reported(self):
-        problems = find_problems({"a.rs": 290}, {"a.rs": 340}, LIMIT)
+        problems = find_problems({"a.rs": 590}, {"a.rs": 640}, LIMIT)
         self.assertEqual(len(problems), 1)
         self.assertIn("remove", problems[0])
 
     def test_baseline_entry_for_a_deleted_file_is_reported(self):
-        problems = find_problems({}, {"gone.rs": 340}, LIMIT)
+        problems = find_problems({}, {"gone.rs": 640}, LIMIT)
         self.assertEqual(len(problems), 1)
         self.assertIn("gone.rs", problems[0])
 

@@ -452,7 +452,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - `scripts/build_release.ps1` (Windows PC):
   - Builds `CloudStream_<ver>_x64-setup.exe` (NSIS via `scripts/windows_installer.nsi`) and `CloudStream_<ver>_x64_portable.exe` into `dist/` (`-Kind installer|portable`).
   - Compiles `app_shell` (`cloudstream.exe`) and `cloudflare_window` (`cloudstream-verify.exe`); stages `libmpv-2.dll`, `vulkan-1.dll`, the sidecar (start script repaired for the `cmd.exe` line limit) and a Java 21 runtime; stops if `vulkan-1.dll` is missing, not x64, or absent from the installer payload or portable payload.
-- `scripts/check_file_lengths.py`: fails on a Rust file outside the tests over 300 lines (clippy only counts functions). Files that were already over are in `scripts/file_length_baseline.txt`: they may shrink, not grow, and their line must go once they are split. Tests: `scripts/check_file_lengths_test.py`.
+- `scripts/check_file_lengths.py`: fails on a Rust file outside the tests over 600 lines (clippy only counts functions). Files that were already over are in `scripts/file_length_baseline.txt`: they may shrink, not grow, and their line must go once they are split. Tests: `scripts/check_file_lengths_test.py`.
 - `scripts/sign_release.sh`: writes `SHA256SUMS` for the release files in a folder, signs it with minisign (`MINISIGN_SECRET_KEY`/`_FILE`, `MINISIGN_PASSWORD`) and checks it against `crates/app_updater/update_signing_key.pub`. The in-app updater refuses releases without it. Run by `release.yml` on tags; by hand see `docs/RELEASING.md`.
 - `scripts/build_release.sh` (Linux PC): builds `CloudStream-<ver>-<x86_64|aarch64>.AppImage` for the PC's CPU from `app_shell` (`cloudstream`); `--install-deps` installs Slint/GTK/X11/Wayland, libmpv, WebKitGTK 4.1 (Cloudflare helper), and JDK 21 tools on Debian/Ubuntu (no Node).
 - `scripts/ci_test_appimage_commit.sh` (Linux PC): runs local CI gates (`fmt`, `clippy`, `deny`, `audit`, file lengths), `cargo test --workspace`, builds the Linux AppImage, and commits.
@@ -672,7 +672,7 @@ flowchart LR
 
 1. **Location**: `crates/app_services/src/`.
 2. **Design Limits**:
-   - Files ≤ 300 lines. Functions ≤ 40 lines, ≤ 4 arguments.
+   - Files ≤ 600 lines. Functions ≤ 40 lines, ≤ 4 arguments.
    - Accept collaborators via traits (`Arc<dyn ProviderGateway>`, stores, `Arc<dyn Clock>`).
    - Log significant lifecycle steps with `tracing::info!` and warnings with `tracing::warn!`.
 3. **Export**: Declare module and re-export in `crates/app_services/src/lib.rs`.
@@ -725,7 +725,7 @@ All code must pass these quality gates before commit:
 |---|---|---|
 | **Formatting** | `cargo fmt --all -- --check` | Standard Rust formatting (`rustfmt.toml`). |
 | **Lints** | `cargo clippy --workspace --all-targets -- -D warnings` | Zero warnings permitted across workspace. |
-| **File Limit** | `python scripts/check_file_lengths.py` | ≤ 300 lines per non-test Rust file (clippy counts functions only). |
+| **File Limit** | `python scripts/check_file_lengths.py` | ≤ 600 lines per non-test Rust file (clippy counts functions only). |
 | **Function Limit**| Clippy `too_many_lines` | ≤ 40 lines per function. |
 | **Parameter Limit**| Clippy `too_many_arguments` | ≤ 4 parameters per function (use structs for more). |
 | **Complexity** | Clippy `cognitive_complexity` | ≤ 10 per function. |

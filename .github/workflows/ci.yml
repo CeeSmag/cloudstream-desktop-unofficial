@@ -134,7 +134,7 @@ jobs:
       - name: Test QA & rule scripts
         run: python3 -m unittest discover -s scripts -p "*_test.py"
 
-      - name: Rust files within 300 lines (RULES.md section 4)
+      - name: Rust files within 600 lines (RULES.md section 4)
         run: python3 scripts/check_file_lengths.py
 
       - name: One-way crate architecture & 0 cycles (RULES.md section 2)

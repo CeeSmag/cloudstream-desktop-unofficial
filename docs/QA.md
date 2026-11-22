@@ -17,7 +17,7 @@ See also:
 | **Clippy (Linux / Windows)** | `cargo clippy --workspace --all-targets -- -D warnings` (`-A clippy::cognitive_complexity` with Wayland on Linux; strict with `--no-default-features`) | Lints, zero panics/unwraps, complexity | Every commit / PR |
 | **Unused Deps & Docs** | `scripts/check_dead_code.sh` | `cargo-machete` + `-D rustdoc::broken_intra_doc_links` | Every commit / PR |
 | **Architecture & Unsafe** | `python3 scripts/check_architecture.py` & `python3 scripts/check_unsafe_audit.py` | One-way crate graph, 0 cycles, `RULES.md` §8 unsafe allowlist + `// SAFETY:` | Every commit / PR |
-| **File Lengths & Scripts** | `python3 scripts/check_file_lengths.py` & `shellcheck scripts/*.sh` | 300-line production cap, script unit tests, shell hygiene | Every commit / PR |
+| **File Lengths & Scripts** | `python3 scripts/check_file_lengths.py` & `shellcheck scripts/*.sh` | 600-line production cap, script unit tests, shell hygiene | Every commit / PR |
 | **Supply Chain** | `cargo deny check` & `cargo audit` | License allowlist (`deny.toml`), advisories, yanked crates | Every commit / PR |
 | **T1 / T2 / Race / Prop / Slint / BDD** | `cargo test --workspace` (or `cargo nextest run --workspace`) | Unit, integration, deterministic race, `proptest`, headless Slint render/constraints/interaction, Cucumber `.feature` journeys | Every commit / PR |
 | **Coverage** | `scripts/coverage.sh` | `cargo-llvm-cov` line/branch/function report (`target/coverage/`) + per-crate thresholds | Nightly / Pre-release |

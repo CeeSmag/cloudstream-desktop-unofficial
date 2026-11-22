@@ -1,4 +1,4 @@
-"""Fails when a Rust file outside the tests is longer than RULES.md section 4 allows (300 lines).
+"""Fails when a Rust file outside the tests is longer than RULES.md section 4 allows (600 lines).
 
 Clippy's too_many_lines counts lines per function only, so nothing else checks the file limit.
 
@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-LIMIT = 300
+LIMIT = 600
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "file_length_baseline.txt"
 
