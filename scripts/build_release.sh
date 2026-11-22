@@ -160,6 +160,12 @@ cp -rf "$SIDECAR_DIST" "$APPDIR/usr/bin/sidecar"
 chmod +x "$APPDIR/usr/bin/sidecar/bin/cs-sidecar"
 cp -rf "$(get_jre)" "$APPDIR/usr/jre"
 ln -s ../jre "$APPDIR/usr/bin/jre"
+# A system monitor names a process after the file it was started as, and a symlink keeps its own name:
+# start the plugin JVM through "cloudstream-jvm" so every CloudStream process starts with "cloudstream"
+# (the WebKit processes of the verification window keep WebKit's fixed names, under cloudstream-verify).
+ln -s java "$APPDIR/usr/jre/bin/cloudstream-jvm"
+sed -i 's|\$JAVA_HOME/bin/java|$JAVA_HOME/bin/cloudstream-jvm|' "$APPDIR/usr/bin/sidecar/bin/cs-sidecar"
+grep -q 'bin/cloudstream-jvm' "$APPDIR/usr/bin/sidecar/bin/cs-sidecar" || die "the sidecar start script does not name the JVM as expected."
 MPV_DIR=""
 for d in "/usr/lib/$GNU_DIR" /usr/lib /usr/lib64; do [ -f "$d/libmpv.so.2" ] && MPV_DIR="$d" && break; done
 [ -n "$MPV_DIR" ] || die "libmpv.so.2 not found (install libmpv2)."

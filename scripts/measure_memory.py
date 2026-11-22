@@ -196,7 +196,7 @@ def role_of(process_name: str) -> str:
     name = process_name.lower()
     if any(marker in name for marker in BROWSER_HELPER_MARKERS):
         return "browser_helper"
-    if name.startswith("java"):
+    if name.startswith(("java", "cloudstream-jvm")):
         return "jvm"
     if name.startswith("cloudstream"):
         return "app"

@@ -55,6 +55,7 @@ class RoleTests(unittest.TestCase):
         self.assertEqual(mm.role_of("cloudstream"), "app")
         self.assertEqual(mm.role_of("java"), "jvm")
         self.assertEqual(mm.role_of("java.exe"), "jvm")
+        self.assertEqual(mm.role_of("cloudstream-jvm"), "jvm")
         self.assertEqual(mm.role_of("cloudstream-verify"), "browser_helper")
         self.assertEqual(mm.role_of("WebKitWebProcess"), "browser_helper")
         self.assertEqual(mm.role_of("msedgewebview2.exe"), "browser_helper")

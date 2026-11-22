@@ -32,6 +32,22 @@ For the JVM breakdown, run a measurement build with `-XX:NativeMemoryTracking=su
 `jcmd <pid> VM.native_memory summary`. To settle software versus hardware decoding, read
 `hwdec-current` from `logs/debug/player-logs.jsonl` (logged once, 30 s into a stream).
 
+## Process names in a system monitor
+
+On Linux a process is named after the file it was started as (the AppImage starts the plugin JVM through
+a `cloudstream-jvm` symlink to `java`, see `scripts/build_release.sh`), cut to 15 characters. Everything
+of CloudStream is under the `cloudstream` process:
+
+| Name | What |
+|---|---|
+| `cloudstream` | the app and its player (libmpv is loaded inside it) |
+| `cloudstream-jvm` | one per resident plugin (the Windows build still shows `java.exe`) |
+| `cloudstream-ver` | the Cloudflare verification helper, only after a site asked for a check |
+| `WebKitWebProces` | one per helper window, a child of the helper; WebKit starts these itself from a fixed path and name, so they cannot carry the prefix |
+| `WebKitNetworkPr` | one for the helper, same |
+
+Use the tree view to see the total, and PSS (not RSS) to avoid counting shared pages once per process.
+
 ## Nightly check
 
 `.github/workflows/quality-nightly.yml` job `player-memory` installs libmpv and ffmpeg, generates a
