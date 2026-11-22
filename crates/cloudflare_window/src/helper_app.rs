@@ -109,19 +109,31 @@ impl HelperState {
             HelperCommand::Show { id, .. } => self.show(&id, false),
             HelperCommand::Activate { id, .. } => self.show(&id, true),
             HelperCommand::Cancel { id } => {
-                if let Some(site) = self.sites.get_mut(&id) {
-                    site.close("verification was cancelled", &self.outbox);
+                if let Some(key) = self.key_holding(&id) {
+                    if let Some(site) = self.sites.get_mut(&key) {
+                        site.retire(&id, "verification was cancelled", &self.outbox);
+                    }
+                    self.retain_context(&key);
                 }
-                self.retain_context(&id);
             }
             HelperCommand::Quit => {}
         }
     }
 
     fn show(&mut self, id: &str, activate: bool) {
-        if let Some(site) = self.sites.get_mut(id) {
-            site.show(activate);
+        if let Some(key) = self.key_holding(id) {
+            if let Some(site) = self.sites.get_mut(&key) {
+                site.show(activate);
+            }
         }
+    }
+
+    /// The window that answers request `id`, whether it owns the check or waits with it.
+    fn key_holding(&self, id: &str) -> Option<String> {
+        self.sites
+            .iter()
+            .find(|(_, site)| site.holds(id))
+            .map(|(key, _)| key.clone())
     }
 
     fn verify(
@@ -141,6 +153,13 @@ impl HelperState {
                 &request,
                 "this verification request cannot be opened as a browser GET".to_owned(),
             );
+            return;
+        }
+        if let Some(site) = self.sites.values_mut().find(|site| site.joins(&request)) {
+            site.join(request.clone());
+            if present {
+                self.show(&request.id, false);
+            }
             return;
         }
         let parts = WindowParts {

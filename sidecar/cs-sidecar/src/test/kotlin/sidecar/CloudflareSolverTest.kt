@@ -149,8 +149,8 @@ class CloudflareSolverTest {
                 .header("server", "cloudflare").header("cf-mitigated", "challenge").body("Just a moment...".toResponseBody()).build()
         }.build()
 
-    private fun get(client: OkHttpClient, host: String = "site.test"): Pair<Int, String> =
-        client.newCall(Request.Builder().url("https://$host/api").build()).execute().use { it.code to it.body.string() }
+    private fun get(client: OkHttpClient, host: String = "site.test", path: String = "/api"): Pair<Int, String> =
+        client.newCall(Request.Builder().url("https://$host$path").build()).execute().use { it.code to it.body.string() }
 
     @Test
     fun `a challenge is passed through the app and the request repeated`() {
@@ -379,5 +379,100 @@ class CloudflareSolverTest {
         assertEquals(200, get(shared, "two.test").first)
         app.stop()
         assertEquals(2, app.verified.get())
+    }
+
+    @Test
+    fun `many requests to different paths of one host cost one verification`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val shared = client()
+        val results = CopyOnWriteArrayList<Int>()
+        val start = CountDownLatch(1)
+        val workers = (1..12).map { n -> thread { start.await(); results.add(get(shared, path = "/file-$n").first) } }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(12, results.size, "every request finishes")
+        assertTrue(results.all { it == 200 }, "every request ends with the content: $results")
+        assertEquals(1, app.verified.get(), "one verification for all of them, whatever their paths")
+    }
+
+    @Test
+    fun `a clearance is used for other paths of its origin without asking again`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val shared = client()
+        assertEquals(200, get(shared, path = "/first").first)
+        assertEquals(200, get(shared, path = "/second").first)
+        assertEquals(200, get(shared, path = "/third?x=1").first)
+        app.stop()
+        assertEquals(1, app.verified.get())
+    }
+
+    @Test
+    fun `concurrent requests to several origins cost one verification each`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val shared = client()
+        val start = CountDownLatch(1)
+        val workers = (1..18).map { n ->
+            thread { start.await(); get(shared, host = "site${n % 3}.test", path = "/p$n") }
+        }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(3, app.verified.get(), "one per origin")
+    }
+
+    @Test
+    fun `an answer that says the browser was not challenged skips the doomed cookie retry`() {
+        val app = FakeApp(exchange, listOf("ok=true\nuserAgent=Agent/9\ntransport=browser\n"), listOf(browserAnswer))
+        val overConnection = AtomicInteger()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                overConnection.incrementAndGet()
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(403).message("m")
+                    .header("server", "cloudflare").header("cf-mitigated", "challenge")
+                    .body("Just a moment...".toResponseBody()).build()
+            }.build()
+        assertEquals("from the browser", get(client, path = "/one").second)
+        assertEquals("from the browser", get(client, path = "/two").second)
+        app.stop()
+        assertEquals(1, app.verified.get())
+        assertEquals(1, overConnection.get(), "only the first request is made over this connection")
+        assertEquals(2, app.fetched.get())
+    }
+
+    @Test
+    fun `an origin that neither the cookies nor the browser window can reach is declined once`() {
+        val gone = "ok=false\ngone=true\nreason=no window for site.test\n"
+        val app = FakeApp(exchange, listOf(passed), listOf(gone))
+        val first = assertFailsWith<IOException> { get(pickyClient(), path = "/one") }
+        val verifiedAfterFirst = app.verified.get()
+        val fetchedAfterFirst = app.fetched.get()
+        val later = (2..6).map { n -> assertFailsWith<IOException> { get(pickyClient(), path = "/page-$n") } }
+        app.stop()
+        assertTrue(first.message.orEmpty().contains("cannot be reached"), first.message)
+        assertTrue(later.all { it.message.orEmpty().contains("cannot be reached") }, "later requests say why: $later")
+        assertEquals(verifiedAfterFirst, app.verified.get(), "later requests make no round trip to the app")
+        assertEquals(fetchedAfterFirst, app.fetched.get(), "and no browser fetch")
+    }
+
+    @Test
+    fun `a clearance is never sent to an origin other than its own`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val shared = client()
+        assertEquals(200, get(shared, host = "one.test", path = "/a").first)
+        val seen = AtomicReference<String?>("not seen")
+        val other = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                seen.set(chain.request().header("Cookie"))
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("m")
+                    .body("ok".toResponseBody()).build()
+            }.build()
+        assertEquals(200, get(other, host = "two.test", path = "/a").first)
+        app.stop()
+        assertNull(seen.get(), "one.test's cookie does not reach two.test")
     }
 }

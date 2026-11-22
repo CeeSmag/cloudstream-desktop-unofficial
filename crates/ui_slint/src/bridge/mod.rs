@@ -10,6 +10,7 @@ mod catalog_callbacks;
 mod catalog_events;
 mod cloudflare_callbacks;
 mod cloudflare_drain;
+mod cloudflare_prompts;
 mod debug_logging;
 mod details_artwork;
 mod details_callbacks;

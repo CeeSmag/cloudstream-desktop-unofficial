@@ -18,6 +18,7 @@ use std::time::Duration;
 use crate::exchange::{pending_requests, write_result, Outcome, VerifyRequest};
 use crate::fetch_exchange::{pending_fetches, write_fetch_result, FetchOutcome};
 use crate::helper_protocol::HelperStatus;
+use crate::prompt_owners::PromptOwners;
 use crate::verify_helper::{HelperLaunch, VerifyHelper};
 use crate::watch_requests::PendingRequest;
 use crate::{AllowedHosts, CloudflareEvent};
@@ -149,6 +150,8 @@ pub(super) struct Watcher<'a> {
     seen_requests: HashSet<String>,
     seen_fetches: HashSet<String>,
     pub(super) requests: HashMap<String, PendingRequest>,
+    pub(super) owners: PromptOwners,
+    pub(super) promotions: Vec<String>,
 }
 
 fn run_loop(
@@ -172,6 +175,8 @@ fn run_loop(
         seen_requests: HashSet::new(),
         seen_fetches: HashSet::new(),
         requests: HashMap::new(),
+        owners: PromptOwners::default(),
+        promotions: Vec::new(),
     };
     while !flags.stop.load(Ordering::SeqCst) {
         watcher.tick(commands, &statuses);
@@ -192,6 +197,9 @@ impl Watcher<'_> {
             self.viewer_action(action);
         }
         self.answer_orphan_fetches();
+        for id in std::mem::take(&mut self.promotions) {
+            self.promote(&id);
+        }
     }
 
     fn answer_orphan_fetches(&mut self) {
@@ -217,7 +225,14 @@ impl Watcher<'_> {
         }
     }
 
+    /// Sends `event` to the UI, unless it belongs to a request that waits quietly behind its origin's prompt.
     pub(super) fn emit(&self, event: CloudflareEvent) {
+        if event
+            .request_id()
+            .is_some_and(|id| self.owners.is_quiet(id))
+        {
+            return;
+        }
         if self.events.send(event).is_err() {
             tracing::debug!("the UI no longer listens to Cloudflare events");
         }

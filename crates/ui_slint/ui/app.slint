@@ -129,6 +129,8 @@ export component CloudStream inherits Window {
     in-out property <string> cf-host: "";
     in-out property <string> cf-message: "";
     in-out property <bool> cf-can-retry;
+    // How many more sites wait behind the check the banner shows.
+    in-out property <int> cf-more: 0;
     in-out property <int> settings-page-index: 0;
     in-out property <bool> debug-indicator-hovered: false;
     in-out property <int> diagnostics-focus-request: 0;
@@ -378,6 +380,7 @@ export component CloudStream inherits Window {
                 host: root.cf-host;
                 message: root.cf-message;
                 can-retry: root.cf-can-retry;
+                more: root.cf-more;
                 verify => { cf-verify(); }
                 dismiss => { cf-dismiss(); }
             }

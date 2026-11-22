@@ -24,6 +24,24 @@ impl Outbox {
         })
     }
 
+    /// Answers one request and says how it went, for the status the app is told.
+    pub(crate) fn deliver(&self, request: &VerifyRequest, outcome: &Outcome) -> HelperStatus {
+        let (host, id) = (request.host.clone(), request.id.clone());
+        match (outcome, self.answer(request, outcome)) {
+            (_, Err(reason)) => HelperStatus::Failed { host, id, reason },
+            (Outcome::Declined(reason) | Outcome::Waiting(reason), Ok(())) => {
+                HelperStatus::Failed {
+                    host,
+                    id,
+                    reason: reason.clone(),
+                }
+            }
+            (Outcome::Passed { .. } | Outcome::BrowserClear { .. }, Ok(())) => {
+                HelperStatus::Passed { host, id }
+            }
+        }
+    }
+
     /// Hands a browser fetch's outcome to the sidecar.
     pub(crate) fn fetch_result(&self, id: &str, outcome: &FetchOutcome) {
         if let Err(error) = write_fetch_result(&self.exchange, id, outcome) {

@@ -27,6 +27,14 @@ pub struct VerifyRequest {
 }
 
 impl VerifyRequest {
+    /// The scheme, host and port of the challenged address. Cloudflare's clearance, the viewer's prompt
+    /// and the browser document all belong to this, not to a request: requests that share it share one check.
+    pub fn origin_key(&self) -> Option<String> {
+        Url::parse(&self.url)
+            .ok()
+            .map(|url| url.origin().ascii_serialization())
+    }
+
     /// The viewer's browser may open only a credential-free GET for the exact host.
     pub fn can_navigate(&self) -> bool {
         self.method == "GET"
@@ -50,6 +58,12 @@ pub enum Outcome {
         user_agent: String,
         /// Every cookie the browser holds for the site.
         cookies: Vec<(String, String)>,
+    },
+    /// The browser was not challenged, so there are no cookies to give: the sidecar reaches this origin
+    /// through the browser document (`transport=browser` in the result file).
+    BrowserClear {
+        /// The `User-Agent` of the browser that was let through.
+        user_agent: String,
     },
     /// Nothing was passed (window closed, time ran out, window could not open).
     Declined(String),
@@ -91,6 +105,10 @@ pub fn format_result(outcome: &Outcome) -> String {
         Outcome::Waiting(reason) => format!(
             "ok=false\nreason={}\nretry=true\n",
             reason.replace('\n', " ")
+        ),
+        Outcome::BrowserClear { user_agent } => format!(
+            "ok=true\nuserAgent={}\ntransport=browser\n",
+            user_agent.replace('\n', " ")
         ),
         Outcome::Passed {
             user_agent,
@@ -200,6 +218,32 @@ mod tests {
             format_result(&Outcome::Declined("closed".into())),
             "ok=false\nreason=closed\n"
         );
+    }
+
+    #[test]
+    fn requests_for_different_paths_of_one_origin_share_its_key() {
+        let at = |url: &str| VerifyRequest {
+            id: "a".into(),
+            host: "site.test".into(),
+            url: url.into(),
+            method: "GET".into(),
+            standalone: false,
+        };
+        let key = at("https://site.test/one?x=1").origin_key();
+        assert_eq!(key, at("https://site.test/two/three").origin_key());
+        assert_eq!(key, at("https://site.test:443/").origin_key());
+        assert_ne!(key, at("http://site.test/one").origin_key());
+        assert_ne!(key, at("https://site.test:8443/one").origin_key());
+        assert_ne!(key, at("https://cdn.site.test/one").origin_key());
+        assert_eq!(at("not a url").origin_key(), None);
+    }
+
+    #[test]
+    fn a_browser_that_was_not_challenged_hands_over_no_cookies() {
+        let text = format_result(&Outcome::BrowserClear {
+            user_agent: "Agent/1".into(),
+        });
+        assert_eq!(text, "ok=true\nuserAgent=Agent/1\ntransport=browser\n");
     }
 
     #[test]

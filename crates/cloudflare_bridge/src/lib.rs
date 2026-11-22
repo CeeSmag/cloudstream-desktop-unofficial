@@ -11,9 +11,11 @@ mod allowed_hosts;
 mod exchange;
 mod fetch_exchange;
 mod helper_protocol;
+mod prompt_owners;
 mod verify_helper;
 mod watch;
 mod watch_event;
+mod watch_expiry;
 mod watch_requests;
 
 pub use allowed_hosts::AllowedHosts;

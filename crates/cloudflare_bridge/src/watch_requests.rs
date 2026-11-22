@@ -1,10 +1,13 @@
-//! Request identity, expiry, and viewer actions for the exchange watcher.
+//! Request identity, routing and viewer actions for the exchange watcher.
+//!
+//! Requests are answered one by one (each has its own result file), but the viewer is asked once per
+//! origin: the first request of an origin owns the prompt, the others are quiet (`prompt_owners`).
 
 use std::time::{Duration, Instant};
 
-use crate::{CloudflareEvent, HelperCommand, HelperStatus, Outcome, VerifyHelper, VerifyRequest};
+use crate::{CloudflareEvent, HelperCommand, Outcome, VerifyRequest};
 
-use super::watch::{answer, published_status, ViewerAction, Watcher};
+use super::watch::{answer, ViewerAction, Watcher};
 
 const REQUEST_TIME: Duration = Duration::from_secs(4 * 60);
 
@@ -17,13 +20,13 @@ pub(super) enum RequestStage {
 }
 
 pub(super) struct PendingRequest {
-    request: VerifyRequest,
-    stage: RequestStage,
-    expires: Instant,
+    pub(super) request: VerifyRequest,
+    pub(super) stage: RequestStage,
+    pub(super) expires: Instant,
 }
 
 impl PendingRequest {
-    fn new(request: VerifyRequest, stage: RequestStage) -> Self {
+    pub(super) fn new(request: VerifyRequest, stage: RequestStage) -> Self {
         Self {
             request,
             stage,
@@ -31,11 +34,11 @@ impl PendingRequest {
         }
     }
 
-    fn matches(&self, host: &str) -> bool {
+    pub(super) fn matches(&self, host: &str) -> bool {
         self.request.host == host
     }
 
-    fn live(&self, exchange: &std::path::Path) -> bool {
+    pub(super) fn live(&self, exchange: &std::path::Path) -> bool {
         Instant::now() < self.expires
             && (self.request.standalone
                 || self.stage == RequestStage::Retry
@@ -48,15 +51,25 @@ impl PendingRequest {
 impl Watcher<'_> {
     pub(super) fn route(&mut self, request: VerifyRequest) {
         tracing::debug!(host = %request.host, id = %request.id, "verification request arrived");
-        if !request.can_navigate() {
+        let Some(origin) = request
+            .can_navigate()
+            .then(|| request.origin_key())
+            .flatten()
+        else {
             self.refuse(
                 request,
                 "this verification request cannot be opened as a browser GET",
                 false,
             );
-        } else if self.allowed.is_allowed(&request.host) {
+            return;
+        };
+        if self.allowed.is_allowed(&request.host) {
+            self.owners.join(&origin, &request.id);
             self.launch(request, false);
+        } else if self.owners.has_owner(&origin) {
+            self.defer(&request);
         } else {
+            self.owners.join(&origin, &request.id);
             let event = CloudflareEvent::NeedsPermission {
                 host: request.host.clone(),
                 id: request.id.clone(),
@@ -67,6 +80,17 @@ impl Watcher<'_> {
             );
             self.emit(event);
         }
+    }
+
+    /// An earlier request of this origin already asks the viewer, so this one fails at once (the
+    /// sidecar asks again next time) instead of holding a plugin thread until the viewer answers.
+    fn defer(&self, request: &VerifyRequest) {
+        tracing::debug!(host = %request.host, id = %request.id, "the viewer is already asked about this site; this request fails at once");
+        let reason = format!(
+            "{} needs a quick check; press Verify in CloudStream",
+            request.host
+        );
+        answer(&self.dir, &request.id, &Outcome::Waiting(reason));
     }
 
     pub(super) fn viewer_action(&mut self, action: ViewerAction) {
@@ -138,7 +162,13 @@ impl Watcher<'_> {
         }
     }
 
+    /// The viewer dismissed the prompt: the owner and every request that waited behind it are retired.
     fn dismiss(&mut self, id: &str) {
+        for follower in self.owners.dissolve(id) {
+            if let Some(entry) = self.requests.remove(&follower) {
+                self.expire(entry);
+            }
+        }
         if let Some(entry) = self.requests.remove(id) {
             self.expire(entry);
         }
@@ -174,7 +204,7 @@ impl Watcher<'_> {
         }
     }
 
-    fn refuse(&mut self, request: VerifyRequest, reason: &str, retry: bool) {
+    pub(super) fn refuse(&mut self, request: VerifyRequest, reason: &str, retry: bool) {
         if !request.standalone {
             answer(
                 &self.dir,
@@ -182,119 +212,34 @@ impl Watcher<'_> {
                 &Outcome::Declined(reason.to_owned()),
             );
         }
+        let quiet = self.owners.is_quiet(&request.id);
         let event = CloudflareEvent::Failed {
             host: request.host.clone(),
             id: request.id.clone(),
             reason: reason.to_owned(),
             retry,
         };
-        if retry {
+        self.emit(event);
+        self.owners.finish(&request.id);
+        if retry && !quiet {
             self.requests.insert(
                 request.id.clone(),
                 PendingRequest::new(request, RequestStage::Retry),
             );
         }
-        self.emit(event);
     }
 
-    pub(super) fn browser_status(&mut self, status: HelperStatus) {
-        let (host, id) = match &status {
-            HelperStatus::WindowOpen { .. } => return,
-            HelperStatus::Passed { host, id } | HelperStatus::Failed { host, id, .. } => (host, id),
-        };
-        let valid = self.requests.get(id).is_some_and(|entry| {
-            entry.matches(host)
-                && matches!(
-                    entry.stage,
-                    RequestStage::Helper(_) | RequestStage::Withdrawing(_)
-                )
-        });
-        if !valid {
+    /// A follower now speaks for its origin: the banner learns that the check goes on.
+    pub(super) fn promote(&mut self, id: &str) {
+        let Some(entry) = self.requests.get(id) else {
             return;
+        };
+        if matches!(entry.stage, RequestStage::Helper(_)) {
+            let event = CloudflareEvent::Verifying {
+                host: entry.request.host.clone(),
+                id: id.to_owned(),
+            };
+            self.emit(event);
         }
-        if let Some(entry) = self.requests.remove(id) {
-            if matches!(status, HelperStatus::Failed { .. }) {
-                if matches!(entry.stage, RequestStage::Withdrawing(_)) {
-                    self.emit(CloudflareEvent::Dismissed { id: id.clone() });
-                    return;
-                }
-                self.requests.insert(
-                    id.clone(),
-                    PendingRequest::new(entry.request, RequestStage::Retry),
-                );
-            }
-            self.emit(status.into());
-        }
-    }
-
-    pub(super) fn expire_requests(&mut self) {
-        let pid = self.helper.as_mut().and_then(VerifyHelper::pid);
-        for (id, mut entry) in std::mem::take(&mut self.requests) {
-            match entry.stage {
-                RequestStage::Helper(owner) if pid == Some(owner) => {
-                    if !entry.live(&self.dir) {
-                        self.cancel(id.clone(), owner);
-                        entry.stage = RequestStage::Withdrawing(owner);
-                    }
-                    self.requests.insert(id, entry);
-                }
-                RequestStage::Withdrawing(owner) if pid == Some(owner) => {
-                    self.requests.insert(id, entry);
-                }
-                RequestStage::Helper(_) | RequestStage::Withdrawing(_) => self.helper_exited(entry),
-                _ if entry.live(&self.dir) => {
-                    self.requests.insert(id, entry);
-                }
-                _ => self.expire(entry),
-            }
-        }
-    }
-
-    fn helper_exited(&mut self, entry: PendingRequest) {
-        let request = &entry.request;
-        match published_status(&self.dir, request) {
-            Ok(Some(status)) => {
-                self.requests.insert(request.id.clone(), entry);
-                self.browser_status(status);
-            }
-            // A waiting sidecar removes the request before removing the result.
-            // Check liveness after checking for the published result.
-            Ok(None) if matches!(entry.stage, RequestStage::Helper(_)) && entry.live(&self.dir) => {
-                self.refuse(
-                    entry.request,
-                    "the verification browser exited before answering",
-                    true,
-                );
-            }
-            Ok(None) => self.expire(entry),
-            Err(error) => {
-                tracing::warn!(id = %request.id, %error, "could not read the published verification result");
-                let status = HelperStatus::Failed {
-                    host: request.host.clone(),
-                    id: request.id.clone(),
-                    reason: "the verification result could not be read".to_owned(),
-                };
-                self.requests.insert(request.id.clone(), entry);
-                self.browser_status(status);
-            }
-        }
-    }
-
-    fn expire(&mut self, entry: PendingRequest) {
-        let id = entry.request.id;
-        match entry.stage {
-            RequestStage::Permission => {
-                if self.dir.join(format!("request-{id}.txt")).is_file() {
-                    answer(
-                        &self.dir,
-                        &id,
-                        &Outcome::Waiting("verification was dismissed".to_owned()),
-                    );
-                }
-            }
-            RequestStage::Helper(pid) => self.cancel(id.clone(), pid),
-            RequestStage::Retry | RequestStage::Withdrawing(_) => {}
-        }
-        self.emit(CloudflareEvent::Dismissed { id });
     }
 }

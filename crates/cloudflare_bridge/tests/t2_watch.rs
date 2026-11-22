@@ -33,11 +33,12 @@ while IFS="$(printf '\t')" read -r kind id host url method standalone; do
     verify|present) printf 'open\t%s\t%s\n' "$host" "$id"
             case "$id" in
               failed-first) printf 'failed\t%s\t%s\tfixture failure\n' "$host" "$id";;
-              first|app-retry-*) ;;
+              first|app-retry-*|hold-*) ;;
               second) finish "$id" "$host"; finish "first" "$host";;
               committed) publish "$id"; exit 1;;
               *) finish "$id" "$host";;
             esac;;
+    cancel) printf 'failed\tsite.test\t%s\tcancelled\n' "$id";;
     quit) exit 0;;
   esac
 done"#,
@@ -86,6 +87,46 @@ fn collect_passed(watch: &WatchHandle, total: usize) -> Vec<String> {
     passed
 }
 
+/// The next event that `pick` accepts; others (permission grants and the like) are skipped.
+fn next_matching<T>(watch: &WatchHandle, pick: impl Fn(&CloudflareEvent) -> Option<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(4);
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let event = watch
+            .events
+            .recv_timeout(remaining)
+            .expect("expected event");
+        if let Some(found) = pick(&event) {
+            return found;
+        }
+    }
+}
+
+/// Waits until the helper has been told about every request, so the watcher has routed them all.
+fn wait_forwarded(dir: &Path, ids: &[String]) {
+    for id in ids {
+        let marker = dir.join(format!("verify-{id}.received"));
+        assert!(
+            wait_for_file(&marker, Duration::from_secs(3)).is_some(),
+            "{id} reached the helper"
+        );
+    }
+}
+
+fn verifying_id(event: &CloudflareEvent) -> Option<String> {
+    match event {
+        CloudflareEvent::Verifying { id, .. } => Some(id.clone()),
+        _ => None,
+    }
+}
+
+fn dismissed_id(event: &CloudflareEvent) -> Option<String> {
+    match event {
+        CloudflareEvent::Dismissed { id } => Some(id.clone()),
+        _ => None,
+    }
+}
+
 #[test]
 fn pending_request_is_answered_when_the_viewer_dismisses_it() {
     let dir = folder("ask");
@@ -118,31 +159,62 @@ fn pending_request_is_answered_when_the_viewer_dismisses_it() {
 }
 
 #[test]
-fn allowed_site_burst_is_verified_by_the_helper_each_request_answered_once() {
+fn a_burst_for_an_allowed_site_reaches_the_helper_whole_while_the_banner_hears_one_check() {
     let dir = folder("burst");
     let watch = spawn_watcher(WatchConfig {
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".to_owned()]),
         helper: Some(fake_helper(&dir)),
     });
-    for index in 0..20 {
-        request(&dir, &format!("b{index}"), "cdn.site.test");
+    let ids: Vec<String> = (0..20).map(|index| format!("hold-b{index}")).collect();
+    for id in &ids {
+        request(&dir, id, "cdn.site.test");
     }
-    for index in 0..20 {
-        let path = dir.join(format!("result-b{index}.txt"));
-        let answer = wait_for_file(&path, Duration::from_secs(5)).expect("answer");
-        assert!(answer.starts_with("ok=true"), "{answer}");
-        assert!(dir.join(format!("verify-b{index}.received")).is_file());
-        assert!(!dir.join(format!("present-b{index}.received")).exists());
+    wait_forwarded(&dir, &ids);
+    for id in &ids {
+        assert!(!dir.join(format!("present-{id}.received")).exists());
     }
-    let passed: std::collections::HashSet<_> = collect_passed(&watch, 20).into_iter().collect();
-    assert_eq!(passed.len(), 20, "one pass per request");
+    let owner = next_matching(&watch, verifying_id);
+    assert!(ids.contains(&owner));
+    assert!(
+        watch
+            .events
+            .recv_timeout(Duration::from_millis(600))
+            .is_err(),
+        "the other 19 requests raise no events"
+    );
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A site the viewer has not allowed: one prompt, the extra request fails at once.
+fn prompt_once_and_defer_the_extra_request(dir: &Path, watch: &WatchHandle) {
+    request(dir, "first", "site.test");
+    assert_eq!(
+        watch
+            .events
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the prompt"),
+        CloudflareEvent::NeedsPermission {
+            host: "site.test".into(),
+            id: "first".into()
+        }
+    );
+    request(dir, "extra", "site.test");
+    let answer =
+        wait_for_file(&dir.join("result-extra.txt"), Duration::from_secs(2)).expect("answer");
+    assert!(
+        answer.contains("ok=false") && answer.contains("retry=true"),
+        "{answer}"
+    );
+    assert!(
+        !dir.join("verify-extra.received").exists(),
+        "it never reaches the helper"
+    );
+}
+
 #[test]
-fn verify_buttons_keep_same_host_requests_separate_when_they_finish_in_reverse_order() {
+fn requests_for_one_site_share_one_prompt_and_the_prompted_request_is_the_one_opened() {
     let dir = folder("now");
     let allowed = AllowedHosts::default();
     let watch = spawn_watcher(WatchConfig {
@@ -150,32 +222,25 @@ fn verify_buttons_keep_same_host_requests_separate_when_they_finish_in_reverse_o
         allowed: allowed.clone(),
         helper: Some(fake_helper(&dir)),
     });
-    request(&dir, "first", "site.test");
-    request(&dir, "second", "site.test");
-    for _ in 0..2 {
-        assert!(matches!(
-            watch.events.recv_timeout(Duration::from_secs(2)),
-            Ok(CloudflareEvent::NeedsPermission { .. })
-        ));
-    }
+    prompt_once_and_defer_the_extra_request(&dir, &watch);
     watch.verify_now("first");
-    watch.verify_now("second");
-    let passed = collect_passed(&watch, 2);
-    assert_eq!(passed, ["second", "first"]);
-    for id in passed {
-        assert_eq!(
-            std::fs::read_to_string(dir.join(format!("present-{id}.received")))
-                .unwrap()
-                .trim(),
-            format!("https://site.test/api/{id}.m3u8")
-        );
-    }
-    watch.show_check("first");
+    assert_eq!(next_matching(&watch, verifying_id), "first");
+    request(&dir, "second", "site.test");
     assert_eq!(
-        watch.events.recv_timeout(Duration::from_secs(2)).unwrap(),
-        CloudflareEvent::Dismissed { id: "first".into() }
+        collect_passed(&watch, 1),
+        ["first"],
+        "the quiet request that finishes with it raises no event"
     );
-    assert!(!dir.join("show-site.test.received").exists());
+    let opened = std::fs::read_to_string(dir.join("present-first.received")).unwrap();
+    assert_eq!(
+        opened.trim(),
+        "https://site.test/api/first.m3u8",
+        "the exact challenged address"
+    );
+    let second = wait_for_file(&dir.join("result-second.txt"), Duration::from_secs(2));
+    assert!(second.expect("second answered").starts_with("ok=true"));
+    watch.show_check("first");
+    assert_eq!(next_matching(&watch, dismissed_id), "first");
     assert!(allowed.is_allowed("site.test"));
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
@@ -299,6 +364,161 @@ fn helper_exit_after_publishing_success_preserves_the_terminal_result() {
         .events
         .recv_timeout(Duration::from_millis(300))
         .is_err());
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_burst_for_an_unapproved_site_asks_the_viewer_once_and_the_rest_fail_at_once() {
+    let dir = folder("unapproved");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::default(),
+        helper: Some(fake_helper(&dir)),
+    });
+    let ids: Vec<String> = (0..5).map(|index| format!("u{index}")).collect();
+    for id in &ids {
+        request(&dir, id, "site.test");
+    }
+    let owner = match watch.events.recv_timeout(Duration::from_secs(2)).unwrap() {
+        CloudflareEvent::NeedsPermission { host, id } => {
+            assert_eq!(host, "site.test");
+            id
+        }
+        other => panic!("expected the one prompt, got {other:?}"),
+    };
+    for id in ids.iter().filter(|id| **id != owner) {
+        let path = dir.join(format!("result-{id}.txt"));
+        let answer = wait_for_file(&path, Duration::from_secs(2)).expect("fails at once");
+        assert!(
+            answer.contains("retry=true"),
+            "asked again next time, not held against the site: {answer}"
+        );
+    }
+    assert!(
+        !dir.join(format!("result-{owner}.txt")).exists(),
+        "the prompted request waits for the viewer"
+    );
+    assert!(
+        watch
+            .events
+            .recv_timeout(Duration::from_millis(600))
+            .is_err(),
+        "one prompt, not five"
+    );
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn when_the_provider_withdraws_the_prompted_request_the_banner_passes_to_the_next_one() {
+    let dir = folder("withdraw");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(["site.test".to_owned()]),
+        helper: Some(fake_helper(&dir)),
+    });
+    let ids: Vec<String> = ["hold-1", "hold-2", "hold-3"].map(String::from).to_vec();
+    for id in &ids {
+        request(&dir, id, "site.test");
+    }
+    wait_forwarded(&dir, &ids);
+    let owner = next_matching(&watch, verifying_id);
+    std::fs::remove_file(dir.join(format!("request-{owner}.txt"))).unwrap();
+    assert_eq!(next_matching(&watch, dismissed_id), owner);
+    let next = next_matching(&watch, verifying_id);
+    assert_ne!(next, owner, "a request that still waits speaks now");
+    assert!(ids.contains(&next));
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn dismissing_the_prompt_retires_every_request_that_waited_behind_it() {
+    let dir = folder("dismiss");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(["site.test".to_owned()]),
+        helper: Some(fake_helper(&dir)),
+    });
+    let ids: Vec<String> = ["hold-1", "hold-2", "hold-3"].map(String::from).to_vec();
+    for id in &ids {
+        request(&dir, id, "site.test");
+    }
+    wait_forwarded(&dir, &ids);
+    let owner = next_matching(&watch, verifying_id);
+    watch.dismiss_check(&owner);
+    assert_eq!(next_matching(&watch, dismissed_id), owner);
+    for id in ids.iter().filter(|id| **id != owner) {
+        let marker = dir.join(format!("cancel-{id}.received"));
+        assert!(
+            wait_for_file(&marker, Duration::from_secs(2)).is_some(),
+            "{id} was cancelled in the helper"
+        );
+    }
+    assert!(
+        watch
+            .events
+            .recv_timeout(Duration::from_millis(600))
+            .is_err(),
+        "and nobody else is shown"
+    );
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Several threads write requests for three sites while the watcher routes them. Whatever the
+/// interleaving, every request is answered, and the banner hears of at most one request per check.
+const WRITERS: usize = 4;
+const PER_WRITER: usize = 30;
+
+/// Writer threads put requests for three sites into the folder at the same time.
+fn write_concurrently(dir: &Path) {
+    let writers: Vec<_> = (0..WRITERS)
+        .map(|writer| {
+            let dir = dir.to_path_buf();
+            std::thread::spawn(move || {
+                for index in 0..PER_WRITER {
+                    let host = ["one.test", "two.test", "three.test"][index % 3];
+                    request(&dir, &format!("s{writer}-{index}"), host);
+                }
+            })
+        })
+        .collect();
+    for writer in writers {
+        writer.join().expect("writer");
+    }
+}
+
+/// Several threads write requests for three sites while the watcher routes them. Whatever the
+/// interleaving, every request is answered, and the banner hears of at most one request per check.
+#[test]
+fn concurrent_requests_for_several_sites_are_all_answered_and_only_owners_speak() {
+    let dir = folder("stress");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(["one.test".into(), "two.test".into(), "three.test".into()]),
+        helper: Some(fake_helper(&dir)),
+    });
+    write_concurrently(&dir);
+    for writer in 0..WRITERS {
+        for index in 0..PER_WRITER {
+            let path = dir.join(format!("result-s{writer}-{index}.txt"));
+            let answer = wait_for_file(&path, Duration::from_secs(10)).expect("answered");
+            assert!(answer.starts_with("ok=true"), "{answer}");
+        }
+    }
+    let mut speakers = std::collections::HashSet::new();
+    while let Ok(event) = watch.events.recv_timeout(Duration::from_millis(800)) {
+        if let CloudflareEvent::Passed { id, .. } = event {
+            assert!(speakers.insert(id), "a request passes once");
+        }
+    }
+    assert!(speakers.len() >= 3, "each site has a request that speaks");
+    assert!(
+        speakers.len() < WRITERS * PER_WRITER,
+        "not every request speaks"
+    );
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
 }

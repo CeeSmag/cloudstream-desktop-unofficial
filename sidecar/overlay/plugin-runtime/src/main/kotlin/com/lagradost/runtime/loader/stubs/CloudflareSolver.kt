@@ -15,7 +15,13 @@ import java.util.concurrent.ConcurrentHashMap
  * A request that comes back as a Cloudflare challenge is not given to the plugin. Instead the app is
  * asked, through small files in [exchangeDir], to open a browser window on the site; when the viewer
  * has passed the check there, the app writes the cookies and the browser's `User-Agent` back, and the
- * effective request is repeated with them. Later requests to that destination carry them from the start.
+ * effective request is repeated with them.
+ *
+ * What is shared is decided by what owns it. A clearance, a "not verified" answer, the one check in
+ * flight and the choice of the browser window all belong to an [Origin] (scheme, host, port), so a page's
+ * dozens of requests to different paths of one site cost one verification. The request file still names the
+ * exact challenged URL (the window opens on it), and a clearance is attached per outbound hop to its own
+ * origin only ([clearanceScope]), so it never reaches a redirect destination.
  *
  * Some sites (AnimePahe among them) do not accept those cookies over this program's own HTTP client:
  * Cloudflare also looks at how the connection is made. For such a site the requests are made by the
@@ -30,11 +36,23 @@ import java.util.concurrent.ConcurrentHashMap
  * File format (one `key=value` per line, no JSON so that no library is needed):
  * - `request-<id>.txt` written here: `id`, `host`, `url`, `method`.
  * - `result-<id>.txt` written by the app: `ok=true|false`, `userAgent`, `reason`, `retry=true` (not the
- *   viewer's choice, so ask again next time), and one `cookie=name=value` per cookie.
+ *   viewer's choice, so ask again next time), `transport=browser` (the browser was not challenged, so there
+ *   are no cookies to send: the site is reached through the browser window) and one `cookie=name=value`
+ *   per cookie.
  */
 object CloudflareSolver {
-    /** What passed the check for one host. */
-    data class Clearance(val cookies: Map<String, String>, val userAgent: String, val obtainedAt: Long)
+    /** What passed the check for one origin; [browserOnly] means there are no cookies, only the browser window. */
+    data class Clearance(
+        val cookies: Map<String, String>,
+        val userAgent: String,
+        val obtainedAt: Long,
+        val browserOnly: Boolean = false,
+    )
+
+    /** The owner of a clearance: what Cloudflare's cookie and the browser window are valid for. */
+    private data class Origin(val scheme: String, val host: String, val port: Int)
+
+    private fun originOf(url: HttpUrl) = Origin(url.scheme, url.host, url.port)
 
     /** The app's answer to a verification request. */
     private data class Answer(val clearance: Clearance?, val reason: String, val remember: Boolean)
@@ -60,38 +78,35 @@ object CloudflareSolver {
     var clock: () -> Long = { System.currentTimeMillis() }
 
     private const val POLL_MS = 300L
-    private data class ChallengeKey(val url: HttpUrl, val method: String)
-    private data class ClearanceScope(val key: ChallengeKey, val clearance: Clearance)
-    private fun key(request: Request) = ChallengeKey(request.url.newBuilder().fragment(null).build(), request.method)
 
-    private val clearances = ConcurrentHashMap<ChallengeKey, Clearance>()
-    private val declined = ConcurrentHashMap<ChallengeKey, Declined>()
-    private val challengeLocks = ConcurrentHashMap<ChallengeKey, Any>()
+    private val clearances = ConcurrentHashMap<Origin, Clearance>()
+    private val declined = ConcurrentHashMap<Origin, Declined>()
+    private val challengeLocks = ConcurrentHashMap<Origin, Any>()
 
-    /** Requests routed through their verified browser document when the HTTP client was refused. */
-    private val browserOnly = ConcurrentHashMap.newKeySet<ChallengeKey>()
+    /** Origins whose requests go through their verified browser document: the HTTP client alone is refused. */
+    private val browserOnly = ConcurrentHashMap.newKeySet<Origin>()
 
     private data class Declined(val until: Long, val reason: String)
 
     /**
-     * The last "ask again next time" answer per host (the app only wants the viewer's go-ahead) and when
-     * it came. Requests that queued for the host while it was being asked share that answer, so one page
+     * The last "ask again next time" answer per origin (the app only wants the viewer's go-ahead) and when
+     * it came. Requests that queued for the origin while it was being asked share that answer, so one page
      * load with dozens of requests costs one round trip to the app, not one each.
      */
-    private val retryAnswers = ConcurrentHashMap<ChallengeKey, Declined>()
+    private val retryAnswers = ConcurrentHashMap<Origin, Declined>()
 
     /** The interceptor to add to every HTTP client plugins use. */
     val interceptor: Interceptor = Interceptor { chain -> intercept(chain) }
 
-    /** Apply the browser identity only to the final outbound request for the challenged target. */
+    /**
+     * Attaches an origin's clearance to the outbound request for that origin, on every hop. It is looked
+     * up per hop, never carried on the request, so a redirect to another origin cannot receive it.
+     */
     val clearanceScope: Interceptor = Interceptor { chain ->
         val request = chain.request()
-        val scope = request.tag(ClearanceScope::class.java)
-        chain.proceed(if (scope != null && scope.key == key(request)) withClearance(request, scope.clearance) else request)
+        val known = clearances[originOf(request.url)]
+        chain.proceed(if (known != null && !known.browserOnly) withClearance(request, known) else request)
     }
-
-    private fun scopeClearance(request: Request, clearance: Clearance): Request =
-        request.newBuilder().tag(ClearanceScope::class.java, ClearanceScope(key(request), clearance)).build()
 
     /** One log line the app picks up by its `[cloudflare]` tag. */
     fun log(level: String, message: String) = System.err.println("[cloudflare] $level $message")
@@ -99,61 +114,81 @@ object CloudflareSolver {
     private fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val dir = exchangeDir
-        val originalKey = key(original)
-        if (dir != null && originalKey in browserOnly) return viaBrowser(original, dir)
-        val known = clearances[originalKey]
-        val response = chain.proceed(if (known != null) scopeClearance(original, known) else original)
+        if (dir != null && originOf(original.url) in browserOnly) return viaBrowser(original, dir)
+        val startedAt = clock()
+        val response = chain.proceed(original)
         if (dir == null || !isChallenge(response)) return response
         val challenged = response.request
-        val challengedKey = key(challenged)
-        log(
-            "INFO",
-            "challenge from ${challenged.url.host}: ${describe(response)} for ${challenged.method}",
-        )
+        val origin = originOf(challenged.url)
+        log("INFO", "challenge from ${origin.host}: ${describe(response)} for ${challenged.method}")
         response.close()
-        if (known != null && originalKey == challengedKey) clearances.remove(challengedKey, known)
-        val fresh = solve(challengedKey)
-        return afterRetry(challenged, dir, chain.proceed(scopeClearance(challenged, fresh)))
+        // A clearance obtained after this request began was not the one it carried, so it is not expired.
+        clearances[origin]?.takeIf { it.obtainedAt < startedAt }?.let { clearances.remove(origin, it) }
+        val fresh = solve(challenged, startedAt)
+        if (fresh.browserOnly) return viaBrowserOnly(challenged, dir)
+        return afterRetry(challenged, dir, chain.proceed(challenged))
+    }
+
+    /** The browser was not challenged: there are no cookies to send, so the origin is served by its window. */
+    private fun viaBrowserOnly(request: Request, dir: File): Response {
+        val origin = originOf(request.url)
+        log("INFO", "${origin.host} does not challenge the browser, only this connection; its requests are made by the browser window")
+        browserOnly.add(origin)
+        return viaBrowser(request, dir)
     }
 
     /** The retried request: a good answer is the goal; a challenge again means the cookies alone are not accepted. */
     private fun afterRetry(request: Request, dir: File, retried: Response): Response {
-        val host = request.url.host
+        val origin = originOf(request.url)
         if (!isChallenge(retried)) {
-            log("INFO", "retried request to $host with the verification cookies: ${describe(retried)}; the site accepted them")
+            log("INFO", "retried request to ${origin.host} with the verification cookies: ${describe(retried)}; the site accepted them")
             return retried
         }
         retried.close()
-        clearances.remove(key(request))
+        clearances.remove(origin)
         log(
             "WARN",
-            "$host did not accept the verification cookies over this connection (${describe(retried)}); " +
+            "${origin.host} did not accept the verification cookies over this connection (${describe(retried)}); " +
                 "from now on its requests are made by the browser window",
         )
-        browserOnly.add(key(request))
+        browserOnly.add(origin)
         return viaBrowser(request, dir)
     }
 
-    /** Makes [request] in the host's browser window; verifies again once if the window is gone or its pass has expired. */
+    /**
+     * Makes [request] in the origin's browser window; verifies again once if the window is gone or its pass
+     * has expired. If a fresh verification still leaves no way in, the origin is declined for a while.
+     */
     private fun viaBrowser(request: Request, dir: File): Response {
-        val host = request.url.host
+        val origin = originOf(request.url)
         val first = try {
             BrowserFetch.fetch(request, dir)
         } catch (gone: BrowserUnavailable) {
-            log("WARN", "the browser window for $host is gone (${gone.message}); verifying again")
+            log("WARN", "the browser window for ${origin.host} is gone (${gone.message}); verifying again")
             null
         }
         if (first != null && !isChallenge(first)) return first
         first?.close()
-        if (first != null) log("WARN", "the browser got a Cloudflare challenge again for $host; verifying again")
-        solve(key(request))
-        val second = BrowserFetch.fetch(request, dir)
+        if (first != null) log("WARN", "the browser got a Cloudflare challenge again for ${origin.host}; verifying again")
+        solve(request, clock())
+        val second = try {
+            BrowserFetch.fetch(request, dir)
+        } catch (gone: BrowserUnavailable) {
+            throw unreachable(origin, "no browser window can make its requests (${gone.message})")
+        }
         if (!isChallenge(second)) return second
         second.close()
-        browserOnly.remove(key(request))
-        val reason = "Cloudflare still showed its check for $host even in the browser window"
-        log("ERROR", reason)
-        throw IOException(reason)
+        throw unreachable(origin, "Cloudflare still showed its check even in the browser window")
+    }
+
+    /** Neither the cookies nor the browser window get in: stop asking for a while and say so once. */
+    private fun unreachable(origin: Origin, why: String): IOException {
+        browserOnly.remove(origin)
+        clearances.remove(origin)
+        val reason = "$why; ${origin.host} cannot be reached"
+        declined[origin] = Declined(System.currentTimeMillis() + declineMemoryMs, reason)
+        log("ERROR", "$reason; not asking again for ${declineMemoryMs / 1000}s")
+        return IOException("Cloudflare verification of ${origin.host} was not completed: $reason")
     }
 
     /** True when [response] is a Cloudflare challenge page (not a plain block, which no browser can pass). */
@@ -176,58 +211,63 @@ object CloudflareSolver {
         return (if (cookie.isEmpty()) builder else builder.header("Cookie", cookie)).build()
     }
 
-    /** Requests for the same effective URL and method can share one in-flight answer. */
-    private fun solve(key: ChallengeKey): Clearance {
-        val host = key.url.host
-        refuseIfDeclined(key)
+    /**
+     * The origin of [challenged] has been verified, asking the app if needed. Requests to one origin share
+     * the one check in flight whatever their paths; [sentAt] is when the request began, so a clearance
+     * obtained since then is used instead of asking again.
+     */
+    private fun solve(challenged: Request, sentAt: Long): Clearance {
+        val origin = originOf(challenged.url)
+        val host = origin.host
+        refuseIfDeclined(origin)
         val waitingSince = clock()
-        synchronized(challengeLocks.computeIfAbsent(key) { Any() }) {
-            clearances[key]?.takeIf { it.obtainedAt >= waitingSince }?.let {
+        synchronized(challengeLocks.computeIfAbsent(origin) { Any() }) {
+            clearances[origin]?.takeIf { it.obtainedAt >= sentAt }?.let {
                 log("INFO", "$host was verified while this request waited; using that")
                 return it
             }
-            refuseIfDeclined(key)
+            refuseIfDeclined(origin)
             // Strictly later: a request that starts in the same millisecond as the answer came after it
             // (it did not queue for it), so it asks the app again.
-            retryAnswers[key]?.takeIf { it.until > waitingSince }?.let {
+            retryAnswers[origin]?.takeIf { it.until > waitingSince }?.let {
                 log("INFO", "$host was asked about while this request waited (${it.reason}); failing at once")
                 throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
             }
-            val answer = askApp(key)
+            val answer = askApp(origin, challenged)
             val clearance = answer.clearance
             if (clearance == null) {
-                if (!answer.remember) retryAnswers[key] = Declined(clock(), answer.reason)
-                if (answer.remember) declined[key] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
+                if (!answer.remember) retryAnswers[origin] = Declined(clock(), answer.reason)
+                if (answer.remember) declined[origin] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
                 log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
                 throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
             }
-            clearances[key] = clearance
+            clearances[origin] = clearance
             return clearance
         }
     }
 
-    private fun refuseIfDeclined(key: ChallengeKey) {
-        val earlier = declined[key] ?: return
+    private fun refuseIfDeclined(origin: Origin) {
+        val earlier = declined[origin] ?: return
         if (System.currentTimeMillis() >= earlier.until) {
-            declined.remove(key, earlier)
+            declined.remove(origin, earlier)
             return
         }
-        val host = key.url.host
-        log("INFO", "$host was not verified a moment ago (${earlier.reason}); failing at once, not asking again yet")
-        throw IOException("Cloudflare verification of $host was not completed: ${earlier.reason}")
+        log("INFO", "${origin.host} was not verified a moment ago (${earlier.reason}); failing at once, not asking again yet")
+        throw IOException("Cloudflare verification of ${origin.host} was not completed: ${earlier.reason}")
     }
 
-    /** Writes the request file and waits for the answer. */
-    private fun askApp(key: ChallengeKey): Answer {
+    /** Writes the request file for the exact challenged request and waits for the answer. */
+    private fun askApp(origin: Origin, challenged: Request): Answer {
         val dir = exchangeDir ?: return Answer(null, "verification is off", false)
-        val host = key.url.host
+        val host = origin.host
+        val url = challenged.url.newBuilder().fragment(null).build()
         val id = UUID.randomUUID().toString()
         val request = File(dir, "request-$id.txt")
         val result = File(dir, "result-$id.txt")
         try {
             dir.mkdirs()
             val pending = File(dir, "request-$id.tmp")
-            pending.writeText("id=$id\nhost=$host\nurl=${key.url}\nmethod=${key.method}\n")
+            pending.writeText("id=$id\nhost=$host\nurl=$url\nmethod=${challenged.method}\n")
             if (!pending.renameTo(request)) throw IOException("could not publish Cloudflare verification request $id")
             log("INFO", "asked the app to verify $host (request $id, answer expected within ${solveTimeoutMs / 1000}s)")
             return waitForResult(result, host)
@@ -266,7 +306,10 @@ object CloudflareSolver {
         return Answer(null, reason, lines.none { it.trim() == "retry=true" })
     }
 
-    /** Reads what the app wrote; null for `ok=false` or an answer without a cookie or an agent. */
+    /**
+     * Reads what the app wrote; null for `ok=false` or an answer without an agent. Cookies are needed
+     * unless the app says `transport=browser` (the browser was not challenged, so it has none to give).
+     */
     fun parseResult(text: String): Clearance? {
         val lines = text.lines().filter { it.contains("=") }
         if (lines.none { it.trim() == "ok=true" }) return null
@@ -275,8 +318,9 @@ object CloudflareSolver {
             .filter { it.contains("=") }
             .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
         val agent = lines.firstOrNull { it.startsWith("userAgent=") }?.removePrefix("userAgent=")?.trim().orEmpty()
-        if (cookies.isEmpty() || agent.isEmpty()) return null
-        return Clearance(cookies, agent, System.currentTimeMillis())
+        val browserOnly = lines.any { it.trim() == "transport=browser" }
+        if (agent.isEmpty() || (cookies.isEmpty() && !browserOnly)) return null
+        return Clearance(if (browserOnly) emptyMap() else cookies, agent, System.currentTimeMillis(), browserOnly)
     }
 
     /** Forgets everything learned; used by tests. */

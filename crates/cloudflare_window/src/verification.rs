@@ -45,8 +45,11 @@ impl MainResponse {
         self.challenge && self.html && !self.attachment
     }
 
-    fn advances(&self) -> bool {
-        !self.challenge && (200..400).contains(&self.status)
+    /// The site itself answered, whatever it said: Cloudflare's gate is behind the browser. A 404 or a
+    /// 500 is the site's own answer. 403, 429 and 503 can still be the gate's (a block or a rate limit),
+    /// which no cookie opens, so they are not evidence of a passage.
+    fn answered(&self) -> bool {
+        !self.challenge && self.status >= 200 && !matches!(self.status, 403 | 429 | 503)
     }
 
     pub(crate) fn leaves_origin(&self, target: &Url) -> bool {
@@ -84,7 +87,11 @@ pub(crate) enum BrowserEvent {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Decision {
     Wait,
+    /// A challenge was passed: the cookies (and browser identity) are the credentials to hand over.
     Passed(Cookies),
+    /// The browser was never challenged: only the sidecar's own connection is. There is nothing to hand
+    /// over, so the sidecar must make this origin's requests through the browser document.
+    BrowserClear,
     Unconfirmed,
 }
 
@@ -146,16 +153,37 @@ impl Verification {
         if self.is_passage(response, &cookies) {
             return Decision::Passed(cookies);
         }
+        if self.is_browser_clear(response) {
+            return Decision::BrowserClear;
+        }
+        self.unsettled(response)
+    }
+
+    /// Neither passed nor clear: a redirect or a challenge page is still in progress, anything else is
+    /// not evidence of a passage.
+    fn unsettled(&self, response: &MainResponse) -> Decision {
         if response.leaves_origin(&self.target)
             || (!response.challenge && !(300..400).contains(&response.status))
         {
-            return Decision::Unconfirmed;
+            Decision::Unconfirmed
+        } else {
+            Decision::Wait
         }
-        Decision::Wait
+    }
+
+    /// The browser went straight through (no challenge was ever shown to it) and landed on a same-origin
+    /// document. A challenge followed by a missing or stale cookie is *not* this: that stays unconfirmed.
+    fn is_browser_clear(&self, response: &MainResponse) -> bool {
+        !self.encountered_challenge
+            && !response.challenge
+            && !response.attachment
+            && response.answered()
+            && !(300..400).contains(&response.status)
+            && response.url.origin() == self.target.origin()
     }
 
     fn is_passage(&self, response: &MainResponse, cookies: &Cookies) -> bool {
-        response.advances()
+        response.answered()
             && matches_target(&self.target, &response.url)
             && cookies.iter().any(|cookie| {
                 cookie.0 == "cf_clearance"

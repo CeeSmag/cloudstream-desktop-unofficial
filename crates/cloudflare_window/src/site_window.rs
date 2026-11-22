@@ -13,8 +13,10 @@ use crate::helper_events::HelperEvent;
 use crate::outbox::Outbox;
 use crate::page_fetches::PageFetches;
 use crate::verification::{
-    BrowserEvent, BrowserIdentity, Decision, DocumentId, ObservedResponse, Verification,
+    BrowserEvent, BrowserIdentity, Cookies, Decision, DocumentId, MainResponse, ObservedResponse,
+    Verification,
 };
+use crate::waiters::{Retired, Waiters};
 
 const VIEWER_TIME: Duration = Duration::from_secs(4 * 60);
 const UNCONFIRMED: &str = "the browser could not confirm clearance for this request";
@@ -30,7 +32,7 @@ pub(crate) struct SiteWindow {
     view: BrowserView,
     browser_events: BrowserSource,
     pub(crate) window: Rc<Window>,
-    request: VerifyRequest,
+    waiters: Waiters,
     target: Url,
     phase: Phase,
     deadline: Instant,
@@ -62,7 +64,7 @@ impl SiteWindow {
             view,
             browser_events: source,
             window,
-            request,
+            waiters: Waiters::new(request),
             target,
             phase: Phase::Loading,
             deadline: Instant::now() + VIEWER_TIME,
@@ -77,8 +79,8 @@ impl SiteWindow {
 
     pub(crate) fn status_open(&self, out: &Outbox) {
         out.status(&HelperStatus::WindowOpen {
-            host: self.request.host.clone(),
-            id: self.request.id.clone(),
+            host: self.waiters.owner().host.clone(),
+            id: self.waiters.owner().id.clone(),
         });
     }
 
@@ -165,10 +167,13 @@ impl SiteWindow {
         if matches!(self.phase, Phase::Passed) && leaves_origin {
             self.phase = Phase::Finished;
         }
+        if !matches!(self.phase, Phase::Checking(_)) {
+            return;
+        }
+        self.log_response(document, &response, &cookies);
         let Phase::Checking(check) = &mut self.phase else {
             return;
         };
-        tracing::debug!(id = %self.request.id, ?document, status = response.status, challenged = response.challenge, "verification main response");
         match check.response(document, &response, cookies) {
             Decision::Passed(cookies) => {
                 let outcome = Outcome::Passed {
@@ -180,9 +185,27 @@ impl SiteWindow {
                     self.phase = Phase::Finished;
                 }
             }
+            Decision::BrowserClear => {
+                let user_agent = self.agent.clone();
+                self.complete(Outcome::BrowserClear { user_agent }, out);
+            }
             Decision::Unconfirmed => self.fail_pending(UNCONFIRMED, out),
             Decision::Wait => self.reveal(),
         }
+    }
+
+    /// What the browser's main response says: where a redirect leads and which cookies exist (names only).
+    fn log_response(&self, document: DocumentId, response: &MainResponse, cookies: &Cookies) {
+        let names: Vec<&str> = cookies.iter().map(|(name, _)| name.as_str()).collect();
+        let redirect_origin = response
+            .redirect
+            .as_ref()
+            .map(|url| url.origin().ascii_serialization());
+        let leaves_origin = response.leaves_origin(&self.target);
+        tracing::debug!(
+            id = %self.waiters.owner().id, ?document, status = response.status, challenged = response.challenge,
+            leaves_origin, ?redirect_origin, cookie_names = ?names, "verification main response"
+        );
     }
 
     fn identified(&mut self, result: Result<BrowserIdentity, String>, out: &Outbox) {
@@ -253,18 +276,41 @@ impl SiteWindow {
         crate::windows_presentation::hide(&self.window);
         #[cfg(not(windows))]
         self.window.set_visible(false);
-        let delivery = out.answer(&self.request, &outcome);
-        let (host, id) = (self.request.host.clone(), self.request.id.clone());
-        let status = match (outcome, delivery) {
-            (_, Err(reason))
-            | (Outcome::Declined(reason), Ok(()))
-            | (Outcome::Waiting(reason), Ok(())) => HelperStatus::Failed { host, id, reason },
-            (Outcome::Passed { .. }, Ok(())) => {
+        for (index, request) in self.waiters.take_all().into_iter().enumerate() {
+            let status = out.deliver(&request, &outcome);
+            if index == 0 && matches!(status, HelperStatus::Passed { .. }) {
                 self.phase = Phase::Passed;
-                HelperStatus::Passed { host, id }
             }
-        };
-        tracing::debug!(id = %self.request.id, host = %self.request.host, ?status, "verification finished");
-        out.status(&status);
+            tracing::debug!(id = %request.id, host = %request.host, ?status, "verification finished");
+            out.status(&status);
+        }
+    }
+
+    pub(crate) fn joins(&self, request: &VerifyRequest) -> bool {
+        self.is_pending() && self.waiters.joins(request)
+    }
+
+    /// `request` waits for this check instead of opening a window of its own.
+    pub(crate) fn join(&mut self, request: VerifyRequest) {
+        tracing::debug!(id = %request.id, owner = %self.waiters.owner().id, host = %request.host, "request joins the pending check");
+        self.waiters.join(request);
+    }
+
+    pub(crate) fn holds(&self, id: &str) -> bool {
+        self.waiters.holds(id)
+    }
+
+    /// Retires one request with `reason`; the check goes on for the others.
+    pub(crate) fn retire(&mut self, id: &str, reason: &str, out: &Outbox) {
+        if !self.is_pending() {
+            return;
+        }
+        match self.waiters.retire(id) {
+            Retired::Last(_) => self.fail_pending(reason, out),
+            Retired::Owner(request) | Retired::Waiter(request) => {
+                out.status(&out.deliver(&request, &Outcome::Declined(reason.to_owned())));
+            }
+            Retired::Unknown => {}
+        }
     }
 }

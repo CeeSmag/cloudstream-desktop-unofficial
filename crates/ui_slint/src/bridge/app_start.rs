@@ -16,6 +16,7 @@ use super::app_extras::AppExtras;
 use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
+use super::cloudflare_prompts::PromptQueue;
 use super::debug_logging::apply_saved_debug_logging;
 use super::event_dispatch::drain_events;
 use super::focus_screens::follow_window_width;
@@ -38,6 +39,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
         session: Rc::new(RefCell::new(Session::default())),
         pump: Rc::new(EventPump::new()),
         extras: Rc::new(RefCell::new(extras)),
+        prompts: Rc::new(RefCell::new(PromptQueue::default())),
     };
     set_empty_models(&ui);
     apply_settings_to_ui(&ui, &ctx.services);

@@ -100,3 +100,117 @@ fn cookie_scope_matches_the_path_and_host_boundary() {
     let plain = Url::parse("http://source.test/watch/title").unwrap();
     assert!(!cookie_matches(&plain, "source.test", "/", true));
 }
+
+#[test]
+fn a_browser_that_is_never_challenged_is_clear_and_hands_over_no_cookies() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let id = DocumentId(1);
+    check.start(id);
+    assert_eq!(
+        check.response(id, &response(TARGET, 200, false), Vec::new()),
+        Decision::BrowserClear
+    );
+}
+
+#[test]
+fn a_clean_load_that_holds_a_clearance_cookie_still_hands_the_cookie_over() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let id = DocumentId(1);
+    check.start(id);
+    assert_eq!(
+        check.response(id, &response(TARGET, 200, false), clearance("kept")),
+        Decision::Passed(clearance("kept"))
+    );
+}
+
+#[test]
+fn clear_needs_the_same_origin_a_success_status_and_a_document_not_a_download() {
+    let target = Url::parse(TARGET).unwrap();
+    let verdict = |reply: MainResponse| {
+        let mut check = Verification::new(target.clone(), Vec::new());
+        let id = DocumentId(1);
+        check.start(id);
+        check.response(id, &reply, Vec::new())
+    };
+    assert_eq!(
+        verdict(response(
+            "https://other.test/watch/title?ticket=one",
+            200,
+            false
+        )),
+        Decision::Unconfirmed
+    );
+    assert_eq!(
+        verdict(response(TARGET, 403, false)),
+        Decision::Unconfirmed,
+        "a block is not a passage"
+    );
+    assert_eq!(
+        verdict(response(TARGET, 429, false)),
+        Decision::Unconfirmed,
+        "nor a rate limit"
+    );
+    assert_eq!(verdict(response(TARGET, 503, false)), Decision::Unconfirmed);
+    let mut download = response(TARGET, 200, false);
+    download.attachment = true;
+    assert_eq!(verdict(download), Decision::Unconfirmed);
+    let mut hop = response(TARGET, 301, false);
+    hop.redirect = Some(Url::parse("https://source.test/watch/other").unwrap());
+    assert_eq!(
+        verdict(hop),
+        Decision::Wait,
+        "a same-origin hop is still in progress"
+    );
+}
+
+#[test]
+fn a_challenge_followed_by_no_cookie_is_never_clear() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let id = DocumentId(1);
+    check.start(id);
+    check.response(id, &response(TARGET, 403, true), Vec::new());
+    assert_eq!(
+        check.response(id, &response(TARGET, 200, false), Vec::new()),
+        Decision::Unconfirmed,
+        "the site did challenge the browser, so a missing cookie proves nothing"
+    );
+}
+
+#[test]
+fn a_site_that_answers_not_found_after_the_check_is_passed_not_failed() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let (challenge, answer) = (DocumentId(1), DocumentId(2));
+    check.start(challenge);
+    check.response(challenge, &response(TARGET, 403, true), Vec::new());
+    check.start(answer);
+    assert_eq!(
+        check.response(answer, &response(TARGET, 404, false), clearance("fresh")),
+        Decision::Passed(clearance("fresh")),
+        "the gate was passed; the page itself does not exist"
+    );
+}
+
+#[test]
+fn a_retry_of_a_page_that_does_not_exist_still_hands_over_the_clearance_it_holds() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), clearance("held"));
+    let id = DocumentId(1);
+    check.start(id);
+    assert_eq!(
+        check.response(id, &response(TARGET, 404, false), clearance("held")),
+        Decision::Passed(clearance("held"))
+    );
+}
+
+#[test]
+fn a_page_that_does_not_exist_on_a_site_that_never_challenges_the_browser_is_clear() {
+    for status in [404, 410, 500] {
+        let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+        let id = DocumentId(1);
+        check.start(id);
+        assert_eq!(
+            check.response(id, &response(TARGET, status, false), Vec::new()),
+            Decision::BrowserClear,
+            "status {status}: the site answered, the browser is not challenged"
+        );
+    }
+}

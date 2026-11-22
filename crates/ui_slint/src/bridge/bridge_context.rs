@@ -10,6 +10,7 @@ use crate::request_tickets::{RequestKind, Ticket};
 use crate::CloudStream;
 
 use super::app_extras::AppExtras;
+use super::cloudflare_prompts::PromptQueue;
 use super::session::Session;
 
 /// Shared handles of the UI thread. Cloning is cheap (reference counts only).
@@ -20,6 +21,8 @@ pub(crate) struct BridgeContext {
     pub(crate) session: Rc<RefCell<Session>>,
     pub(crate) pump: Rc<EventPump>,
     pub(crate) extras: Rc<RefCell<AppExtras>>,
+    /// The Cloudflare checks the banner shows, one at a time.
+    pub(crate) prompts: Rc<RefCell<PromptQueue>>,
 }
 
 impl BridgeContext {

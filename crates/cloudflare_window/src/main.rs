@@ -13,6 +13,7 @@ mod outbox;
 mod page_fetches;
 mod site_window;
 mod verification;
+mod waiters;
 #[cfg(windows)]
 mod windows_presentation;
 

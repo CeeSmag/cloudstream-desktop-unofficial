@@ -49,6 +49,20 @@ pub enum CloudflareEvent {
     },
 }
 
+impl CloudflareEvent {
+    /// The request this event is about, when it is about one.
+    pub fn request_id(&self) -> Option<&str> {
+        match self {
+            Self::NeedsPermission { id, .. }
+            | Self::Verifying { id, .. }
+            | Self::Passed { id, .. }
+            | Self::Failed { id, .. }
+            | Self::Dismissed { id } => Some(id),
+            Self::PermissionGranted { .. } => None,
+        }
+    }
+}
+
 impl From<HelperStatus> for CloudflareEvent {
     fn from(status: HelperStatus) -> Self {
         match status {
