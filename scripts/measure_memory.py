@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 KIB_PER_MIB = 1024.0
+TICKS_PER_SECOND = 100.0  # Linux clock ticks (USER_HZ)
 BROWSER_HELPER_MARKERS = ("cloudstream-verify", "webkit", "webview2")
 
 
@@ -36,6 +37,30 @@ class ProcessSample:
     parent_pid: int
     name: str
     pss_kib: int
+    cpu_ticks: int = 0
+
+
+@dataclass(frozen=True)
+class TimedSample:
+    """The tree's memory and cumulative CPU time at `t` seconds."""
+
+    t: float
+    total_mib: float
+    cpu_seconds: float
+
+
+class CpuTotal:
+    """Cumulative CPU time of every process ever seen in the tree (one that exits keeps its time)."""
+
+    def __init__(self):
+        self._ticks = {}
+
+    def add(self, tree):
+        for sample in tree:
+            self._ticks[sample.pid] = max(self._ticks.get(sample.pid, 0), sample.cpu_ticks)
+
+    def seconds(self):
+        return sum(self._ticks.values()) / TICKS_PER_SECOND
 
 
 @dataclass(frozen=True)
@@ -54,6 +79,25 @@ def parse_pss_kib(smaps_rollup_text: str) -> int:
             parts = line.split()
             return int(parts[1]) if len(parts) >= 2 and parts[1].isdigit() else 0
     return 0
+
+
+def parse_cpu_ticks(stat_text: str) -> int:
+    """User + system CPU ticks from /proc/<pid>/stat (0 when unreadable). The name may contain spaces."""
+    after_name = stat_text.rsplit(")", 1)[-1].split()
+    try:
+        return int(after_name[11]) + int(after_name[12])
+    except (IndexError, ValueError):
+        return 0
+
+
+def window_cpu_percent(series: list, window_s: float) -> float:
+    """Average CPU use (percent of one core) over the last `window_s` seconds of the series."""
+    if len(series) < 2:
+        return 0.0
+    last = series[-1]
+    first = next((s for s in series if last.t - s.t <= window_s), series[0])
+    span = last.t - first.t
+    return 100.0 * (last.cpu_seconds - first.cpu_seconds) / span if span > 0 else 0.0
 
 
 def descendants_of(samples: list, root_pid: int) -> list:
@@ -131,11 +175,13 @@ def _read_linux_process(entry: Path):
             line.split(":", 1) for line in status.splitlines() if ":" in line
         )
         pss = parse_pss_kib((entry / "smaps_rollup").read_text(errors="replace"))
+        ticks = parse_cpu_ticks((entry / "stat").read_text(errors="replace"))
         return ProcessSample(
             pid=int(entry.name),
             parent_pid=int(fields.get("PPid", "0").strip() or 0),
             name=fields.get("Name", "").strip(),
             pss_kib=pss,
+            cpu_ticks=ticks,
         )
     except (OSError, ValueError):
         return None  # the process ended or belongs to someone else
@@ -173,23 +219,29 @@ def read_snapshot() -> list:
     return read_windows_snapshot() if os.name == "nt" else read_linux_snapshot()
 
 
-def sample_for(root_pid: int, duration_s: float, interval_s: float) -> list:
-    """Summaries of the tree under `root_pid`, one per interval."""
-    summaries = []
-    deadline = time.monotonic() + duration_s
+def sample_for(root_pid: int, duration_s: float, interval_s: float):
+    """Summaries of the tree under `root_pid`, one per interval, and the timed series."""
+    summaries, series, cpu = [], [], CpuTotal()
+    start = time.monotonic()
+    deadline = start + duration_s
     while True:
         tree = descendants_of(read_snapshot(), root_pid)
         if not tree:
             break  # the app exited
-        summaries.append(summarize(tree))
-        if time.monotonic() >= deadline:
+        summary = summarize(tree)
+        cpu.add(tree)
+        summaries.append(summary)
+        now = time.monotonic()
+        series.append(TimedSample(now - start, summary.total_mib, cpu.seconds()))
+        if now >= deadline:
             break
         time.sleep(interval_s)
-    return summaries
+    return summaries, series
 
 
-def render_report(label: str, summaries: list) -> dict:
+def render_report(label: str, summaries: list, series=None, window_s: float = 30.0) -> dict:
     """The report written to stdout / --json-out."""
+    series = series or []
     peak = peak_of(summaries)
     final = summaries[-1] if summaries else Summary(total_mib=0.0)
     return {
@@ -200,6 +252,12 @@ def render_report(label: str, summaries: list) -> dict:
         "peak_jvm_count": peak.jvm_count,
         "final_total_mib": round(final.total_mib, 1),
         "metric": "working_set" if os.name == "nt" else "pss",
+        "window_s": window_s,
+        "window_cpu_percent": round(window_cpu_percent(series, window_s), 1),
+        "series": [
+            {"t": round(s.t, 1), "total_mib": round(s.total_mib, 1), "cpu_s": round(s.cpu_seconds, 2)}
+            for s in series
+        ],
     }
 
 
@@ -212,6 +270,7 @@ def parse_args(argv: list):
     parser.add_argument("--interval", type=float, default=2.0, help="seconds")
     parser.add_argument("--max-total-mib", type=float, default=None)
     parser.add_argument("--json-out", type=Path, default=None)
+    parser.add_argument("--window", type=float, default=30.0, help="seconds for the CPU average")
     parser.add_argument("command", nargs="*", help="command to launch (after --)")
     return parser.parse_args(argv)
 
@@ -229,11 +288,11 @@ def main(argv: list) -> int:
         print("give --pid or --launch -- <command>", file=sys.stderr)
         return 2
     try:
-        summaries = sample_for(args.pid, args.duration, args.interval)
+        summaries, series = sample_for(args.pid, args.duration, args.interval)
     finally:
         if child is not None:
             child.terminate()
-    report = render_report(args.label, summaries)
+    report = render_report(args.label, summaries, series, args.window)
     print(json.dumps(report, indent=2))
     if args.json_out:
         args.json_out.write_text(json.dumps(report, indent=2) + "\n")
