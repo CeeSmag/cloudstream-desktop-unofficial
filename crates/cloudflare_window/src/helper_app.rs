@@ -172,6 +172,7 @@ impl HelperState {
                 site.status_open(&self.outbox);
                 self.windows.insert(site.window.id(), request.id.clone());
                 self.sites.insert(request.id, site);
+                tracing::debug!(windows = self.sites.len(), host = %request.host, "verification window opened");
             }
             Err(reason) => self.refuse(&request, reason),
         }
@@ -253,6 +254,7 @@ impl HelperState {
         if let Some(mut site) = self.sites.remove(id) {
             site.fetches.abandon(&self.outbox);
             self.windows.remove(&site.window.id());
+            tracing::debug!(windows = self.sites.len(), "verification window closed");
         }
     }
 }

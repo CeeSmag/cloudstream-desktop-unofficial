@@ -138,5 +138,47 @@ class CpuTests(unittest.TestCase):
         self.assertEqual(mm.window_cpu_percent([], 10.0), 0.0)
 
 
+class ProcessBreakdownTests(unittest.TestCase):
+    def test_summary_groups_memory_and_count_by_process_name(self):
+        tree = [
+            proc(10, 1, "cloudstream-verify", 40 * 1024),
+            proc(11, 10, "WebKitWebProcess", 300 * 1024),
+            proc(12, 10, "WebKitWebProcess", 100 * 1024),
+            proc(13, 10, "WebKitNetworkProc", 60 * 1024),
+        ]
+        summary = mm.summarize(tree)
+        self.assertEqual(summary.by_name["WebKitWebProcess"], (400.0, 2))
+        self.assertEqual(summary.by_name["WebKitNetworkProc"], (60.0, 1))
+
+    def test_peak_keeps_the_process_breakdown_of_the_largest_sample(self):
+        small = mm.summarize([proc(1, 0, "cloudstream", 10 * 1024)])
+        big = mm.summarize(
+            [proc(1, 0, "cloudstream", 10 * 1024), proc(2, 1, "WebKitWebProcess", 90 * 1024)]
+        )
+        self.assertEqual(mm.peak_of([small, big, small]).by_name["WebKitWebProcess"], (90.0, 1))
+
+    def test_window_process_stats_average_memory_and_keep_the_highest_count(self):
+        series = [
+            mm.TimedSample(0.0, 0, 0, {}, {"WebKitWebProcess": (100.0, 1)}),
+            mm.TimedSample(10.0, 0, 0, {}, {"WebKitWebProcess": (300.0, 3)}),
+            mm.TimedSample(20.0, 0, 0, {}, {"WebKitWebProcess": (200.0, 2)}),
+        ]
+        stats = mm.window_process_stats(series, 10.0)
+        self.assertAlmostEqual(stats["WebKitWebProcess"]["mib_avg"], 250.0)
+        self.assertEqual(stats["WebKitWebProcess"]["count_max"], 3)
+
+    def test_window_process_stats_of_a_series_without_processes_is_empty(self):
+        self.assertEqual(mm.window_process_stats([mm.TimedSample(0.0, 1.0, 0.0)], 10.0), {})
+
+    def test_report_lists_each_role_and_process_over_time(self):
+        tree = [proc(1, 0, "cloudstream", 10 * 1024), proc(2, 1, "WebKitWebProcess", 90 * 1024)]
+        summary = mm.summarize(tree)
+        series = [mm.TimedSample(1.0, 100.0, 0.0, {"app": (10.0, 0.0)}, summary.by_name)]
+        report = mm.render_report("x", [summary], series, 30.0)
+        self.assertEqual(report["peak_by_process"]["WebKitWebProcess"], {"mib": 90.0, "count": 1})
+        self.assertEqual(report["series"][0]["roles_mib"], {"app": 10.0})
+        self.assertEqual(report["series"][0]["processes"]["WebKitWebProcess"], [90.0, 1])
+
+
 if __name__ == "__main__":
     unittest.main()

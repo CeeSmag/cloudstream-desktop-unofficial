@@ -105,14 +105,10 @@ fn apply(player: &dyn VideoPlayer, remembered: &Remembered) {
         player.set_surface_size(width, height);
     }
     if let Some(percent) = remembered.volume {
-        if let Err(error) = player.set_volume(percent) {
-            tracing::warn!(%error, "the volume was not applied to the new player");
-        }
+        warn_if_failed(player.set_volume(percent), "the volume");
     }
     if let Some(limits) = remembered.cache_limits {
-        if let Err(error) = player.set_cache_limits(limits) {
-            tracing::warn!(%error, "the cache limits were not applied to the new player");
-        }
+        warn_if_failed(player.set_cache_limits(limits), "the cache limits");
     }
     if let Some(language) = &remembered.preferred_audio {
         player.set_preferred_audio(*language);
@@ -122,6 +118,13 @@ fn apply(player: &dyn VideoPlayer, remembered: &Remembered) {
     }
     if let Some(enabled) = remembered.verbose_log {
         player.set_verbose_log(enabled);
+    }
+}
+
+/// A setting that did not reach the new player is logged, never fatal: the video still plays.
+fn warn_if_failed(result: Result<(), PlayerError>, what: &str) {
+    if let Err(error) = result {
+        tracing::warn!(%error, "{what} was not applied to the new player");
     }
 }
 

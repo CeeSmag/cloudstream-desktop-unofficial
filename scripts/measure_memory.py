@@ -49,6 +49,8 @@ class TimedSample:
     cpu_seconds: float
     # role -> (memory MiB, cumulative CPU seconds) of that kind of process
     roles: dict = field(default_factory=dict)
+    # process name -> (memory MiB, process count) at this instant
+    processes: dict = field(default_factory=dict)
 
 
 class CpuTotal:
@@ -72,6 +74,8 @@ class Summary:
     total_mib: float
     by_role_mib: dict = field(default_factory=dict)
     jvm_count: int = 0
+    # process name -> (memory MiB, process count)
+    by_name: dict = field(default_factory=dict)
 
 
 def parse_pss_kib(smaps_rollup_text: str) -> int:
@@ -120,6 +124,23 @@ def window_role_stats(series: list, window_s: float) -> dict:
     return stats
 
 
+def window_process_stats(series: list, window_s: float) -> dict:
+    """Per process name over the last `window_s` seconds: average memory (MiB) and highest count."""
+    if not series:
+        return {}
+    last = series[-1]
+    inside = [s for s in series if last.t - s.t <= window_s] or series[-1:]
+    names = {name for sample in inside for name in sample.processes}
+    stats = {}
+    for name in sorted(names):
+        points = [s.processes.get(name, (0.0, 0)) for s in inside]
+        stats[name] = {
+            "mib_avg": sum(mib for mib, _ in points) / len(points),
+            "count_max": max(count for _, count in points),
+        }
+    return stats
+
+
 def descendants_of(samples: list, root_pid: int) -> list:
     """The root process and everything below it (cycle-safe, unknown root gives [])."""
     by_pid = {sample.pid: sample for sample in samples}
@@ -151,11 +172,17 @@ def role_of(process_name: str) -> str:
 def summarize(tree: list) -> Summary:
     """Totals the tree in MiB, grouped by role, and counts the JVMs."""
     by_role: dict = {}
+    by_name: dict = {}
     for sample in tree:
         role = role_of(sample.name)
-        by_role[role] = by_role.get(role, 0.0) + sample.pss_kib / KIB_PER_MIB
+        mib = sample.pss_kib / KIB_PER_MIB
+        by_role[role] = by_role.get(role, 0.0) + mib
+        seen_mib, seen_count = by_name.get(sample.name, (0.0, 0))
+        by_name[sample.name] = (seen_mib + mib, seen_count + 1)
     jvms = sum(1 for sample in tree if role_of(sample.name) == "jvm")
-    return Summary(total_mib=sum(by_role.values()), by_role_mib=by_role, jvm_count=jvms)
+    return Summary(
+        total_mib=sum(by_role.values()), by_role_mib=by_role, jvm_count=jvms, by_name=by_name
+    )
 
 
 def peak_of(summaries: list) -> Summary:
@@ -164,7 +191,7 @@ def peak_of(summaries: list) -> Summary:
         return Summary(total_mib=0.0)
     biggest = max(summaries, key=lambda summary: summary.total_mib)
     jvms = max(summary.jvm_count for summary in summaries)
-    return Summary(biggest.total_mib, dict(biggest.by_role_mib), jvms)
+    return Summary(biggest.total_mib, dict(biggest.by_role_mib), jvms, dict(biggest.by_name))
 
 
 def check_budget(peak_total_mib: float, max_total_mib) -> list:
@@ -258,11 +285,26 @@ def sample_for(root_pid: int, duration_s: float, interval_s: float):
         roles = {
             role: (mib, role_cpu[role].seconds()) for role, mib in summary.by_role_mib.items()
         }
-        series.append(TimedSample(now - start, summary.total_mib, cpu.seconds(), roles))
+        series.append(
+            TimedSample(now - start, summary.total_mib, cpu.seconds(), roles, summary.by_name)
+        )
         if now >= deadline:
             break
         time.sleep(interval_s)
     return summaries, series
+
+
+def series_row(sample: TimedSample) -> dict:
+    """One point of the time series: total, CPU, and each role's and process's memory."""
+    return {
+        "t": round(sample.t, 1),
+        "total_mib": round(sample.total_mib, 1),
+        "cpu_s": round(sample.cpu_seconds, 2),
+        "roles_mib": {role: round(mib, 1) for role, (mib, _) in sample.roles.items()},
+        "processes": {
+            name: [round(mib, 1), count] for name, (mib, count) in sample.processes.items()
+        },
+    }
 
 
 def render_report(label: str, summaries: list, series=None, window_s: float = 30.0) -> dict:
@@ -276,6 +318,10 @@ def render_report(label: str, summaries: list, series=None, window_s: float = 30
         "peak_total_mib": round(peak.total_mib, 1),
         "peak_by_role_mib": {k: round(v, 1) for k, v in peak.by_role_mib.items()},
         "peak_jvm_count": peak.jvm_count,
+        "peak_by_process": {
+            name: {"mib": round(mib, 1), "count": count}
+            for name, (mib, count) in sorted(peak.by_name.items())
+        },
         "final_total_mib": round(final.total_mib, 1),
         "metric": "working_set" if os.name == "nt" else "pss",
         "window_s": window_s,
@@ -284,10 +330,11 @@ def render_report(label: str, summaries: list, series=None, window_s: float = 30
             role: {key: round(value, 1) for key, value in stat.items()}
             for role, stat in window_role_stats(series, window_s).items()
         },
-        "series": [
-            {"t": round(s.t, 1), "total_mib": round(s.total_mib, 1), "cpu_s": round(s.cpu_seconds, 2)}
-            for s in series
-        ],
+        "window_processes": {
+            name: {key: round(value, 1) for key, value in stat.items()}
+            for name, stat in window_process_stats(series, window_s).items()
+        },
+        "series": [series_row(s) for s in series],
     }
 
 
