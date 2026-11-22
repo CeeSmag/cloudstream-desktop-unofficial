@@ -13,7 +13,7 @@ path = "src/main.rs"
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 serde_json.workspace = true
 serde.workspace = true
-url = "=2.5.8"
+url = "=2.5.9"
 # The browser window. A separate process, so the WebView's event loop never runs inside Slint's.
 tao = "=0.37.2"
 tracing.workspace = true
