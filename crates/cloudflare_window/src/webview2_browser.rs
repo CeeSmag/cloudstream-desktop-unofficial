@@ -61,6 +61,11 @@ impl BrowserView {
         Ok(Self { slot, source })
     }
 
+    /// WebView2 cannot end one window's process: the old page is left for the browser to trim.
+    pub(crate) fn recycle(&self, url: &Url) {
+        self.navigate(url);
+    }
+
     pub(crate) fn identify(&self) {
         let Some(native) = self.host() else { return };
         let source = self.source.clone();

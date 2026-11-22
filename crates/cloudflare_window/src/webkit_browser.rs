@@ -82,6 +82,14 @@ impl BrowserView {
         }
     }
 
+    /// Ends the window's web process, which frees the memory of the page it held (navigating
+    /// away does not: WebKit keeps the heap), and loads `url` in a fresh one. Cookies live in the
+    /// network process and are kept.
+    pub(crate) fn recycle(&self, url: &Url) {
+        self.view.webview().terminate_web_process();
+        self.navigate(url);
+    }
+
     pub(crate) fn reveal(&self, document: DocumentId) -> bool {
         self.is_current(document) && self.view.set_visible(true).is_ok()
     }

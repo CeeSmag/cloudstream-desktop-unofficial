@@ -115,6 +115,7 @@ mod platform {
         }
         pub(crate) fn identify(&self) {}
         pub(crate) fn navigate(&self, _url: &Url) {}
+        pub(crate) fn recycle(&self, _url: &Url) {}
         pub(crate) fn reveal(&self, _document: DocumentId) -> bool {
             false
         }

@@ -9,6 +9,7 @@ use tao::window::Window;
 use url::{Origin, Url};
 
 use crate::browser_view::{open_view, BrowserContext, BrowserSource, BrowserView};
+use crate::context_slimming::{should_slim, slim_address, SlimState};
 use crate::helper_events::HelperEvent;
 use crate::outbox::Outbox;
 use crate::page_fetches::PageFetches;
@@ -44,6 +45,8 @@ pub(crate) struct SiteWindow {
     pub(crate) fetches: PageFetches,
     /// When the window last did something for the sidecar (passed, or a browser fetch).
     last_used: Instant,
+    /// Moved to the site's small page (`context_slimming.rs`) to free the heavy page's memory.
+    slimmed: bool,
 }
 
 pub(crate) struct WindowParts<'a> {
@@ -77,6 +80,7 @@ impl SiteWindow {
             committed: None,
             fetches,
             last_used: Instant::now(),
+            slimmed: false,
         })
     }
 
@@ -168,6 +172,12 @@ impl SiteWindow {
         } = observed;
         let leaves_origin = response.leaves_origin(&self.target);
         if matches!(self.phase, Phase::Passed) && leaves_origin {
+            self.phase = Phase::Finished;
+        }
+        if self.slimmed && matches!(self.phase, Phase::Passed) && response.challenge {
+            // The small page was challenged: this document cannot serve fetches. Drop the window;
+            // the sidecar verifies the site again when it needs it.
+            tracing::debug!(id = %self.waiters.owner().id, "the small page was challenged; dropping the window");
             self.phase = Phase::Finished;
         }
         if !matches!(self.phase, Phase::Checking(_)) {
@@ -277,6 +287,25 @@ impl SiteWindow {
     /// Time since the window last did something for the sidecar.
     pub(crate) fn idle(&self) -> Duration {
         self.last_used.elapsed()
+    }
+
+    /// Moves a passed window that has been quiet for `after` to the site's small page, so the
+    /// heavy page's memory is freed while the window can still serve browser fetches.
+    pub(crate) fn slim_if_quiet(&mut self, after: Duration) {
+        let state = SlimState {
+            passed: self.passed(),
+            slimmed: self.slimmed,
+            fetching: self.fetching(),
+            idle: self.idle(),
+        };
+        if !should_slim(&state, after) {
+            return;
+        }
+        self.slimmed = true;
+        if let Some(address) = slim_address(&self.target) {
+            tracing::debug!(id = %self.waiters.owner().id, %address, "moving a quiet verified window to a small page");
+            self.view.recycle(&address);
+        }
     }
 
     /// Notes that the window was just used.

@@ -8,6 +8,7 @@
 
 mod browser_view;
 mod context_reaper;
+mod context_slimming;
 mod helper_app;
 mod helper_events;
 mod input_threads;

@@ -27,6 +27,9 @@ const CONTEXT_IDLE_TTL: Duration = Duration::from_secs(120);
 /// A window used within this time is kept even above the limit, so a burst of sites that each
 /// verify at once does not release a window the sidecar is about to use.
 const CONTEXT_GRACE: Duration = Duration::from_secs(30);
+/// A passed window quiet for this long is moved to the site's small page (`context_slimming.rs`);
+/// a fetch that is about to come meets the real page, and a later one the small page.
+const SLIM_AFTER: Duration = Duration::from_secs(10);
 
 pub(crate) struct HelperConfig {
     pub(crate) exchange: PathBuf,
@@ -241,6 +244,9 @@ impl HelperState {
         for key in contexts_to_release(&states, &self.limits) {
             tracing::info!(window = %key, "releasing a verified browser window nobody needs");
             self.remove(&key);
+        }
+        for site in self.sites.values_mut() {
+            site.slim_if_quiet(SLIM_AFTER);
         }
     }
 

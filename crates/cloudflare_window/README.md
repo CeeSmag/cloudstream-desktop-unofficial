@@ -29,6 +29,8 @@ with `--exchange <dir> --profile <dir>` and communicates over stdin and stdout.
 - A window that passed is a browser process of its own. `context_reaper.rs` (pure, tested) decides which to
   release: any unused for 2 minutes, and above `--max-windows <n>` the least recently used. A window that is
   still being checked, has a browser fetch running or was used in the last 30 seconds is never released.
+- A passed window quiet for 10 seconds is shrunk (`context_slimming.rs`): on Linux its web process is ended and
+  it loads the site's `robots.txt`, a document of the same origin that still serves browser fetches.
 
 Run `cargo test -p cloudflare_window` for the decision and race tests. Run
 `python scripts/check_verify_window.py <helper>` for native browser and window checks.
