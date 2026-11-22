@@ -1,9 +1,9 @@
-import { Spinner } from "std-widgets.slint";
+import { ScrollView, Spinner } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { FilterChip, PaginationItem, PosterItem } from "types.slint";
 import { TvBadge, TvButton, TvSegmented, TvSelect, TvTextInput } from "controls.slint";
-import { PosterGrid } from "poster.slint";
+import { InlinePosterGrid, PosterGrid } from "poster.slint";
 import { SectionTitle, MutedLabel, SkeletonRow } from "widgets.slint";
 import { PaginationBar } from "pagination.slint";
 
@@ -72,7 +72,9 @@ component GenreChip inherits Rectangle {
     }
 }
 
-export component BrowsePage inherits VerticalLayout {
+/// Browse: the filters are ordinary page content, so the whole page scrolls with the titles (the
+/// way Home does) instead of the filters staying on screen while the grid scrolls under them.
+export component BrowsePage inherits ScrollView {
     in property <[PosterItem]> items: [];
     in property <string> kind: "movie";
     in property <bool> loading: false;
@@ -82,77 +84,96 @@ export component BrowsePage inherits VerticalLayout {
     in property <int> focused-index: -1;
     callback open-at(int);
 
-    padding: Theme.page-pad;
-    padding-top: Theme.space-3;
-    spacing: 14px;
+    /// A new page of titles starts at the top (changed when the app asks for a scroll reset).
+    property <int> reset-token: BrowseFilter.scroll-reset;
+    changed reset-token => {
+        self.content-y = 0px;
+    }
+
     accessible-role: AccessibleRole.main;
 
-    HorizontalLayout {
-        spacing: 12px;
-        alignment: start;
-        cross-axis-alignment: center;
-        SectionTitle {
-            text: "Browse";
-            vertical-alignment: center;
-        }
-        Rectangle { width: 8px; }
-        TvSegmented {
-            model: ["Movies", "TV shows"];
-            current-value: root.kind == "tv" ? "TV shows" : "Movies";
-            selected(choice) => { root.load-kind(choice == "TV shows" ? "tv" : "movie"); }
-        }
-        Rectangle { width: 6px; }
-        TvSelect {
-            width: 152px;
-            model: BrowseFilter.years;
-            current-value <=> BrowseFilter.year;
-            selected => { BrowseFilter.changed(); }
-        }
-        TvSelect {
-            width: 156px;
-            model: BrowseFilter.sorts;
-            current-value <=> BrowseFilter.sort;
-            selected => { BrowseFilter.changed(); }
+    /// Scrolls so that the band at window height `top` (`height` tall) is fully visible.
+    function reveal(top: length, height: length) {
+        if top - root.absolute-position.y < 90px {
+            root.content-y = min(0px, root.content-y + 90px - (top - root.absolute-position.y));
+        } else if top - root.absolute-position.y + height > root.visible-height - 16px {
+            root.content-y = max(
+                root.visible-height - root.content-height,
+                root.content-y - (top - root.absolute-position.y + height - root.visible-height + 16px));
         }
     }
 
-    if BrowseFilter.genres.length > 0: Flickable {
-        height: 36px;
-        content-width: genre-row.preferred-width;
-        genre-row := HorizontalLayout {
-            spacing: 8px;
+    VerticalLayout {
+        padding: Theme.page-pad;
+        padding-top: Theme.space-3;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 12px;
             alignment: start;
-            for chip[i] in BrowseFilter.genres: GenreChip {
-                chip: chip;
-                clicked => { BrowseFilter.toggle-genre(i); }
+            cross-axis-alignment: center;
+            SectionTitle {
+                text: "Browse";
+                vertical-alignment: center;
+            }
+            Rectangle { width: 8px; }
+            TvSegmented {
+                model: ["Movies", "TV shows"];
+                current-value: root.kind == "tv" ? "TV shows" : "Movies";
+                selected(choice) => { root.load-kind(choice == "TV shows" ? "tv" : "movie"); }
+            }
+            Rectangle { width: 6px; }
+            TvSelect {
+                width: 152px;
+                model: BrowseFilter.years;
+                current-value <=> BrowseFilter.year;
+                selected => { BrowseFilter.changed(); }
+            }
+            TvSelect {
+                width: 156px;
+                model: BrowseFilter.sorts;
+                current-value <=> BrowseFilter.sort;
+                selected => { BrowseFilter.changed(); }
             }
         }
-    }
 
-    MutedLabel {
-        text: (BrowseFilter.sort == "Popular" ? "Popular" : "Best rated") + " on TMDB · pick any title to match it on your providers.";
-        font-size: 13px;
-    }
-    if root.loading: LoadingLine { text: "Loading titles…"; }
-    if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
-    if !root.loading && root.message != "": MutedLabel { text: root.message; font-size: 13.5px; }
-    PosterGrid {
-        vertical-stretch: 1;
-        items: root.items;
-        columns: root.columns;
-        scroll-reset: BrowseFilter.scroll-reset;
-        focused-index: root.focused-index;
-        open-at(i) => { root.open-at(i); }
-    }
-    if BrowseFilter.total-pages > 1: HorizontalLayout {
-        alignment: center;
-        padding-top: 2px;
-        PaginationBar {
-            current-page: BrowseFilter.current-page;
-            total-pages: BrowseFilter.total-pages;
-            pages: BrowseFilter.pages;
-            disabled: root.loading;
-            go-to-page(p) => { BrowseFilter.go-to-page(p); }
+        if BrowseFilter.genres.length > 0: Flickable {
+            height: 36px;
+            content-width: genre-row.preferred-width;
+            genre-row := HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                for chip[i] in BrowseFilter.genres: GenreChip {
+                    chip: chip;
+                    clicked => { BrowseFilter.toggle-genre(i); }
+                }
+            }
+        }
+
+        MutedLabel {
+            text: (BrowseFilter.sort == "Popular" ? "Popular" : "Best rated") + " on TMDB · pick any title to match it on your providers.";
+            font-size: 13px;
+        }
+        if root.loading: LoadingLine { text: "Loading titles…"; }
+        if root.loading && root.items.length == 0: SkeletonRow { count: root.columns; }
+        if !root.loading && root.message != "": MutedLabel { text: root.message; font-size: 13.5px; }
+        InlinePosterGrid {
+            items: root.items;
+            columns: root.columns;
+            focused-index: root.focused-index;
+            focus-arrived(y, h) => { root.reveal(y, h); }
+            open-at(i) => { root.open-at(i); }
+        }
+        if BrowseFilter.total-pages > 1: HorizontalLayout {
+            alignment: center;
+            padding-top: 2px;
+            PaginationBar {
+                current-page: BrowseFilter.current-page;
+                total-pages: BrowseFilter.total-pages;
+                pages: BrowseFilter.pages;
+                disabled: root.loading;
+                go-to-page(p) => { BrowseFilter.go-to-page(p); }
+            }
         }
     }
 }
