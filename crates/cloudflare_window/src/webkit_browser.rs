@@ -83,11 +83,15 @@ impl BrowserView {
     }
 
     /// Ends the window's web process, which frees the memory of the page it held (navigating
-    /// away does not: WebKit keeps the heap), and loads `url` in a fresh one. Cookies live in the
-    /// network process and are kept.
+    /// away does not: WebKit keeps the heap), and loads a tiny page of our own in a fresh one. The
+    /// page is given the site's origin as its base address, so it is a document of that origin and
+    /// can still run the sidecar's fetches; it does not depend on what the site serves at `url`
+    /// (a site's own 404 page can be a heavy app). Cookies live in the network process and are kept.
     pub(crate) fn recycle(&self, url: &Url) {
-        self.view.webview().terminate_web_process();
-        self.navigate(url);
+        let gtk_view = self.view.webview();
+        gtk_view.terminate_web_process();
+        let base = url.join("/").map(String::from).unwrap_or_default();
+        gtk_view.load_html("<!doctype html><title>.</title>", Some(&base));
     }
 
     pub(crate) fn reveal(&self, document: DocumentId) -> bool {
