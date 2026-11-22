@@ -83,3 +83,35 @@ fn media_lines_ignores_blank_and_comment_lines() {
     let lines = media_lines("#EXTM3U\n\n  \n#EXTINF:5,\nseg1.vtt\n#EXT-X-ENDLIST\n");
     assert_eq!(lines, vec!["seg1.vtt"]);
 }
+
+/// Serves the same large piece for every address.
+struct Endless(String);
+
+impl SubtitleFetcher for Endless {
+    fn fetch(&self, _: &str, _: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
+        Ok(self.0.as_bytes().to_vec())
+    }
+}
+
+#[test]
+fn a_playlist_whose_pieces_are_huge_stops_at_the_size_cap() {
+    let piece = format!(
+        "WEBVTT\n\n00:01.000 --> 00:02.000\n{}\n",
+        "x".repeat(1024 * 1024)
+    );
+    let playlist: String = (0..100)
+        .map(|n| format!("#EXTINF:10,\nseg{n}.vtt\n"))
+        .collect();
+    let playlist = format!("#EXTM3U\n{playlist}#EXT-X-ENDLIST\n");
+    let joined =
+        flatten_playlist(&playlist, "https://h.test/p/list.m3u8", &Endless(piece)).expect("cues");
+    assert!(
+        joined.len() <= MAX_JOINED_BYTES + 2 * 1024 * 1024,
+        "the joined file is {} bytes, past the cap",
+        joined.len()
+    );
+    assert!(
+        joined.len() > MAX_JOINED_BYTES / 2,
+        "it still holds many pieces"
+    );
+}

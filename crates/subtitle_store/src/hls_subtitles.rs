@@ -5,6 +5,9 @@ use crate::subtitle_fetcher::SubtitleFetcher;
 
 /// The most pieces joined; a film's subtitles never need more.
 const MAX_SEGMENTS: usize = 4_000;
+/// The most bytes of text joined (the same limit as an unpacked subtitle file, 16 MiB); a hostile
+/// or broken playlist of large pieces cannot grow the file without bound.
+const MAX_JOINED_BYTES: usize = 16 * 1024 * 1024;
 const HEADER: &str = "WEBVTT\n\n";
 
 /// Resolves `reference` (a relative or absolute address in a playlist) against the playlist's own.
@@ -67,6 +70,10 @@ pub(crate) fn flatten_playlist(
     let mut joined = String::from(HEADER);
     let mut has_cues = false;
     for line in media_lines(&text).into_iter().take(MAX_SEGMENTS) {
+        if joined.len() >= MAX_JOINED_BYTES {
+            tracing::warn!(url = %base, "a subtitle playlist passed the size cap; the rest is not joined");
+            break;
+        }
         let Ok(body) = fetcher.fetch(&resolve_url(&base, line), &[]) else {
             tracing::warn!(url = %base, "a piece of a subtitle playlist could not be downloaded");
             continue;

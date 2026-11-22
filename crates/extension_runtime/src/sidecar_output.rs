@@ -36,7 +36,7 @@ pub(crate) fn forward_stdout(stdout: impl Read, sender: &Sender<String>) {
 /// so a failing extension leaves a trace. Debug and trace lines only reach the debug files.
 pub(crate) fn log_stderr(stderr: impl Read) {
     let mut previous = LineLevel::Info;
-    for line in lossy_lines(stderr) {
+    for line in lossy_lines_capped(stderr, MAX_LOG_LINE_BYTES) {
         let line = shortened(&line);
         if line.contains(CLOUDFLARE_TAG) {
             log_cloudflare_line(line, previous);
@@ -66,26 +66,70 @@ fn log_cloudflare_line(line: &str, previous: LineLevel) {
     }
 }
 
+/// Longest protocol reply line read (a Home page or a list of links is well under 1 MB; 32 MiB
+/// leaves room for any real reply and still stops a runaway or hostile plugin from filling memory).
+const MAX_REPLY_LINE_BYTES: usize = 32 * 1024 * 1024;
+/// Longest log line read from stderr: only the first `MAX_LOGGED_LINE_CHARS` are ever logged.
+const MAX_LOG_LINE_BYTES: usize = 64 * 1024;
+
 /// Reads lines from the child's output and never stops at bytes that are not valid UTF-8:
 /// extensions print text in the Windows code page, and a reader that quit there would leave the
 /// pipe undrained, freezing the child as soon as the pipe filled up.
 pub(crate) fn lossy_lines(source: impl Read) -> impl Iterator<Item = String> {
+    lossy_lines_capped(source, MAX_REPLY_LINE_BYTES)
+}
+
+/// Like [`lossy_lines`], keeping at most `max_bytes` of a line: the rest of a longer line is read
+/// and dropped (so the pipe stays drained) instead of being held in memory.
+pub(crate) fn lossy_lines_capped(
+    source: impl Read,
+    max_bytes: usize,
+) -> impl Iterator<Item = String> {
     let mut reader = BufReader::new(source);
-    std::iter::from_fn(move || {
-        let mut bytes = Vec::new();
-        match reader.read_until(b'\n', &mut bytes) {
-            Ok(0) => None,
-            Ok(_) => Some(
-                String::from_utf8_lossy(&bytes)
-                    .trim_end_matches(['\r', '\n'])
-                    .to_owned(),
-            ),
-            Err(error) => {
-                tracing::warn!(%error, "cannot read the sidecar output any more");
-                None
-            }
+    std::iter::from_fn(move || match next_capped_line(&mut reader, max_bytes) {
+        Ok(Some(bytes)) => Some(
+            String::from_utf8_lossy(&bytes)
+                .trim_end_matches(['\r', '\n'])
+                .to_owned(),
+        ),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, "cannot read the sidecar output any more");
+            None
         }
     })
+}
+
+/// The next line's first `max_bytes` bytes (its newline included when it fits); `None` at the end.
+fn next_capped_line(
+    reader: &mut impl BufRead,
+    max_bytes: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
+    let mut line = Vec::new();
+    let mut cut = false;
+    let mut seen_any = false;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            return Ok(seen_any.then_some(line));
+        }
+        seen_any = true;
+        let newline = chunk.iter().position(|byte| *byte == b'\n');
+        let used = newline.map_or(chunk.len(), |at| at + 1);
+        let keep = used.min(max_bytes.saturating_sub(line.len()));
+        cut |= keep < used;
+        line.extend_from_slice(chunk.get(..keep).unwrap_or_default());
+        reader.consume(used);
+        if newline.is_some() {
+            if cut {
+                tracing::warn!(
+                    max_bytes,
+                    "a sidecar line was longer than the cap; the rest was dropped"
+                );
+            }
+            return Ok(Some(line));
+        }
+    }
 }
 
 /// Extensions sometimes print whole web pages; the log keeps only the start of such a line.
@@ -184,6 +228,30 @@ mod tests {
             classify("[sidecar] ready", LineLevel::Info),
             LineLevel::Info
         );
+    }
+
+    #[test]
+    fn a_line_longer_than_the_cap_is_cut_and_the_next_line_is_intact() {
+        let bytes: &[u8] = b"0123456789ABCDEF\nnext\nlast-without-newline-and-long-too";
+        let lines: Vec<String> = lossy_lines_capped(bytes, 10).collect();
+        assert_eq!(lines, ["0123456789", "next", "last-witho"]);
+    }
+
+    #[test]
+    fn a_huge_line_does_not_grow_memory_past_the_cap() {
+        let huge = vec![b'x'; 5 * 1024 * 1024];
+        let mut input = huge;
+        input.extend_from_slice(b"\nafter\n");
+        let lines: Vec<String> = lossy_lines_capped(input.as_slice(), 1024).collect();
+        assert_eq!(lines.first().map(String::len), Some(1024));
+        assert_eq!(lines.get(1).map(String::as_str), Some("after"));
+    }
+
+    #[test]
+    fn lines_within_the_cap_are_unchanged() {
+        let bytes: &[u8] = b"a\r\nbb\n\nccc";
+        let lines: Vec<String> = lossy_lines_capped(bytes, 10).collect();
+        assert_eq!(lines, ["a", "bb", "", "ccc"]);
     }
 
     #[test]
