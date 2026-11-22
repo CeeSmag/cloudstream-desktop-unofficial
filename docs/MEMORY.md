@@ -43,18 +43,40 @@ For the JVM breakdown, run a measurement build with `-XX:NativeMemoryTracking=su
 | S5 | Browse, 3 pages, then Back |
 | S6 | Leave the player |
 
-## Baseline
+## Baseline (measured 2026-11-22)
 
-Not recorded yet. Every number in the optimization plan is an estimate until this table is filled.
+Machine: 16 cores, 31 GB RAM, Linux (Wayland, Mesa), release build of 0.5.2. Data: a **copy** of a
+real install (CineStream + MegaProvider, `plugin_worker_limit = 0` = unlimited), debug logging on.
+Peak of the whole process tree, PSS:
 
-| Scenario | Peak total MiB | JVMs | Notes |
-|---|---|---|---|
-| S1 | | | |
-| S2 | | | |
-| S3 | | | |
-| S4 | | | |
-| S5 | | | |
-| S6 | | | |
+| Scenario | Peak total MiB | By role (MiB) | JVMs | Notes |
+|---|---|---|---|---|
+| S1 idle Home, 2 plugins | **1338.5** | app 896.5, jvm 442.0 | 2 | stable over 120 s; second run: app 893 MiB |
+| S2-S6 | not measured yet | | | |
+
+Findings from S1 (these replace the estimates in the first version of the plan):
+
+* **The app process is the larger part, not the JVMs.** 893 MiB in `cloudstream` itself against about
+  221 MiB per JVM (two JVMs). More installed plugins add roughly 220 MiB each when all stay resident.
+* The 893 MiB is **live anonymous memory**: 850 MiB anon, 122 MiB file-backed. It sits in about 11
+  blocks of 30 MiB or more (many of 64 MiB) plus a 150 MiB heap.
+* It is **not** the GL driver or the allocator: forcing Slint's software renderer left it at 863 MiB;
+  `MALLOC_ARENA_MAX=2` gave 875 MiB; making every block of 128 KiB or more an `mmap` that is returned
+  on free (so freed memory cannot be hoarded) gave 845 MiB, and 840 MiB with one arena.
+* Without the sidecar and plugins (three accidental runs where the sidecar was not found, Home empty)
+  the same process used roughly 80-170 MiB. So about 750 MiB comes from what plugins' Home content
+  brings in.
+* Hypothesis, to be confirmed by the first Phase 3 step: decoded posters. A 360x540 RGBA poster is
+  0.78 MB; the artwork cache held 656 images, and `hydrate_poster_images` asks for every poster of
+  every shelf, so about 600 x 0.78 MB in the Slint models plus the loader's 144 MiB cache matches.
+* Playback on this machine decodes in hardware (`vaapi-copy`, from the app's own playback
+  diagnostics line), so the "probably software decode" guess for the player was wrong here.
+
+## Measurement mistakes to avoid
+
+* Pass environment variables to `env` as separate words. An unquoted `$VAR` holding several
+  assignments is not split in zsh, and the app then starts without a sidecar (a quiet, plausible
+  looking, wrong number). Check `cloudstream.log` for `using JVM sidecar` and the JVM count.
 
 ## Decision log
 
