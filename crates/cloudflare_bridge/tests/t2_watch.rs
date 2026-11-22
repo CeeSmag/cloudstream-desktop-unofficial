@@ -522,3 +522,46 @@ fn concurrent_requests_for_several_sites_are_all_answered_and_only_owners_speak(
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A helper that writes the arguments it was started with, then waits for `quit`.
+fn args_recording_helper(dir: &Path) -> HelperLaunch {
+    let script = format!(
+        r#"printf '%s %s\n' "$0" "$1" > "{dir}/args.tmp"
+mv "{dir}/args.tmp" "{dir}/args.txt"
+while IFS="$(printf '\t')" read -r kind id host url method standalone; do
+  case "$kind" in quit) exit 0;; esac
+done"#,
+        dir = dir.display()
+    );
+    HelperLaunch {
+        program: "sh".into(),
+        args: vec!["-c".into(), script],
+    }
+}
+
+fn started_with(name: &str, windows: Option<usize>) -> String {
+    let dir = folder(name);
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(vec!["site.test".to_owned()]),
+        helper: Some(args_recording_helper(&dir)),
+    });
+    if let Some(count) = windows {
+        watch.set_helper_windows(count);
+    }
+    request(&dir, "one", "site.test");
+    wait_for_file(&dir.join("args.txt"), Duration::from_secs(5)).expect("the helper started")
+}
+
+#[test]
+fn the_helper_is_started_with_the_number_of_windows_it_may_keep() {
+    assert_eq!(
+        started_with("windows_flag", Some(3)).trim(),
+        "--max-windows 3"
+    );
+}
+
+#[test]
+fn a_helper_is_started_without_a_window_limit_until_one_is_set() {
+    assert!(!started_with("windows_unset", None).contains("--max-windows"));
+}

@@ -20,6 +20,8 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> worker-value: "";
     in property <[string]> helper-idle-labels: [];
     in property <string> helper-idle-value: "";
+    in property <[string]> helper-windows-labels: [];
+    in property <string> helper-windows-value: "";
     in property <[string]> video-renderer-labels: [];
     in property <string> video-renderer-value: "";
     in property <[string]> perf-profile-labels: [];
@@ -46,6 +48,7 @@ export component SettingsGeneralPage inherits VerticalLayout {
     callback set-storage-cap(string);
     callback set-worker-limit(string);
     callback set-helper-idle(string);
+    callback set-helper-windows(string);
     callback set-video-renderer(string);
     callback set-performance-profile(string);
     callback reset-performance();
@@ -259,6 +262,17 @@ export component SettingsGeneralPage inherits VerticalLayout {
                     model: root.helper-idle-labels;
                     current-value: root.helper-idle-value;
                     selected(value) => { root.set-helper-idle(value); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Verified browser windows kept";
+                description: "Each verified site keeps a browser window of about 150 MB; the oldest unused ones are closed. Applies the next time the helper starts";
+                TvSelect {
+                    width: 170px;
+                    model: root.helper-windows-labels;
+                    current-value: root.helper-windows-value;
+                    selected(value) => { root.set-helper-windows(value); }
                 }
             }
         }

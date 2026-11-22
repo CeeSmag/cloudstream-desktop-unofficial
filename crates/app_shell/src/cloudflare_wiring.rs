@@ -47,6 +47,12 @@ pub fn start_cloudflare_watch(data_dir: &Path, settings: &SettingsService) -> Wa
             None
         });
     watch.set_helper_idle(idle);
+    match settings.helper_windows() {
+        Ok(windows) => watch.set_helper_windows(windows.count()),
+        Err(error) => {
+            tracing::warn!(%error, "verification window limit not read; the helper uses its own");
+        }
+    }
     watch
 }
 

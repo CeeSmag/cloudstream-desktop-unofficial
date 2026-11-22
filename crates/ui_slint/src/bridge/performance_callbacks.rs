@@ -56,6 +56,7 @@ fn apply_limits_now(ctx: &BridgeContext) {
         );
     }
     apply_helper_idle_now(ctx);
+    apply_helper_windows_now(ctx);
     if let Some(ui) = ctx.window() {
         show_tuning_values(&ui, services);
         show_performance(&ui, services);
@@ -73,6 +74,21 @@ pub(crate) fn apply_helper_idle_now(ctx: &BridgeContext) {
     };
     if let Some(watch) = ctx.extras.borrow().cloudflare.as_ref() {
         watch.set_helper_idle(idle);
+    }
+}
+
+/// Tells the Cloudflare watcher how many verified windows the helper may keep (it takes the number
+/// when it starts, so a running helper keeps the old one until it restarts).
+pub(crate) fn apply_helper_windows_now(ctx: &BridgeContext) {
+    let windows = match ctx.services.settings.helper_windows() {
+        Ok(windows) => windows.count(),
+        Err(error) => {
+            tracing::warn!(%error, "verification window limit not read");
+            return;
+        }
+    };
+    if let Some(watch) = ctx.extras.borrow().cloudflare.as_ref() {
+        watch.set_helper_windows(windows);
     }
 }
 

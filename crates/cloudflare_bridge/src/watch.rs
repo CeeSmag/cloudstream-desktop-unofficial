@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -43,6 +43,8 @@ pub struct WatchHandle {
     debug_logging: Arc<AtomicBool>,
     /// Seconds a quiet helper may stay open; 0 = until the app closes.
     helper_idle_secs: Arc<AtomicU64>,
+    /// Verified browser windows the helper may keep, read when it starts; 0 = its own default.
+    helper_windows: Arc<AtomicUsize>,
     join: Option<JoinHandle<()>>,
     commands: Sender<ViewerAction>,
     next_retry: AtomicU64,
@@ -104,6 +106,12 @@ impl WatchHandle {
             .store(idle.map_or(0, |limit| limit.as_secs()), Ordering::SeqCst);
     }
 
+    /// How many verified browser windows the helper keeps. The helper takes it when it starts, so
+    /// a change applies the next time it starts.
+    pub fn set_helper_windows(&self, windows: usize) {
+        self.helper_windows.store(windows, Ordering::SeqCst);
+    }
+
     /// Asks the watcher thread to exit.
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
@@ -127,12 +135,14 @@ pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
     let debug_logging = Arc::new(AtomicBool::new(false));
     // Until `set_helper_idle` says otherwise the helper stays open until the app closes.
     let helper_idle_secs = Arc::new(AtomicU64::new(0));
+    let helper_windows = Arc::new(AtomicUsize::new(0));
     let (events_tx, events) = mpsc::channel();
     let (commands, commands_rx) = mpsc::channel();
     let loop_flags = WatcherFlags {
         stop: Arc::clone(&stop),
         debug_logging: Arc::clone(&debug_logging),
         helper_idle_secs: Arc::clone(&helper_idle_secs),
+        helper_windows: Arc::clone(&helper_windows),
     };
     let join = thread::Builder::new()
         .name("cloudflare-watch".into())
@@ -143,6 +153,7 @@ pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
         stop,
         debug_logging,
         helper_idle_secs,
+        helper_windows,
         join,
         commands,
         next_retry: AtomicU64::new(1),
@@ -154,6 +165,7 @@ struct WatcherFlags {
     stop: Arc<AtomicBool>,
     debug_logging: Arc<AtomicBool>,
     helper_idle_secs: Arc<AtomicU64>,
+    helper_windows: Arc<AtomicUsize>,
 }
 
 pub(super) struct Watcher<'a> {
@@ -181,9 +193,10 @@ fn run_loop(
     let (status_tx, statuses) = mpsc::channel();
     let debug = Arc::clone(&flags.debug_logging);
     let mut watcher = Watcher {
-        helper: config
-            .helper
-            .map(|launch| VerifyHelper::new(launch, status_tx, Arc::clone(&debug))),
+        helper: config.helper.map(|launch| {
+            let windows = Arc::clone(&flags.helper_windows);
+            VerifyHelper::new(launch, status_tx, Arc::clone(&debug), windows)
+        }),
         dir: config.dir,
         allowed: config.allowed,
         events,

@@ -251,6 +251,7 @@ fn the_kept_helper_windows_follow_the_profile_a_choice_wins_and_reset_forgets_it
 fn a_stored_helper_window_count_that_is_not_offered_is_ignored() {
     use memory_budget::HelperWindows;
     let low = service_with_ram(FOUR_GB);
-    low.store_value("cloudflare_helper_windows", "3").expect("store");
+    low.store_value("cloudflare_helper_windows", "3")
+        .expect("store");
     assert_eq!(low.helper_windows().expect("r"), HelperWindows::new(2));
 }

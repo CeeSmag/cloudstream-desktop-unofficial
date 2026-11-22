@@ -80,7 +80,11 @@ fn every_tier_starts_on_the_software_video_path_until_the_gpu_path_is_verified_m
 
 #[test]
 fn a_bigger_pc_keeps_more_verified_browser_windows() {
-    let counts = [MemoryTier::LowEnd, MemoryTier::Balanced, MemoryTier::HighEnd]
-        .map(|tier| preset(tier).helper_windows.count());
+    let counts = [
+        MemoryTier::LowEnd,
+        MemoryTier::Balanced,
+        MemoryTier::HighEnd,
+    ]
+    .map(|tier| preset(tier).helper_windows.count());
     assert_eq!(counts, [2, 4, 8]);
 }

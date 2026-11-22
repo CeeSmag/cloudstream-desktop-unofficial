@@ -8,7 +8,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,6 +35,8 @@ pub struct VerifyHelper {
     running: Option<RunningHelper>,
     statuses: Sender<HelperStatus>,
     debug_logging: Arc<AtomicBool>,
+    /// Verified browser windows the helper may keep; 0 = the helper's own default.
+    max_windows: Arc<AtomicUsize>,
     /// The last command sent or status heard; the helper is idle while this is old.
     last_activity: Instant,
 }
@@ -72,12 +74,14 @@ impl VerifyHelper {
         launch: HelperLaunch,
         statuses: Sender<HelperStatus>,
         debug_logging: Arc<AtomicBool>,
+        max_windows: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             launch,
             running: None,
             statuses,
             debug_logging,
+            max_windows,
             last_activity: Instant::now(),
         }
     }
@@ -180,6 +184,10 @@ impl VerifyHelper {
         command.args(&self.launch.args);
         if self.debug_logging.load(Ordering::SeqCst) {
             command.arg("--debug");
+        }
+        let windows = self.max_windows.load(Ordering::SeqCst);
+        if windows > 0 {
+            command.arg("--max-windows").arg(windows.to_string());
         }
         let mut child = command
             .stdin(Stdio::piped())

@@ -2,7 +2,7 @@
 //! preset is followed and the warning. Pure, so it is tested without a window.
 
 use app_services::PerformanceSummary;
-use memory_budget::{HelperIdle, ProfileChoice, VideoRenderer};
+use memory_budget::{HelperIdle, HelperWindows, ProfileChoice, VideoRenderer};
 
 /// MiB in a GB, for showing RAM sizes.
 const MIB_PER_GB: u64 = 1024;
@@ -68,6 +68,29 @@ pub(crate) fn helper_idle_from_label(label: &str) -> Option<HelperIdle> {
     HelperIdle::CHOICES
         .into_iter()
         .find(|choice| helper_idle_label(*choice) == label)
+}
+
+/// The drop-down's name of a count of kept helper windows.
+pub(crate) fn helper_windows_label(windows: HelperWindows) -> String {
+    match windows.count() {
+        1 => "1 window".to_owned(),
+        count => format!("{count} windows"),
+    }
+}
+
+/// Every helper window count's drop-down name, in the order they are listed.
+pub(crate) fn helper_windows_labels() -> Vec<String> {
+    HelperWindows::CHOICES
+        .into_iter()
+        .map(helper_windows_label)
+        .collect()
+}
+
+/// The helper window count a drop-down name stands for.
+pub(crate) fn helper_windows_from_label(label: &str) -> Option<HelperWindows> {
+    HelperWindows::CHOICES
+        .into_iter()
+        .find(|choice| helper_windows_label(*choice) == label)
 }
 
 /// The drop-down's name of a video output.

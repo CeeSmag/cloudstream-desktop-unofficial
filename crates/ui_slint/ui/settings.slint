@@ -54,6 +54,8 @@ export component SettingsPage inherits Rectangle {
     in property <string> worker-value: "";
     in property <[string]> helper-idle-labels: [];
     in property <string> helper-idle-value: "";
+    in property <[string]> helper-windows-labels: [];
+    in property <string> helper-windows-value: "";
     in property <[string]> video-renderer-labels: [];
     in property <string> video-renderer-value: "";
     in property <[string]> perf-profile-labels: [];
@@ -101,6 +103,7 @@ export component SettingsPage inherits Rectangle {
     callback set-storage-cap(string);
     callback set-worker-limit(string);
     callback set-helper-idle(string);
+    callback set-helper-windows(string);
     callback set-video-renderer(string);
     callback set-performance-profile(string);
     callback reset-performance();
@@ -171,6 +174,8 @@ export component SettingsPage inherits Rectangle {
                     worker-value: root.worker-value;
                     helper-idle-labels: root.helper-idle-labels;
                     helper-idle-value: root.helper-idle-value;
+                    helper-windows-labels: root.helper-windows-labels;
+                    helper-windows-value: root.helper-windows-value;
                     video-renderer-labels: root.video-renderer-labels;
                     video-renderer-value: root.video-renderer-value;
                     perf-profile-labels: root.perf-profile-labels;
@@ -192,6 +197,7 @@ export component SettingsPage inherits Rectangle {
                     set-storage-cap(v) => { root.set-storage-cap(v); }
                     set-worker-limit(v) => { root.set-worker-limit(v); }
                     set-helper-idle(v) => { root.set-helper-idle(v); }
+                    set-helper-windows(v) => { root.set-helper-windows(v); }
                     set-video-renderer(v) => { root.set-video-renderer(v); }
                     set-performance-profile(v) => { root.set-performance-profile(v); }
                     reset-performance() => { root.reset-performance(); }

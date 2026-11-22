@@ -25,4 +25,7 @@ Routes Cloudflare verification between the Kotlin sidecar, Slint banner, and nat
   foreground permission.
 - The `fetch-<id>.txt` exchange serves browser requests from a verified same-origin document.
 
+- `WatchHandle::set_helper_windows` sets how many verified browser windows the helper keeps; `VerifyHelper`
+  passes it as `--max-windows <n>` when it starts the helper.
+
 Run `cargo test -p cloudflare_bridge` for exchange, protocol, prompt-owner and watcher tests.

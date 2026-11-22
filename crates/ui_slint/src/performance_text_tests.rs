@@ -2,7 +2,8 @@ use app_services::PerformanceSummary;
 use memory_budget::{MemoryTier, ProfileChoice, SystemFacts};
 
 use super::{
-    describe, helper_idle_from_label, helper_idle_label, helper_idle_labels, profile_from_label,
+    describe, helper_idle_from_label, helper_idle_label, helper_idle_labels,
+    helper_windows_from_label, helper_windows_label, helper_windows_labels, profile_from_label,
     profile_label, profile_labels, video_renderer_from_label, video_renderer_label,
     video_renderer_labels,
 };
@@ -131,4 +132,23 @@ fn every_video_output_label_maps_back() {
         );
     }
     assert_eq!(video_renderer_from_label("Turbo"), None);
+}
+
+#[test]
+fn the_helper_window_choices_read_as_counts_of_windows() {
+    assert_eq!(
+        helper_windows_labels(),
+        ["1 window", "2 windows", "4 windows", "8 windows"]
+    );
+}
+
+#[test]
+fn every_helper_window_label_maps_back() {
+    for choice in memory_budget::HelperWindows::CHOICES {
+        assert_eq!(
+            helper_windows_from_label(&helper_windows_label(choice)),
+            Some(choice)
+        );
+    }
+    assert_eq!(helper_windows_from_label("3 windows"), None);
 }

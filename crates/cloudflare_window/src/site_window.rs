@@ -42,6 +42,8 @@ pub(crate) struct SiteWindow {
     foreground: bool,
     committed: Option<(DocumentId, Origin)>,
     pub(crate) fetches: PageFetches,
+    /// When the window last did something for the sidecar (passed, or a browser fetch).
+    last_used: Instant,
 }
 
 pub(crate) struct WindowParts<'a> {
@@ -74,6 +76,7 @@ impl SiteWindow {
             foreground: false,
             committed: None,
             fetches,
+            last_used: Instant::now(),
         })
     }
 
@@ -235,6 +238,7 @@ impl SiteWindow {
     }
 
     pub(crate) fn start_fetch(&mut self, request: &FetchRequest, out: &Outbox) {
+        self.touch();
         if let Err(reason) = self.fetches.start(&self.view, request) {
             out.fetch_result(&request.id, &FetchOutcome::failed(reason));
         }
@@ -260,6 +264,26 @@ impl SiteWindow {
         }
     }
 
+    /// The check passed and the window is kept for the sidecar's browser fetches.
+    pub(crate) fn passed(&self) -> bool {
+        matches!(self.phase, Phase::Passed)
+    }
+
+    /// A browser fetch is running in this window.
+    pub(crate) fn fetching(&self) -> bool {
+        self.fetches.is_busy()
+    }
+
+    /// Time since the window last did something for the sidecar.
+    pub(crate) fn idle(&self) -> Duration {
+        self.last_used.elapsed()
+    }
+
+    /// Notes that the window was just used.
+    pub(crate) fn touch(&mut self) {
+        self.last_used = Instant::now();
+    }
+
     pub(crate) fn finished(&self) -> bool {
         matches!(self.phase, Phase::Finished)
     }
@@ -280,6 +304,7 @@ impl SiteWindow {
             let status = out.deliver(&request, &outcome);
             if index == 0 && matches!(status, HelperStatus::Passed { .. }) {
                 self.phase = Phase::Passed;
+                self.touch();
             }
             tracing::debug!(id = %request.id, host = %request.host, ?status, "verification finished");
             out.status(&status);

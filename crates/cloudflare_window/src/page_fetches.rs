@@ -29,6 +29,11 @@ impl PageFetches {
         }
     }
 
+    /// Whether a browser fetch is waiting for its answer.
+    pub(crate) fn is_busy(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     pub(crate) fn start(
         &mut self,
         view: &BrowserView,

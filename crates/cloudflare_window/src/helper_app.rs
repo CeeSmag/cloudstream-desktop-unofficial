@@ -12,16 +12,27 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWi
 use tao::window::WindowId;
 
 use crate::browser_view::BrowserContext;
+use crate::context_reaper::{contexts_to_release, ContextLimits, ContextState};
 use crate::helper_events::HelperEvent;
 use crate::input_threads::start_input_threads;
 use crate::outbox::Outbox;
 use crate::site_window::{SiteWindow, WindowParts};
 
 const TICK: Duration = Duration::from_millis(400);
+/// Verified windows the helper keeps when the app does not say (the app always does).
+pub(crate) const DEFAULT_MAX_WINDOWS: usize = 4;
+/// A verified window nobody has used for this long is released, whatever the limit: a site whose
+/// requests go through the browser fetches often, the others need their window only as a fallback.
+const CONTEXT_IDLE_TTL: Duration = Duration::from_secs(120);
+/// A window used within this time is kept even above the limit, so a burst of sites that each
+/// verify at once does not release a window the sidecar is about to use.
+const CONTEXT_GRACE: Duration = Duration::from_secs(30);
 
 pub(crate) struct HelperConfig {
     pub(crate) exchange: PathBuf,
     pub(crate) profile: PathBuf,
+    /// Verified browser windows kept (each is a browser process).
+    pub(crate) max_windows: usize,
 }
 
 struct HelperState {
@@ -32,6 +43,7 @@ struct HelperState {
     outbox: Outbox,
     proxy: EventLoopProxy<HelperEvent>,
     next_tick: Instant,
+    limits: ContextLimits,
 }
 
 pub(crate) fn run(config: HelperConfig) -> ! {
@@ -48,6 +60,7 @@ pub(crate) fn run(config: HelperConfig) -> ! {
         },
         proxy,
         next_tick: Instant::now() + TICK,
+        limits: ContextLimits::new(config.max_windows, CONTEXT_IDLE_TTL, CONTEXT_GRACE),
     };
     event_loop.run(move |event, target, flow| {
         state.handle(event, target, flow);
@@ -96,6 +109,7 @@ impl HelperState {
             HelperEvent::Polled { window, id, raw } => {
                 if let Some(site) = self.sites.get_mut(&window) {
                     site.fetches.complete(&id, &raw, &self.outbox);
+                    site.touch();
                 }
             }
             HelperEvent::InputClosed => {}
@@ -201,6 +215,26 @@ impl HelperState {
                 site.tick(&self.outbox);
             }
             self.retain_context(&id);
+        }
+        self.release_unused_windows();
+    }
+
+    /// Releases the verified windows nobody needs (`context_reaper.rs`); a site that needs its
+    /// window again is verified again by the sidecar's existing recovery.
+    fn release_unused_windows(&mut self) {
+        let states: Vec<ContextState<'_>> = self
+            .sites
+            .iter()
+            .map(|(key, site)| ContextState {
+                key,
+                passed: site.passed(),
+                fetching: site.fetching(),
+                idle: site.idle(),
+            })
+            .collect();
+        for key in contexts_to_release(&states, &self.limits) {
+            tracing::info!(window = %key, "releasing a verified browser window nobody needs");
+            self.remove(&key);
         }
     }
 

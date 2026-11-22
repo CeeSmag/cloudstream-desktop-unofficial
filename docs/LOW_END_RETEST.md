@@ -13,6 +13,7 @@ Manual checks after launch → Home → player work on the Slint product (`app_s
 - [ ] With the Low-end preset, **Plugin processes** shows **1** (choices 1 / 2 / 3 / 4 / 6 / Unlimited); an install from before profiles had its automatic limit dropped once and follows the profile.
 - [ ] With 3+ plugins installed and Resident workers = **1**, at any time (loading, switching provider, searching): at most **one** `java` / sidecar process, except briefly while a call on the older plugin is still running (it is never cut short; the excess is parked when that call ends).
 - [ ] Switching provider once: the previous plugin process is stopped before the new one starts; the live count stays ≤ the chosen limit.
+- [ ] **Verified browser windows kept** (Low-end: 2): after several sites were verified and about 30 seconds passed, only that many `WebKitWebProcess` processes remain under `cloudstream-verify`; a site whose window was closed is verified again when it is needed.
 - [ ] **Close the verification helper when idle** (Low-end: 2 min): after a Cloudflare check and the idle time, `cloudstream-verify` and its browser processes are gone; the next check starts it again.
 - [ ] Trusted plugin spawn logs plain / non-AppContainer (Windows) or non-Landlock (Linux); Job / rlimit still apply.
 - [ ] Untrusted plugin still uses AppContainer / Landlock when `data.dir` is set.

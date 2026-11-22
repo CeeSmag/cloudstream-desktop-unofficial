@@ -251,6 +251,20 @@ fn verify_helper_and_video_rows(ui: &CloudStream) {
     ui.invoke_set_helper_idle("Never".into());
     assert_eq!(idle.borrow().as_str(), "Never");
 
+    ui.set_helper_windows_labels(strings(&[
+        "1 window",
+        "2 windows",
+        "4 windows",
+        "8 windows",
+    ]));
+    ui.set_helper_windows_value("2 windows".into());
+    assert_eq!(ui.get_helper_windows_labels().row_count(), 4);
+    let windows = Rc::new(RefCell::new(String::new()));
+    let windows_ref = Rc::clone(&windows);
+    ui.on_set_helper_windows(move |label| *windows_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_helper_windows("8 windows".into());
+    assert_eq!(windows.borrow().as_str(), "8 windows");
+
     ui.set_video_renderer_labels(strings(&[
         "Software (works everywhere)",
         "GPU (no picture copies)",
