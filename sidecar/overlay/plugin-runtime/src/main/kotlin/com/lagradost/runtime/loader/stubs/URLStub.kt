@@ -76,6 +76,9 @@ object URLStub {
         if (!builder.interceptors().contains(CloudflareSolver.interceptor)) {
             builder.addInterceptor(CloudflareSolver.interceptor)
         }
+        if (!builder.networkInterceptors().contains(CloudflareSolver.clearanceScope)) {
+            builder.addNetworkInterceptor(CloudflareSolver.clearanceScope)
+        }
         builder.dns(SafeDns)
         // Windows AppContainer enforces strict handle checks; OkHttp 5's Happy Eyeballs
         // (FastFallbackExchangeFinder) closes losing TCP sockets while sun.nio.ch.Net.pollConnect

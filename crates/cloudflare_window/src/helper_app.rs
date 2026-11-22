@@ -1,43 +1,39 @@
-//! The helper's event loop: one window per site, looked at a few times a second.
+//! Owns each verification request and the lifetime of its native browser.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use cloudflare_bridge::{FetchOutcome, HelperCommand, HelperStatus, Outcome, VerifyRequest};
+use cloudflare_bridge::{
+    FetchOutcome, FetchRequest, HelperCommand, HelperStatus, Outcome, VerifyRequest,
+};
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
 use tao::window::WindowId;
-use wry::WebContext;
 
+use crate::browser_view::BrowserContext;
 use crate::helper_events::HelperEvent;
 use crate::input_threads::start_input_threads;
 use crate::outbox::Outbox;
 use crate::site_window::{SiteWindow, WindowParts};
 
-/// How often every window is looked at.
 const TICK: Duration = Duration::from_millis(400);
 
-/// Where the helper keeps things.
 pub(crate) struct HelperConfig {
-    /// The sidecar's exchange folder.
     pub(crate) exchange: PathBuf,
-    /// The browser profile (cookies survive restarts, so a passed site stays passed).
     pub(crate) profile: PathBuf,
 }
 
 struct HelperState {
     sites: HashMap<String, SiteWindow>,
     windows: HashMap<WindowId, String>,
-    context: WebContext,
+    known: HashSet<String>,
+    context: BrowserContext,
     outbox: Outbox,
     proxy: EventLoopProxy<HelperEvent>,
-    /// When the windows are looked at next. Fixed, not "TICK after the last event": the browser
-    /// keeps sending events, which would otherwise push the tick away for ever.
     next_tick: Instant,
 }
 
-/// Runs until the app closes the helper's stdin.
 pub(crate) fn run(config: HelperConfig) -> ! {
     let event_loop = EventLoopBuilder::<HelperEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
@@ -45,7 +41,8 @@ pub(crate) fn run(config: HelperConfig) -> ! {
     let mut state = HelperState {
         sites: HashMap::new(),
         windows: HashMap::new(),
-        context: WebContext::new(Some(config.profile)),
+        known: HashSet::new(),
+        context: BrowserContext::new(&config.profile),
         outbox: Outbox {
             exchange: config.exchange,
         },
@@ -70,71 +67,61 @@ impl HelperState {
     ) {
         match event {
             Event::WindowEvent {
-                window_id,
-                event: WindowEvent::CloseRequested,
-                ..
-            } => self.close_requested(window_id),
-            Event::UserEvent(event) => self.user_event(event, target, flow),
+                window_id, event, ..
+            } => self.window_event(window_id, event),
+            Event::UserEvent(
+                HelperEvent::Command(HelperCommand::Quit) | HelperEvent::InputClosed,
+            ) => {
+                for site in self.sites.values_mut() {
+                    site.close("the app closed", &self.outbox);
+                    site.fetches.abandon(&self.outbox);
+                }
+                *flow = ControlFlow::Exit;
+            }
+            Event::UserEvent(event) => self.user_event(event, target),
             _ => {}
         }
     }
 
-    fn user_event(
-        &mut self,
-        event: HelperEvent,
-        target: &EventLoopWindowTarget<HelperEvent>,
-        flow: &mut ControlFlow,
-    ) {
+    fn user_event(&mut self, event: HelperEvent, target: &EventLoopWindowTarget<HelperEvent>) {
         match event {
-            HelperEvent::Command(HelperCommand::Verify(request)) => {
-                self.verify(request, target, false)
+            HelperEvent::Command(command) => self.command(command, target),
+            HelperEvent::Fetch(request) => self.fetch(&request),
+            HelperEvent::Browser { id } => {
+                if let Some(site) = self.sites.get_mut(&id) {
+                    site.drain_browser(&self.outbox);
+                }
+                self.retain_context(&id);
             }
-            HelperEvent::Command(HelperCommand::Present(request)) => {
-                self.verify(request, target, true)
-            }
-            HelperEvent::Command(HelperCommand::Show { host, id }) => {
-                if let Some(site) = self.sites.get(&host) {
-                    site.present(&id);
+            HelperEvent::Polled { window, id, raw } => {
+                if let Some(site) = self.sites.get_mut(&window) {
+                    site.fetches.complete(&id, &raw, &self.outbox);
                 }
             }
-            HelperEvent::Command(HelperCommand::Activate { host, id }) => {
-                self.activate(&host, &id);
-            }
-            HelperEvent::Command(HelperCommand::Quit) | HelperEvent::InputClosed => {
-                for site in self.sites.values_mut() {
-                    site.abandon(&self.outbox);
-                }
-                *flow = ControlFlow::Exit;
-            }
-            HelperEvent::Fetch(request) => match self.sites.get_mut(&request.host) {
-                Some(site) => site.start_fetch(&request, &self.outbox),
-                None => self.outbox.fetch_result(
-                    &request.id,
-                    &FetchOutcome::gone("no verification window is open for this site"),
-                ),
-            },
-            HelperEvent::Agent { host, raw } => {
-                if let Some(site) = self.sites.get_mut(&host) {
-                    site.set_agent(&raw);
-                }
-            }
-            HelperEvent::Polled { id, raw } => {
-                for site in self.sites.values_mut() {
-                    site.on_polled(&id, &raw, &self.outbox);
-                }
-            }
+            HelperEvent::InputClosed => {}
         }
     }
 
-    fn activate(&self, host: &str, id: &str) {
-        #[cfg(windows)]
-        if let Some(site) = self.sites.get(host) {
-            if site.waiting.iter().any(|pending| pending == id) {
-                crate::windows_presentation::activate(&site.window);
+    fn command(&mut self, command: HelperCommand, target: &EventLoopWindowTarget<HelperEvent>) {
+        match command {
+            HelperCommand::Verify(request) => self.verify(request, target, false),
+            HelperCommand::Present(request) => self.verify(request, target, true),
+            HelperCommand::Show { id, .. } => self.show(&id, false),
+            HelperCommand::Activate { id, .. } => self.show(&id, true),
+            HelperCommand::Cancel { id } => {
+                if let Some(site) = self.sites.get_mut(&id) {
+                    site.close("verification was cancelled", &self.outbox);
+                }
+                self.retain_context(&id);
             }
+            HelperCommand::Quit => {}
         }
-        #[cfg(not(windows))]
-        tracing::debug!(%host, %id, "ignoring Windows activation command");
+    }
+
+    fn show(&mut self, id: &str, activate: bool) {
+        if let Some(site) = self.sites.get_mut(id) {
+            site.show(activate);
+        }
     }
 
     fn verify(
@@ -143,26 +130,42 @@ impl HelperState {
         target: &EventLoopWindowTarget<HelperEvent>,
         present: bool,
     ) {
-        let reuse = self.sites.contains_key(&request.host);
-        if !reuse {
-            let parts = WindowParts {
-                target,
-                context: &mut self.context,
-                proxy: self.proxy.clone(),
-            };
-            match SiteWindow::open(parts, &request.host, &request.url) {
-                Ok(site) => {
-                    self.windows.insert(site.window_id(), request.host.clone());
-                    self.sites.insert(request.host.clone(), site);
-                }
-                Err(reason) => return self.refuse(&request, reason),
-            }
-        }
-        if let Some(site) = self.sites.get_mut(&request.host) {
-            site.begin(request.id.clone(), &request.url, &self.outbox);
+        if !self.known.insert(request.id.clone()) {
             if present {
-                site.present(&request.id);
+                self.show(&request.id, false);
             }
+            return;
+        }
+        if !request.can_navigate() {
+            self.refuse(
+                &request,
+                "this verification request cannot be opened as a browser GET".to_owned(),
+            );
+            return;
+        }
+        let parts = WindowParts {
+            target,
+            context: &mut self.context,
+            proxy: self.proxy.clone(),
+        };
+        match SiteWindow::open(parts, request.clone(), present) {
+            Ok(site) => {
+                site.status_open(&self.outbox);
+                self.windows.insert(site.window.id(), request.id.clone());
+                self.sites.insert(request.id, site);
+            }
+            Err(reason) => self.refuse(&request, reason),
+        }
+    }
+
+    fn fetch(&mut self, request: &FetchRequest) {
+        if let Some(site) = self.sites.values_mut().find(|site| site.can_fetch(request)) {
+            site.start_fetch(request, &self.outbox);
+        } else {
+            self.outbox.fetch_result(
+                &request.id,
+                &FetchOutcome::gone("no verified browser document is available for this origin"),
+            );
         }
     }
 
@@ -172,30 +175,65 @@ impl HelperState {
             return;
         }
         self.next_tick = now + TICK;
-        for site in self.sites.values_mut() {
-            site.tick(&self.outbox);
+        let ids: Vec<_> = self.sites.keys().cloned().collect();
+        for id in ids {
+            if let Some(site) = self.sites.get_mut(&id) {
+                site.tick(&self.outbox);
+            }
+            self.retain_context(&id);
         }
     }
 
     fn refuse(&self, request: &VerifyRequest, reason: String) {
-        tracing::warn!(host = %request.host, %reason, "cannot verify the site");
-        self.outbox.answer_all(
-            std::slice::from_ref(&request.id),
-            &Outcome::Declined(reason.clone()),
-        );
+        tracing::warn!(host = %request.host, id = %request.id, %reason, "cannot verify the site");
+        let result = self
+            .outbox
+            .answer(request, &Outcome::Declined(reason.clone()));
         self.outbox.status(&HelperStatus::Failed {
             host: request.host.clone(),
-            reason,
+            id: request.id.clone(),
+            reason: result.err().unwrap_or(reason),
         });
     }
 
-    fn close_requested(&mut self, window_id: WindowId) {
-        let site = self
-            .windows
-            .get(&window_id)
-            .and_then(|host| self.sites.get_mut(host));
-        if let Some(site) = site {
-            site.close_requested(&self.outbox);
+    fn window_event(&mut self, window_id: WindowId, event: WindowEvent<'_>) {
+        let Some(id) = self.windows.get(&window_id).cloned() else {
+            return;
+        };
+        if let Some(site) = self.sites.get_mut(&id) {
+            match event {
+                WindowEvent::CloseRequested => {
+                    site.close("the viewer closed the verification window", &self.outbox)
+                }
+                WindowEvent::Resized(size) => site.resize(size.width, size.height),
+                _ => {}
+            }
+        }
+        self.retain_context(&id);
+    }
+
+    fn retain_context(&mut self, id: &str) {
+        if self.sites.get(id).is_some_and(SiteWindow::finished) {
+            self.remove(id);
+        }
+        let Some(origin) = self.sites.get(id).and_then(SiteWindow::fetch_origin) else {
+            return;
+        };
+        let replaced: Vec<_> = self
+            .sites
+            .iter()
+            .filter(|(other, site)| other.as_str() != id && site.fetch_origin() == Some(origin))
+            .map(|(other, _)| other.clone())
+            .collect();
+        for other in replaced {
+            self.remove(&other);
+        }
+    }
+
+    fn remove(&mut self, id: &str) {
+        if let Some(mut site) = self.sites.remove(id) {
+            site.fetches.abandon(&self.outbox);
+            self.windows.remove(&site.window.id());
         }
     }
 }

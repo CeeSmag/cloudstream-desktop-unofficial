@@ -26,6 +26,11 @@ pub enum HelperCommand {
         /// Request associated with the viewer action.
         id: String,
     },
+    /// Retire a request after the provider or viewer cancels it.
+    Cancel {
+        /// The pending request to retire.
+        id: String,
+    },
     /// Close every window and exit.
     Quit,
 }
@@ -44,11 +49,15 @@ pub enum HelperStatus {
     Passed {
         /// The site.
         host: String,
+        /// The completed request.
+        id: String,
     },
     /// The check was not passed (closed, timed out, could not open).
     Failed {
         /// The site.
         host: String,
+        /// The completed request.
+        id: String,
         /// Why, for the viewer.
         reason: String,
     },
@@ -62,7 +71,7 @@ fn field(text: &str) -> String {
 pub fn format_command(command: &HelperCommand) -> String {
     match command {
         HelperCommand::Verify(request) | HelperCommand::Present(request) => format!(
-            "{}\t{}\t{}\t{}\n",
+            "{}\t{}\t{}\t{}\t{}\t{}\n",
             if matches!(command, HelperCommand::Present(_)) {
                 "present"
             } else {
@@ -70,12 +79,15 @@ pub fn format_command(command: &HelperCommand) -> String {
             },
             field(&request.id),
             field(&request.host),
-            field(&request.url)
+            field(&request.url),
+            field(&request.method),
+            u8::from(request.standalone)
         ),
         HelperCommand::Show { host, id } => format!("show\t{}\t{}\n", field(host), field(id)),
         HelperCommand::Activate { host, id } => {
             format!("activate\t{}\t{}\n", field(host), field(id))
         }
+        HelperCommand::Cancel { id } => format!("cancel\t{}\n", field(id)),
         HelperCommand::Quit => "quit\n".to_owned(),
     }
 }
@@ -89,18 +101,23 @@ pub fn parse_command(line: &str) -> Option<HelperCommand> {
             id: parts.next()?.into(),
         }),
         "quit" => Some(HelperCommand::Quit),
+        "cancel" => Some(HelperCommand::Cancel {
+            id: parts.next()?.to_owned(),
+        }),
         "show" => Some(HelperCommand::Show {
             host: parts.next()?.to_owned(),
             id: parts.next()?.to_owned(),
         }),
         verb @ ("verify" | "present") => {
             let text = format!(
-                "id={}\nhost={}\nurl={}\n",
+                "id={}\nhost={}\nurl={}\nmethod={}\n",
+                parts.next()?,
                 parts.next()?,
                 parts.next()?,
                 parts.next()?
             );
-            let request = crate::parse_request(&text)?;
+            let mut request = crate::parse_request(&text)?;
+            request.standalone = parts.next() == Some("1");
             Some(if verb == "present" {
                 HelperCommand::Present(request)
             } else {
@@ -115,9 +132,14 @@ pub fn parse_command(line: &str) -> Option<HelperCommand> {
 pub fn format_status(status: &HelperStatus) -> String {
     match status {
         HelperStatus::WindowOpen { host, id } => format!("open\t{}\t{}\n", field(host), field(id)),
-        HelperStatus::Passed { host } => format!("passed\t{}\n", field(host)),
-        HelperStatus::Failed { host, reason } => {
-            format!("failed\t{}\t{}\n", field(host), field(reason))
+        HelperStatus::Passed { host, id } => format!("passed\t{}\t{}\n", field(host), field(id)),
+        HelperStatus::Failed { host, id, reason } => {
+            format!(
+                "failed\t{}\t{}\t{}\n",
+                field(host),
+                field(id),
+                field(reason)
+            )
         }
     }
 }
@@ -127,14 +149,13 @@ pub fn parse_status(line: &str) -> Option<HelperStatus> {
     let mut parts = line.trim_end_matches(['\n', '\r']).split('\t');
     let kind = parts.next()?;
     let host = parts.next().filter(|host| !host.is_empty())?.to_owned();
+    let id = parts.next().filter(|id| !id.is_empty())?.to_owned();
     match kind {
-        "open" => Some(HelperStatus::WindowOpen {
-            host,
-            id: parts.next()?.to_owned(),
-        }),
-        "passed" => Some(HelperStatus::Passed { host }),
+        "open" => Some(HelperStatus::WindowOpen { host, id }),
+        "passed" => Some(HelperStatus::Passed { host, id }),
         "failed" => Some(HelperStatus::Failed {
             host,
+            id,
             reason: parts.next().unwrap_or("not verified").to_owned(),
         }),
         _ => None,
@@ -159,6 +180,8 @@ mod tests {
             id: "ab-1".into(),
             host: "site.test".into(),
             url: "https://site.test/a?b=c".into(),
+            method: "GET".into(),
+            standalone: false,
         }
     }
 
@@ -193,9 +216,11 @@ mod tests {
             },
             HelperStatus::Passed {
                 host: "a.test".into(),
+                id: "r1".into(),
             },
             HelperStatus::Failed {
                 host: "a.test".into(),
+                id: "r1".into(),
                 reason: "closed\tby viewer".into(),
             },
         ];
@@ -209,6 +234,7 @@ mod tests {
             parsed[2],
             Some(HelperStatus::Failed {
                 host: "a.test".into(),
+                id: "r1".into(),
                 reason: "closed by viewer".into()
             })
         );

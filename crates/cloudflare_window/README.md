@@ -1,31 +1,21 @@
 # cloudflare_window
 
-`cloudstream-verify`, the browser window in which a site's Cloudflare check is passed. A separate
-process (tao + wry: WebView2 on Windows, the system's WebKitGTK 4.1 on Linux) so the WebView's event
-loop never runs inside the app's Slint loop. Started by `cloudflare_bridge::VerifyHelper`.
+`cloudstream-verify` hosts the viewer's Cloudflare check in a separate process. It uses
+WebView2 on Windows and WebKitGTK 4.1 (WebKit 2.40 or newer) on Linux. The app starts it
+with `--exchange <dir> --profile <dir>` and communicates over stdin and stdout.
 
-- `--exchange <dir> --profile <dir>`; commands on stdin, statuses on stdout, exits when stdin closes.
-- One window per site. Loads the sidecar's challenged URL when it is http(s) on that host (or a
-  subdomain) and not a media/segment path; otherwise the site's front page (`verify_open_url`).
-  Downloads are refused. Checks stay hidden until the viewer selects Verify or Open verification.
-  The browser profile keeps cookies, so a passed site stays passed across restarts.
-- Passing: `cf_clearance` cookie + the browser's User-Agent, then one probe request from inside the
-  page (no challenge = passed). If the site redirected elsewhere after the check, the cookie is used
-  (no front-page reload — bad-TLS redirect hosts would loop).
-- After passing the window is hidden and runs the sidecar's browser fetches (`fetch_script`).
-- TLS errors: Linux ignores them on the verify WebKit context (`webkit2gtk`), and Windows passes
-  `--ignore-certificate-errors` to WebView2, so bad-cert redirect hosts do not stall verification.
+- Each check owns its original request and exact challenged GET. It starts concealed.
+  The viewer may open it only while that request has a confirmed top-level challenge.
+- Native navigation hides the previous document before loading the next one. The helper
+  refuses downloads and popups and keeps ordinary destinations concealed.
+- The helper observes the challenge origin's own response and takes a scoped cookie
+  snapshot at that point. When passage is confirmed, it hides the window, delivers the
+  result, and retires the request. A later close or duplicate click cannot change the result.
+- A verified same-origin document can stay hidden for sidecar browser fetches. An
+  off-origin redirect cannot become that document. TLS uses the browser's default validation.
+- On Windows the app grants foreground permission to its child. The helper uses that grant
+  at most once per presentation action, after the matching challenge is eligible to show.
 
-| Part | Responsibility |
-|---|---|
-| `fetch_script` (lib) | the page scripts (`script_text`) that run a request and read its answer back |
-| `verify_progress` (lib) | the pure next-step rule (wait / probe / pass on cookie / give up) |
-| `verify_open_url` (lib) | which address to load (`verify_open_url`, `short_address`) |
-| `site_window`, `site_window_check`, `page_fetches`, `browser_view` | one site's window, its check tick, running requests, building the view |
-| `helper_app`, `helper_events`, `input_threads`, `outbox` | the event loop, stdin and fetch-file threads, answers |
-
-On Windows a viewer action shows the window without activation. The helper requests foreground once if the app grants its process permission.
-
-Test the Windows window lifecycle with `python scripts/check_verify_window.py target/debug/cloudstream-verify.exe` after `cargo build -p cloudflare_window`.
-Run `cargo test -p cloudflare_window` for the T1 suite. The window itself was checked by hand against a real
-Cloudflare-protected site (managed challenge passed, cookies and User-Agent handed back).
+Run `cargo test -p cloudflare_window` for the decision and race tests. Run
+`python scripts/check_verify_window.py <helper>` for native browser and window checks.
+On Linux, use an X11 session with `xdotool` and a window manager.

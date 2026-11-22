@@ -36,6 +36,8 @@ fn protocol_commands_statuses_and_exchange_formats_round_trip() {
         id: "req-1".into(),
         host: "site.example".into(),
         url: "https://site.example/page".into(),
+        method: "GET".into(),
+        standalone: false,
     };
     let cmd = HelperCommand::Verify(req_val.clone());
     let line = format_command(&cmd);
@@ -47,21 +49,28 @@ fn protocol_commands_statuses_and_exchange_formats_round_trip() {
 
     let status = HelperStatus::Passed {
         host: "site.example".into(),
+        id: "req-1".into(),
     };
     let sline = format_status(&status);
     assert_eq!(parse_status(sline.trim()), Some(status));
 
-    let parsed = parse_request("id=req-2\nhost=site.example\nurl=https://site.example/video\n");
+    let parsed =
+        parse_request("id=req-2\nhost=site.example\nurl=https://site.example/video\nmethod=GET\n");
     assert_eq!(
         parsed,
         Some(VerifyRequest {
             id: "req-2".into(),
             host: "site.example".into(),
             url: "https://site.example/video".into(),
+            method: "GET".into(),
+            standalone: false,
         })
     );
     assert!(parse_request("id=bad\nhost=site.example\nurl=ftp://not-http.example\n").is_none());
+}
 
+#[test]
+fn outcome_formats_include_the_reason_and_preserve_unavailable_fetches() {
     let res_text = format_result(&Outcome::Declined("cancelled".into()));
     assert!(res_text.contains("cancelled"));
     let wait_text = format_result(&Outcome::Waiting("waiting".into()));

@@ -1,6 +1,7 @@
 package com.lagradost.runtime.loader.stubs
 
 import okhttp3.Interceptor
+import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import java.io.File
@@ -14,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
  * A request that comes back as a Cloudflare challenge is not given to the plugin. Instead the app is
  * asked, through small files in [exchangeDir], to open a browser window on the site; when the viewer
  * has passed the check there, the app writes the cookies and the browser's `User-Agent` back, and the
- * request is repeated with them. Later requests to the same host carry them from the start.
+ * effective request is repeated with them. Later requests to that destination carry them from the start.
  *
  * Some sites (AnimePahe among them) do not accept those cookies over this program's own HTTP client:
  * Cloudflare also looks at how the connection is made. For such a site the requests are made by the
@@ -27,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
  * main log and in `cloudflare-logs.txt`, so what happened to a request can be followed from the log.
  *
  * File format (one `key=value` per line, no JSON so that no library is needed):
- * - `request-<id>.txt` written here: `id`, `host`, `url`.
+ * - `request-<id>.txt` written here: `id`, `host`, `url`, `method`.
  * - `result-<id>.txt` written by the app: `ok=true|false`, `userAgent`, `reason`, `retry=true` (not the
  *   viewer's choice, so ask again next time), and one `cookie=name=value` per cookie.
  */
@@ -59,13 +60,16 @@ object CloudflareSolver {
     var clock: () -> Long = { System.currentTimeMillis() }
 
     private const val POLL_MS = 300L
+    private data class ChallengeKey(val url: HttpUrl, val method: String)
+    private data class ClearanceScope(val key: ChallengeKey, val clearance: Clearance)
+    private fun key(request: Request) = ChallengeKey(request.url.newBuilder().fragment(null).build(), request.method)
 
-    private val clearances = ConcurrentHashMap<String, Clearance>()
-    private val declined = ConcurrentHashMap<String, Declined>()
-    private val hostLocks = ConcurrentHashMap<String, Any>()
+    private val clearances = ConcurrentHashMap<ChallengeKey, Clearance>()
+    private val declined = ConcurrentHashMap<ChallengeKey, Declined>()
+    private val challengeLocks = ConcurrentHashMap<ChallengeKey, Any>()
 
-    /** Hosts whose requests go through the browser window because the cookies alone were not accepted. */
-    private val browserOnly = ConcurrentHashMap.newKeySet<String>()
+    /** Requests routed through their verified browser document when the HTTP client was refused. */
+    private val browserOnly = ConcurrentHashMap.newKeySet<ChallengeKey>()
 
     private data class Declined(val until: Long, val reason: String)
 
@@ -74,48 +78,60 @@ object CloudflareSolver {
      * it came. Requests that queued for the host while it was being asked share that answer, so one page
      * load with dozens of requests costs one round trip to the app, not one each.
      */
-    private val retryAnswers = ConcurrentHashMap<String, Declined>()
+    private val retryAnswers = ConcurrentHashMap<ChallengeKey, Declined>()
 
     /** The interceptor to add to every HTTP client plugins use. */
     val interceptor: Interceptor = Interceptor { chain -> intercept(chain) }
+
+    /** Apply the browser identity only to the final outbound request for the challenged target. */
+    val clearanceScope: Interceptor = Interceptor { chain ->
+        val request = chain.request()
+        val scope = request.tag(ClearanceScope::class.java)
+        chain.proceed(if (scope != null && scope.key == key(request)) withClearance(request, scope.clearance) else request)
+    }
+
+    private fun scopeClearance(request: Request, clearance: Clearance): Request =
+        request.newBuilder().tag(ClearanceScope::class.java, ClearanceScope(key(request), clearance)).build()
 
     /** One log line the app picks up by its `[cloudflare]` tag. */
     fun log(level: String, message: String) = System.err.println("[cloudflare] $level $message")
 
     private fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
-        val host = original.url.host
         val dir = exchangeDir
-        if (dir != null && host in browserOnly) return viaBrowser(original, dir)
-        val known = clearances[host]
-        val response = chain.proceed(if (known != null) withClearance(original, known) else original)
+        val originalKey = key(original)
+        if (dir != null && originalKey in browserOnly) return viaBrowser(original, dir)
+        val known = clearances[originalKey]
+        val response = chain.proceed(if (known != null) scopeClearance(original, known) else original)
         if (dir == null || !isChallenge(response)) return response
+        val challenged = response.request
+        val challengedKey = key(challenged)
         log(
             "INFO",
-            "challenge from $host: ${describe(response)} for ${original.method} ${shorten(original.url.toString())}" +
-                (if (known != null) " (the clearance it was sent with has expired)" else ""),
+            "challenge from ${challenged.url.host}: ${describe(response)} for ${challenged.method}",
         )
-        if (known != null) clearances.remove(host, known)
-        val fresh = solve(host, original.url.toString())
         response.close()
-        return afterRetry(host, original, dir, chain.proceed(withClearance(original, fresh)))
+        if (known != null && originalKey == challengedKey) clearances.remove(challengedKey, known)
+        val fresh = solve(challengedKey)
+        return afterRetry(challenged, dir, chain.proceed(scopeClearance(challenged, fresh)))
     }
 
     /** The retried request: a good answer is the goal; a challenge again means the cookies alone are not accepted. */
-    private fun afterRetry(host: String, original: Request, dir: File, retried: Response): Response {
+    private fun afterRetry(request: Request, dir: File, retried: Response): Response {
+        val host = request.url.host
         if (!isChallenge(retried)) {
             log("INFO", "retried request to $host with the verification cookies: ${describe(retried)}; the site accepted them")
             return retried
         }
         retried.close()
-        clearances.remove(host)
+        clearances.remove(key(request))
         log(
             "WARN",
             "$host did not accept the verification cookies over this connection (${describe(retried)}); " +
                 "from now on its requests are made by the browser window",
         )
-        browserOnly.add(host)
-        return viaBrowser(original, dir)
+        browserOnly.add(key(request))
+        return viaBrowser(request, dir)
     }
 
     /** Makes [request] in the host's browser window; verifies again once if the window is gone or its pass has expired. */
@@ -130,11 +146,11 @@ object CloudflareSolver {
         if (first != null && !isChallenge(first)) return first
         first?.close()
         if (first != null) log("WARN", "the browser got a Cloudflare challenge again for $host; verifying again")
-        solve(host, request.url.toString())
+        solve(key(request))
         val second = BrowserFetch.fetch(request, dir)
         if (!isChallenge(second)) return second
         second.close()
-        browserOnly.remove(host)
+        browserOnly.remove(key(request))
         val reason = "Cloudflare still showed its check for $host even in the browser window"
         log("ERROR", reason)
         throw IOException(reason)
@@ -147,11 +163,12 @@ object CloudflareSolver {
     private fun describe(response: Response) =
         "status ${response.code}, server=${response.header("server")}, cf-mitigated=${response.header("cf-mitigated")}"
 
-    private fun shorten(url: String) = if (url.length > 120) url.take(117) + "..." else url
-
     /** [request] with the cookies and browser identity that passed the check. */
     fun withClearance(request: Request, clearance: Clearance): Request {
-        val sent = request.header("Cookie").orEmpty()
+        val sent = request.header("Cookie").orEmpty().split(";")
+            .map(String::trim)
+            .filterNot { "cf_clearance" in clearance.cookies && it.substringBefore("=").trim() == "cf_clearance" }
+            .joinToString("; ")
         val already = sent.split(";").map { it.substringBefore("=").trim() }.toSet()
         val extra = clearance.cookies.filterKeys { it !in already }.map { "${it.key}=${it.value}" }
         val cookie = (listOf(sent).filter { it.isNotBlank() } + extra).joinToString("; ")
@@ -159,57 +176,59 @@ object CloudflareSolver {
         return (if (cookie.isEmpty()) builder else builder.header("Cookie", cookie)).build()
     }
 
-    /** Has [host] verified, asking the app if needed; throws when the viewer did not (or could not) pass the check. */
-    private fun solve(host: String, url: String): Clearance {
-        refuseIfDeclined(host)
+    /** Requests for the same effective URL and method can share one in-flight answer. */
+    private fun solve(key: ChallengeKey): Clearance {
+        val host = key.url.host
+        refuseIfDeclined(key)
         val waitingSince = clock()
-        synchronized(hostLocks.computeIfAbsent(host) { Any() }) {
-            // Another request may have had the host verified while this one waited for its turn.
-            clearances[host]?.takeIf { it.obtainedAt >= waitingSince }?.let {
+        synchronized(challengeLocks.computeIfAbsent(key) { Any() }) {
+            clearances[key]?.takeIf { it.obtainedAt >= waitingSince }?.let {
                 log("INFO", "$host was verified while this request waited; using that")
                 return it
             }
-            refuseIfDeclined(host)
+            refuseIfDeclined(key)
             // Strictly later: a request that starts in the same millisecond as the answer came after it
             // (it did not queue for it), so it asks the app again.
-            retryAnswers[host]?.takeIf { it.until > waitingSince }?.let {
+            retryAnswers[key]?.takeIf { it.until > waitingSince }?.let {
                 log("INFO", "$host was asked about while this request waited (${it.reason}); failing at once")
                 throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
             }
-            val answer = askApp(host, url)
+            val answer = askApp(key)
             val clearance = answer.clearance
             if (clearance == null) {
-                if (!answer.remember) retryAnswers[host] = Declined(clock(), answer.reason)
-                if (answer.remember) declined[host] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
+                if (!answer.remember) retryAnswers[key] = Declined(clock(), answer.reason)
+                if (answer.remember) declined[key] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
                 log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
                 throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
             }
-            clearances[host] = clearance
+            clearances[key] = clearance
             return clearance
         }
     }
 
-    private fun refuseIfDeclined(host: String) {
-        val earlier = declined[host] ?: return
+    private fun refuseIfDeclined(key: ChallengeKey) {
+        val earlier = declined[key] ?: return
         if (System.currentTimeMillis() >= earlier.until) {
-            declined.remove(host)
+            declined.remove(key, earlier)
             return
         }
+        val host = key.url.host
         log("INFO", "$host was not verified a moment ago (${earlier.reason}); failing at once, not asking again yet")
         throw IOException("Cloudflare verification of $host was not completed: ${earlier.reason}")
     }
 
     /** Writes the request file and waits for the answer. */
-    private fun askApp(host: String, url: String): Answer {
+    private fun askApp(key: ChallengeKey): Answer {
         val dir = exchangeDir ?: return Answer(null, "verification is off", false)
+        val host = key.url.host
         val id = UUID.randomUUID().toString()
         val request = File(dir, "request-$id.txt")
         val result = File(dir, "result-$id.txt")
         try {
             dir.mkdirs()
             val pending = File(dir, "request-$id.tmp")
-            pending.writeText("id=$id\nhost=$host\nurl=${url.replace("\n", "")}\n")
-            pending.renameTo(request)
+            pending.writeText("id=$id\nhost=$host\nurl=${key.url}\nmethod=${key.method}\n")
+            if (!pending.renameTo(request)) throw IOException("could not publish Cloudflare verification request $id")
             log("INFO", "asked the app to verify $host (request $id, answer expected within ${solveTimeoutMs / 1000}s)")
             return waitForResult(result, host)
         } finally {
@@ -263,6 +282,7 @@ object CloudflareSolver {
     /** Forgets everything learned; used by tests. */
     fun reset() {
         clearances.clear()
+        challengeLocks.clear()
         declined.clear()
         retryAnswers.clear()
         browserOnly.clear()

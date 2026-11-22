@@ -1,7 +1,7 @@
 //! The sites the viewer allowed to open a verification window.
 //!
-//! A window opens only for a site the viewer said yes to (pressing Verify); every other request is
-//! answered at once with "ask again" so the plugin fails fast and the UI can show the question.
+//! A viewer's consent permits checks for that host. Each request still owns its own
+//! presentation decision and waits for the viewer's action when permission is missing.
 //! Allowing a site covers its subdomains (`cdn.site.test` under `site.test`).
 //! Single-label names (`com`) are refused: the suffix rule would otherwise match every `*.com`.
 

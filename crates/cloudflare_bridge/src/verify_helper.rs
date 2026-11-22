@@ -91,7 +91,7 @@ impl VerifyHelper {
             }
             Some(Err(error)) => {
                 tracing::warn!(%error, "cannot tell whether the verification helper runs");
-                true
+                false
             }
             Some(Ok(None)) | None => false,
         };
@@ -101,20 +101,20 @@ impl VerifyHelper {
         self.running.is_some()
     }
 
-    /// Sends `command`, starting the helper if needed and once more if the pipe broke.
-    pub fn send(&mut self, command: &HelperCommand) -> std::io::Result<()> {
+    /// Sends `command`, starting the helper if needed. Returns the child PID that took it.
+    pub fn send(&mut self, command: &HelperCommand) -> std::io::Result<u32> {
         for attempt in 0..2 {
             if !self.is_running() {
                 self.start()?;
             }
             let written = match self.running.as_mut() {
-                Some(running) => write_command(running, command),
+                Some(running) => write_command(running, command).map(|()| running.child.id()),
                 None => Err(std::io::Error::other(
                     "the verification helper did not start",
                 )),
             };
             match written {
-                Ok(()) => return Ok(()),
+                Ok(pid) => return Ok(pid),
                 Err(error) if attempt == 0 => {
                     tracing::warn!(%error, "the verification helper stopped listening; restarting it");
                     self.stop();
@@ -136,6 +136,20 @@ impl VerifyHelper {
                     id: id.into(),
                 },
             )?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn pid(&mut self) -> Option<u32> {
+        if self.is_running() {
+            return self.running.as_ref().map(|running| running.child.id());
+        }
+        None
+    }
+
+    pub(crate) fn cancel_if_running(&mut self, id: String) -> std::io::Result<()> {
+        if let Some(child) = self.running.as_mut() {
+            write_command(child, &HelperCommand::Cancel { id })?;
         }
         Ok(())
     }

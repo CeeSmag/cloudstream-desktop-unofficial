@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use cloudflare_bridge::{spawn_watcher, AllowedHosts, CloudflareEvent, HelperLaunch, WatchConfig};
+use cloudflare_bridge::{
+    spawn_watcher, AllowedHosts, CloudflareEvent, HelperLaunch, WatchConfig, WatchHandle,
+};
 
 fn folder(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("cs_cf_t2_{name}_{}", std::process::id()));
@@ -17,13 +19,25 @@ fn folder(name: &str) -> PathBuf {
 /// A helper that reports the window open and passes every verify at once (writes the result file).
 fn fake_helper(dir: &Path) -> HelperLaunch {
     let script = format!(
-        r#"while IFS="$(printf '\t')" read -r kind id host url; do
+        r#"publish() {{
+  printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$1.tmp"
+  mv "{dir}/result-$1.tmp" "{dir}/result-$1.txt"
+}}
+finish() {{
+  publish "$1"
+  printf 'passed\t%s\t%s\n' "$2" "$1"
+}}
+while IFS="$(printf '\t')" read -r kind id host url method standalone; do
   printf '%s\n' "$url" > "{dir}/$kind-$id.received"
   case "$kind" in
     verify|present) printf 'open\t%s\t%s\n' "$host" "$id"
-            printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$id.tmp"
-            mv "{dir}/result-$id.tmp" "{dir}/result-$id.txt"
-            printf 'passed\t%s\n' "$host";;
+            case "$id" in
+              failed-first) printf 'failed\t%s\t%s\tfixture failure\n' "$host" "$id";;
+              first|app-retry-*) ;;
+              second) finish "$id" "$host"; finish "first" "$host";;
+              committed) publish "$id"; exit 1;;
+              *) finish "$id" "$host";;
+            esac;;
     quit) exit 0;;
   esac
 done"#,
@@ -36,7 +50,7 @@ done"#,
 }
 
 fn request(dir: &Path, id: &str, host: &str) {
-    let text = format!("id={id}\nhost={host}\nurl=https://{host}/api/video.m3u8\n");
+    let text = format!("id={id}\nhost={host}\nurl=https://{host}/api/{id}.m3u8\nmethod=GET\n");
     std::fs::write(dir.join(format!("request-{id}.tmp")), text).expect("write");
     std::fs::rename(
         dir.join(format!("request-{id}.tmp")),
@@ -56,8 +70,24 @@ fn wait_for_file(path: &Path, limit: Duration) -> Option<String> {
     None
 }
 
+fn collect_passed(watch: &WatchHandle, total: usize) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut passed = Vec::new();
+    while passed.len() < total {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if let CloudflareEvent::Passed { id, .. } = watch
+            .events
+            .recv_timeout(remaining)
+            .expect("terminal status")
+        {
+            passed.push(id);
+        }
+    }
+    passed
+}
+
 #[test]
-fn not_allowed_site_is_answered_at_once_and_ui_is_asked() {
+fn pending_request_is_answered_when_the_viewer_dismisses_it() {
     let dir = folder("ask");
     let watch = spawn_watcher(WatchConfig {
         dir: dir.clone(),
@@ -65,11 +95,6 @@ fn not_allowed_site_is_answered_at_once_and_ui_is_asked() {
         helper: Some(fake_helper(&dir)),
     });
     request(&dir, "r1", "site.test");
-    let answer = wait_for_file(&dir.join("result-r1.txt"), Duration::from_secs(3)).expect("answer");
-    assert!(
-        answer.contains("ok=false") && answer.contains("retry=true"),
-        "{answer}"
-    );
     let event = watch
         .events
         .recv_timeout(Duration::from_secs(2))
@@ -77,8 +102,16 @@ fn not_allowed_site_is_answered_at_once_and_ui_is_asked() {
     assert_eq!(
         event,
         CloudflareEvent::NeedsPermission {
-            host: "site.test".into()
+            host: "site.test".into(),
+            id: "r1".into(),
         }
+    );
+    assert!(!dir.join("result-r1.txt").exists());
+    watch.dismiss_check("r1");
+    let answer = wait_for_file(&dir.join("result-r1.txt"), Duration::from_secs(2)).expect("answer");
+    assert!(
+        answer.contains("ok=false") && answer.contains("retry=true"),
+        "{answer}"
     );
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
@@ -102,23 +135,14 @@ fn allowed_site_burst_is_verified_by_the_helper_each_request_answered_once() {
         assert!(dir.join(format!("verify-b{index}.received")).is_file());
         assert!(!dir.join(format!("present-b{index}.received")).exists());
     }
-    let mut passed = 0;
-    while let Ok(event) = watch.events.recv_timeout(Duration::from_millis(500)) {
-        if event
-            == (CloudflareEvent::Passed {
-                host: "cdn.site.test".into(),
-            })
-        {
-            passed += 1;
-        }
-    }
-    assert_eq!(passed, 20, "one pass per request");
+    let passed: std::collections::HashSet<_> = collect_passed(&watch, 20).into_iter().collect();
+    assert_eq!(passed.len(), 20, "one pass per request");
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn verify_button_presents_the_requested_site_and_preserves_its_url() {
+fn verify_buttons_keep_same_host_requests_separate_when_they_finish_in_reverse_order() {
     let dir = folder("now");
     let allowed = AllowedHosts::default();
     let watch = spawn_watcher(WatchConfig {
@@ -127,34 +151,92 @@ fn verify_button_presents_the_requested_site_and_preserves_its_url() {
         helper: Some(fake_helper(&dir)),
     });
     request(&dir, "first", "site.test");
+    request(&dir, "second", "site.test");
+    for _ in 0..2 {
+        assert!(matches!(
+            watch.events.recv_timeout(Duration::from_secs(2)),
+            Ok(CloudflareEvent::NeedsPermission { .. })
+        ));
+    }
+    watch.verify_now("first");
+    watch.verify_now("second");
+    let passed = collect_passed(&watch, 2);
+    assert_eq!(passed, ["second", "first"]);
+    for id in passed {
+        assert_eq!(
+            std::fs::read_to_string(dir.join(format!("present-{id}.received")))
+                .unwrap()
+                .trim(),
+            format!("https://site.test/api/{id}.m3u8")
+        );
+    }
+    watch.show_check("first");
+    assert_eq!(
+        watch.events.recv_timeout(Duration::from_secs(2)).unwrap(),
+        CloudflareEvent::Dismissed { id: "first".into() }
+    );
+    assert!(!dir.join("show-site.test.received").exists());
+    assert!(allowed.is_allowed("site.test"));
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn viewer_click_after_the_provider_withdraws_does_not_open_a_window() {
+    let dir = folder("expired");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::default(),
+        helper: Some(fake_helper(&dir)),
+    });
+    request(&dir, "withdrawn", "site.test");
     assert!(matches!(
         watch.events.recv_timeout(Duration::from_secs(3)),
         Ok(CloudflareEvent::NeedsPermission { .. })
     ));
-    watch.verify_now("site.test");
-    let deadline = Instant::now() + Duration::from_secs(3);
-    let mut saw_passed = false;
-    while Instant::now() < deadline && !saw_passed {
-        if let Ok(event) = watch.events.recv_timeout(Duration::from_millis(200)) {
-            saw_passed = event
-                == (CloudflareEvent::Passed {
-                    host: "site.test".into(),
-                });
-        }
-    }
-    assert!(saw_passed);
+    std::fs::remove_file(dir.join("request-withdrawn.txt")).unwrap();
+    watch.verify_now("withdrawn");
     assert_eq!(
-        std::fs::read_to_string(dir.join("present-app-1.received"))
-            .expect("viewer command")
-            .trim(),
-        "https://site.test/api/video.m3u8"
+        watch.events.recv_timeout(Duration::from_secs(2)).unwrap(),
+        CloudflareEvent::Dismissed {
+            id: "withdrawn".into()
+        }
     );
-    watch.show_check("site.test", "app-1");
-    assert!(wait_for_file(&dir.join("show-site.test.received"), Duration::from_secs(3)).is_some());
-    assert!(!dir.join("present-app-2.received").exists());
-    assert!(allowed.is_allowed("site.test"));
+    assert!(!dir.join("present-withdrawn.received").exists());
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn retry_immediately_dismissed_cancels_its_new_window_id() {
+    let dir = folder("retry");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(["site.test".into()]),
+        helper: Some(fake_helper(&dir)),
+    });
+    request(&dir, "failed-first", "site.test");
+    for _ in 0..2 {
+        let event = watch.events.recv_timeout(Duration::from_secs(2)).unwrap();
+        if matches!(event, CloudflareEvent::Failed { id, retry: true, .. } if id == "failed-first")
+        {
+            let attempt = watch.retry_check("failed-first");
+            watch.dismiss_check(&attempt);
+            let asked = dir.join(format!("present-{attempt}.received"));
+            assert_eq!(
+                wait_for_file(&asked, Duration::from_secs(2))
+                    .unwrap()
+                    .trim(),
+                "https://site.test/api/failed-first.m3u8"
+            );
+            let cancelled = dir.join(format!("cancel-{attempt}.received"));
+            assert!(wait_for_file(&cancelled, Duration::from_secs(2)).is_some());
+            drop(watch);
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+    }
+    panic!("initial request never failed");
 }
 
 #[test]
@@ -195,6 +277,28 @@ fn allowed_site_without_helper_is_declined_with_reason() {
         watch.events.recv_timeout(Duration::from_secs(2)),
         Ok(CloudflareEvent::Failed { .. })
     ));
+    drop(watch);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn helper_exit_after_publishing_success_preserves_the_terminal_result() {
+    let dir = folder("committed");
+    let host = "site.test";
+    let id = "committed";
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new([host.to_owned()]),
+        helper: Some(fake_helper(&dir)),
+    });
+    request(&dir, id, host);
+    assert_eq!(collect_passed(&watch, 1), [id]);
+    let result = std::fs::read_to_string(dir.join(format!("result-{id}.txt"))).unwrap();
+    assert!(result.starts_with("ok=true\n"), "{result}");
+    assert!(watch
+        .events
+        .recv_timeout(Duration::from_millis(300))
+        .is_err());
     drop(watch);
     let _ = std::fs::remove_dir_all(&dir);
 }

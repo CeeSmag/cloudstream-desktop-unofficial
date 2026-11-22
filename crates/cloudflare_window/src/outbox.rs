@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use cloudflare_bridge::{
     format_status, write_fetch_result, write_result, FetchOutcome, HelperStatus, Outcome,
+    VerifyRequest,
 };
 
 /// Where answers go.
@@ -13,13 +14,14 @@ pub(crate) struct Outbox {
 }
 
 impl Outbox {
-    /// Hands `outcome` to every request in `ids`.
-    pub(crate) fn answer_all(&self, ids: &[String], outcome: &Outcome) {
-        for id in ids {
-            if let Err(error) = write_result(&self.exchange, id, outcome) {
-                tracing::warn!(%error, %id, "could not answer a verification request");
-            }
+    pub(crate) fn answer(&self, request: &VerifyRequest, outcome: &Outcome) -> Result<(), String> {
+        if request.standalone {
+            return Ok(());
         }
+        write_result(&self.exchange, &request.id, outcome).map(|_| ()).map_err(|error| {
+            tracing::error!(%error, id = %request.id, "could not deliver the verification result");
+            "the verification result could not be delivered".to_owned()
+        })
     }
 
     /// Hands a browser fetch's outcome to the sidecar.

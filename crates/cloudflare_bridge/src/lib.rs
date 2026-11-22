@@ -2,9 +2,9 @@
 //!
 //! The sidecar writes `request-*.txt` (a site wants a "verify you are human" check) and
 //! `fetch-*.txt` (a request to make inside a verified browser window) under
-//! `<data>/sidecar/cloudflare`. The watcher answers each at once: sites the viewer has not allowed
-//! get "ask again", allowed sites go to the helper process (`cloudflare_window`), which opens one
-//! window per site and writes the cookies and browser answers back.
+//! `<data>/sidecar/cloudflare`. The watcher asks permission for each new site and routes approved
+//! requests to the helper process. Each window belongs to a request, and the helper writes scoped
+//! cookies and browser answers back.
 #![forbid(unsafe_code)]
 
 mod allowed_hosts;
@@ -14,6 +14,7 @@ mod helper_protocol;
 mod verify_helper;
 mod watch;
 mod watch_event;
+mod watch_requests;
 
 pub use allowed_hosts::AllowedHosts;
 pub use exchange::{

@@ -2,6 +2,7 @@ package sidecar
 
 import com.lagradost.runtime.loader.stubs.BrowserFetch
 import com.lagradost.runtime.loader.stubs.CloudflareSolver
+import com.sun.net.httpserver.HttpServer
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -10,11 +11,13 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.File
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -129,6 +132,7 @@ class CloudflareSolverTest {
     /** A site behind Cloudflare: 200 once the request carries cf_clearance=ok, else the challenge. */
     private fun client(): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(CloudflareSolver.interceptor)
+        .addInterceptor(CloudflareSolver.clearanceScope)
         .addInterceptor { chain ->
             val accepted = chain.request().header("Cookie").orEmpty().contains("cf_clearance=ok")
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
@@ -159,6 +163,79 @@ class CloudflareSolverTest {
         assertEquals(200, get(client()).first)
         assertEquals(1, app.verified.get())
         assertTrue(exchange.listFiles().orEmpty().isEmpty(), "request and result files are cleaned up")
+    }
+
+    @Test
+    fun `a redirected challenge sends the effective request and retries only that target`() {
+        val origin = "https://start.test/out"
+        val target = "https://destination.test/path?token=fixture"
+        val app = Thread {
+            val stop = System.nanoTime() + 5_000_000_000
+            while (System.nanoTime() < stop) {
+                val request = exchange.listFiles().orEmpty().firstOrNull { it.name.startsWith("request-") && it.extension == "txt" }
+                if (request != null) {
+                    request.copyTo(File(exchange, "observed.txt"))
+                    File(exchange, request.name.replaceFirst("request-", "result-")).writeText(passed)
+                    return@Thread
+                }
+                Thread.yield()
+            }
+        }
+        val client = OkHttpClient.Builder().addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope).addInterceptor { chain ->
+            val request = chain.request()
+            val effective = if (request.url.toString() == origin) request.newBuilder().url(target).build() else request
+            val accepted = request.url.toString() == target && request.header("Cookie") == "cf_clearance=ok"
+            Response.Builder().request(effective).protocol(Protocol.HTTP_1_1)
+                .code(if (accepted) 200 else 403).message("fixture")
+                .apply { if (!accepted) header("cf-mitigated", "challenge") }
+                .body("fixture".toResponseBody()).build()
+        }.build()
+        app.start()
+        try {
+            val result = client.newCall(Request.Builder().url(origin).build()).execute().use { it.code }
+            assertEquals(200, result)
+            val message = File(exchange, "observed.txt").readLines()
+            assertTrue("host=destination.test" in message)
+            assertTrue("method=GET" in message)
+            assertTrue("url=$target" in message)
+        } finally {
+            app.join(6_000)
+        }
+    }
+
+    @Test
+    fun `verified browser credentials are scoped to the challenged hop of a real redirect`() {
+        val origin = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val landingCookie = AtomicReference<String?>("landing not reached")
+        origin.createContext("/entry") { request ->
+            if (request.requestHeaders.getFirst("Cookie") == "cf_clearance=ok") {
+                request.responseHeaders.set("Location", "http://localhost:${origin.address.port}/landing")
+                request.sendResponseHeaders(302, -1)
+            } else {
+                request.responseHeaders.set("cf-mitigated", "challenge")
+                request.sendResponseHeaders(403, -1)
+            }
+            request.close()
+        }
+        origin.createContext("/landing") { request ->
+            landingCookie.set(request.requestHeaders.getFirst("Cookie"))
+            request.sendResponseHeaders(200, -1)
+            request.close()
+        }
+        val app = FakeApp(exchange, listOf(passed))
+        val client = OkHttpClient.Builder().addInterceptor(CloudflareSolver.interceptor)
+            .addNetworkInterceptor(CloudflareSolver.clearanceScope).build()
+        origin.start()
+        try {
+            val entry = Request.Builder().url("http://127.0.0.1:${origin.address.port}/entry").build()
+            assertEquals(200, client.newCall(entry).execute().use { it.code })
+            assertEquals(1, app.verified.get())
+            assertNull(landingCookie.get())
+        } finally {
+            origin.stop(0)
+            app.stop()
+        }
     }
 
     @Test

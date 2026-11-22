@@ -38,10 +38,14 @@ object CloudflareSetup {
     private fun addTo(requests: Requests) {
         val client = requests.baseClient
         val hasInterceptor = client.interceptors.contains(CloudflareSolver.interceptor)
-        if (hasInterceptor && !client.fastFallback) return
+        val hasScope = client.networkInterceptors.contains(CloudflareSolver.clearanceScope)
+        if (hasInterceptor && hasScope && !client.fastFallback) return
         val builder = client.newBuilder().fastFallback(false)
         if (!hasInterceptor) {
             builder.addInterceptor(CloudflareSolver.interceptor)
+        }
+        if (!hasScope) {
+            builder.addNetworkInterceptor(CloudflareSolver.clearanceScope)
         }
         requests.baseClient = builder.build()
     }

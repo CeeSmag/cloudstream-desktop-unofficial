@@ -11,8 +11,12 @@ pub(crate) enum HelperEvent {
     InputClosed,
     /// The sidecar wants a request made in a site's window.
     Fetch(FetchRequest),
-    /// A page told its browser's `User-Agent` (JSON-encoded).
-    Agent { host: String, raw: String },
+    /// A native browser event owned by one verification request.
+    Browser { id: String },
     /// A page answered whether fetch `id` is done (JSON-encoded).
-    Polled { id: String, raw: String },
+    Polled {
+        window: String,
+        id: String,
+        raw: String,
+    },
 }

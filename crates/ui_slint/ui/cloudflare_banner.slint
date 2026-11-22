@@ -9,6 +9,7 @@ export component CloudflareBanner inherits Rectangle {
     in property <int> state;
     in property <string> host;
     in property <string> message;
+    in property <bool> can-retry;
     callback verify();
     callback dismiss();
 
@@ -47,7 +48,7 @@ export component CloudflareBanner inherits Rectangle {
             horizontal-stretch: 1;
         }
 
-        if root.state == 1 || root.state == 2 || root.state == 4: TvButton {
+        if root.state == 1 || root.state == 2 || (root.state == 4 && root.can-retry): TvButton {
             text: root.state == 1 ? "Verify" : (root.state == 2 ? "Open verification" : "Try again");
             kind: "primary";
             compact: true;

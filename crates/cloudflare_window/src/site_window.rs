@@ -1,111 +1,111 @@
-//! One site's verification window: the check, then browser fetches for the sidecar.
+//! A verification window owns one request and at most one verified browser context.
 
-#[path = "site_window_check.rs"]
-mod site_window_check;
-
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use cloudflare_bridge::{FetchRequest, Outcome};
-use cloudflare_window::verify_open_url::page_to_open;
-use cloudflare_window::verify_progress::VerifyProgress;
+use cloudflare_bridge::{FetchOutcome, FetchRequest, HelperStatus, Outcome, VerifyRequest};
 use tao::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 use tao::window::Window;
-use wry::{WebContext, WebView};
+use url::{Origin, Url};
 
-use crate::browser_view::open_site_view;
+use crate::browser_view::{open_view, BrowserContext, BrowserSource, BrowserView};
 use crate::helper_events::HelperEvent;
 use crate::outbox::Outbox;
 use crate::page_fetches::PageFetches;
+use crate::verification::{
+    BrowserEvent, BrowserIdentity, Decision, DocumentId, ObservedResponse, Verification,
+};
 
-/// How often a waiting window says what it sees.
-pub(super) const REPORT_EVERY: Duration = Duration::from_secs(5);
-pub(super) enum Phase {
-    Idle,
-    Verifying(VerifyProgress),
+const VIEWER_TIME: Duration = Duration::from_secs(4 * 60);
+const UNCONFIRMED: &str = "the browser could not confirm clearance for this request";
+
+enum Phase {
+    Loading,
+    Checking(Verification),
     Passed,
+    Finished,
 }
 
-/// A browser window on one site.
 pub(crate) struct SiteWindow {
-    pub(super) host: String,
-    pub(super) front: String,
-    pub(super) window: Window,
-    pub(super) webview: WebView,
-    pub(super) phase: Phase,
-    pub(super) waiting: Vec<String>,
-    pub(super) agent: Option<String>,
-    pub(super) fetches: PageFetches,
-    pub(super) proxy: EventLoopProxy<HelperEvent>,
-    pub(super) last_report: Instant,
+    view: BrowserView,
+    browser_events: BrowserSource,
+    pub(crate) window: Rc<Window>,
+    request: VerifyRequest,
+    target: Url,
+    phase: Phase,
+    deadline: Instant,
+    agent: String,
+    requested: bool,
+    shown: bool,
+    foreground: bool,
+    committed: Option<(DocumentId, Origin)>,
+    pub(crate) fetches: PageFetches,
 }
 
-/// What a window needs to be built.
 pub(crate) struct WindowParts<'a> {
     pub(crate) target: &'a EventLoopWindowTarget<HelperEvent>,
-    pub(crate) context: &'a mut WebContext,
+    pub(crate) context: &'a mut BrowserContext,
     pub(crate) proxy: EventLoopProxy<HelperEvent>,
 }
 
 impl SiteWindow {
-    /// Opens a hidden window on the challenged page (or the front page when that URL is media).
     pub(crate) fn open(
         parts: WindowParts<'_>,
-        host: &str,
-        challenge_url: &str,
+        request: VerifyRequest,
+        present: bool,
     ) -> Result<Self, String> {
-        let front = format!("https://{host}/");
-        let page = page_to_open(host, challenge_url);
-        let (window, webview) = open_site_view(parts.target, parts.context, host, &page)?;
-        tracing::info!(%host, page = %cloudflare_window::short_address(&page), "verification window ready");
-        let now = Instant::now();
+        let target = Url::parse(&request.url).map_err(|_| "the challenge address is invalid")?;
+        let source = BrowserSource::new(target.clone(), request.id.clone(), parts.proxy.clone());
+        let (view, window) = open_view(parts.target, parts.context, &request.host, source.clone())?;
+        let fetches = PageFetches::new(parts.proxy, request.id.clone());
         Ok(Self {
-            host: host.to_owned(),
-            front,
+            view,
+            browser_events: source,
             window,
-            webview,
-            phase: Phase::Verifying(VerifyProgress::starting(now)),
-            waiting: Vec::new(),
-            agent: None,
-            fetches: PageFetches::default(),
-            proxy: parts.proxy,
-            last_report: now,
+            request,
+            target,
+            phase: Phase::Loading,
+            deadline: Instant::now() + VIEWER_TIME,
+            agent: String::new(),
+            requested: present,
+            shown: false,
+            foreground: false,
+            committed: None,
+            fetches,
         })
     }
 
-    /// The window's id, to route its events.
-    pub(crate) fn window_id(&self) -> tao::window::WindowId {
-        self.window.id()
-    }
-
-    /// Request `id` waits for this site's check; reloads the challenged page when safe.
-    pub(crate) fn begin(&mut self, id: String, challenge_url: &str, out: &Outbox) {
-        if self.waiting.contains(&id) {
-            return;
-        }
-        self.waiting.push(id.clone());
-        if !matches!(self.phase, Phase::Verifying(_)) {
-            self.phase = Phase::Verifying(VerifyProgress::starting(Instant::now()));
-            let page = page_to_open(&self.host, challenge_url);
-            if let Err(error) = self.webview.load_url(&page) {
-                tracing::warn!(%error, host = %self.host, "cannot load the verification page");
-            }
-        }
-        out.status(&cloudflare_bridge::HelperStatus::WindowOpen {
-            id,
-            host: self.host.clone(),
+    pub(crate) fn status_open(&self, out: &Outbox) {
+        out.status(&HelperStatus::WindowOpen {
+            host: self.request.host.clone(),
+            id: self.request.id.clone(),
         });
     }
 
-    fn hide(&self) {
-        #[cfg(windows)]
-        crate::windows_presentation::hide(&self.window);
-        #[cfg(not(windows))]
-        self.window.set_visible(false);
+    pub(crate) fn resize(&self, width: u32, height: u32) {
+        self.view.resize(width, height);
     }
 
-    /// Presents only a check that is still active.
-    pub(crate) fn present(&self, id: &str) {
-        if self.waiting.iter().any(|pending| pending == id) {
+    pub(crate) fn show(&mut self, activate: bool) {
+        if self.is_pending() {
+            self.requested = true;
+            self.foreground |= activate;
+            self.reveal();
+        }
+    }
+
+    fn reveal(&mut self) {
+        let Phase::Checking(verification) = &self.phase else {
+            return;
+        };
+        let Some(document) = verification.visible_document().filter(|_| self.requested) else {
+            return;
+        };
+        if !self.view.reveal(document) {
+            return;
+        }
+        if !self.shown {
+            self.shown = true;
             #[cfg(windows)]
             crate::windows_presentation::show(&self.window);
             #[cfg(not(windows))]
@@ -113,50 +113,158 @@ impl SiteWindow {
                 self.window.set_visible(true);
                 self.window.set_focus();
             }
-            tracing::debug!(host = %self.host, "viewer opened verification");
+        }
+        if std::mem::take(&mut self.foreground) {
+            #[cfg(windows)]
+            crate::windows_presentation::activate(&self.window);
         }
     }
 
-    /// Runs the sidecar's request in this window (only once the check passed).
-    pub(crate) fn start_fetch(&mut self, request: &FetchRequest, out: &Outbox) {
-        if !matches!(self.phase, Phase::Passed) {
-            out.fetch_result(
-                &request.id,
-                &cloudflare_bridge::FetchOutcome::gone("the site is not verified yet"),
-            );
-            return;
-        }
-        if let Err(reason) = self.fetches.start(
-            &self.webview,
-            request,
-            crate::page_fetches::PageRequest::Fetch,
-        ) {
-            out.fetch_result(
-                &request.id,
-                &cloudflare_bridge::FetchOutcome::failed(reason),
-            );
+    pub(crate) fn drain_browser(&mut self, out: &Outbox) {
+        while let Some(event) = self.browser_events.take_event() {
+            self.browser_event(event, out);
         }
     }
 
-    /// The viewer closed the window: a passed site's window is only hidden (kept for fetches).
-    pub(crate) fn close_requested(&mut self, out: &Outbox) {
-        match self.phase {
-            Phase::Idle | Phase::Passed => self.hide(),
-            Phase::Verifying(_) => {
-                self.fail(out, "the viewer closed the verification window");
+    fn browser_event(&mut self, event: BrowserEvent, out: &Outbox) {
+        match event {
+            BrowserEvent::Ready if matches!(self.phase, Phase::Loading) => self.view.identify(),
+            BrowserEvent::Identity(result) if matches!(self.phase, Phase::Loading) => {
+                self.identified(result, out)
             }
+            BrowserEvent::Started(document) => {
+                self.committed = None;
+                self.fetches.abandon(out);
+                if let Phase::Checking(check) = &mut self.phase {
+                    check.start(document);
+                }
+            }
+            BrowserEvent::Committed(document, url) => {
+                self.committed = Some((document, url.origin()));
+                if matches!(self.phase, Phase::Passed) && url.origin() != self.target.origin() {
+                    self.phase = Phase::Finished;
+                }
+                if let Phase::Checking(check) = &mut self.phase {
+                    check.commit(document);
+                }
+                self.reveal();
+            }
+            BrowserEvent::Response(response) => self.response(response, out),
+            BrowserEvent::Unavailable(reason) => self.fail_pending(&reason, out),
+            _ => {}
         }
     }
 
-    /// The app is closing: nobody keeps waiting.
-    pub(crate) fn abandon(&mut self, out: &Outbox) {
-        let reason = "the app closed".to_owned();
-        out.answer_all(
-            &std::mem::take(&mut self.waiting),
-            &Outcome::Declined(reason.clone()),
-        );
-        for id in self.fetches.take_all() {
-            out.fetch_result(&id, &cloudflare_bridge::FetchOutcome::gone(reason.clone()));
+    fn response(&mut self, observed: ObservedResponse, out: &Outbox) {
+        let ObservedResponse {
+            document,
+            response,
+            cookies,
+        } = observed;
+        let leaves_origin = response.leaves_origin(&self.target);
+        if matches!(self.phase, Phase::Passed) && leaves_origin {
+            self.phase = Phase::Finished;
         }
+        let Phase::Checking(check) = &mut self.phase else {
+            return;
+        };
+        tracing::debug!(id = %self.request.id, ?document, status = response.status, challenged = response.challenge, "verification main response");
+        match check.response(document, &response, cookies) {
+            Decision::Passed(cookies) => {
+                let outcome = Outcome::Passed {
+                    user_agent: self.agent.clone(),
+                    cookies,
+                };
+                self.complete(outcome, out);
+                if leaves_origin || response.attachment {
+                    self.phase = Phase::Finished;
+                }
+            }
+            Decision::Unconfirmed => self.fail_pending(UNCONFIRMED, out),
+            Decision::Wait => self.reveal(),
+        }
+    }
+
+    fn identified(&mut self, result: Result<BrowserIdentity, String>, out: &Outbox) {
+        match result {
+            Ok(identity) => {
+                self.agent = identity.agent;
+                self.phase =
+                    Phase::Checking(Verification::new(self.target.clone(), identity.cookies));
+                self.view.navigate(&self.target);
+            }
+            Err(reason) => self.fail_pending(&reason, out),
+        }
+    }
+
+    pub(crate) fn can_fetch(&self, request: &FetchRequest) -> bool {
+        self.fetch_origin()
+            .is_some_and(|origin| Url::parse(&request.url).is_ok_and(|url| &url.origin() == origin))
+    }
+
+    pub(crate) fn fetch_origin(&self) -> Option<&Origin> {
+        self.committed.as_ref().and_then(|(document, origin)| {
+            (matches!(self.phase, Phase::Passed)
+                && origin == &self.target.origin()
+                && self.view.is_current(*document))
+            .then_some(origin)
+        })
+    }
+
+    pub(crate) fn start_fetch(&mut self, request: &FetchRequest, out: &Outbox) {
+        if let Err(reason) = self.fetches.start(&self.view, request) {
+            out.fetch_result(&request.id, &FetchOutcome::failed(reason));
+        }
+    }
+
+    pub(crate) fn tick(&mut self, out: &Outbox) {
+        self.fetches.poll(&self.view, out);
+        if self.is_pending() && Instant::now() >= self.deadline {
+            self.close("the check was not passed in time", out);
+        }
+    }
+
+    pub(crate) fn close(&mut self, reason: &str, out: &Outbox) {
+        // The native callback may have recorded a pass before the OS close message
+        // even when the event-loop wakeup for it is still queued.
+        self.drain_browser(out);
+        self.fail_pending(reason, out);
+    }
+
+    fn fail_pending(&mut self, reason: &str, out: &Outbox) {
+        if self.is_pending() {
+            self.complete(Outcome::Declined(reason.to_owned()), out);
+        }
+    }
+
+    pub(crate) fn finished(&self) -> bool {
+        matches!(self.phase, Phase::Finished)
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self.phase, Phase::Loading | Phase::Checking(_))
+    }
+
+    fn complete(&mut self, outcome: Outcome, out: &Outbox) {
+        self.phase = Phase::Finished;
+        self.requested = false;
+        self.foreground = false;
+        #[cfg(windows)]
+        crate::windows_presentation::hide(&self.window);
+        #[cfg(not(windows))]
+        self.window.set_visible(false);
+        let delivery = out.answer(&self.request, &outcome);
+        let (host, id) = (self.request.host.clone(), self.request.id.clone());
+        let status = match (outcome, delivery) {
+            (_, Err(reason))
+            | (Outcome::Declined(reason), Ok(()))
+            | (Outcome::Waiting(reason), Ok(())) => HelperStatus::Failed { host, id, reason },
+            (Outcome::Passed { .. }, Ok(())) => {
+                self.phase = Phase::Passed;
+                HelperStatus::Passed { host, id }
+            }
+        };
+        tracing::debug!(id = %self.request.id, host = %self.request.host, ?status, "verification finished");
+        out.status(&status);
     }
 }

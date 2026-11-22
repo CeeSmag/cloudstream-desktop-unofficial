@@ -43,3 +43,7 @@ allow = [
 
 [bans]
 multiple-versions = "warn"
+
+[sources]
+# The pinned WebView2 binding provides safe attachment to the native verification window.
+allow-git = ["https://github.com/microsoft/windows-rs"]

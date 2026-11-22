@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
+use url::Url;
 
 /// A site the sidecar wants verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +20,25 @@ pub struct VerifyRequest {
     pub host: String,
     /// The page that answered with the challenge; the window opens on it.
     pub url: String,
+    /// The effective browser-facing method of the challenged response.
+    pub method: String,
+    /// A viewer retry after the original sidecar call ended has no result-file consumer.
+    pub standalone: bool,
+}
+
+impl VerifyRequest {
+    /// The viewer's browser may open only a credential-free GET for the exact host.
+    pub fn can_navigate(&self) -> bool {
+        self.method == "GET"
+            && Url::parse(&self.url).is_ok_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url
+                        .host_str()
+                        .is_some_and(|host| host.eq_ignore_ascii_case(&self.host))
+                    && url.username().is_empty()
+                    && url.password().is_none()
+            })
+    }
 }
 
 /// What the viewer did.
@@ -53,6 +73,8 @@ pub fn parse_request(text: &str) -> Option<VerifyRequest> {
         id: field("id=")?,
         host: field("host=")?,
         url: field("url=")?,
+        method: field("method=")?,
+        standalone: false,
     };
     let safe_id = request
         .id
@@ -110,7 +132,9 @@ pub fn fresh_files(dir: &Path, prefix: &str) -> Vec<(String, String)> {
 pub fn pending_requests(dir: &Path, seen: &mut HashSet<String>) -> Vec<VerifyRequest> {
     fresh_files(dir, "request-")
         .into_iter()
-        .filter_map(|(text, _)| parse_request(&text))
+        .filter_map(|(text, file)| {
+            parse_request(&text).filter(|request| file == format!("request-{}.txt", request.id))
+        })
         .filter(|request| seen.insert(request.id.clone()))
         .collect()
 }
@@ -153,7 +177,9 @@ mod tests {
 
     #[test]
     fn a_request_needs_an_id_a_host_and_a_web_page() {
-        let good = parse_request("id=abc-123\nhost=site.test\nurl=https://site.test/api?x=1\n");
+        let good = parse_request(
+            "id=abc-123\nhost=site.test\nurl=https://site.test/api?x=1\nmethod=GET\n",
+        );
         assert_eq!(good.map(|r| r.host), Some("site.test".to_owned()));
         assert_eq!(parse_request("id=a\nhost=h\n"), None);
         assert_eq!(parse_request("id=a\nhost=h\nurl=file:///c:/secret\n"), None);
@@ -187,7 +213,7 @@ mod tests {
         let dir = folder("scan");
         std::fs::write(
             dir.join("request-one.txt"),
-            "id=one\nhost=a.test\nurl=https://a.test/\n",
+            "id=one\nhost=a.test\nurl=https://a.test/\nmethod=GET\n",
         )
         .expect("one");
         std::fs::write(dir.join("request-bad.txt"), "garbage").expect("bad");

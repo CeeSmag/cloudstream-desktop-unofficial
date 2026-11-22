@@ -128,6 +128,7 @@ export component CloudStream inherits Window {
     in-out property <string> cf-request-id;
     in-out property <string> cf-host: "";
     in-out property <string> cf-message: "";
+    in-out property <bool> cf-can-retry;
     in-out property <int> settings-page-index: 0;
     in-out property <bool> debug-indicator-hovered: false;
     in-out property <int> diagnostics-focus-request: 0;
@@ -376,6 +377,7 @@ export component CloudStream inherits Window {
                 state: root.cf-state;
                 host: root.cf-host;
                 message: root.cf-message;
+                can-retry: root.cf-can-retry;
                 verify => { cf-verify(); }
                 dismiss => { cf-dismiss(); }
             }

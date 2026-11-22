@@ -12,6 +12,7 @@ mod input_threads;
 mod outbox;
 mod page_fetches;
 mod site_window;
+mod verification;
 #[cfg(windows)]
 mod windows_presentation;
 

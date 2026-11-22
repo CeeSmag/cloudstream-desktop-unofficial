@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 tracing.workspace = true
+url = "=2.5.8"
 
 [target.'cfg(windows)'.dependencies]
 winsafe = { version = "=0.0.19", features = ["user"] }

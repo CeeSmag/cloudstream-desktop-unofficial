@@ -1,95 +1,95 @@
-//! Requests running inside a site's page: the sidecar's browser fetches and the check's probes.
+//! Sidecar requests executed in a verified same-origin document.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use cloudflare_bridge::FetchRequest;
-use cloudflare_window::fetch_script::start_script;
-use wry::WebView;
+use cloudflare_bridge::{FetchOutcome, FetchRequest};
+use cloudflare_window::fetch_script::{parse_poll_result, poll_script, start_script};
+use tao::event_loop::EventLoopProxy;
 
-/// How long one browser fetch may take.
+use crate::browser_view::BrowserView;
+use crate::helper_events::HelperEvent;
+use crate::outbox::Outbox;
+
+/// How long an in-browser request may take.
 const FETCH_TIME: Duration = Duration::from_secs(60);
-/// How long the probe of a passed check may take.
-const PROBE_TIME: Duration = Duration::from_secs(10);
 
-/// Who a request in the page is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PageRequest {
-    /// The sidecar's browser fetch: its answer goes to the sidecar.
-    Fetch,
-    /// A probe of the check: its answer decides whether the check passed.
-    Probe,
-}
-
-/// One request running in the page.
-pub(crate) struct FetchJob {
-    deadline: Instant,
-    /// Who the answer is for.
-    pub(crate) kind: PageRequest,
-}
-
-/// The requests running in one page.
-#[derive(Default)]
 pub(crate) struct PageFetches {
-    jobs: HashMap<String, FetchJob>,
-    probes: u32,
+    pending: HashMap<String, Instant>,
+    proxy: EventLoopProxy<HelperEvent>,
+    window: String,
 }
 
 impl PageFetches {
-    /// Starts `request` in the page; its answer is read back by polling [`Self::ids`].
+    pub(crate) fn new(proxy: EventLoopProxy<HelperEvent>, window: String) -> Self {
+        Self {
+            pending: HashMap::new(),
+            proxy,
+            window,
+        }
+    }
+
     pub(crate) fn start(
         &mut self,
-        webview: &WebView,
+        view: &BrowserView,
         request: &FetchRequest,
-        kind: PageRequest,
     ) -> Result<(), String> {
-        webview
-            .evaluate_script(&start_script(request))
-            .map_err(|error| format!("cannot run the request in the window: {error}"))?;
-        let limit = match kind {
-            PageRequest::Fetch => FETCH_TIME,
-            PageRequest::Probe => PROBE_TIME,
-        };
-        let job = FetchJob {
-            deadline: Instant::now() + limit,
-            kind,
-        };
-        self.jobs.insert(request.id.clone(), job);
+        view.evaluate(&start_script(request), |_| {})?;
+        self.pending
+            .insert(request.id.clone(), Instant::now() + FETCH_TIME);
         Ok(())
     }
 
-    /// A fresh id for a probe request (letters, digits and `-`, safe in a script).
-    pub(crate) fn next_probe_id(&mut self) -> String {
-        self.probes += 1;
-        format!("probe-{}", self.probes)
+    pub(crate) fn poll(&mut self, view: &BrowserView, out: &Outbox) {
+        let now = Instant::now();
+        self.pending.retain(|id, deadline| {
+            if *deadline <= now {
+                out.fetch_result(
+                    id,
+                    &FetchOutcome::failed("the browser did not answer in time"),
+                );
+                return false;
+            }
+            Self::poll_one(view, &self.proxy, &self.window, id);
+            true
+        });
     }
 
-    /// The ids of every running request.
-    pub(crate) fn ids(&self) -> Vec<String> {
-        self.jobs.keys().cloned().collect()
+    fn poll_one(view: &BrowserView, proxy: &EventLoopProxy<HelperEvent>, window: &str, id: &str) {
+        let proxy = proxy.clone();
+        let script = poll_script(id);
+        let window = window.to_owned();
+        let request_id = id.to_owned();
+        if let Err(error) = view.evaluate(&script, move |raw| {
+            if proxy
+                .send_event(HelperEvent::Polled {
+                    window: window.clone(),
+                    id: request_id.clone(),
+                    raw,
+                })
+                .is_err()
+            {
+                tracing::debug!("the helper closed before a browser fetch answered");
+            }
+        }) {
+            tracing::debug!(%id, %error, "could not poll a browser fetch");
+        }
     }
 
-    /// Takes request `id` out (its answer arrived).
-    pub(crate) fn take(&mut self, id: &str) -> Option<FetchJob> {
-        self.jobs.remove(id)
+    pub(crate) fn complete(&mut self, id: &str, raw: &str, out: &Outbox) {
+        if let Some(result) = parse_poll_result(raw) {
+            if self.pending.remove(id).is_some() {
+                out.fetch_result(id, &result);
+            }
+        }
     }
 
-    /// Takes out every request whose time ran out at `now`.
-    pub(crate) fn take_expired(&mut self, now: Instant) -> Vec<(String, FetchJob)> {
-        let expired: Vec<String> = self
-            .jobs
-            .iter()
-            .filter(|(_, job)| job.deadline <= now)
-            .map(|(id, _)| id.clone())
-            .collect();
-        expired
-            .into_iter()
-            .filter_map(|id| self.jobs.remove(&id).map(|job| (id, job)))
-            .collect()
-    }
-
-    /// Takes out every request (the app is closing).
-    pub(crate) fn take_all(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.jobs).into_keys().collect()
+    pub(crate) fn abandon(&mut self, out: &Outbox) {
+        for (id, _) in self.pending.drain() {
+            out.fetch_result(
+                &id,
+                &FetchOutcome::gone("the verified document is no longer available"),
+            );
+        }
     }
 }

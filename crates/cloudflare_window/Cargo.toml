@@ -12,19 +12,24 @@ path = "src/main.rs"
 [dependencies]
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 serde_json.workspace = true
+serde.workspace = true
+url = "=2.5.8"
 # The browser window. A separate process, so the WebView's event loop never runs inside Slint's.
 tao = "=0.37.2"
 tracing.workspace = true
 tracing-subscriber.workspace = true
-wry = { version = "=0.57.1", default-features = false, features = ["os-webview", "x11"] }
 
-# Same pin as wry: ignore TLS errors in the verify profile so a self-signed redirect host
-# (e.g. parked domain) does not freeze the window on WebKit's "Unacceptable TLS certificate".
 [target.'cfg(target_os = "linux")'.dependencies]
-webkit2gtk = { version = "=2.0.2", default-features = false, features = ["v2_38"] }
+gtk = "=0.18.2"
+wry = { version = "=0.57.1", default-features = false, features = ["os-webview", "x11"] }
+webkit2gtk = { version = "=2.0.2", default-features = false, features = ["v2_40"] }
+soup3 = "=0.5.0"
 
 [target.'cfg(windows)'.dependencies]
 winsafe = { version = "=0.0.19", features = ["user"] }
+# The published 0.100.0 API needs an unsafe HWND attachment. This revision provides a checked,
+# asynchronous host constructor while keeping native navigation and protocol subscriptions.
+windows-webview = { git = "https://github.com/microsoft/windows-rs", rev = "d1ee6f58a8d713edf908d68538b54b7c61ab97b2", default-features = false }
 
 [lints]
 workspace = true
