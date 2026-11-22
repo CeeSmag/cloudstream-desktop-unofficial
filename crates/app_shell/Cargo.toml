@@ -23,6 +23,7 @@ core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }
 extension_runtime = { path = "../extension_runtime" }
+memory_budget = { path = "../memory_budget" }
 player_api = { path = "../player_api" }
 player_mpv = { path = "../player_mpv" }
 poster_artwork = { path = "../poster_artwork" }
@@ -30,6 +31,8 @@ skip_times = { path = "../skip_times" }
 storage = { path = "../storage" }
 stream_proxy = { path = "../stream_proxy" }
 subtitle_store = { path = "../subtitle_store" }
+# RAM and core count for the Auto performance profile; the "system" feature only (no network, disks, users).
+sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 title_cache = { path = "../title_cache" }
 tracing.workspace = true
 tracing-subscriber.workspace = true

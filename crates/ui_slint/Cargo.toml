@@ -19,6 +19,7 @@ app_services = { path = "../app_services" }
 app_updater = { path = "../app_updater" }
 cloudflare_bridge = { path = "../cloudflare_bridge" }
 core_model = { path = "../core_model" }
+memory_budget = { path = "../memory_budget" }
 open = "5"
 playback_session = { path = "../playback_session" }
 poster_artwork = { path = "../poster_artwork" }

@@ -9,6 +9,7 @@ license.workspace = true
 core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }
+memory_budget = { path = "../memory_budget" }
 player_api = { path = "../player_api" }
 poster_artwork = { path = "../poster_artwork" }
 serde.workspace = true

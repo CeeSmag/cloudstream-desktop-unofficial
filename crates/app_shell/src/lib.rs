@@ -13,6 +13,7 @@ mod logging_setup;
 mod service_wiring;
 mod sidecar_discovery;
 mod stream_proxy_router;
+mod system_probe;
 mod unavailable_gateway;
 mod wipe_helper;
 

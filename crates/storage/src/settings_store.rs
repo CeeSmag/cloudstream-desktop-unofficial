@@ -43,6 +43,16 @@ impl SettingsStore {
                 .map(drop)
         })
     }
+
+    /// Deletes a setting (no error when it was not set), so it follows its default again.
+    #[tracing::instrument(level = "trace", skip_all, fields(key = ?key), err)]
+    pub fn remove(&self, key: &str) -> Result<(), StorageError> {
+        self.database.with("remove setting", |connection| {
+            connection
+                .execute("DELETE FROM settings WHERE key = ?1", params![key])
+                .map(drop)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -64,5 +74,14 @@ mod tests {
         store.set("theme", "dark").expect("write");
         store.set("theme", "light").expect("overwrite");
         assert_eq!(store.get("theme").expect("read"), Some("light".to_owned()));
+    }
+
+    #[test]
+    fn remove_deletes_the_value_and_ignores_a_missing_key() {
+        let store = store();
+        store.set("theme", "dark").expect("write");
+        store.remove("theme").expect("remove");
+        assert_eq!(store.get("theme").expect("read"), None);
+        store.remove("theme").expect("removing again is fine");
     }
 }

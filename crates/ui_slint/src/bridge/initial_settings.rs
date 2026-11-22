@@ -48,10 +48,13 @@ fn apply_storage_and_workers(ui: &CloudStream, services: &UiServices) {
         }
         Err(error) => tracing::warn!(%error, "could not read the storage limit"),
     }
-    ui.set_storage_labels(string_model((1..=10).map(|gb| format!("{gb} GB"))));
+    let limits = memory_budget::STORAGE_LIMIT_CHOICES_GB.iter();
+    ui.set_storage_labels(string_model(limits.map(|gb| format!("{gb} GB"))));
     let worker = services.settings.plugin_worker_limit().unwrap_or(Some(1));
     ui.set_worker_value(worker_label(worker).into());
-    let labels = ["1", "2", "Unlimited"].into_iter().map(str::to_owned);
+    let labels = app_services::PLUGIN_WORKER_LIMIT_CHOICES
+        .iter()
+        .map(|limit| worker_label(*limit));
     ui.set_worker_labels(string_model(labels));
 }
 
@@ -77,11 +80,7 @@ fn apply_languages(ui: &CloudStream, services: &UiServices) {
 
 /// The label of the plugin worker limit drop-down.
 pub(crate) fn worker_label(limit: Option<usize>) -> String {
-    match limit {
-        Some(1) => "1".into(),
-        Some(2) => "2".into(),
-        _ => "Unlimited".into(),
-    }
+    limit.map_or_else(|| "Unlimited".to_owned(), |count| count.to_string())
 }
 
 fn language_labels() -> Vec<String> {

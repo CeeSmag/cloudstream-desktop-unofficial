@@ -109,13 +109,10 @@ fn set_worker_limit(ctx: &BridgeContext, value: SharedString) {
     }
 }
 
-/// "1" / "2" / anything else → Some(1) / Some(2) / unlimited.
+/// A count ("1", "2", "3", "4", "6") is that many resident plugin processes; anything else
+/// ("Unlimited") is no limit.
 pub(crate) fn worker_limit_from_label(value: &str) -> Option<usize> {
-    match value {
-        "1" => Some(1),
-        "2" => Some(2),
-        _ => None,
-    }
+    value.parse::<usize>().ok().filter(|count| *count > 0)
 }
 
 fn clean_storage(ctx: &BridgeContext) {
@@ -175,6 +172,8 @@ mod tests {
     fn worker_limit_from_label_maps_menu_choices() {
         assert_eq!(worker_limit_from_label("1"), Some(1));
         assert_eq!(worker_limit_from_label("2"), Some(2));
+        assert_eq!(worker_limit_from_label("6"), Some(6));
+        assert_eq!(worker_limit_from_label("0"), None);
         assert_eq!(worker_limit_from_label("Unlimited"), None);
     }
 }

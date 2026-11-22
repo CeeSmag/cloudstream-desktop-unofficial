@@ -2,23 +2,21 @@
 
 use crate::{ServiceError, SettingsService};
 
-const STORAGE_CAP_KEY: &str = "storage_cap_gb";
+pub(crate) const STORAGE_CAP_KEY: &str = "storage_cap_gb";
 /// The least size (in GB) the app's data folder may be limited to.
 pub(crate) const MIN_STORAGE_CAP_GB: u32 = 1;
 /// The most size (in GB) the app's data folder may be limited to.
 pub(crate) const MAX_STORAGE_CAP_GB: u32 = 10;
-/// The limit (in GB) until the viewer chooses one.
+/// The limit (in GB) of the balanced profile, which tests rely on (the profile decides in the app).
+#[cfg(test)]
 pub(crate) const DEFAULT_STORAGE_CAP_GB: u32 = 2;
 
 impl SettingsService {
-    /// How many GB the app's data folder may use before old cache is deleted: 2 until the viewer
-    /// chooses 1 to 10. A stored value out of range (edited by hand) counts as the default.
+    /// How many GB the app's data folder may use before old cache is deleted: what the viewer
+    /// chose (1 to 10), else the profile's value. A stored value out of range (edited by hand)
+    /// is ignored.
     pub fn storage_cap_gb(&self) -> Result<u32, ServiceError> {
-        let stored = self.stored(STORAGE_CAP_KEY)?;
-        Ok(stored
-            .and_then(|text| text.parse::<u32>().ok())
-            .filter(|gb| (MIN_STORAGE_CAP_GB..=MAX_STORAGE_CAP_GB).contains(gb))
-            .unwrap_or(DEFAULT_STORAGE_CAP_GB))
+        Ok(self.performance_budget()?.storage_limit_gb)
     }
 
     /// Remembers the data folder's size limit; only 1 to 10 GB are accepted.

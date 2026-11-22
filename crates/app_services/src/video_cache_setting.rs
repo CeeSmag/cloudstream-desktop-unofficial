@@ -5,12 +5,12 @@ use player_api::CacheLimits;
 
 use crate::{ServiceError, SettingsService};
 
-const SIZE_KEY: &str = "video_cache_mb";
-const AHEAD_KEY: &str = "video_cache_ahead_percent";
+pub(crate) const SIZE_KEY: &str = "video_cache_mb";
+pub(crate) const AHEAD_KEY: &str = "video_cache_ahead_percent";
 /// The sizes (in MB) the viewer can choose.
-pub const VIDEO_CACHE_SIZES_MB: [u32; 6] = [128, 256, 512, 1024, 2048, 4096];
+pub const VIDEO_CACHE_SIZES_MB: [u32; 7] = memory_budget::VIDEO_CACHE_CHOICES_MIB;
 /// The ahead shares (in percent) the viewer can choose.
-pub const VIDEO_CACHE_AHEAD_PERCENTS: [u8; 4] = [25, 50, 75, 90];
+pub const VIDEO_CACHE_AHEAD_PERCENTS: [u8; 4] = memory_budget::READ_AHEAD_CHOICES_PERCENT;
 /// The size until the viewer chooses one.
 const DEFAULT_SIZE_MB: u32 = 256;
 /// The ahead share until the viewer chooses one: viewers mostly move forward.
@@ -54,23 +54,14 @@ impl VideoCache {
 }
 
 impl SettingsService {
-    /// The viewer's video cache: 256 MB with 75 % ahead until chosen. A stored value that is not one
-    /// of the choices (edited by hand) counts as its default.
+    /// The video cache in force: what the viewer chose, else the profile's size and read-ahead
+    /// (256 MB with 75 % ahead on a balanced PC). A stored value that is not one of the choices
+    /// (edited by hand) is ignored.
     pub fn video_cache(&self) -> Result<VideoCache, ServiceError> {
-        let defaults = VideoCache::default();
-        let size_mb = self
-            .stored(SIZE_KEY)?
-            .and_then(|text| text.parse::<u32>().ok())
-            .filter(|size| VIDEO_CACHE_SIZES_MB.contains(size))
-            .unwrap_or(defaults.size_mb);
-        let ahead_percent = self
-            .stored(AHEAD_KEY)?
-            .and_then(|text| text.parse::<u8>().ok())
-            .filter(|share| VIDEO_CACHE_AHEAD_PERCENTS.contains(share))
-            .unwrap_or(defaults.ahead_percent);
+        let budget = self.performance_budget()?;
         Ok(VideoCache {
-            size_mb,
-            ahead_percent,
+            size_mb: budget.video_cache_mib,
+            ahead_percent: budget.video_read_ahead_percent,
         })
     }
 

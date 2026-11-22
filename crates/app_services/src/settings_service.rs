@@ -1,3 +1,4 @@
+use memory_budget::SystemFacts;
 use storage::SettingsStore;
 
 use crate::ServiceError;
@@ -15,12 +16,33 @@ const LIST_SEPARATOR: char = '\n';
 #[derive(Clone)]
 pub struct SettingsService {
     store: SettingsStore,
+    system: SystemFacts,
 }
 
+/// What a PC is assumed to be until the real one is read: an 8 GB, 4-core PC (the Balanced tier).
+const ASSUMED_SYSTEM: SystemFacts = SystemFacts {
+    total_mib: 8 * 1024,
+    cpu_cores: 4,
+};
+
 impl SettingsService {
-    /// Creates the service over a settings store.
+    /// Creates the service over a settings store, assuming an 8 GB PC until [`Self::with_system`].
     pub fn new(store: SettingsStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            system: ASSUMED_SYSTEM,
+        }
+    }
+
+    /// Tells the service what this PC is, so "Auto" can pick limits that suit it.
+    pub fn with_system(mut self, system: SystemFacts) -> Self {
+        self.system = system;
+        self
+    }
+
+    /// The PC this service picks limits for.
+    pub fn system(&self) -> SystemFacts {
+        self.system
     }
 
     /// Names of providers the user switched off; they are skipped by search.
@@ -89,6 +111,12 @@ impl SettingsService {
     /// The stored text of `key`, for the setting files beside this one (`language_settings.rs`, ...).
     pub(crate) fn stored(&self, key: &str) -> Result<Option<String>, ServiceError> {
         Ok(self.store.get(key)?)
+    }
+
+    /// Deletes `key`, so its setting follows its default again.
+    pub(crate) fn remove_value(&self, key: &str) -> Result<(), ServiceError> {
+        self.store.remove(key)?;
+        Ok(())
     }
 
     /// Stores `value` under `key`, for the setting files beside this one.

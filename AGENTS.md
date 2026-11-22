@@ -342,7 +342,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 #### `crates/memory_budget`
 - **Location**: `crates/memory_budget/` (no dependencies; pure, no I/O)
 - **Responsibility**: Memory limits for plugins, video and storage, resolved as `preset of the tier <- the viewer's overrides` into one immutable `MemoryBudget` that `app_shell` hands to components by constructor (see `docs/MEMORY.md`, plan Phase S). `MemoryTier::detect(&dyn SystemProbe)` picks Low-end / Balanced / High-end from RAM (the real probe is written in `app_shell`; tests use `FixedSystem`); `ProfileChoice` (Auto or a named tier); `BudgetOverrides` (only what the viewer changed; a value that is not an offered choice is ignored); `estimate_worst_case_mib` + `is_heavy` feed the Settings warning. Poster and picture limits are **not** here: they are fixed for every PC.
-- **Not wired yet**: nothing consumes it until step S1.
+- **Wiring**: `app_shell::system_probe::SysinfoProbe` (the only `sysinfo` user) reads RAM; `SettingsService::with_system` hands it over; `SettingsService::performance_budget()` / `performance_summary()` / `reset_performance()` (`app_services/src/performance_settings.rs`) resolve it. The old keys (`video_cache_mb`, `video_cache_ahead_percent`, `storage_cap_gb`, `plugin_worker_limit`) are the viewer's overrides: a stored value wins, a missing one follows the profile (`perf_profile`, default Auto). `migrate_performance_settings` (once, `perf_migrated`) drops a stored plugin limit of `0` or `1`, which the old app wrote itself.
 
 #### `crates/playback_session`
 - **Location**: `crates/playback_session/`

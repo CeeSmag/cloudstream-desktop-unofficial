@@ -9,6 +9,7 @@ use app_services::{
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
 use extension_runtime::PluginWorkerPool;
+use memory_budget::SystemProbe;
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
 use poster_artwork::{ArtworkLoader, ArtworkLoaderConfig, DiskCache, UreqArtworkFetcher};
@@ -23,6 +24,7 @@ use title_cache::TitleCache;
 use crate::app_paths::AppPaths;
 use crate::sidecar_discovery;
 use crate::stream_proxy_router::StreamProxyRouter;
+use crate::system_probe::SysinfoProbe;
 use crate::unavailable_gateway::UnavailableGateway;
 
 /// Choices that differ between the app and tests.
@@ -43,8 +45,15 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     let gateway = build_gateway(&paths.data_dir().join("sidecar"));
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
     let (playback, player_problem) = build_playback(&database, &clock, options);
-    let settings = SettingsService::new(SettingsStore::new(Arc::clone(&database)));
-    apply_worker_limit(&settings, &database, gateway.as_ref());
+    let system = SysinfoProbe.facts();
+    tracing::info!(
+        total_mib = system.total_mib,
+        cores = system.cpu_cores,
+        "this PC"
+    );
+    let settings =
+        SettingsService::new(SettingsStore::new(Arc::clone(&database))).with_system(system);
+    apply_worker_limit(&settings, gateway.as_ref());
     let extensions = ExtensionService::new(
         Arc::clone(&gateway),
         installer,
@@ -129,17 +138,13 @@ fn build_artwork(dir: &Path) -> Arc<ArtworkLoader> {
     ))
 }
 
-/// Applies the saved plugin process limit; installs from before the setting keep "unlimited".
-fn apply_worker_limit(
-    settings: &SettingsService,
-    database: &Arc<Database>,
-    gateway: &dyn ProviderGateway,
-) {
-    let had_prior = InstalledExtensionStore::new(Arc::clone(database))
-        .list()
-        .map(|list| !list.is_empty())
-        .unwrap_or(false);
-    match settings.plugin_worker_limit_migrating(had_prior) {
+/// Applies the plugin process limit in force: the viewer's choice, else the profile's. The first
+/// start with profiles drops the limits the old app wrote itself (see `migrate_performance_settings`).
+fn apply_worker_limit(settings: &SettingsService, gateway: &dyn ProviderGateway) {
+    if let Err(error) = settings.migrate_performance_settings() {
+        tracing::warn!(%error, "performance settings were not migrated");
+    }
+    match settings.plugin_worker_limit() {
         Ok(limit) => gateway.set_resident_worker_limit(limit),
         Err(error) => tracing::warn!(%error, "plugin process limit not read; keeping the default"),
     }
