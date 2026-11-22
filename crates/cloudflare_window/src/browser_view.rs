@@ -21,6 +21,13 @@ mod platform;
 
 pub(crate) use platform::{BrowserContext, BrowserView};
 
+/// What replacing a window's browser needs.
+pub(crate) struct RecycleParts<'a> {
+    pub(crate) context: &'a mut BrowserContext,
+    pub(crate) window: &'a Rc<Window>,
+    pub(crate) source: &'a BrowserSource,
+}
+
 #[derive(Clone)]
 pub(crate) struct BrowserSource {
     pub(super) target: Url,
@@ -115,7 +122,7 @@ mod platform {
         }
         pub(crate) fn identify(&self) {}
         pub(crate) fn navigate(&self, _url: &Url) {}
-        pub(crate) fn recycle(&self, _url: &Url) {}
+        pub(crate) fn recycle(&mut self, _parts: RecycleParts<'_>, _url: &Url) {}
         pub(crate) fn reveal(&self, _document: DocumentId) -> bool {
             false
         }

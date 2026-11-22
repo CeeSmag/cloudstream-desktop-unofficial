@@ -8,7 +8,7 @@ use tao::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 use tao::window::Window;
 use url::{Origin, Url};
 
-use crate::browser_view::{open_view, BrowserContext, BrowserSource, BrowserView};
+use crate::browser_view::{open_view, BrowserContext, BrowserSource, BrowserView, RecycleParts};
 use crate::context_slimming::{should_slim, slim_address, SlimState};
 use crate::helper_events::HelperEvent;
 use crate::outbox::Outbox;
@@ -291,7 +291,7 @@ impl SiteWindow {
 
     /// Moves a passed window that has been quiet for `after` to the site's small page, so the
     /// heavy page's memory is freed while the window can still serve browser fetches.
-    pub(crate) fn slim_if_quiet(&mut self, after: Duration) {
+    pub(crate) fn slim_if_quiet(&mut self, after: Duration, context: &mut BrowserContext) {
         let state = SlimState {
             passed: self.passed(),
             slimmed: self.slimmed,
@@ -304,7 +304,12 @@ impl SiteWindow {
         self.slimmed = true;
         if let Some(address) = slim_address(&self.target) {
             tracing::debug!(id = %self.waiters.owner().id, %address, "moving a quiet verified window to a small page");
-            self.view.recycle(&address);
+            let parts = RecycleParts {
+                context,
+                window: &self.window,
+                source: &self.browser_events,
+            };
+            self.view.recycle(parts, &address);
         }
     }
 

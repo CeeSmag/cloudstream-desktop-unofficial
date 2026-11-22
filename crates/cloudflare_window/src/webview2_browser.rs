@@ -61,8 +61,9 @@ impl BrowserView {
         Ok(Self { slot, source })
     }
 
-    /// WebView2 cannot end one window's process: the old page is left for the browser to trim.
-    pub(crate) fn recycle(&self, url: &Url) {
+    /// WebView2's browser is created asynchronously and this build cannot test replacing it, so
+    /// the window only navigates to the small page: the old page is left for the browser to trim.
+    pub(crate) fn recycle(&mut self, _parts: RecycleParts<'_>, url: &Url) {
         self.navigate(url);
     }
 

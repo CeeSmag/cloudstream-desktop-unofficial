@@ -246,7 +246,7 @@ impl HelperState {
             self.remove(&key);
         }
         for site in self.sites.values_mut() {
-            site.slim_if_quiet(SLIM_AFTER);
+            site.slim_if_quiet(SLIM_AFTER, &mut self.context);
         }
     }
 

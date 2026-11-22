@@ -14,6 +14,9 @@ use crate::verification::DocumentId;
 use cookies::read_cookies;
 use navigation::Observer;
 
+/// A page with nothing in it.
+const TINY_PAGE: &str = "<!doctype html><title>.</title>";
+
 pub(crate) struct BrowserContext(wry::WebContext);
 
 impl BrowserContext {
@@ -82,16 +85,24 @@ impl BrowserView {
         }
     }
 
-    /// Ends the window's web process, which frees the memory of the page it held (navigating
-    /// away does not: WebKit keeps the heap), and loads a tiny page of our own in a fresh one. The
-    /// page is given the site's origin as its base address, so it is a document of that origin and
-    /// can still run the sidecar's fetches; it does not depend on what the site serves at `url`
-    /// (a site's own 404 page can be a heavy app). Cookies live in the network process and are kept.
-    pub(crate) fn recycle(&self, url: &Url) {
-        let gtk_view = self.view.webview();
-        gtk_view.terminate_web_process();
+    /// Replaces the window's browser with a new one that holds a tiny page of our own. Dropping
+    /// the old one destroys its widget, which ends every process the page had (a challenge page
+    /// keeps others besides the main one: ending only the main process, or navigating away, left
+    /// a heavy one behind). The tiny page is given the site's origin as its base address, so it is
+    /// a document of that origin and can still run the sidecar's fetches; it does not depend on
+    /// what the site serves (a site's own 404 page can be a heavy app). Cookies live in the
+    /// network process and are kept.
+    pub(crate) fn recycle(&mut self, parts: RecycleParts<'_>, url: &Url) {
+        let fresh = match Self::open(parts.context, parts.window, parts.source.clone()) {
+            Ok(fresh) => fresh,
+            Err(error) => {
+                tracing::warn!(%error, "could not replace a verified window's browser; keeping it");
+                return;
+            }
+        };
         let base = url.join("/").map(String::from).unwrap_or_default();
-        gtk_view.load_html("<!doctype html><title>.</title>", Some(&base));
+        fresh.view.webview().load_html(TINY_PAGE, Some(&base));
+        *self = fresh;
     }
 
     pub(crate) fn reveal(&self, document: DocumentId) -> bool {

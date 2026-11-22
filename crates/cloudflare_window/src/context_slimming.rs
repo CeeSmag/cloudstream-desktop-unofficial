@@ -2,9 +2,9 @@
 //!
 //! The check needs the real page, but a window kept only for the sidecar's browser fetches needs
 //! nothing more than a document of the same origin to run `fetch` from. A passed window that has
-//! been quiet for a while is moved to a tiny page of that origin (on Linux a page of our own given
-//! the site's origin as its base address; elsewhere the site's `robots.txt`), so the heavy page's
-//! memory is freed. A browser setting could not do that: the page is live.
+//! been quiet for a while is moved to a tiny page of that origin (on Linux a new browser holding a
+//! page of our own given the site's origin as its base address; elsewhere the site's `robots.txt`),
+//! so the heavy page's memory is freed. A browser setting could not do that: the page is live.
 //!
 //! Pure: the caller says what the window is doing and how long it has been quiet.
 
