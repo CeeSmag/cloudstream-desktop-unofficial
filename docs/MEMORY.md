@@ -99,7 +99,13 @@ estimate was 100-300 MB). The player and the app together were under 730 MiB. Th
 source needs a check (`verification helper started` in the log) and the idle close (step 1f) only
 applies once it is quiet, so while checks are running it is the largest consumer by far. The harness
 now reports memory and CPU per kind of process (`window_roles`) so a comparison can leave it out.
-Not yet addressed: limiting what a verification window loads or keeps. Also note the player itself is larger on 4K than the 1080p estimate: the app process held about 712 MiB while playing 4K HEVC at a 128 MB cache.
+Measured per process (2026-11-22, `window_processes`, software output, a movie whose sources sit behind
+Cloudflare, 3 minutes): the helper tree held **1023 MiB at its peak** and stayed there until the app closed:
+**7 `WebKitWebProcess` processes (976 MiB, about 140-165 MiB each, one per window, not one shared)**, one
+`WebKitNetworkProcess` (47 MiB) and `cloudstream-verify` itself (92 MiB). Seven different sites asked for a
+check in 30 seconds; the helper log shows up to 6 windows open at once, every one that passed (`Passed`) kept
+for the rest of the session, with no release. So the cost is the number of retained windows times one browser
+process each, which is what step H1 (bounded verified contexts) targets. Not yet addressed at that time: limiting what a verification window loads or keeps. Also note the player itself is larger on 4K than the 1080p estimate: the app process held about 712 MiB while playing 4K HEVC at a 128 MB cache.
 
 ## Measurement mistakes to avoid
 
