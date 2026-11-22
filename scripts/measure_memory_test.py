@@ -180,5 +180,28 @@ class ProcessBreakdownTests(unittest.TestCase):
         self.assertEqual(report["series"][0]["processes"]["WebKitWebProcess"], [90.0, 1])
 
 
+class ProcessDetailTests(unittest.TestCase):
+    def test_parse_start_ticks_reads_the_start_time_after_the_name(self):
+        stat = "123 (my (odd) name) S 1 123 123 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 1 0 5000 1000 100"
+        self.assertEqual(mm.parse_start_ticks(stat), 5000)
+
+    def test_parse_start_ticks_of_garbage_is_zero(self):
+        self.assertEqual(mm.parse_start_ticks("nonsense"), 0)
+
+    def test_detail_lists_only_browser_helper_processes_with_pid_memory_and_age(self):
+        tree = [
+            proc(10, 1, "cloudstream", 100 * 1024),
+            proc(11, 10, "cloudstream-verify", 60 * 1024),
+            mm.ProcessSample(12, 11, "WebKitWebProces", 150 * 1024, 0, 2500),
+        ]
+        rows = mm.helper_detail(tree, now_ticks=4000)
+        self.assertEqual([row["pid"] for row in rows], [11, 12])
+        self.assertEqual(rows[1], {"pid": 12, "name": "WebKitWebProces", "mib": 150.0, "age_s": 15.0})
+
+    def test_series_rows_carry_the_detail_when_it_was_taken(self):
+        sample = mm.TimedSample(1.0, 2.0, 0.0, {}, {}, [{"pid": 5, "name": "WebKitWebProces", "mib": 9.0, "age_s": 3.0}])
+        self.assertEqual(mm.series_row(sample)["helper_procs"][0]["pid"], 5)
+
+
 if __name__ == "__main__":
     unittest.main()

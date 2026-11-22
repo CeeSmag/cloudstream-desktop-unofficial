@@ -38,6 +38,7 @@ class ProcessSample:
     name: str
     pss_kib: int
     cpu_ticks: int = 0
+    start_ticks: int = 0  # start time since boot, clock ticks
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,8 @@ class TimedSample:
     roles: dict = field(default_factory=dict)
     # process name -> (memory MiB, process count) at this instant
     processes: dict = field(default_factory=dict)
+    # every browser-helper process at this instant: pid, name, MiB, age in seconds
+    helper_procs: list = field(default_factory=list)
 
 
 class CpuTotal:
@@ -93,6 +96,37 @@ def parse_cpu_ticks(stat_text: str) -> int:
     try:
         return int(after_name[11]) + int(after_name[12])
     except (IndexError, ValueError):
+        return 0
+
+
+def parse_start_ticks(stat_text: str) -> int:
+    """Start time (ticks since boot) from /proc/<pid>/stat (0 when unreadable)."""
+    after_name = stat_text.rsplit(")", 1)[-1].split()
+    try:
+        return int(after_name[19])
+    except (IndexError, ValueError):
+        return 0
+
+
+def helper_detail(tree: list, now_ticks: int) -> list:
+    """One row per browser-helper process (the helper and its WebKit / WebView2 children)."""
+    return [
+        {
+            "pid": sample.pid,
+            "name": sample.name,
+            "mib": round(sample.pss_kib / KIB_PER_MIB, 1),
+            "age_s": round((now_ticks - sample.start_ticks) / TICKS_PER_SECOND, 1),
+        }
+        for sample in tree
+        if role_of(sample.name) == "browser_helper"
+    ]
+
+
+def read_uptime_ticks() -> int:
+    """Time since boot in clock ticks (0 when unreadable, e.g. on Windows)."""
+    try:
+        return int(float(Path("/proc/uptime").read_text().split()[0]) * TICKS_PER_SECOND)
+    except (OSError, ValueError, IndexError):
         return 0
 
 
@@ -222,13 +256,15 @@ def _read_linux_process(entry: Path):
             line.split(":", 1) for line in status.splitlines() if ":" in line
         )
         pss = parse_pss_kib((entry / "smaps_rollup").read_text(errors="replace"))
-        ticks = parse_cpu_ticks((entry / "stat").read_text(errors="replace"))
+        stat = (entry / "stat").read_text(errors="replace")
+        ticks = parse_cpu_ticks(stat)
         return ProcessSample(
             pid=int(entry.name),
             parent_pid=int(fields.get("PPid", "0").strip() or 0),
             name=fields.get("Name", "").strip(),
             pss_kib=pss,
             cpu_ticks=ticks,
+            start_ticks=parse_start_ticks(stat),
         )
     except (OSError, ValueError):
         return None  # the process ended or belongs to someone else
@@ -286,7 +322,14 @@ def sample_for(root_pid: int, duration_s: float, interval_s: float):
             role: (mib, role_cpu[role].seconds()) for role, mib in summary.by_role_mib.items()
         }
         series.append(
-            TimedSample(now - start, summary.total_mib, cpu.seconds(), roles, summary.by_name)
+            TimedSample(
+                now - start,
+                summary.total_mib,
+                cpu.seconds(),
+                roles,
+                summary.by_name,
+                helper_detail(tree, read_uptime_ticks()),
+            )
         )
         if now >= deadline:
             break
@@ -296,7 +339,7 @@ def sample_for(root_pid: int, duration_s: float, interval_s: float):
 
 def series_row(sample: TimedSample) -> dict:
     """One point of the time series: total, CPU, and each role's and process's memory."""
-    return {
+    row = {
         "t": round(sample.t, 1),
         "total_mib": round(sample.total_mib, 1),
         "cpu_s": round(sample.cpu_seconds, 2),
@@ -305,6 +348,9 @@ def series_row(sample: TimedSample) -> dict:
             name: [round(mib, 1), count] for name, (mib, count) in sample.processes.items()
         },
     }
+    if sample.helper_procs:
+        row["helper_procs"] = sample.helper_procs
+    return row
 
 
 def render_report(label: str, summaries: list, series=None, window_s: float = 30.0) -> dict:
