@@ -32,6 +32,14 @@ For the JVM breakdown, run a measurement build with `-XX:NativeMemoryTracking=su
 `jcmd <pid> VM.native_memory summary`. To settle software versus hardware decoding, read
 `hwdec-current` from `logs/debug/player-logs.jsonl` (logged once, 30 s into a stream).
 
+## Nightly check
+
+`.github/workflows/quality-nightly.yml` job `player-memory` installs libmpv and ffmpeg, generates a
+60 s 1080p clip and runs `t4_memory_playback` with `CS_BENCH_MAX_PSS_MIB=400` (the player alone, 128 MB
+cache; about 240 MiB measured on a developer PC). It guards the player part of S3 against creep. The
+whole-app scenarios (S1, S3 with the plugin runtime and a window) need a display and a plugin
+sidecar, so they are run by hand with `scripts/measure_memory.py` before a release.
+
 ## Scenarios
 
 | ID | What |

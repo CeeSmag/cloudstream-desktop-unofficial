@@ -24,6 +24,7 @@ See also:
 | **Mutation** | `scripts/run_mutants.sh --diff` / `--core` | `cargo-mutants` on PR diff or 6 core crates (`core_model`, `skip_times`, `title_cache`, `subtitle_store`, `stream_proxy`, `playback_session`) | PR diff / Nightly |
 | **Unsafe Transitive Audit & Metrics** | `cargo geiger` & `python3 scripts/quality_metrics.py` | Dependency unsafe footprint + per-crate LOC/tests/coverage/mutants JSON & Markdown | Nightly / Pre-release |
 | **Fuzz Corpus & Benchmarks** | `scripts/run_fuzz_sanity.sh` & `just bench-quick` | Parser stress/corpus replay + Criterion hot-path regression check | Nightly / Pre-release |
+| **Player memory** | `t4_memory_playback` (nightly job `player-memory`) | Peak proportional memory of the real libmpv playing a generated 1080p clip, against a budget | Nightly |
 | **T3 / T4 Live** | `just live` (with `CS_SIDECAR_HOME`, `CS_LIBMPV_PATH`, network) | Real sidecar + real libmpv headless playback & subtitle selection | Pre-release |
 
 ---
@@ -44,7 +45,7 @@ Run on **both** Linux (`CloudStream-<ver>-x86_64.AppImage`) and Windows (`CloudS
 - [ ] **Playback & Resume**: Start movie/episode → playback opens best working stream → seek, pause/resume, adjust volume, switch audio & subtitle tracks → leave player → verify item appears in Continue Watching at saved position → reopen and resume.
 - [ ] **Skip & Next Episode**: Verify Skip Intro / Skip Credits / Next Episode prompt appears at expected timestamps and advances episode cleanly.
 - [ ] **Settings & Diagnostics**: Toggle **Write detailed debug logs** on → trigger Home + Player action → inspect `<data>/logs/debug/*.jsonl` for valid JSON Lines across categories → run **Clean up storage now** and confirm UI stays responsive.
-- [ ] **Low-End Hardware**: Complete `docs/LOW_END_RETEST.md` (Resident plugin JVMs = 1, Video cache = 128 MB).
+- [ ] **Low-End Hardware**: Complete `docs/LOW_END_RETEST.md` (Low-end performance profile: 1 resident plugin process, 128 MB video cache) and compare process-tree memory with the budgets in `docs/MEMORY.md`.
 
 ---
 

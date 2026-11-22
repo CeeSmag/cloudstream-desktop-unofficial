@@ -13,7 +13,7 @@ tested with fakes and wired to real implementations only in `app_shell`. The UI-
 | `BrowseService` (`BrowseClient`) | TMDB Discover browse (genre/year/rating filters) |
 | `StreamResolver` | Title/episode → playable links (retry empty/timeout, extractor fallback, best-first sort) |
 | `LinkSearch` | Streaming link-search poll protocol over the gateway |
-| `StreamChecker` / `LinkHealth` | HTTP Range probes (2…12 workers via `check_worker_count`) |
+| `StreamChecker` / `LinkHealth` | HTTP Range probes (run serially by `playback_session`; `check_worker_count` is exported but unused) |
 | `PlaybackService` | Start/pause/seek/volume/cache limits, resume position, progress every 5 s, resume-pointer rules |
 | `RoutedPlayer` / `RequestRouter` | Wrap any `VideoPlayer` so a router (e.g. stream proxy) can rewrite each `play` |
 | `LibraryService` | Bookmarks, continue-watching (max 20), resume pointers |
@@ -34,6 +34,6 @@ Cloudflare allowed hosts; home provider.
 
 `StreamChecker::check` asks the host for the first bytes via `HttpProbe`.
 `LinkHealth::Working` carries optional size and embedded subtitle language names from the head;
-`Broken` is a log-ready reason. `check_worker_count` clamps `available_parallelism` to 2…12.
+`Broken` is a log-ready reason. `check_worker_count` clamps `available_parallelism` to 2…12 (not called yet).
 
 Test: `cargo test -p app_services`.

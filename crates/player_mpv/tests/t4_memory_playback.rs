@@ -5,7 +5,7 @@
 //!
 //! Needs a video file (a long 1080p one shows the cache filling). Run with
 //! `CS_LIBMPV_PATH=... CS_BENCH_VIDEO=video.mp4 [CS_BENCH_SECONDS=30] [CS_BENCH_CACHE_MIB=128]
-//! cargo test -p player_mpv --release --test t4_memory_playback -- --ignored --nocapture`.
+//! [CS_BENCH_MAX_PSS_MIB=400] cargo test -p player_mpv --release --test t4_memory_playback -- --ignored --nocapture`.
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -139,6 +139,17 @@ fn playing_a_video_reports_the_players_memory() {
         peak.max(pss)
     );
     assert!(frames > 0, "no picture was ever delivered");
+    // The nightly job sets a budget: the peak must stay under it.
+    if let Some(budget) = std::env::var("CS_BENCH_MAX_PSS_MIB")
+        .ok()
+        .and_then(|text| text.parse::<u64>().ok())
+    {
+        let peak = peak.max(pss);
+        assert!(
+            peak <= budget,
+            "peak memory {peak} MiB is over the budget of {budget} MiB"
+        );
+    }
     assert!(matches!(
         player.status().state,
         PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Ended
