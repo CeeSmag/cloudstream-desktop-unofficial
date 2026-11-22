@@ -1,6 +1,7 @@
 use core_model::SearchResult;
 
-use super::{collapsed_items, ShelfPager, COLLAPSED_SHELF_POSTERS, MAX_PAGER_ITEMS};
+use super::{collapsed_items, ShelfPager, MAX_PAGER_ITEMS};
+use crate::poster_limits::COLLAPSED_SHELF_POSTERS;
 
 fn titles(count: usize, from: usize) -> Vec<SearchResult> {
     (from..from + count)

@@ -17,6 +17,7 @@ mod pagination;
 mod performance_text;
 mod playback_watch;
 mod plugin_filter;
+mod poster_limits;
 mod posters;
 mod repository_discovery;
 mod repository_filter;

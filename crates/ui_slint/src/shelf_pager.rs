@@ -2,16 +2,14 @@
 //!
 //! Memory rule: the pictures held in memory follow what the viewer can see, not how many titles a
 //! provider returned. A collapsed shelf shows its first [`COLLAPSED_SHELF_POSTERS`]; an expanded
-//! shelf shows one page of [`EXPANDED_PAGE_SIZE`] and Next/Prev replace it. The titles' text data
+//! shelf shows one page of `EXPANDED_PAGE_SIZE` and Next/Prev replace it. The titles' text data
 //! (about 1 KB each) is kept in a [`ShelfPager`] so paging never asks the provider again for what
 //! it already sent; only the pictures (about 0.8 MB each when decoded) are bounded.
 
 use core_model::SearchResult;
 
-/// Posters a collapsed shelf row builds and loads. The rest wait behind the expand chevron.
-pub(crate) const COLLAPSED_SHELF_POSTERS: usize = 10;
-/// Posters on one page of an expanded shelf.
-pub(crate) const EXPANDED_PAGE_SIZE: usize = 20;
+use crate::poster_limits::COLLAPSED_SHELF_POSTERS;
+
 /// Most titles' text data one expanded shelf keeps while the viewer pages through provider pages.
 pub(crate) const MAX_PAGER_ITEMS: usize = 1_000;
 

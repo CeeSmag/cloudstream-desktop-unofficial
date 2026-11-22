@@ -4,9 +4,10 @@ use core_model::{HomePage, SearchResult};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::background_work::spawn_work;
+use crate::poster_limits::EXPANDED_PAGE_SIZE;
 use crate::posters::{poster_rows_from_search, posters_from_search};
 use crate::request_tickets::RequestKind;
-use crate::shelf_pager::{ShelfPager, EXPANDED_PAGE_SIZE};
+use crate::shelf_pager::ShelfPager;
 use crate::ui_events::{HomeSectionPage, PosterKind, UiEvent};
 use crate::{CloudStream, HomeExpanded, PosterItem};
 
