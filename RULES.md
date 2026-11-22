@@ -38,6 +38,7 @@ crates/
   app_services/      # use cases behind the screens
   playback_session/  # search + check + open (shell-agnostic; wired from ui_slint)
   poster_artwork/    # poster download/cache for the UI (off the UI thread)
+  memory_budget/     # memory limits from RAM, profile and viewer overrides (pure, no I/O)
   app_updater/       # self-update verify/install helpers
   cloudflare_bridge/ # sidecar CF file exchange without main WebView chrome
   cloudflare_window/ # cloudstream-verify helper (tao + wry)

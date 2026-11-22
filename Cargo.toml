@@ -16,6 +16,7 @@ members = [
     "crates/app_updater",
     "crates/playback_session",
     "crates/poster_artwork",
+    "crates/memory_budget",
     "crates/ui_slint",
     "crates/app_shell",
     "crates/portable_launcher",

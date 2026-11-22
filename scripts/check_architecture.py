@@ -37,6 +37,7 @@ LEAF_CRATES = {
     "stream_proxy",
     "title_cache",
     "poster_artwork",
+    "memory_budget",
     "app_updater",
     "cloudflare_bridge",
     "cloudflare_window",

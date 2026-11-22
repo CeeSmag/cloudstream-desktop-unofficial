@@ -3901,6 +3901,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "memory_budget"
+version = "0.5.2"
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

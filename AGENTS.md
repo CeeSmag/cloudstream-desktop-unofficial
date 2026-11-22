@@ -339,6 +339,11 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `SettingsService::stream_proxy()` / `set_stream_proxy()` (`stream_proxy_setting.rs`): the "Play HLS streams through a local helper" switch, on by default, option name `stream_proxy`.
   - `ServiceError`: Transparent error envelope wrapping `GatewayError`, `RepoError`, `StorageError`, `PlayerError`, and `NotFound(String)`.
 
+#### `crates/memory_budget`
+- **Location**: `crates/memory_budget/` (no dependencies; pure, no I/O)
+- **Responsibility**: Memory limits for plugins, video and storage, resolved as `preset of the tier <- the viewer's overrides` into one immutable `MemoryBudget` that `app_shell` hands to components by constructor (see `docs/MEMORY.md`, plan Phase S). `MemoryTier::detect(&dyn SystemProbe)` picks Low-end / Balanced / High-end from RAM (the real probe is written in `app_shell`; tests use `FixedSystem`); `ProfileChoice` (Auto or a named tier); `BudgetOverrides` (only what the viewer changed; a value that is not an offered choice is ignored); `estimate_worst_case_mib` + `is_heavy` feed the Settings warning. Poster and picture limits are **not** here: they are fixed for every PC.
+- **Not wired yet**: nothing consumes it until step S1.
+
 #### `crates/playback_session`
 - **Location**: `crates/playback_session/`
 - **Dependencies**: `app_services`, `core_model`, `extension_repo`, `thiserror`, `title_cache`, `tracing`

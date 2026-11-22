@@ -1,0 +1,11 @@
+[package]
+name = "memory_budget"
+description = "Memory limits resolved from the PC's RAM, a profile and the viewer's overrides. Pure, no I/O."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

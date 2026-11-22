@@ -28,6 +28,7 @@
     "app_updater": 70.0,
     "playback_session": 75.0,
     "poster_artwork": 75.0,
+    "memory_budget": 90.0,
     "cloudflare_bridge": 75.0,
     "ui_slint": 70.0
   }
