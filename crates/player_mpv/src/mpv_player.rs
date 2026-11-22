@@ -4,14 +4,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use player_api::{
-    describe_languages, CacheLimits, Language, MediaTrack, PlaybackRequest, PlaybackStatus,
-    PlayerError, SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
+    describe_languages, CacheLimits, GlVideoTarget, Language, MediaTrack, PlaybackRequest,
+    PlaybackStatus, PlayerError, SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 use crate::event_worker::EventWorker;
 use crate::frame_renderer::{start_embedding, wants_embedding, FrameRenderer, FrameShared};
 use crate::loadfile_log::log_loadfile;
 use crate::mpv_api::{MpvApi, MpvHandle};
+use crate::mpv_gl_output::GlOutput;
 use crate::mpv_log::log_level;
 use crate::mpv_option_format::apply_request_options;
 use crate::pending_subtitles::{clear_for_stop, queue_for_new_stream, PendingSubtitles};
@@ -37,6 +38,8 @@ pub struct MpvPlayer {
     subtitle_preference: Arc<SubtitlePreference>,
     event_thread: Option<JoinHandle<()>>,
     frames: Option<Arc<FrameShared>>,
+    /// Zero-copy output into the app's GL context, when the options asked for it.
+    gl: Option<Arc<GlOutput>>,
     // Dropped before `handle` (declaration order) so the render context never outlives mpv.
     _renderer: Option<FrameRenderer>,
     handle: Arc<MpvHandle>,
@@ -65,18 +68,21 @@ impl MpvPlayer {
         handle.initialize()?;
         // Verbose mpv event logs only with CS_MPV_LOG; the app debug switch does not flip this.
         handle.set_log_level(log_level(std::env::var_os("CS_MPV_LOG").is_some()));
-        let (renderer, frames) = if embedded {
+        let use_gl = embedded && options.gl_output;
+        let (renderer, frames) = if embedded && !use_gl {
             start_embedding(&handle)
         } else {
             (None, None)
         };
-        Self::assemble(handle, renderer, frames)
+        let gl = use_gl.then(|| Arc::new(GlOutput::new(Arc::clone(&handle))));
+        Self::assemble(handle, renderer, frames, gl)
     }
 
     fn assemble(
         handle: Arc<MpvHandle>,
         renderer: Option<FrameRenderer>,
         frames: Option<Arc<FrameShared>>,
+        gl: Option<Arc<GlOutput>>,
     ) -> Result<Self, PlayerError> {
         let tracker = Arc::new(StatusTracker::default());
         let pending_subtitles = Arc::new(Mutex::new(PendingSubtitles::default()));
@@ -106,6 +112,7 @@ impl MpvPlayer {
             subtitle_preference,
             event_thread: Some(event_thread),
             frames,
+            gl,
             _renderer: renderer,
             handle,
         })
@@ -263,7 +270,7 @@ impl VideoPlayer for MpvPlayer {
     }
 
     fn is_embedded(&self) -> bool {
-        self.frames.is_some()
+        self.frames.is_some() || self.gl.is_some()
     }
 
     fn set_surface_size(&self, width: u32, height: u32) {
@@ -274,6 +281,12 @@ impl VideoPlayer for MpvPlayer {
 
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
         self.frames.as_ref()?.latest(last_seen_serial)
+    }
+
+    fn gl_target(&self) -> Option<Arc<dyn GlVideoTarget>> {
+        let target: Arc<dyn GlVideoTarget> =
+            Arc::clone(self.gl.as_ref()?) as Arc<dyn GlVideoTarget>;
+        Some(target)
     }
 }
 

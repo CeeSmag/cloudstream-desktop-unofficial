@@ -17,6 +17,8 @@ UNSAFE_ALLOWLIST_FILES: dict[str, set[str]] = {
         "crates/player_mpv/src/mpv_api/properties.rs",
         "crates/player_mpv/src/mpv_log.rs",
         "crates/player_mpv/src/mpv_render_api.rs",
+        "crates/player_mpv/src/mpv_render_api/gl.rs",
+        "crates/player_mpv/src/mpv_gl_output.rs",
     },
     "extension_runtime": {
         "crates/extension_runtime/src/sidecar_app_container_attrs.rs",
@@ -30,6 +32,7 @@ UNSAFE_ALLOWLIST_FILES: dict[str, set[str]] = {
     },
     "ui_slint": {
         "crates/ui_slint/src/lib.rs",
+        "crates/ui_slint/src/bridge/gl_video.rs",
     },
 }
 

@@ -23,6 +23,7 @@ mod extension_changes;
 mod extension_settings_callbacks;
 mod focus_navigation;
 mod focus_screens;
+mod gl_video;
 mod home_callbacks;
 mod home_expanded;
 mod home_loading;

@@ -1,5 +1,8 @@
-//! libmpv's render API in its software flavour: mpv draws frames into memory we own.
+//! libmpv's render API in its software flavour: mpv draws frames into memory we own. The OpenGL
+//! flavour (mpv draws into a texture of the app's GL context) is the child module `gl`.
 #![allow(unsafe_code)]
+
+mod gl;
 
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -70,6 +73,16 @@ impl FrameSignal {
         self.wake.notify_one();
     }
 
+    /// Whether a frame is waiting, without taking the notification.
+    pub(crate) fn is_pending(&self) -> bool {
+        *self.pending.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Forgets a waiting notification (the frame it announced is being drawn).
+    pub(crate) fn clear(&self) {
+        *self.pending.lock().unwrap_or_else(PoisonError::into_inner) = false;
+    }
+
     /// Waits up to `timeout` for a notification; true when one arrived.
     pub(crate) fn wait(&self, timeout: Duration) -> bool {
         let guard = self.pending.lock().unwrap_or_else(PoisonError::into_inner);
@@ -132,14 +145,21 @@ impl MpvRenderContext {
                 reason: handle.describe(code),
             });
         }
+        Ok(Self::adopt(handle, raw, signal))
+    }
+
+    /// Takes over a freshly created render context `raw` and registers the frame callback.
+    fn adopt(handle: Arc<MpvHandle>, raw: *mut c_void, signal: Arc<FrameSignal>) -> Self {
         let signal = Arc::into_raw(signal);
-        // SAFETY: `raw` is a live render context; `signal` stays valid until `Drop` reclaims it.
-        unsafe { (api.set_update_callback)(raw, Some(on_update), signal.cast_mut().cast()) };
-        Ok(Self {
+        if let Some(api) = handle.api().render_api() {
+            // SAFETY: `raw` is a live render context; `signal` stays valid until `Drop` reclaims it.
+            unsafe { (api.set_update_callback)(raw, Some(on_update), signal.cast_mut().cast()) };
+        }
+        Self {
             handle,
             raw,
             signal,
-        })
+        }
     }
 
     /// Acknowledges mpv's update request; true when a new frame should be rendered.

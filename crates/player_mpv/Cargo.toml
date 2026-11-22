@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 core_model = { path = "../core_model" }
+# OpenGL calls for the texture mpv draws into (the version the Slint renderer already uses).
+glow = { version = "0.18", default-features = false }
 libloading = "0.8"
 player_api = { path = "../player_api" }
 tracing.workspace = true

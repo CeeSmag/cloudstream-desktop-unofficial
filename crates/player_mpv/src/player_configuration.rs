@@ -8,6 +8,10 @@ pub struct PlayerOptions {
     pub headless: bool,
     /// Deliver pictures to the app (see `VideoPlayer::latest_frame`) instead of opening mpv's window.
     pub embedded: bool,
+    /// With `embedded`: draw into a texture of the app's OpenGL context (zero-copy, see
+    /// `VideoPlayer::gl_target`) instead of rendering pictures into memory. The app attaches the GL
+    /// context later; until then nothing is drawn.
+    pub gl_output: bool,
     /// Window ID (HWND on Windows, X11 Window ID on Linux) to attach mpv to directly.
     pub wid: Option<i64>,
 }

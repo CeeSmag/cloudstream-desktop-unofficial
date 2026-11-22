@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -45,7 +46,10 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     let fetcher: Arc<dyn HttpFetcher> = Arc::new(UreqFetcher::default());
     let gateway = build_gateway(&paths.data_dir().join("sidecar"));
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
-    let (playback, player_problem) = build_playback(&database, &clock, options);
+    let gl_video = Arc::new(AtomicBool::new(video_renderer_is_gpu(
+        std::env::var("CS_VIDEO_RENDERER").ok().as_deref(),
+    )));
+    let (playback, player_problem) = build_playback(&database, &clock, options, &gl_video);
     let system = SysinfoProbe.facts();
     tracing::info!(
         total_mib = system.total_mib,
@@ -71,6 +75,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
         settings,
         playback,
         player_problem,
+        gl_video,
     }))
 }
 
@@ -84,6 +89,7 @@ struct AssembleParts<'a> {
     settings: SettingsService,
     playback: Option<Arc<PlaybackService>>,
     player_problem: Option<String>,
+    gl_video: Arc<AtomicBool>,
 }
 
 fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
@@ -124,6 +130,7 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
         subtitle_loader,
         artwork: build_artwork(&data.join("artwork")),
         skips: Arc::new(SkipLookup::new(Arc::new(UreqSkipFetcher::default()))),
+        gl_video: parts.gl_video,
     }
 }
 
@@ -172,6 +179,12 @@ fn jvm_profile(setting: Option<&str>) -> JvmProfile {
     })
 }
 
+/// Whether the viewer asked for zero-copy video: `CS_VIDEO_RENDERER=gpu` (anything else is the
+/// software path, which stays the default until the GPU path is verified on real machines).
+fn video_renderer_is_gpu(setting: Option<&str>) -> bool {
+    setting.is_some_and(|text| text.trim().eq_ignore_ascii_case("gpu"))
+}
+
 fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
     match sidecar_discovery::discover() {
         Ok(config) => {
@@ -203,29 +216,41 @@ fn route_through_proxy(
     Arc::new(RoutedPlayer::new(player, Arc::new(router)))
 }
 
+/// A player that is built when the first video plays, drawing into the window's OpenGL context
+/// when `gl_video` says so by then (the window clears it at start-up when it has no OpenGL).
+fn deferred_player(
+    player_options: PlayerOptions,
+    gl_video: &Arc<AtomicBool>,
+) -> Arc<dyn VideoPlayer> {
+    let embedded = player_options.embedded;
+    let gl_video = Arc::clone(gl_video);
+    let factory: PlayerFactory = Box::new(move || {
+        let options = PlayerOptions {
+            gl_output: gl_video.load(Ordering::SeqCst),
+            ..player_options.clone()
+        };
+        let player: Arc<dyn VideoPlayer> = Arc::new(MpvPlayer::auto_detect(&options)?);
+        Ok(player)
+    });
+    Arc::new(DeferredPlayer::new(embedded, factory))
+}
+
 fn build_playback(
     database: &Arc<Database>,
     clock: &Arc<dyn Clock>,
     options: &ServiceOptions,
+    gl_video: &Arc<AtomicBool>,
 ) -> (Option<Arc<PlaybackService>>, Option<String>) {
     let player_options = PlayerOptions {
         headless: options.headless_player,
         embedded: !options.headless_player && options.player_wid.is_none(),
         wid: options.player_wid,
+        gl_output: false, // set per video from `gl_video`, below
     };
     // libmpv is loaded and initialized when the first video plays (about 40 MiB saved while the
     // viewer browses); the probe keeps a missing library a start-up message, as before.
     let player: Result<Arc<dyn VideoPlayer>, String> = player_mpv::probe_libmpv()
-        .map(|()| {
-            let embedded = player_options.embedded;
-            let factory: PlayerFactory = Box::new(move || {
-                let player = MpvPlayer::auto_detect(&player_options)?;
-                let player: Arc<dyn VideoPlayer> = Arc::new(player);
-                Ok(player)
-            });
-            let deferred: Arc<dyn VideoPlayer> = Arc::new(DeferredPlayer::new(embedded, factory));
-            deferred
-        })
+        .map(|()| deferred_player(player_options, gl_video))
         .map_err(|error| error.to_string());
     match player {
         Ok(player) => {
@@ -252,6 +277,13 @@ fn build_playback(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_video_renderer_is_software_unless_gpu_is_asked_for() {
+        assert!(!video_renderer_is_gpu(None));
+        assert!(!video_renderer_is_gpu(Some("cpu")));
+        assert!(video_renderer_is_gpu(Some(" GPU ")));
+    }
 
     #[test]
     fn the_jvm_profile_is_lean_unless_legacy_is_asked_for() {

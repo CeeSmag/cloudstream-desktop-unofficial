@@ -87,6 +87,14 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
         return;
     }
     send_due_seek(ctx);
+    if let Some(target) = playback.gl_target() {
+        // Zero-copy: the window's own redraw draws the picture. Ask for one while the player
+        // waits to be attached to the GL context and whenever it has a new picture.
+        if !ctx.gl.is_attached() || target.frame_pending() {
+            ui.window().request_redraw();
+        }
+        return;
+    }
     let last = ctx.session.borrow().last_frame;
     if let Some(frame) = playback.latest_frame(last) {
         ctx.session.borrow_mut().last_frame = frame.serial;
@@ -102,6 +110,7 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
 /// Drops the painted picture so leave/close/a new open do not keep the last stream on screen.
 pub(crate) fn clear_video_frame(ctx: &BridgeContext, ui: &CloudStream) {
     ctx.session.borrow_mut().last_frame = 0;
+    ctx.gl.forget_picture();
     ui.set_video_frame(Image::default());
 }
 

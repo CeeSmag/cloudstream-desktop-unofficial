@@ -298,7 +298,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 #### `crates/player_mpv`
 - **Location**: `crates/player_mpv/`
 - **Dependencies**: `core_model` (`redact_url` for the log), `player_api`, `libloading = "0.8"`, `tracing`
-- **Unsafe Scope**: Confined strictly to the libmpv FFI modules (`src/mpv_api.rs`, `src/mpv_api/properties.rs`, `src/mpv_log.rs`, `src/mpv_render_api.rs`) with `// SAFETY:` justifications.
+- **Unsafe Scope**: Confined strictly to the libmpv FFI modules (`src/mpv_api.rs`, `src/mpv_api/properties.rs`, `src/mpv_log.rs`, `src/mpv_render_api.rs`, `src/mpv_render_api/gl.rs`, `src/mpv_gl_output.rs`) with `// SAFETY:` justifications. The last two are the zero-copy video path (mpv draws into a GL texture of the app's context; `player_api::GlVideoTarget`).
 - **Dynamic Locator (`libmpv_locator.rs`)**: Candidates in order: `CS_LIBMPV_PATH` (if the file exists), the directory of `current_exe()`, `current_dir()`, then (Linux/macOS) the bare names for the system loader. `MpvPlayer::auto_detect` tries each until one loads; `locate_libmpv()` returns the first. Looks for `libmpv-2.dll` / `mpv-2.dll` on Windows. When nothing is found the error lists every path searched.
 - **Player Configuration (`player_configuration.rs`)**:
   - `PlayerOptions`: `headless: bool` (`vo=null, ao=null`), `embedded: bool` (`vo=libmpv`), `wid: Option<i64>` (`vo=gpu, hwdec=auto-safe`).

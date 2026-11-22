@@ -12,6 +12,7 @@ mod load_tracker;
 mod loadfile_log;
 mod mpv_api;
 mod mpv_event;
+mod mpv_gl_output;
 mod mpv_log;
 mod mpv_option_format;
 mod mpv_player;

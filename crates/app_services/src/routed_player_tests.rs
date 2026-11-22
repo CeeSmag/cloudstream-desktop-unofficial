@@ -14,8 +14,11 @@ impl player_api::GlVideoTarget for NoGl {
     fn attach(&self, _: player_api::GlLoader<'_>) -> Result<(), PlayerError> {
         Ok(())
     }
-    fn render(&self, _: u32, _: u32, _: u32) -> Result<bool, PlayerError> {
-        Ok(false)
+    fn frame_pending(&self) -> bool {
+        false
+    }
+    fn render(&self, _: u32, _: u32) -> Result<Option<player_api::GlPicture>, PlayerError> {
+        Ok(None)
     }
     fn detach(&self) {}
 }

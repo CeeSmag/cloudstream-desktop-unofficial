@@ -193,6 +193,12 @@ impl PlaybackService {
         Ok(self.player.set_cache_limits(limits)?)
     }
 
+    /// Where the player draws pictures straight into the window's OpenGL context, once it exists
+    /// and was asked to (see `UiServices::gl_video`).
+    pub fn gl_target(&self) -> Option<std::sync::Arc<dyn player_api::GlVideoTarget>> {
+        self.player.gl_target()
+    }
+
     /// The newest picture, unless its serial is `last_seen_serial`.
     pub fn latest_frame(
         &self,

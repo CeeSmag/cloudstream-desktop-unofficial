@@ -9,6 +9,8 @@ exclude_globs = [
     "crates/player_mpv/src/mpv_api.rs",
     "crates/player_mpv/src/mpv_api/properties.rs",
     "crates/player_mpv/src/mpv_render_api.rs",
+    "crates/player_mpv/src/mpv_render_api/gl.rs",
+    "crates/player_mpv/src/mpv_gl_output.rs",
     "crates/player_mpv/src/mpv_player.rs",
     "crates/player_mpv/src/libmpv_locator.rs",
     "crates/player_mpv/src/event_worker.rs",

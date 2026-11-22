@@ -42,4 +42,8 @@ pub struct UiServices {
     pub artwork: Arc<ArtworkLoader>,
     /// Intro / recap / credits times from online databases (setting `skip_lookup`).
     pub skips: Arc<skip_times::SkipLookup>,
+    /// Whether the player draws straight into the window's OpenGL context (zero-copy video). The
+    /// shell sets it from the viewer's choice; the UI clears it at start-up when the window has no
+    /// OpenGL, which is before the first video builds the player that reads it.
+    pub gl_video: Arc<std::sync::atomic::AtomicBool>,
 }

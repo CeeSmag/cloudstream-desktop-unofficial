@@ -11,6 +11,7 @@ use crate::CloudStream;
 
 use super::app_extras::AppExtras;
 use super::cloudflare_prompts::PromptQueue;
+use super::gl_video::GlVideoState;
 use super::image_store::SharedImageStore;
 use super::session::Session;
 
@@ -26,6 +27,8 @@ pub(crate) struct BridgeContext {
     pub(crate) prompts: Rc<RefCell<PromptQueue>>,
     /// The decoded posters on screen, one picture per address.
     pub(crate) images: SharedImageStore,
+    /// Zero-copy video: what the rendering notifier and the frame timer share.
+    pub(crate) gl: Rc<GlVideoState>,
 }
 
 impl BridgeContext {

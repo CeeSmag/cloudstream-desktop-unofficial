@@ -1,6 +1,6 @@
 {
   "ignore_filename_regex": [
-    "crates/player_mpv/src/(mpv_api(/properties)?|mpv_render_api|libmpv_locator|mpv_player|event_worker)\\.rs$",
+    "crates/player_mpv/src/(mpv_api(/properties)?|mpv_render_api(/gl)?|mpv_gl_output|libmpv_locator|mpv_player|event_worker)\\.rs$",
     "crates/extension_runtime/src/(sidecar_app_container_.*|sidecar_job_object|sidecar_linux_.*|bin/fake_sidecar)\\.rs$",
     "crates/cloudflare_window/src/(main|browser_view|helper_app|helper_events|input_threads|site_window|site_window_check)\\.rs$",
     "crates/app_shell/src/(main|service_wiring|cloudflare_wiring|cleanup_wiring)\\.rs$",

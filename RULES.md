@@ -172,7 +172,7 @@ and in the root `Cargo.toml` (each crate inherits with `[lints] workspace = true
   `todo`, `unreachable`, `indexing_slicing`, `print_stdout`, `print_stderr`, `dbg_macro`; warn
   `cognitive_complexity`, `too_many_lines`, `too_many_arguments`.
 
-- Most crates `#![forbid(unsafe_code)]`. Localized `allow(unsafe_code)` only in `cloudflare_window/src/windows_presentation.rs` (borrowed Tao HWND conversion), `player_mpv` (libmpv FFI),
+- Most crates `#![forbid(unsafe_code)]`. Localized `allow(unsafe_code)` only in `cloudflare_window/src/windows_presentation.rs` (borrowed Tao HWND conversion), `player_mpv` (libmpv FFI, including the OpenGL render context and the GL texture it draws into: `mpv_render_api/gl.rs`, `mpv_gl_output.rs`; approved by the owner for zero-copy video), `ui_slint` (one `// SAFETY:` block that borrows that texture as a Slint image),
   `extension_runtime` (OS sandbox spawn), and `ui_slint`'s generated Slint bindings; each hand-written
   `unsafe` block needs a `// SAFETY:` comment.
 - Pin dependencies; justify each new dependency in the commit message. Prefer std/small crates.

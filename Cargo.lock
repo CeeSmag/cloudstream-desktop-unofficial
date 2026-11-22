@@ -4994,6 +4994,7 @@ name = "player_mpv"
 version = "0.5.2"
 dependencies = [
  "core_model",
+ "glow",
  "libloading",
  "player_api",
  "tracing",
