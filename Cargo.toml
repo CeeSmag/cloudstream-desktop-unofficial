@@ -67,3 +67,10 @@ dbg_macro = "deny"
 # The CPU frame conversion in the embedded player is slow without optimisation.
 [profile.dev.package.player_mpv]
 opt-level = 3
+
+# Release builds: smaller binary and less mapped memory. `panic` stays "unwind" on purpose: the
+# cleanup queue and thread isolation catch a panicking task and carry on (RULES.md section 6).
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
