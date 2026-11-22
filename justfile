@@ -104,6 +104,10 @@ bench-quick:
     cargo bench -p app_services --bench link_ranking -- --quick
     cargo bench -p stream_proxy --bench hls_rewrite -- --quick
 
+# Memory of the whole process tree (docs/MEMORY.md). Example: just memory --pid 1234 --label S1
+memory *args:
+    python3 scripts/measure_memory.py {{args}}
+
 # Full deep QA pass (coverage, core mutants, geiger, metrics, fuzz sanity, quick benches).
 qa-full:
     bash scripts/qa_full.sh
