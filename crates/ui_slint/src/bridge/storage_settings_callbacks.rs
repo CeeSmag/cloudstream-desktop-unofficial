@@ -13,7 +13,7 @@ use super::performance_callbacks::{apply_helper_idle_now, show_performance};
 use super::player_callbacks::report;
 use super::preference_callbacks::saved;
 use super::storage_usage_view::measure_storage_usage;
-use crate::performance_text::helper_idle_from_label;
+use crate::performance_text::{helper_idle_from_label, video_renderer_from_label};
 
 pub(crate) fn wire_storage_settings(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -26,6 +26,8 @@ pub(crate) fn wire_storage_settings(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_set_worker_limit(move |value| set_worker_limit(&c, value));
     let c = ctx.clone();
     ui.on_set_helper_idle(move |value| set_helper_idle(&c, value.as_str()));
+    let c = ctx.clone();
+    ui.on_set_video_renderer(move |value| set_video_renderer(&c, value.as_str()));
     let c = ctx.clone();
     ui.on_clean_storage(move || clean_storage(&c));
     let c = ctx.clone();
@@ -101,6 +103,24 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
         }
         _ => measure_storage_usage(ctx),
     }
+}
+
+/// Remembers the video output; it is read when the first video starts, so it applies after a restart.
+fn set_video_renderer(ctx: &BridgeContext, label: &str) {
+    let Some(renderer) = video_renderer_from_label(label) else {
+        tracing::warn!(label, "unknown video output");
+        return;
+    };
+    saved(
+        "video output",
+        ctx.services.settings.set_video_renderer(renderer),
+    );
+    if let Some(ui) = ctx.window() {
+        ui.set_video_renderer_value(label.into());
+        show_performance(&ui, &ctx.services);
+    }
+    ctx.sender()
+        .notice("The video output changes the next time CloudStream starts");
 }
 
 fn set_helper_idle(ctx: &BridgeContext, label: &str) {

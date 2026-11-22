@@ -20,6 +20,8 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> worker-value: "";
     in property <[string]> helper-idle-labels: [];
     in property <string> helper-idle-value: "";
+    in property <[string]> video-renderer-labels: [];
+    in property <string> video-renderer-value: "";
     in property <[string]> perf-profile-labels: [];
     in property <string> perf-profile-value: "";
     in property <string> perf-pc-text: "";
@@ -44,6 +46,7 @@ export component SettingsGeneralPage inherits VerticalLayout {
     callback set-storage-cap(string);
     callback set-worker-limit(string);
     callback set-helper-idle(string);
+    callback set-video-renderer(string);
     callback set-performance-profile(string);
     callback reset-performance();
     callback clean-storage();
@@ -122,6 +125,17 @@ export component SettingsGeneralPage inherits VerticalLayout {
                     model: root.cache-size-labels;
                     current-value: root.cache-size-value;
                     selected(value) => { root.set-video-cache(value); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Video output";
+                description: "GPU draws straight into the window, with no picture copies (tested on Linux); takes effect after restart";
+                TvSelect {
+                    width: 230px;
+                    model: root.video-renderer-labels;
+                    current-value: root.video-renderer-value;
+                    selected(value) => { root.set-video-renderer(value); }
                 }
             }
             SettingDivider { }

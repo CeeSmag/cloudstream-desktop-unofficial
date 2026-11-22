@@ -207,3 +207,26 @@ fn the_helper_idle_time_follows_the_profile_a_choice_wins_and_reset_forgets_it()
     low.reset_performance().expect("reset");
     assert_eq!(low.helper_idle().expect("r"), HelperIdle::After(2));
 }
+
+#[test]
+fn the_video_renderer_is_software_until_chosen_wins_over_the_profile_and_reset_forgets_it() {
+    use memory_budget::VideoRenderer;
+    let service = service_with_ram(THIRTY_TWO_GB);
+    assert_eq!(service.video_renderer().expect("r"), VideoRenderer::Cpu);
+    service.set_video_renderer(VideoRenderer::Gpu).expect("set");
+    assert_eq!(service.video_renderer().expect("r"), VideoRenderer::Gpu);
+    assert_eq!(
+        service.performance_overrides().expect("r").changed_count(),
+        1
+    );
+    service.reset_performance().expect("reset");
+    assert_eq!(service.video_renderer().expect("r"), VideoRenderer::Cpu);
+}
+
+#[test]
+fn an_unknown_stored_video_renderer_is_ignored() {
+    use memory_budget::VideoRenderer;
+    let service = service_with_ram(EIGHT_GB);
+    service.store_value("video_renderer", "turbo").expect("w");
+    assert_eq!(service.video_renderer().expect("r"), VideoRenderer::Cpu);
+}

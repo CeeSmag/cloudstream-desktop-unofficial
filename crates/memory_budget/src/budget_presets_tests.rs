@@ -1,6 +1,6 @@
 use super::preset;
 use crate::budget_choices::{is_offered_read_ahead, is_offered_storage_gb, is_offered_video_cache};
-use crate::{HelperIdle, MemoryTier, ResidentPlugins};
+use crate::{HelperIdle, MemoryTier, ResidentPlugins, VideoRenderer};
 
 const TIERS: [MemoryTier; 3] = [
     MemoryTier::LowEnd,
@@ -65,4 +65,11 @@ fn a_bigger_pc_keeps_the_helper_open_longer() {
             HelperIdle::Never
         )
     );
+}
+
+#[test]
+fn every_tier_starts_on_the_software_video_path_until_the_gpu_path_is_verified_more_widely() {
+    for tier in TIERS {
+        assert_eq!(preset(tier).video_renderer, VideoRenderer::Cpu, "{tier:?}");
+    }
 }

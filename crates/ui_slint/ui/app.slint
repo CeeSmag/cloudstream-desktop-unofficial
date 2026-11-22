@@ -167,6 +167,8 @@ export component CloudStream inherits Window {
     in property <string> worker-value: "";
     in property <[string]> helper-idle-labels: [];
     in property <string> helper-idle-value: "";
+    in property <[string]> video-renderer-labels: [];
+    in property <string> video-renderer-value: "";
     in property <[string]> perf-profile-labels: [];
     in property <string> perf-profile-value: "";
     in property <string> perf-pc-text: "";
@@ -244,6 +246,7 @@ export component CloudStream inherits Window {
     callback set-storage-cap(string);
     callback set-worker-limit(string);
     callback set-helper-idle(string);
+    callback set-video-renderer(string);
     callback set-performance-profile(string);
     callback reset-performance();
     callback set-audio(string);
@@ -510,6 +513,8 @@ export component CloudStream inherits Window {
                 worker-value: root.worker-value;
                 helper-idle-labels: root.helper-idle-labels;
                 helper-idle-value: root.helper-idle-value;
+                video-renderer-labels: root.video-renderer-labels;
+                video-renderer-value: root.video-renderer-value;
                 perf-profile-labels: root.perf-profile-labels;
                 perf-profile-value: root.perf-profile-value;
                 perf-pc-text: root.perf-pc-text;
@@ -548,6 +553,7 @@ export component CloudStream inherits Window {
                 set-storage-cap(v) => { set-storage-cap(v); }
                 set-worker-limit(v) => { set-worker-limit(v); }
                 set-helper-idle(v) => { set-helper-idle(v); }
+                set-video-renderer(v) => { set-video-renderer(v); }
                 set-performance-profile(v) => { set-performance-profile(v); }
                 reset-performance() => { reset-performance(); }
                 set-provider(v) => { set-provider(v); }

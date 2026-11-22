@@ -1,6 +1,6 @@
 use super::MemoryBudget;
 use crate::budget_presets::preset;
-use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins};
+use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins, VideoRenderer};
 
 #[test]
 fn without_overrides_the_budget_is_the_preset() {
@@ -72,5 +72,19 @@ fn the_helper_idle_time_follows_the_profile_unless_the_viewer_chose_one() {
         MemoryBudget::resolve(MemoryTier::LowEnd, &not_offered).helper_idle,
         HelperIdle::After(2),
         "a value that is not offered falls back to the preset"
+    );
+}
+
+#[test]
+fn the_video_renderer_is_software_until_the_viewer_chooses_gpu() {
+    let none = MemoryBudget::resolve(MemoryTier::HighEnd, &BudgetOverrides::default());
+    assert_eq!(none.video_renderer, VideoRenderer::Cpu);
+    let chosen = BudgetOverrides {
+        video_renderer: Some(VideoRenderer::Gpu),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(
+        MemoryBudget::resolve(MemoryTier::LowEnd, &chosen).video_renderer,
+        VideoRenderer::Gpu
     );
 }

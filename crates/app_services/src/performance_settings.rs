@@ -13,6 +13,7 @@ use crate::cloudflare_setting::HELPER_IDLE_KEY;
 use crate::plugin_worker_setting::KEY as WORKER_KEY;
 use crate::storage_cap_setting::STORAGE_CAP_KEY;
 use crate::video_cache_setting::{AHEAD_KEY, SIZE_KEY};
+use crate::video_renderer_setting::VIDEO_RENDERER_KEY;
 use crate::{ServiceError, SettingsService};
 
 const PROFILE_KEY: &str = "perf_profile";
@@ -62,6 +63,7 @@ impl SettingsService {
             video_read_ahead_percent: self.stored_number(AHEAD_KEY)?,
             storage_limit_gb: self.stored_number(STORAGE_CAP_KEY)?,
             helper_idle: self.stored_helper_idle()?,
+            video_renderer: self.stored_video_renderer()?,
         })
     }
 
@@ -85,6 +87,7 @@ impl SettingsService {
             AHEAD_KEY,
             STORAGE_CAP_KEY,
             HELPER_IDLE_KEY,
+            VIDEO_RENDERER_KEY,
         ] {
             self.remove_value(key)?;
         }

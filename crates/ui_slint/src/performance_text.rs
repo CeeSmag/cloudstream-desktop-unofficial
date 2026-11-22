@@ -2,7 +2,7 @@
 //! preset is followed and the warning. Pure, so it is tested without a window.
 
 use app_services::PerformanceSummary;
-use memory_budget::{HelperIdle, ProfileChoice};
+use memory_budget::{HelperIdle, ProfileChoice, VideoRenderer};
 
 /// MiB in a GB, for showing RAM sizes.
 const MIB_PER_GB: u64 = 1024;
@@ -68,6 +68,29 @@ pub(crate) fn helper_idle_from_label(label: &str) -> Option<HelperIdle> {
     HelperIdle::CHOICES
         .into_iter()
         .find(|choice| helper_idle_label(*choice) == label)
+}
+
+/// The drop-down's name of a video output.
+pub(crate) fn video_renderer_label(renderer: VideoRenderer) -> &'static str {
+    match renderer {
+        VideoRenderer::Cpu => "Software (works everywhere)",
+        VideoRenderer::Gpu => "GPU (no picture copies)",
+    }
+}
+
+/// Every video output's drop-down name, in the order they are listed.
+pub(crate) fn video_renderer_labels() -> Vec<String> {
+    VideoRenderer::CHOICES
+        .into_iter()
+        .map(|choice| video_renderer_label(choice).to_owned())
+        .collect()
+}
+
+/// The video output a drop-down name stands for.
+pub(crate) fn video_renderer_from_label(label: &str) -> Option<VideoRenderer> {
+    VideoRenderer::CHOICES
+        .into_iter()
+        .find(|choice| video_renderer_label(*choice) == label)
 }
 
 /// The card's texts for `summary`.

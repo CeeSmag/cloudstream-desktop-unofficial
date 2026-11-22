@@ -3,7 +3,8 @@ use memory_budget::{MemoryTier, ProfileChoice, SystemFacts};
 
 use super::{
     describe, helper_idle_from_label, helper_idle_label, helper_idle_labels, profile_from_label,
-    profile_label, profile_labels,
+    profile_label, profile_labels, video_renderer_from_label, video_renderer_label,
+    video_renderer_labels,
 };
 
 fn summary(
@@ -111,4 +112,23 @@ fn every_helper_idle_label_maps_back() {
         );
     }
     assert_eq!(helper_idle_from_label("Soon"), None);
+}
+
+#[test]
+fn the_video_output_choices_say_what_they_are() {
+    assert_eq!(
+        video_renderer_labels(),
+        ["Software (works everywhere)", "GPU (no picture copies)"]
+    );
+}
+
+#[test]
+fn every_video_output_label_maps_back() {
+    for choice in memory_budget::VideoRenderer::CHOICES {
+        assert_eq!(
+            video_renderer_from_label(video_renderer_label(choice)),
+            Some(choice)
+        );
+    }
+    assert_eq!(video_renderer_from_label("Turbo"), None);
 }

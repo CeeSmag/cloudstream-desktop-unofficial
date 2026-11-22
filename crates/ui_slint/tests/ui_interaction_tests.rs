@@ -240,6 +240,30 @@ fn verify_updates_flow(ui: &CloudStream) {
     assert_eq!(ui.get_settings_page_index(), 0);
 }
 
+/// The Performance card's rows for the verification helper and the video output.
+fn verify_helper_and_video_rows(ui: &CloudStream) {
+    ui.set_helper_idle_labels(strings(&["1 min", "2 min", "5 min", "15 min", "Never"]));
+    ui.set_helper_idle_value("5 min".into());
+    assert_eq!(ui.get_helper_idle_labels().row_count(), 5);
+    let idle = Rc::new(RefCell::new(String::new()));
+    let idle_ref = Rc::clone(&idle);
+    ui.on_set_helper_idle(move |label| *idle_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_helper_idle("Never".into());
+    assert_eq!(idle.borrow().as_str(), "Never");
+
+    ui.set_video_renderer_labels(strings(&[
+        "Software (works everywhere)",
+        "GPU (no picture copies)",
+    ]));
+    ui.set_video_renderer_value("Software (works everywhere)".into());
+    assert_eq!(ui.get_video_renderer_labels().row_count(), 2);
+    let output = Rc::new(RefCell::new(String::new()));
+    let output_ref = Rc::clone(&output);
+    ui.on_set_video_renderer(move |label| *output_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_video_renderer("GPU (no picture copies)".into());
+    assert_eq!(output.borrow().as_str(), "GPU (no picture copies)");
+}
+
 fn verify_performance_card(ui: &CloudStream) {
     ui.set_perf_profile_labels(strings(&[
         "Auto (recommended)",
@@ -261,15 +285,6 @@ fn verify_performance_card(ui: &CloudStream) {
     ui.on_set_performance_profile(move |label| *chosen_ref.borrow_mut() = label.to_string());
     ui.invoke_set_performance_profile("Low-end".into());
     assert_eq!(chosen.borrow().as_str(), "Low-end");
-
-    ui.set_helper_idle_labels(strings(&["1 min", "2 min", "5 min", "15 min", "Never"]));
-    ui.set_helper_idle_value("5 min".into());
-    assert_eq!(ui.get_helper_idle_labels().row_count(), 5);
-    let idle = Rc::new(RefCell::new(String::new()));
-    let idle_ref = Rc::clone(&idle);
-    ui.on_set_helper_idle(move |label| *idle_ref.borrow_mut() = label.to_string());
-    ui.invoke_set_helper_idle("Never".into());
-    assert_eq!(idle.borrow().as_str(), "Never");
 
     let resets = Rc::new(RefCell::new(0usize));
     let resets_ref = Rc::clone(&resets);
@@ -294,4 +309,5 @@ fn headless_ui_bindings_callbacks_and_navigation_flows() {
     verify_home_shelves(&ui);
     verify_updates_flow(&ui);
     verify_performance_card(&ui);
+    verify_helper_and_video_rows(&ui);
 }

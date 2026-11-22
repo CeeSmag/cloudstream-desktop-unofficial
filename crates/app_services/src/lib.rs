@@ -42,6 +42,7 @@ mod subtitle_scan;
 mod test_support;
 mod ui_services;
 mod video_cache_setting;
+mod video_renderer_setting;
 
 pub use browse_fetcher::{BrowseFetcher, UreqBrowseFetcher};
 pub use browse_genres::{BrowseFilterRequest, BrowseItem, BrowsePage, TMDB_BASE_URL};

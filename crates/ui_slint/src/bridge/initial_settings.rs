@@ -6,7 +6,9 @@ use player_api::all_languages;
 use super::performance_callbacks::show_performance;
 use super::preference_callbacks::apply_player_language_preferences;
 use super::subtitle_languages::show_subtitle_languages;
-use crate::performance_text::{helper_idle_label, helper_idle_labels};
+use crate::performance_text::{
+    helper_idle_label, helper_idle_labels, video_renderer_label, video_renderer_labels,
+};
 use crate::posters::string_model;
 use crate::CloudStream;
 
@@ -25,6 +27,15 @@ pub(crate) fn show_tuning_values(ui: &CloudStream, services: &UiServices) {
     apply_cache_choices(ui, services);
     apply_storage_and_workers(ui, services);
     apply_helper_idle(ui, services);
+    apply_video_renderer(ui, services);
+}
+
+fn apply_video_renderer(ui: &CloudStream, services: &UiServices) {
+    ui.set_video_renderer_labels(string_model(video_renderer_labels()));
+    match services.settings.video_renderer() {
+        Ok(renderer) => ui.set_video_renderer_value(video_renderer_label(renderer).into()),
+        Err(error) => tracing::warn!(%error, "could not read the video output setting"),
+    }
 }
 
 fn apply_helper_idle(ui: &CloudStream, services: &UiServices) {

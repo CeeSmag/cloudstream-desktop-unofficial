@@ -786,7 +786,7 @@ scripts/build_release.sh
 - `CS_SIDECAR_JAVA_HOME`: JDK 21 installation path for the sidecar.
 - `CS_LIBMPV_PATH`: Explicit file path to `libmpv-2.dll` / `libmpv.so`.
 - `CS_VERIFY_HELPER`: Explicit file path to the `cloudstream-verify` binary (`cloudflare_window`).
-- `CS_VIDEO_RENDERER`: `gpu` makes mpv draw into a texture of the window's OpenGL context (zero-copy video; falls back to the software path when the window has no OpenGL). Unset = software, the default. Verified on Linux/Wayland only.
+- `CS_VIDEO_RENDERER`: `gpu` or `cpu`; overrides Settings > General > "Video output" (setting `video_renderer`, a `MemoryBudget` field, software by default). GPU makes mpv draw into a texture of the window's OpenGL context (zero-copy video; falls back to the software path when the window has no OpenGL). Read when the first video starts: a change applies after a restart. Verified on Linux/Wayland only.
 - `CS_MPV_LOG`: When set, enables verbose internal libmpv console logging (`terminal=yes, msg-level=all=v`) and keeps verbose mpv event logs (`"v"`) forwarded into `player-logs.jsonl` even when the Settings debug switch is off.
 - `CS_PORTABLE_EXE`: Set by `portable_launcher` to the outer portable `.exe` path so `app_updater` and `wipe_helper` know the portable binary location.
 - `CS_PAYLOAD_ARCHIVE` / `CS_PAYLOAD_ID`: Used at compile time by `crates/portable_launcher/build.rs` to embed the compressed runtime archive and its fingerprint.

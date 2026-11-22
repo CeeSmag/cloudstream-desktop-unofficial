@@ -15,6 +15,7 @@ mod memory_tier;
 mod profile_choice;
 mod resident_plugins;
 mod system_probe;
+mod video_renderer;
 mod worst_case;
 
 pub use budget_choices::{
@@ -28,4 +29,5 @@ pub use memory_tier::MemoryTier;
 pub use profile_choice::ProfileChoice;
 pub use resident_plugins::ResidentPlugins;
 pub use system_probe::{FixedSystem, SystemFacts, SystemProbe};
+pub use video_renderer::VideoRenderer;
 pub use worst_case::{estimate_worst_case_mib, is_heavy};

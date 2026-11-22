@@ -11,7 +11,7 @@ use app_services::{
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
 use extension_runtime::{JvmProfile, PluginWorkerPool};
-use memory_budget::SystemProbe;
+use memory_budget::{SystemProbe, VideoRenderer};
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
 use poster_artwork::{ArtworkLoader, ArtworkLoaderConfig, DiskCache, UreqArtworkFetcher};
@@ -46,10 +46,6 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     let fetcher: Arc<dyn HttpFetcher> = Arc::new(UreqFetcher::default());
     let gateway = build_gateway(&paths.data_dir().join("sidecar"));
     let installer = ExtensionInstaller::new(Arc::clone(&fetcher), paths.extensions_dir());
-    let gl_video = Arc::new(AtomicBool::new(video_renderer_is_gpu(
-        std::env::var("CS_VIDEO_RENDERER").ok().as_deref(),
-    )));
-    let (playback, player_problem) = build_playback(&database, &clock, options, &gl_video);
     let system = SysinfoProbe.facts();
     tracing::info!(
         total_mib = system.total_mib,
@@ -58,6 +54,12 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     );
     let settings =
         SettingsService::new(SettingsStore::new(Arc::clone(&database))).with_system(system);
+    let setting = settings.video_renderer().unwrap_or(VideoRenderer::Cpu);
+    let gl_video = Arc::new(AtomicBool::new(wants_gpu_video(
+        std::env::var("CS_VIDEO_RENDERER").ok().as_deref(),
+        setting,
+    )));
+    let (playback, player_problem) = build_playback(&database, &clock, options, &gl_video);
     apply_worker_limit(&settings, gateway.as_ref());
     let extensions = ExtensionService::new(
         Arc::clone(&gateway),
@@ -179,10 +181,18 @@ fn jvm_profile(setting: Option<&str>) -> JvmProfile {
     })
 }
 
-/// Whether the viewer asked for zero-copy video: `CS_VIDEO_RENDERER=gpu` (anything else is the
-/// software path, which stays the default until the GPU path is verified on real machines).
-fn video_renderer_is_gpu(setting: Option<&str>) -> bool {
-    setting.is_some_and(|text| text.trim().eq_ignore_ascii_case("gpu"))
+/// Whether the player should draw into the window's OpenGL context (zero-copy video): the
+/// environment variable `CS_VIDEO_RENDERER` (`gpu` or `cpu`) wins when set, else the viewer's
+/// setting. The default is the software path until the GPU path has been verified more widely.
+fn wants_gpu_video(environment: Option<&str>, setting: VideoRenderer) -> bool {
+    match environment
+        .map(|text| text.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("gpu") => true,
+        Some("cpu") => false,
+        _ => setting.draws_into_the_window(),
+    }
 }
 
 fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
@@ -279,10 +289,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_video_renderer_is_software_unless_gpu_is_asked_for() {
-        assert!(!video_renderer_is_gpu(None));
-        assert!(!video_renderer_is_gpu(Some("cpu")));
-        assert!(video_renderer_is_gpu(Some(" GPU ")));
+    fn the_environment_decides_the_video_output_and_otherwise_the_setting_does() {
+        assert!(!wants_gpu_video(None, VideoRenderer::Cpu));
+        assert!(wants_gpu_video(None, VideoRenderer::Gpu));
+        assert!(wants_gpu_video(Some(" GPU "), VideoRenderer::Cpu));
+        assert!(!wants_gpu_video(Some("cpu"), VideoRenderer::Gpu));
+        assert!(
+            wants_gpu_video(Some("turbo"), VideoRenderer::Gpu),
+            "unknown: the setting"
+        );
     }
 
     #[test]
