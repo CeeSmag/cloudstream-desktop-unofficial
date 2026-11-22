@@ -7,6 +7,19 @@ use player_api::{
 
 use super::*;
 
+/// A GL target that does nothing; only its identity matters to the forwarding tests.
+struct NoGl;
+
+impl player_api::GlVideoTarget for NoGl {
+    fn attach(&self, _: player_api::GlLoader<'_>) -> Result<(), PlayerError> {
+        Ok(())
+    }
+    fn render(&self, _: u32, _: u32, _: u32) -> Result<bool, PlayerError> {
+        Ok(false)
+    }
+    fn detach(&self) {}
+}
+
 /// What happened, in order, across the player and the router.
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -115,6 +128,9 @@ impl VideoPlayer for ScriptedPlayer {
     fn set_surface_size(&self, width: u32, height: u32) {
         note(&self.log, &format!("set_surface_size {width}x{height}"));
     }
+    fn gl_target(&self) -> Option<Arc<dyn player_api::GlVideoTarget>> {
+        Some(Arc::new(NoGl))
+    }
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
         Some(Arc::new(VideoFrame {
             width: 1,
@@ -197,6 +213,12 @@ fn stop_stops_the_player_first_and_only_then_lets_the_router_go() {
     let (player, log) = routed(false);
     player.stop().expect("stops");
     assert_eq!(entries(&log), ["player stop", "router release"]);
+}
+
+#[test]
+fn the_gl_target_is_forwarded_not_left_at_its_default() {
+    let (player, _log) = routed(false);
+    assert!(player.gl_target().is_some());
 }
 
 #[test]

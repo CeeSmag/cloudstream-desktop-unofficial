@@ -9,8 +9,8 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use player_api::{
-    CacheLimits, Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
-    SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
+    CacheLimits, Chapter, GlVideoTarget, Language, MediaTrack, PlaybackRequest, PlaybackStatus,
+    PlayerError, SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 /// Builds the real player. Called on the first play, again after a failure.
@@ -228,6 +228,10 @@ impl VideoPlayer for DeferredPlayer {
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
         self.ready()
             .and_then(|player| player.latest_frame(last_seen_serial))
+    }
+
+    fn gl_target(&self) -> Option<Arc<dyn GlVideoTarget>> {
+        self.ready().and_then(|player| player.gl_target())
     }
 }
 

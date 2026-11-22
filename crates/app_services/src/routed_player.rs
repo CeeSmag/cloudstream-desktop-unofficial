@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use player_api::{
-    CacheLimits, Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
-    SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
+    CacheLimits, Chapter, GlVideoTarget, Language, MediaTrack, PlaybackRequest, PlaybackStatus,
+    PlayerError, SubtitleSource, TrackKind, VideoFrame, VideoPlayer,
 };
 
 use crate::request_router::RequestRouter;
@@ -105,6 +105,10 @@ impl VideoPlayer for RoutedPlayer {
 
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
         self.inner.latest_frame(last_seen_serial)
+    }
+
+    fn gl_target(&self) -> Option<Arc<dyn GlVideoTarget>> {
+        self.inner.gl_target()
     }
 }
 

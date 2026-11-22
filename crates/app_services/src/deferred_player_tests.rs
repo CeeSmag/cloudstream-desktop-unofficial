@@ -20,6 +20,19 @@ fn entries(log: &Log) -> Vec<String> {
     log.lock().unwrap_or_else(PoisonError::into_inner).clone()
 }
 
+/// A GL target that does nothing; only its identity matters to the forwarding tests.
+struct NoGl;
+
+impl player_api::GlVideoTarget for NoGl {
+    fn attach(&self, _: player_api::GlLoader<'_>) -> Result<(), PlayerError> {
+        Ok(())
+    }
+    fn render(&self, _: u32, _: u32, _: u32) -> Result<bool, PlayerError> {
+        Ok(false)
+    }
+    fn detach(&self) {}
+}
+
 /// A player that answers with something other than the defaults, and writes down every call.
 struct RecordingPlayer {
     log: Log,
@@ -107,6 +120,9 @@ impl VideoPlayer for RecordingPlayer {
     fn latest_frame(&self, _: u64) -> Option<Arc<VideoFrame>> {
         Some(Arc::new(VideoFrame::default()))
     }
+    fn gl_target(&self) -> Option<Arc<dyn player_api::GlVideoTarget>> {
+        Some(Arc::new(NoGl))
+    }
 }
 
 struct Rig {
@@ -163,6 +179,10 @@ fn nothing_is_started_until_the_first_play_and_questions_get_idle_answers() {
     assert!(rig.player.chapters().is_empty());
     assert_eq!(rig.player.pending_subtitles(), 0);
     assert!(rig.player.latest_frame(0).is_none());
+    assert!(
+        rig.player.gl_target().is_none(),
+        "nothing to draw into before a player exists"
+    );
     assert!(
         rig.player.is_embedded(),
         "what the constructor said, without a player"
@@ -240,6 +260,10 @@ fn once_started_every_call_goes_straight_through() {
     assert_eq!(rig.player.tracks().len(), 1);
     assert_eq!(rig.player.pending_subtitles(), 3);
     assert!(rig.player.latest_frame(0).is_some());
+    assert!(
+        rig.player.gl_target().is_some(),
+        "the player's GL target is passed on"
+    );
     let log = entries(&rig.log);
     assert!(log.contains(&"volume 80".to_owned()));
     assert!(log.contains(&"paused true".to_owned()));

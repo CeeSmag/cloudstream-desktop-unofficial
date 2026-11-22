@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    CacheLimits, Chapter, Language, MediaTrack, PlaybackRequest, PlaybackStatus, PlayerError,
-    SubtitleSource, TrackKind, VideoFrame,
+    CacheLimits, Chapter, GlVideoTarget, Language, MediaTrack, PlaybackRequest, PlaybackStatus,
+    PlayerError, SubtitleSource, TrackKind, VideoFrame,
 };
 
 /// A video player the app can drive.
@@ -101,6 +101,12 @@ pub trait VideoPlayer: Send + Sync {
     /// The newest picture, unless its serial equals `last_seen_serial`.
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
         let _ = last_seen_serial;
+        None
+    }
+
+    /// Where the player draws pictures straight into the app's OpenGL context, if it can and the
+    /// viewer chose that; `None` means pictures come through [`VideoPlayer::latest_frame`].
+    fn gl_target(&self) -> Option<Arc<dyn GlVideoTarget>> {
         None
     }
 }

@@ -3,6 +3,7 @@
 
 mod cache_limits;
 mod chapter;
+mod gl_video_target;
 mod language;
 mod media_track;
 mod playback_request;
@@ -13,6 +14,7 @@ mod video_player;
 
 pub use cache_limits::CacheLimits;
 pub use chapter::Chapter;
+pub use gl_video_target::{GlLoader, GlVideoTarget};
 pub use language::{all_languages, find_language, Language, ENGLISH};
 pub use media_track::{MediaTrack, TrackKind};
 pub use playback_request::{describe_languages, PlaybackRequest, StreamKind, SubtitleSource};
