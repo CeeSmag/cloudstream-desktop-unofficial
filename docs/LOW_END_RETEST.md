@@ -5,7 +5,7 @@ Manual checks after launch → Home → player work on the Slint product (`app_s
 ## Plugins / RAM
 
 - [ ] Fresh install (or cleared `plugin_worker_limit`): Settings > General > **Plugin processes (low-end PC)** → **Resident plugin JVMs** defaults to **1** (choices: 1 / 2 / Unlimited). Existing installs that already had data migrate to Unlimited until chosen.
-- [ ] With 3+ plugins installed and Resident workers = **1**, after Home is idle: at most **one** `java` / sidecar process.
+- [ ] With 3+ plugins installed and Resident workers = **1**, at any time (loading, switching provider, searching): at most **one** `java` / sidecar process, except briefly while a call on the older plugin is still running (it is never cut short; the excess is parked when that call ends).
 - [ ] Switching provider once: a second JVM starts, the previous one is parked; live count stays ≤ the chosen limit.
 - [ ] Trusted plugin spawn logs plain / non-AppContainer (Windows) or non-Landlock (Linux); Job / rlimit still apply.
 - [ ] Untrusted plugin still uses AppContainer / Landlock when `data.dir` is set.

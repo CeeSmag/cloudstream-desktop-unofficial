@@ -103,6 +103,8 @@ impl ProviderGateway for PluginWorkerPool {
         trusted: bool,
     ) -> Result<Vec<ProviderInfo>, GatewayError> {
         self.drop_existing(path);
+        // The oldest idle plugin stops before this one starts, so the limit holds while loading.
+        self.make_room();
         let worker = (self.spawn)(trusted);
         if self.debug_logging.load(Ordering::SeqCst) {
             let _ = worker.set_debug_logging(true);
@@ -148,9 +150,8 @@ impl ProviderGateway for PluginWorkerPool {
     }
 
     fn search(&self, provider: &str, query: &str, page: u32) -> Result<SearchPage, GatewayError> {
-        self.live_worker_for_provider(provider)?
-            .0
-            .search(provider, query, page)
+        let lease = self.live_worker_for_provider(provider)?;
+        lease.worker().search(provider, query, page)
     }
 
     fn main_page(
@@ -159,27 +160,26 @@ impl ProviderGateway for PluginWorkerPool {
         page: u32,
         entry: &MainPageEntry,
     ) -> Result<Option<HomePage>, GatewayError> {
-        self.live_worker_for_provider(provider)?
-            .0
-            .main_page(provider, page, entry)
+        let lease = self.live_worker_for_provider(provider)?;
+        lease.worker().main_page(provider, page, entry)
     }
 
     fn load(&self, provider: &str, url: &str) -> Result<Option<LoadDetails>, GatewayError> {
-        self.live_worker_for_provider(provider)?
-            .0
-            .load(provider, url)
+        let lease = self.live_worker_for_provider(provider)?;
+        lease.worker().load(provider, url)
     }
 
     fn load_links(&self, provider: &str, data: &str) -> Result<PlayableLinks, GatewayError> {
-        self.live_worker_for_provider(provider)?
-            .0
-            .load_links(provider, data)
+        let lease = self.live_worker_for_provider(provider)?;
+        lease.worker().load_links(provider, data)
     }
 
     fn start_link_search(&self, provider: &str, data: &str) -> Result<String, GatewayError> {
-        let (worker, path) = self.live_worker_for_provider(provider)?;
-        let id = worker.start_link_search(provider, data)?;
-        self.lock_maps().remember_search(id.clone(), path);
+        let lease = self.live_worker_for_provider(provider)?;
+        let id = lease.worker().start_link_search(provider, data)?;
+        // From here the open search protects the worker, as the lease did until now.
+        self.lock_maps()
+            .remember_search(id.clone(), lease.path().to_path_buf());
         Ok(id)
     }
 

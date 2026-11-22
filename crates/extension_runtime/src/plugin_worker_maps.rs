@@ -26,6 +26,8 @@ pub(crate) struct WorkerMaps {
     records: HashMap<PathBuf, PluginRecord>,
     /// Live workers oldest-first for LRU eviction.
     live_order: Vec<PathBuf>,
+    /// Calls in progress per plugin; a plugin with any is never parked (see `WorkerLease`).
+    in_flight: HashMap<PathBuf, usize>,
 }
 
 impl WorkerMaps {
@@ -38,6 +40,51 @@ impl WorkerMaps {
         self.records.insert(path.clone(), record);
         self.touch_live(&path);
         self.by_path.insert(path, worker);
+    }
+
+    /// Like [`Self::insert`], and counts one call in progress, in the same step: nobody can park
+    /// the worker between "it is live" and "its first caller is protected".
+    pub(crate) fn insert_leased(&mut self, path: PathBuf, worker: Worker, record: PluginRecord) {
+        self.insert(path.clone(), worker, record);
+        *self.in_flight.entry(path).or_default() += 1;
+    }
+
+    /// The live worker of `provider` with one call in progress counted, or `None` when it is
+    /// parked. Looking it up and protecting it are one step.
+    pub(crate) fn lease_provider(
+        &mut self,
+        provider: &str,
+    ) -> Result<Option<(Worker, PathBuf)>, GatewayError> {
+        let path = self.path_for_provider(provider)?;
+        let Some(worker) = self.by_path.get(&path).cloned() else {
+            return Ok(None);
+        };
+        self.touch_live(&path);
+        *self.in_flight.entry(path.clone()).or_default() += 1;
+        Ok(Some((worker, path)))
+    }
+
+    /// A call on `path` ended.
+    pub(crate) fn release(&mut self, path: &Path) {
+        if let Some(count) = self.in_flight.get_mut(path) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.in_flight.remove(path);
+            }
+        }
+    }
+
+    fn is_leased(&self, path: &Path) -> bool {
+        self.in_flight.get(path).is_some_and(|count| *count > 0)
+    }
+
+    /// Parks the oldest live plugin that is not `keep`, has no call in progress and no open link
+    /// search, choosing and parking in one step: a call that starts a moment later cannot find its
+    /// worker already chosen. Returns it with its path.
+    pub(crate) fn park_oldest_idle(&mut self, keep: &Path) -> Option<(PathBuf, Worker)> {
+        let path = self.oldest_live_except(keep)?;
+        let worker = self.park(&path)?;
+        Some((path, worker))
     }
 
     /// Drops the live worker but keeps provider routes and the record (for later revive).
@@ -75,11 +122,13 @@ impl WorkerMaps {
         self.by_path.contains_key(path)
     }
 
-    /// Oldest live path that is not `keep` and has no open link search, if any.
+    /// Oldest live path that is not `keep`, has no call in progress and no open link search.
     pub(crate) fn oldest_live_except(&self, keep: &Path) -> Option<PathBuf> {
         self.live_order
             .iter()
-            .find(|path| path.as_path() != keep && !self.has_open_search(path))
+            .find(|path| {
+                path.as_path() != keep && !self.is_leased(path) && !self.has_open_search(path)
+            })
             .cloned()
     }
 
@@ -102,6 +151,7 @@ impl WorkerMaps {
         self.search_to_path.clear();
         self.records.clear();
         self.live_order.clear();
+        self.in_flight.clear();
         workers
     }
 
@@ -113,24 +163,6 @@ impl WorkerMaps {
             .into_iter()
             .map(|(_, worker)| Arc::clone(worker))
             .collect()
-    }
-
-    /// Worker that owns `provider`, plus its plugin path (for link-search routing).
-    pub(crate) fn worker_and_path_for_provider(
-        &self,
-        provider: &str,
-    ) -> Result<(Worker, PathBuf), GatewayError> {
-        let path = self
-            .provider_to_path
-            .get(provider)
-            .cloned()
-            .ok_or_else(|| {
-                GatewayError::Unavailable(format!("no worker loaded for provider '{provider}'"))
-            })?;
-        let worker = self.by_path.get(&path).cloned().ok_or_else(|| {
-            GatewayError::Unavailable(format!("worker for provider '{provider}' is gone"))
-        })?;
-        Ok((worker, path))
     }
 
     pub(crate) fn worker_for_search(&self, id: &str) -> Result<Worker, GatewayError> {
@@ -206,9 +238,12 @@ mod tests {
                 providers: vec!["Alpha".to_owned()],
             },
         );
-        assert!(maps.worker_and_path_for_provider("Alpha").is_ok());
+        assert!(matches!(maps.lease_provider("Alpha"), Ok(Some(_))));
         assert!(maps.remove(&path).is_some());
-        assert!(maps.worker_and_path_for_provider("Alpha").is_err());
+        assert!(
+            maps.lease_provider("Alpha").is_err(),
+            "the route went with the plugin"
+        );
         assert!(maps.all_workers().is_empty());
     }
 
@@ -228,7 +263,33 @@ mod tests {
         assert!(maps.by_path.is_empty());
         assert_eq!(maps.path_for_provider("Alpha").expect("path"), path);
         assert!(maps.record(&path).is_some_and(|r| r.trusted));
-        assert!(maps.worker_and_path_for_provider("Alpha").is_err());
+        assert!(
+            matches!(maps.lease_provider("Alpha"), Ok(None)),
+            "parked: the route stays, there is no worker to lease"
+        );
+    }
+
+    #[test]
+    fn a_leased_plugin_is_never_the_one_chosen_to_park() {
+        let (old, new) = (PathBuf::from("/ext/old.cs3"), PathBuf::from("/ext/new.cs3"));
+        let mut maps = WorkerMaps::default();
+        for (path, name) in [(&old, "Old"), (&new, "New")] {
+            let record = PluginRecord {
+                trusted: false,
+                providers: vec![name.to_owned()],
+            };
+            maps.insert(path.clone(), Arc::new(EmptyWorker), record);
+        }
+        assert!(matches!(maps.lease_provider("Old"), Ok(Some(_))));
+        // Leasing counts as use, so make the leased plugin the oldest again to test the skip.
+        maps.touch_live(&new);
+        assert_eq!(
+            maps.oldest_live_except(Path::new("")),
+            Some(new.clone()),
+            "the oldest plugin has a call in progress, so the next one is chosen"
+        );
+        maps.release(&old);
+        assert_eq!(maps.oldest_live_except(Path::new("")), Some(old));
     }
 
     #[test]
