@@ -1,6 +1,6 @@
 use super::preset;
 use crate::budget_choices::{is_offered_read_ahead, is_offered_storage_gb, is_offered_video_cache};
-use crate::{HelperIdle, MemoryTier, ResidentPlugins, VideoRenderer};
+use crate::{HelperIdle, HelperWindows, MemoryTier, ResidentPlugins, VideoRenderer};
 
 const TIERS: [MemoryTier; 3] = [
     MemoryTier::LowEnd,
@@ -24,6 +24,10 @@ fn every_preset_value_is_one_the_settings_screen_offers() {
         assert!(is_offered_storage_gb(budget.storage_limit_gb), "{tier:?}");
         assert!(
             HelperIdle::CHOICES.contains(&budget.helper_idle),
+            "{tier:?}"
+        );
+        assert!(
+            HelperWindows::CHOICES.contains(&budget.helper_windows),
             "{tier:?}"
         );
     }
@@ -72,4 +76,11 @@ fn every_tier_starts_on_the_software_video_path_until_the_gpu_path_is_verified_m
     for tier in TIERS {
         assert_eq!(preset(tier).video_renderer, VideoRenderer::Cpu, "{tier:?}");
     }
+}
+
+#[test]
+fn a_bigger_pc_keeps_more_verified_browser_windows() {
+    let counts = [MemoryTier::LowEnd, MemoryTier::Balanced, MemoryTier::HighEnd]
+        .map(|tier| preset(tier).helper_windows.count());
+    assert_eq!(counts, [2, 4, 8]);
 }

@@ -9,7 +9,7 @@ use memory_budget::{
     SystemFacts,
 };
 
-use crate::cloudflare_setting::HELPER_IDLE_KEY;
+use crate::cloudflare_setting::{HELPER_IDLE_KEY, HELPER_WINDOWS_KEY};
 use crate::plugin_worker_setting::KEY as WORKER_KEY;
 use crate::storage_cap_setting::STORAGE_CAP_KEY;
 use crate::video_cache_setting::{AHEAD_KEY, SIZE_KEY};
@@ -63,6 +63,7 @@ impl SettingsService {
             video_read_ahead_percent: self.stored_number(AHEAD_KEY)?,
             storage_limit_gb: self.stored_number(STORAGE_CAP_KEY)?,
             helper_idle: self.stored_helper_idle()?,
+            helper_windows: self.stored_helper_windows()?,
             video_renderer: self.stored_video_renderer()?,
         })
     }
@@ -87,6 +88,7 @@ impl SettingsService {
             AHEAD_KEY,
             STORAGE_CAP_KEY,
             HELPER_IDLE_KEY,
+            HELPER_WINDOWS_KEY,
             VIDEO_RENDERER_KEY,
         ] {
             self.remove_value(key)?;

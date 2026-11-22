@@ -1,11 +1,12 @@
 //! The sites the viewer allowed to open a Cloudflare verification window.
 
-use memory_budget::HelperIdle;
+use memory_budget::{HelperIdle, HelperWindows};
 
 use crate::{ServiceError, SettingsService};
 
 const CLOUDFLARE_ALLOWED_KEY: &str = "cloudflare_allowed_hosts";
 pub(crate) const HELPER_IDLE_KEY: &str = "cloudflare_helper_idle";
+pub(crate) const HELPER_WINDOWS_KEY: &str = "cloudflare_helper_windows";
 /// Hosts cannot contain spaces, so one separates them.
 const HOST_SEPARATOR: char = ' ';
 
@@ -27,6 +28,25 @@ impl SettingsService {
             .stored(HELPER_IDLE_KEY)?
             .as_deref()
             .and_then(HelperIdle::parse))
+    }
+
+    /// How many verified browser windows the helper keeps: what the viewer chose, else the
+    /// profile's value (2 on a low-end PC). Each one is a browser process of its own.
+    pub fn helper_windows(&self) -> Result<HelperWindows, ServiceError> {
+        Ok(self.performance_budget()?.helper_windows)
+    }
+
+    /// Remembers the viewer's choice of how many verified browser windows the helper keeps.
+    pub fn set_helper_windows(&self, windows: HelperWindows) -> Result<(), ServiceError> {
+        self.store_value(HELPER_WINDOWS_KEY, &windows.to_text())
+    }
+
+    /// The viewer's own choice, if one is stored and offered.
+    pub(crate) fn stored_helper_windows(&self) -> Result<Option<HelperWindows>, ServiceError> {
+        Ok(self
+            .stored(HELPER_WINDOWS_KEY)?
+            .as_deref()
+            .and_then(HelperWindows::parse))
     }
 
     /// Sites the viewer pressed Verify for; their checks open a window without asking again.

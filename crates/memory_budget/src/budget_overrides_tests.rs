@@ -1,5 +1,5 @@
 use super::BudgetOverrides;
-use crate::{HelperIdle, ResidentPlugins, VideoRenderer};
+use crate::{HelperIdle, HelperWindows, ResidentPlugins, VideoRenderer};
 
 #[test]
 fn nothing_changed_by_default() {
@@ -32,6 +32,15 @@ fn the_helper_idle_choice_counts_as_a_change() {
 fn the_video_renderer_choice_counts_as_a_change() {
     let overrides = BudgetOverrides {
         video_renderer: Some(VideoRenderer::Gpu),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(overrides.changed_count(), 1);
+}
+
+#[test]
+fn the_helper_windows_choice_counts_as_a_change() {
+    let overrides = BudgetOverrides {
+        helper_windows: Some(HelperWindows::new(8)),
         ..BudgetOverrides::default()
     };
     assert_eq!(overrides.changed_count(), 1);

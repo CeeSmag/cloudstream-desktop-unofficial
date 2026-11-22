@@ -2,7 +2,9 @@
 
 use crate::budget_choices::{is_offered_read_ahead, is_offered_storage_gb, is_offered_video_cache};
 use crate::budget_presets::preset;
-use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins, VideoRenderer};
+use crate::{
+    BudgetOverrides, HelperIdle, HelperWindows, MemoryTier, ResidentPlugins, VideoRenderer,
+};
 
 /// The limits in force: immutable, built once from a tier and the viewer's overrides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +19,8 @@ pub struct MemoryBudget {
     pub storage_limit_gb: u32,
     /// How long the Cloudflare verification helper may sit idle before it is closed.
     pub helper_idle: HelperIdle,
+    /// How many verified browser windows the helper keeps.
+    pub helper_windows: HelperWindows,
     /// Where the video player draws its pictures.
     pub video_renderer: VideoRenderer,
 }
@@ -47,6 +51,10 @@ impl MemoryBudget {
                 .helper_idle
                 .filter(|choice| HelperIdle::CHOICES.contains(choice))
                 .unwrap_or(base.helper_idle),
+            helper_windows: overrides
+                .helper_windows
+                .filter(|choice| HelperWindows::CHOICES.contains(choice))
+                .unwrap_or(base.helper_windows),
             video_renderer: overrides
                 .video_renderer
                 .filter(|choice| VideoRenderer::CHOICES.contains(choice))

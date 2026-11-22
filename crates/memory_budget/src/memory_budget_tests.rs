@@ -1,6 +1,8 @@
 use super::MemoryBudget;
 use crate::budget_presets::preset;
-use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins, VideoRenderer};
+use crate::{
+    BudgetOverrides, HelperIdle, HelperWindows, MemoryTier, ResidentPlugins, VideoRenderer,
+};
 
 #[test]
 fn without_overrides_the_budget_is_the_preset() {
@@ -86,5 +88,28 @@ fn the_video_renderer_is_software_until_the_viewer_chooses_gpu() {
     assert_eq!(
         MemoryBudget::resolve(MemoryTier::LowEnd, &chosen).video_renderer,
         VideoRenderer::Gpu
+    );
+}
+
+#[test]
+fn the_kept_helper_windows_follow_the_profile_unless_the_viewer_chose_a_count() {
+    let low = MemoryBudget::resolve(MemoryTier::LowEnd, &BudgetOverrides::default());
+    assert_eq!(low.helper_windows, HelperWindows::new(2));
+    let chosen = BudgetOverrides {
+        helper_windows: Some(HelperWindows::new(8)),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(
+        MemoryBudget::resolve(MemoryTier::LowEnd, &chosen).helper_windows,
+        HelperWindows::new(8)
+    );
+    let not_offered = BudgetOverrides {
+        helper_windows: Some(HelperWindows::new(3)),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(
+        MemoryBudget::resolve(MemoryTier::LowEnd, &not_offered).helper_windows,
+        HelperWindows::new(2),
+        "a count that is not offered falls back to the preset"
     );
 }

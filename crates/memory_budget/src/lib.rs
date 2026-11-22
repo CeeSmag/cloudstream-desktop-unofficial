@@ -10,6 +10,7 @@ mod budget_choices;
 mod budget_overrides;
 mod budget_presets;
 mod helper_idle;
+mod helper_windows;
 mod memory_budget;
 mod memory_tier;
 mod profile_choice;
@@ -24,6 +25,7 @@ pub use budget_choices::{
 };
 pub use budget_overrides::BudgetOverrides;
 pub use helper_idle::HelperIdle;
+pub use helper_windows::HelperWindows;
 pub use memory_budget::MemoryBudget;
 pub use memory_tier::MemoryTier;
 pub use profile_choice::ProfileChoice;

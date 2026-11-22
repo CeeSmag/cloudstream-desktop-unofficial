@@ -230,3 +230,27 @@ fn an_unknown_stored_video_renderer_is_ignored() {
     service.store_value("video_renderer", "turbo").expect("w");
     assert_eq!(service.video_renderer().expect("r"), VideoRenderer::Cpu);
 }
+
+#[test]
+fn the_kept_helper_windows_follow_the_profile_a_choice_wins_and_reset_forgets_it() {
+    use memory_budget::HelperWindows;
+    let low = service_with_ram(FOUR_GB);
+    assert_eq!(low.helper_windows().expect("r"), HelperWindows::new(2));
+    assert_eq!(
+        service_with_ram(THIRTY_TWO_GB).helper_windows().expect("r"),
+        HelperWindows::new(8)
+    );
+    low.set_helper_windows(HelperWindows::new(4)).expect("set");
+    assert_eq!(low.helper_windows().expect("r"), HelperWindows::new(4));
+    assert_eq!(low.performance_overrides().expect("r").changed_count(), 1);
+    low.reset_performance().expect("reset");
+    assert_eq!(low.helper_windows().expect("r"), HelperWindows::new(2));
+}
+
+#[test]
+fn a_stored_helper_window_count_that_is_not_offered_is_ignored() {
+    use memory_budget::HelperWindows;
+    let low = service_with_ram(FOUR_GB);
+    low.store_value("cloudflare_helper_windows", "3").expect("store");
+    assert_eq!(low.helper_windows().expect("r"), HelperWindows::new(2));
+}
