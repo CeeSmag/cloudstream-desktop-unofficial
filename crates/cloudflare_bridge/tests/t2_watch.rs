@@ -565,3 +565,49 @@ fn the_helper_is_started_with_the_number_of_windows_it_may_keep() {
 fn a_helper_is_started_without_a_window_limit_until_one_is_set() {
     assert!(!started_with("windows_unset", None).contains("--max-windows"));
 }
+
+/// A helper that passes the check, then keeps answering browser fetches (a `fetched` status every
+/// 200 ms) and notes each beat in a file for as long as the helper process lives, so the test can
+/// tell whether the helper was closed.
+fn fetch_serving_helper(dir: &Path) -> HelperLaunch {
+    let script = format!(
+        r#"while IFS="$(printf '\t')" read -r kind id host url method standalone; do
+  case "$kind" in
+    verify|present)
+      printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$id.tmp"
+      mv "{dir}/result-$id.tmp" "{dir}/result-$id.txt"
+      printf 'passed\t%s\t%s\n' "$host" "$id"
+      ( while kill -0 $$ 2>/dev/null; do printf 'fetched\t%s\tf-1\n' "$host"; echo beat >> "{dir}/beats.txt"; sleep 0.2; done ) &;;
+    quit) exit 0;;
+  esac
+done"#,
+        dir = dir.display()
+    );
+    HelperLaunch {
+        program: "sh".into(),
+        args: vec!["-c".into(), script],
+    }
+}
+
+fn beats(dir: &Path) -> usize {
+    std::fs::read_to_string(dir.join("beats.txt")).map_or(0, |text| text.lines().count())
+}
+
+#[test]
+fn a_helper_that_keeps_serving_browser_fetches_is_not_closed_as_idle() {
+    let dir = folder("serving");
+    let watch = spawn_watcher(WatchConfig {
+        dir: dir.clone(),
+        allowed: AllowedHosts::new(vec!["site.test".to_owned()]),
+        helper: Some(fetch_serving_helper(&dir)),
+    });
+    watch.set_helper_idle(Some(Duration::from_secs(1)));
+    request(&dir, "one", "site.test");
+    std::thread::sleep(Duration::from_millis(3_000));
+    let before = beats(&dir);
+    std::thread::sleep(Duration::from_millis(1_000));
+    assert!(
+        beats(&dir) > before,
+        "the helper stopped answering after {before} beats: it was closed while serving fetches"
+    );
+}

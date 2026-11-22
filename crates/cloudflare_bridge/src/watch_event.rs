@@ -63,17 +63,19 @@ impl CloudflareEvent {
     }
 }
 
-impl From<HelperStatus> for CloudflareEvent {
-    fn from(status: HelperStatus) -> Self {
+impl CloudflareEvent {
+    /// What the viewer hears of a helper status; a fetch being served is not for the viewer.
+    pub(crate) fn from_status(status: HelperStatus) -> Option<Self> {
         match status {
-            HelperStatus::WindowOpen { host, id } => Self::Verifying { host, id },
-            HelperStatus::Passed { host, id } => Self::Passed { host, id },
-            HelperStatus::Failed { host, id, reason } => Self::Failed {
+            HelperStatus::WindowOpen { host, id } => Some(Self::Verifying { host, id }),
+            HelperStatus::Passed { host, id } => Some(Self::Passed { host, id }),
+            HelperStatus::Failed { host, id, reason } => Some(Self::Failed {
                 host,
                 id,
                 reason,
                 retry: true,
-            },
+            }),
+            HelperStatus::Fetched { .. } => None,
         }
     }
 }

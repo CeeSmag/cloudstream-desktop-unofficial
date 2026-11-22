@@ -11,7 +11,7 @@ impl Watcher<'_> {
             helper.note_activity(); // the helper is doing something: not idle
         }
         let (host, id) = match &status {
-            HelperStatus::WindowOpen { .. } => return,
+            HelperStatus::WindowOpen { .. } | HelperStatus::Fetched { .. } => return,
             HelperStatus::Passed { host, id } | HelperStatus::Failed { host, id, .. } => {
                 (host.clone(), id.clone())
             }
@@ -43,7 +43,9 @@ impl Watcher<'_> {
                 );
             }
         }
-        self.emit(status.into());
+        if let Some(event) = CloudflareEvent::from_status(status) {
+            self.emit(event);
+        }
         self.owners.finish(&id);
     }
 

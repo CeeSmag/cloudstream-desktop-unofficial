@@ -16,8 +16,8 @@ pub(crate) struct IdleInputs {
     pub(crate) since_last_command: Duration,
     /// Checks still waiting for the viewer or running.
     pub(crate) pending_requests: usize,
-    /// Age of the newest browser-fetch file in the exchange folder (the helper answers those
-    /// itself, so the app sees no command for them); `None` when there is none.
+    /// Age of the newest browser-fetch file in the exchange folder (a fetch still in flight; the
+    /// helper answers those itself and says `fetched` for each); `None` when there is none.
     pub(crate) since_last_fetch_file: Option<Duration>,
 }
 

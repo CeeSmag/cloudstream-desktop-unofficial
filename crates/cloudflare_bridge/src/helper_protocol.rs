@@ -61,6 +61,14 @@ pub enum HelperStatus {
         /// Why, for the viewer.
         reason: String,
     },
+    /// A browser fetch was answered for the sidecar. The app never sees these requests (the helper
+    /// answers them itself), so this is how it learns the helper is busy and must not be closed.
+    Fetched {
+        /// The site.
+        host: String,
+        /// The fetch request.
+        id: String,
+    },
 }
 
 fn field(text: &str) -> String {
@@ -141,6 +149,7 @@ pub fn format_status(status: &HelperStatus) -> String {
                 field(reason)
             )
         }
+        HelperStatus::Fetched { host, id } => format!("fetched\t{}\t{}\n", field(host), field(id)),
     }
 }
 
@@ -153,6 +162,7 @@ pub fn parse_status(line: &str) -> Option<HelperStatus> {
     match kind {
         "open" => Some(HelperStatus::WindowOpen { host, id }),
         "passed" => Some(HelperStatus::Passed { host, id }),
+        "fetched" => Some(HelperStatus::Fetched { host, id }),
         "failed" => Some(HelperStatus::Failed {
             host,
             id,
@@ -223,6 +233,10 @@ mod tests {
                 id: "r1".into(),
                 reason: "closed\tby viewer".into(),
             },
+            HelperStatus::Fetched {
+                host: "a.test".into(),
+                id: "f1".into(),
+            },
         ];
         let parsed: Vec<_> = statuses
             .iter()
@@ -230,6 +244,7 @@ mod tests {
             .collect();
         assert_eq!(parsed[0], Some(statuses[0].clone()));
         assert_eq!(parsed[1], Some(statuses[1].clone()));
+        assert_eq!(parsed[3], Some(statuses[3].clone()));
         assert_eq!(
             parsed[2],
             Some(HelperStatus::Failed {

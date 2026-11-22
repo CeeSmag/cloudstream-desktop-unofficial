@@ -193,6 +193,12 @@ impl HelperState {
     }
 
     fn fetch(&mut self, request: &FetchRequest) {
+        // The app never sees this request (the helper answers it), so say so: a helper that is
+        // serving browser fetches must not be closed as idle.
+        self.outbox.status(&HelperStatus::Fetched {
+            host: request.host.clone(),
+            id: request.id.clone(),
+        });
         if let Some(site) = self.sites.values_mut().find(|site| site.can_fetch(request)) {
             site.start_fetch(request, &self.outbox);
         } else {
