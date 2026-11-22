@@ -36,5 +36,4 @@ Manual checks after launch → Home → player work on the Slint product (`app_s
 
 ## Deferred (not required for this retest)
 
-- Defer `MpvPlayer::auto_detect` until first play (larger `service_wiring` change; still runs at startup today).
 - Home shelf progressive paint / virtualization (Slint currently loads shelves then paints; posters hydrate in the background).

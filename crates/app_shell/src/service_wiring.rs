@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use app_services::{
-    CatalogService, Clock, ExtensionService, LibraryService, PlaybackService, RepositoryService,
-    RoutedPlayer, SettingsService, StreamResolver, SystemClock, UiServices,
+    CatalogService, Clock, DeferredPlayer, ExtensionService, LibraryService, PlaybackService,
+    PlayerFactory, RepositoryService, RoutedPlayer, SettingsService, StreamResolver, SystemClock,
+    UiServices,
 };
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
@@ -212,11 +213,23 @@ fn build_playback(
         embedded: !options.headless_player && options.player_wid.is_none(),
         wid: options.player_wid,
     };
-    let player: Result<MpvPlayer, String> =
-        MpvPlayer::auto_detect(&player_options).map_err(|error| error.to_string());
+    // libmpv is loaded and initialized when the first video plays (about 40 MiB saved while the
+    // viewer browses); the probe keeps a missing library a start-up message, as before.
+    let player: Result<Arc<dyn VideoPlayer>, String> = player_mpv::probe_libmpv()
+        .map(|()| {
+            let embedded = player_options.embedded;
+            let factory: PlayerFactory = Box::new(move || {
+                let player = MpvPlayer::auto_detect(&player_options)?;
+                let player: Arc<dyn VideoPlayer> = Arc::new(player);
+                Ok(player)
+            });
+            let deferred: Arc<dyn VideoPlayer> = Arc::new(DeferredPlayer::new(embedded, factory));
+            deferred
+        })
+        .map_err(|error| error.to_string());
     match player {
         Ok(player) => {
-            let player = route_through_proxy(Arc::new(player), database);
+            let player = route_through_proxy(player, database);
             let progress = WatchProgressStore::new(Arc::clone(database));
             let resume = ResumeStore::new(Arc::clone(database));
             (

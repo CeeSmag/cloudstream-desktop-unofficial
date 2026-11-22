@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use player_api::PlayerError;
 
+use crate::mpv_api::MpvApi;
 use crate::mpv_player::{MpvPlayer, PlayerOptions};
 
 /// Environment variable that points at the libmpv shared library.
@@ -88,6 +89,30 @@ pub fn locate_libmpv() -> Result<PathBuf, PlayerError> {
         .ok_or_else(|| sources.not_found())
 }
 
+/// Checks that some libmpv can be loaded, then unloads it again without starting a player. The app
+/// calls this at start-up so a missing library is still reported there, while the player itself is
+/// built when the first video plays.
+pub fn probe_libmpv() -> Result<(), PlayerError> {
+    probe_sources(&Sources::from_environment())
+}
+
+fn probe_sources(sources: &Sources) -> Result<(), PlayerError> {
+    let candidates = sources.candidates();
+    if candidates.is_empty() {
+        return Err(sources.not_found());
+    }
+    let mut last_error = None;
+    for path in &candidates {
+        match MpvApi::load(path) {
+            Ok(_api) => return Ok(()), // dropped here: the library is unloaded again
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        PlayerError::Unavailable("all libmpv candidates failed to load".to_owned())
+    }))
+}
+
 /// Discovers candidate libmpv library paths and starts the player with the first working one.
 #[tracing::instrument(level = "debug", skip_all, err)]
 pub fn auto_detect_player(options: &PlayerOptions) -> Result<MpvPlayer, PlayerError> {
@@ -131,6 +156,22 @@ mod tests {
             folders,
             system_loader,
         }
+    }
+
+    #[test]
+    fn probe_with_no_library_anywhere_says_where_it_looked() {
+        let error = probe_sources(&sources(Vec::new(), false)).expect_err("nothing to load");
+        assert!(matches!(error, PlayerError::Unavailable(_)));
+    }
+
+    #[test]
+    fn probe_refuses_a_file_that_is_not_a_library() {
+        let folder = std::env::temp_dir().join(format!("probe-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("folder");
+        library_in(&folder);
+        let result = probe_sources(&sources(vec![folder.clone()], false));
+        std::fs::remove_dir_all(&folder).ok();
+        assert!(result.is_err(), "a stand-in file is not a loadable libmpv");
     }
 
     fn library_in(folder: &std::path::Path) -> PathBuf {
