@@ -34,11 +34,20 @@ pub fn start_cloudflare_watch(data_dir: &Path, settings: &SettingsService) -> Wa
             "no Cloudflare verification helper next to the program; such sites cannot be verified"
         );
     }
-    spawn_watcher(WatchConfig {
+    let watch = spawn_watcher(WatchConfig {
         dir: exchange,
         allowed: AllowedHosts::new(saved),
         helper,
-    })
+    });
+    let idle = settings
+        .helper_idle()
+        .map(memory_budget::HelperIdle::as_duration)
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "verification helper idle time not read; keeping it open");
+            None
+        });
+    watch.set_helper_idle(idle);
+    watch
 }
 
 fn helper_args(exchange: &Path, profile: &Path) -> Vec<String> {

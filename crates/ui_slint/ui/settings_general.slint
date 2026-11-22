@@ -18,6 +18,8 @@ export component SettingsGeneralPage inherits VerticalLayout {
     in property <string> storage-label: "";
     in property <[string]> worker-labels: [];
     in property <string> worker-value: "";
+    in property <[string]> helper-idle-labels: [];
+    in property <string> helper-idle-value: "";
     in property <[string]> perf-profile-labels: [];
     in property <string> perf-profile-value: "";
     in property <string> perf-pc-text: "";
@@ -41,6 +43,7 @@ export component SettingsGeneralPage inherits VerticalLayout {
     callback set-ahead(string);
     callback set-storage-cap(string);
     callback set-worker-limit(string);
+    callback set-helper-idle(string);
     callback set-performance-profile(string);
     callback reset-performance();
     callback clean-storage();
@@ -222,13 +225,27 @@ export component SettingsGeneralPage inherits VerticalLayout {
         subtitle: "Each extension runs in an isolated background runtime";
         icon: Icons.cpu;
 
-        SettingRow {
-            label: "Resident workers";
-            description: "More resident workers speed up switching providers at the cost of extra RAM";
-            TvSegmented {
-                model: root.worker-labels;
-                current-value: root.worker-value;
-                selected(value) => { root.set-worker-limit(value); }
+        VerticalLayout {
+            spacing: 4px;
+            SettingRow {
+                label: "Resident workers";
+                description: "More resident workers speed up switching providers at the cost of extra RAM";
+                TvSegmented {
+                    model: root.worker-labels;
+                    current-value: root.worker-value;
+                    selected(value) => { root.set-worker-limit(value); }
+                }
+            }
+            SettingDivider { }
+            SettingRow {
+                label: "Close the verification helper when idle";
+                description: "The Cloudflare check runs in a browser engine (100-300 MB); it starts again at the next check";
+                TvSelect {
+                    width: 170px;
+                    model: root.helper-idle-labels;
+                    current-value: root.helper-idle-value;
+                    selected(value) => { root.set-helper-idle(value); }
+                }
             }
         }
     }

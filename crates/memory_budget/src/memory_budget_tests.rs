@@ -1,6 +1,6 @@
 use super::MemoryBudget;
 use crate::budget_presets::preset;
-use crate::{BudgetOverrides, MemoryTier, ResidentPlugins};
+use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins};
 
 #[test]
 fn without_overrides_the_budget_is_the_preset() {
@@ -49,5 +49,28 @@ fn removing_an_override_restores_the_preset_of_the_new_tier() {
     assert_eq!(
         without.video_cache_mib,
         preset(MemoryTier::HighEnd).video_cache_mib
+    );
+}
+
+#[test]
+fn the_helper_idle_time_follows_the_profile_unless_the_viewer_chose_one() {
+    let low = MemoryBudget::resolve(MemoryTier::LowEnd, &BudgetOverrides::default());
+    assert_eq!(low.helper_idle, HelperIdle::After(2));
+    let chosen = BudgetOverrides {
+        helper_idle: Some(HelperIdle::Never),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(
+        MemoryBudget::resolve(MemoryTier::LowEnd, &chosen).helper_idle,
+        HelperIdle::Never
+    );
+    let not_offered = BudgetOverrides {
+        helper_idle: Some(HelperIdle::After(7)),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(
+        MemoryBudget::resolve(MemoryTier::LowEnd, &not_offered).helper_idle,
+        HelperIdle::After(2),
+        "a value that is not offered falls back to the preset"
     );
 }

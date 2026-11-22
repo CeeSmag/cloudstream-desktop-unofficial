@@ -1,7 +1,7 @@
 //! What the viewer changed by hand. Only changed fields are set, so a later profile change still
 //! reaches every field they left alone.
 
-use crate::ResidentPlugins;
+use crate::{HelperIdle, ResidentPlugins};
 
 /// The viewer's own choices; `None` means "follow the profile".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -14,6 +14,8 @@ pub struct BudgetOverrides {
     pub video_read_ahead_percent: Option<u8>,
     /// Data folder limit, GB.
     pub storage_limit_gb: Option<u32>,
+    /// Idle time before the Cloudflare helper is closed.
+    pub helper_idle: Option<HelperIdle>,
 }
 
 impl BudgetOverrides {
@@ -24,6 +26,7 @@ impl BudgetOverrides {
             self.video_cache_mib.is_some(),
             self.video_read_ahead_percent.is_some(),
             self.storage_limit_gb.is_some(),
+            self.helper_idle.is_some(),
         ]
         .into_iter()
         .filter(|changed| *changed)

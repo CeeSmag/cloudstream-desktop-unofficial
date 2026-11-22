@@ -10,6 +10,7 @@
 mod allowed_hosts;
 mod exchange;
 mod fetch_exchange;
+mod helper_idle;
 mod helper_protocol;
 mod prompt_owners;
 mod verify_helper;

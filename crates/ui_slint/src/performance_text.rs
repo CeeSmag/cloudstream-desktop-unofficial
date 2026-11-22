@@ -2,7 +2,7 @@
 //! preset is followed and the warning. Pure, so it is tested without a window.
 
 use app_services::PerformanceSummary;
-use memory_budget::ProfileChoice;
+use memory_budget::{HelperIdle, ProfileChoice};
 
 /// MiB in a GB, for showing RAM sizes.
 const MIB_PER_GB: u64 = 1024;
@@ -45,6 +45,29 @@ pub(crate) fn profile_from_label(label: &str) -> Option<ProfileChoice> {
     ProfileChoice::ALL
         .into_iter()
         .find(|choice| profile_label(*choice) == label)
+}
+
+/// The drop-down's name of a helper idle time.
+pub(crate) fn helper_idle_label(idle: HelperIdle) -> String {
+    match idle {
+        HelperIdle::After(minutes) => format!("{minutes} min"),
+        HelperIdle::Never => "Never".to_owned(),
+    }
+}
+
+/// Every helper idle choice's drop-down name, in the order they are listed.
+pub(crate) fn helper_idle_labels() -> Vec<String> {
+    HelperIdle::CHOICES
+        .into_iter()
+        .map(helper_idle_label)
+        .collect()
+}
+
+/// The helper idle time a drop-down name stands for.
+pub(crate) fn helper_idle_from_label(label: &str) -> Option<HelperIdle> {
+    HelperIdle::CHOICES
+        .into_iter()
+        .find(|choice| helper_idle_label(*choice) == label)
 }
 
 /// The card's texts for `summary`.

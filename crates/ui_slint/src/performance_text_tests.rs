@@ -1,7 +1,10 @@
 use app_services::PerformanceSummary;
 use memory_budget::{MemoryTier, ProfileChoice, SystemFacts};
 
-use super::{describe, profile_from_label, profile_label, profile_labels};
+use super::{
+    describe, helper_idle_from_label, helper_idle_label, helper_idle_labels, profile_from_label,
+    profile_label, profile_labels,
+};
 
 fn summary(
     profile: ProfileChoice,
@@ -89,4 +92,23 @@ fn the_warning_appears_only_for_a_heavy_budget_and_names_both_sizes() {
         heavy.warning,
         "These settings can use up to about 2.3 GB of this PC's 4 GB. It may slow down."
     );
+}
+
+#[test]
+fn the_helper_idle_choices_read_as_minutes_and_never() {
+    assert_eq!(
+        helper_idle_labels(),
+        ["1 min", "2 min", "5 min", "15 min", "Never"]
+    );
+}
+
+#[test]
+fn every_helper_idle_label_maps_back() {
+    for choice in memory_budget::HelperIdle::CHOICES {
+        assert_eq!(
+            helper_idle_from_label(&helper_idle_label(choice)),
+            Some(choice)
+        );
+    }
+    assert_eq!(helper_idle_from_label("Soon"), None);
 }

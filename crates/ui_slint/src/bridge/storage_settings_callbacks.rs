@@ -9,10 +9,11 @@ use crate::ui_events::UiEvent;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
-use super::performance_callbacks::show_performance;
+use super::performance_callbacks::{apply_helper_idle_now, show_performance};
 use super::player_callbacks::report;
 use super::preference_callbacks::saved;
 use super::storage_usage_view::measure_storage_usage;
+use crate::performance_text::helper_idle_from_label;
 
 pub(crate) fn wire_storage_settings(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
@@ -23,6 +24,8 @@ pub(crate) fn wire_storage_settings(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_set_storage_cap(move |value| set_storage_cap(&c, &value));
     let c = ctx.clone();
     ui.on_set_worker_limit(move |value| set_worker_limit(&c, value));
+    let c = ctx.clone();
+    ui.on_set_helper_idle(move |value| set_helper_idle(&c, value.as_str()));
     let c = ctx.clone();
     ui.on_clean_storage(move || clean_storage(&c));
     let c = ctx.clone();
@@ -97,6 +100,22 @@ fn set_storage_cap(ctx: &BridgeContext, value: &str) {
             });
         }
         _ => measure_storage_usage(ctx),
+    }
+}
+
+fn set_helper_idle(ctx: &BridgeContext, label: &str) {
+    let Some(idle) = helper_idle_from_label(label) else {
+        tracing::warn!(label, "unknown verification helper idle time");
+        return;
+    };
+    saved(
+        "verification helper idle time",
+        ctx.services.settings.set_helper_idle(idle),
+    );
+    apply_helper_idle_now(ctx);
+    if let Some(ui) = ctx.window() {
+        ui.set_helper_idle_value(label.into());
+        show_performance(&ui, &ctx.services);
     }
 }
 

@@ -1,6 +1,6 @@
 use super::preset;
 use crate::budget_choices::{is_offered_read_ahead, is_offered_storage_gb, is_offered_video_cache};
-use crate::{MemoryTier, ResidentPlugins};
+use crate::{HelperIdle, MemoryTier, ResidentPlugins};
 
 const TIERS: [MemoryTier; 3] = [
     MemoryTier::LowEnd,
@@ -22,6 +22,10 @@ fn every_preset_value_is_one_the_settings_screen_offers() {
             "{tier:?}"
         );
         assert!(is_offered_storage_gb(budget.storage_limit_gb), "{tier:?}");
+        assert!(
+            HelperIdle::CHOICES.contains(&budget.helper_idle),
+            "{tier:?}"
+        );
     }
 }
 
@@ -44,4 +48,21 @@ fn the_low_end_preset_keeps_one_plugin_process_and_a_small_video_cache() {
     let low = preset(MemoryTier::LowEnd);
     assert_eq!(low.resident_plugins, ResidentPlugins::Limit(1));
     assert_eq!(low.video_cache_mib, 128);
+}
+
+#[test]
+fn a_bigger_pc_keeps_the_helper_open_longer() {
+    let (low, mid, high) = (
+        preset(MemoryTier::LowEnd).helper_idle,
+        preset(MemoryTier::Balanced).helper_idle,
+        preset(MemoryTier::HighEnd).helper_idle,
+    );
+    assert_eq!(
+        (low, mid, high),
+        (
+            HelperIdle::After(2),
+            HelperIdle::After(5),
+            HelperIdle::Never
+        )
+    );
 }

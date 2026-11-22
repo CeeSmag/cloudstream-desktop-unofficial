@@ -191,3 +191,19 @@ fn the_summary_reports_the_profile_the_size_and_whether_the_budget_is_heavy() {
         .expect("summary");
     assert!(!calm.heavy);
 }
+
+#[test]
+fn the_helper_idle_time_follows_the_profile_a_choice_wins_and_reset_forgets_it() {
+    use memory_budget::HelperIdle;
+    let low = service_with_ram(FOUR_GB);
+    assert_eq!(low.helper_idle().expect("r"), HelperIdle::After(2));
+    assert_eq!(
+        service_with_ram(THIRTY_TWO_GB).helper_idle().expect("r"),
+        HelperIdle::Never
+    );
+    low.set_helper_idle(HelperIdle::After(15)).expect("set");
+    assert_eq!(low.helper_idle().expect("r"), HelperIdle::After(15));
+    assert_eq!(low.performance_overrides().expect("r").changed_count(), 1);
+    low.reset_performance().expect("reset");
+    assert_eq!(low.helper_idle().expect("r"), HelperIdle::After(2));
+}

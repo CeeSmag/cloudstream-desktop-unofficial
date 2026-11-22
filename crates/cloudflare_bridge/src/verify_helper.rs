@@ -11,6 +11,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::helper_protocol::{format_command, parse_status, HelperCommand, HelperStatus};
 
@@ -34,6 +35,8 @@ pub struct VerifyHelper {
     running: Option<RunningHelper>,
     statuses: Sender<HelperStatus>,
     debug_logging: Arc<AtomicBool>,
+    /// The last command sent or status heard; the helper is idle while this is old.
+    last_activity: Instant,
 }
 
 fn write_command(child: &mut RunningHelper, command: &HelperCommand) -> std::io::Result<()> {
@@ -75,7 +78,18 @@ impl VerifyHelper {
             running: None,
             statuses,
             debug_logging,
+            last_activity: Instant::now(),
         }
+    }
+
+    /// How long since the helper last took a command or reported a status.
+    pub(crate) fn idle_for(&self) -> Duration {
+        self.last_activity.elapsed()
+    }
+
+    /// Notes that the helper just did something (a status arrived from it).
+    pub(crate) fn note_activity(&mut self) {
+        self.last_activity = Instant::now();
     }
 
     /// True while the helper process runs.
@@ -103,6 +117,7 @@ impl VerifyHelper {
 
     /// Sends `command`, starting the helper if needed. Returns the child PID that took it.
     pub fn send(&mut self, command: &HelperCommand) -> std::io::Result<u32> {
+        self.note_activity();
         for attempt in 0..2 {
             if !self.is_running() {
                 self.start()?;

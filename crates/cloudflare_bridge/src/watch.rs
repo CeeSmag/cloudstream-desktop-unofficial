@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use crate::exchange::{pending_requests, write_result, Outcome, VerifyRequest};
 use crate::fetch_exchange::{pending_fetches, write_fetch_result, FetchOutcome};
+use crate::helper_idle::{newest_fetch_file_age, should_stop, IdleInputs};
 use crate::helper_protocol::HelperStatus;
 use crate::prompt_owners::PromptOwners;
 use crate::verify_helper::{HelperLaunch, VerifyHelper};
@@ -40,6 +41,8 @@ pub struct WatchConfig {
 pub struct WatchHandle {
     stop: Arc<AtomicBool>,
     debug_logging: Arc<AtomicBool>,
+    /// Seconds a quiet helper may stay open; 0 = until the app closes.
+    helper_idle_secs: Arc<AtomicU64>,
     join: Option<JoinHandle<()>>,
     commands: Sender<ViewerAction>,
     next_retry: AtomicU64,
@@ -95,6 +98,12 @@ impl WatchHandle {
         self.debug_logging.store(enabled, Ordering::SeqCst);
     }
 
+    /// Changes how long a quiet helper stays open (`None` = until the app closes); applies at once.
+    pub fn set_helper_idle(&self, idle: Option<Duration>) {
+        self.helper_idle_secs
+            .store(idle.map_or(0, |limit| limit.as_secs()), Ordering::SeqCst);
+    }
+
     /// Asks the watcher thread to exit.
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
@@ -116,11 +125,14 @@ impl Drop for WatchHandle {
 pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let debug_logging = Arc::new(AtomicBool::new(false));
+    // Until `set_helper_idle` says otherwise the helper stays open until the app closes.
+    let helper_idle_secs = Arc::new(AtomicU64::new(0));
     let (events_tx, events) = mpsc::channel();
     let (commands, commands_rx) = mpsc::channel();
     let loop_flags = WatcherFlags {
         stop: Arc::clone(&stop),
         debug_logging: Arc::clone(&debug_logging),
+        helper_idle_secs: Arc::clone(&helper_idle_secs),
     };
     let join = thread::Builder::new()
         .name("cloudflare-watch".into())
@@ -130,6 +142,7 @@ pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
     WatchHandle {
         stop,
         debug_logging,
+        helper_idle_secs,
         join,
         commands,
         next_retry: AtomicU64::new(1),
@@ -140,6 +153,7 @@ pub fn spawn_watcher(config: WatchConfig) -> WatchHandle {
 struct WatcherFlags {
     stop: Arc<AtomicBool>,
     debug_logging: Arc<AtomicBool>,
+    helper_idle_secs: Arc<AtomicU64>,
 }
 
 pub(super) struct Watcher<'a> {
@@ -152,6 +166,7 @@ pub(super) struct Watcher<'a> {
     pub(super) requests: HashMap<String, PendingRequest>,
     pub(super) owners: PromptOwners,
     pub(super) promotions: Vec<String>,
+    helper_idle_secs: Arc<AtomicU64>,
 }
 
 fn run_loop(
@@ -177,6 +192,7 @@ fn run_loop(
         requests: HashMap::new(),
         owners: PromptOwners::default(),
         promotions: Vec::new(),
+        helper_idle_secs: Arc::clone(&flags.helper_idle_secs),
     };
     while !flags.stop.load(Ordering::SeqCst) {
         watcher.tick(commands, &statuses);
@@ -199,6 +215,34 @@ impl Watcher<'_> {
         self.answer_orphan_fetches();
         for id in std::mem::take(&mut self.promotions) {
             self.promote(&id);
+        }
+        self.close_helper_if_idle();
+    }
+
+    /// Closes a quiet helper (a browser engine of 100-300 MB). Runs on the same thread that routes
+    /// requests, so a request cannot arrive in the middle of the decision; the next one starts the
+    /// helper again.
+    fn close_helper_if_idle(&mut self) {
+        let secs = self.helper_idle_secs.load(Ordering::SeqCst);
+        let pending_requests = self.requests.len();
+        let Some(helper) = self.helper.as_mut() else {
+            return;
+        };
+        if !helper.is_running() {
+            return;
+        }
+        let inputs = IdleInputs {
+            ttl: (secs > 0).then(|| Duration::from_secs(secs)),
+            since_last_command: helper.idle_for(),
+            pending_requests,
+            since_last_fetch_file: newest_fetch_file_age(&self.dir),
+        };
+        if should_stop(&inputs) {
+            tracing::info!(
+                idle_secs = helper.idle_for().as_secs(),
+                "closing the verification helper: idle"
+            );
+            helper.stop();
         }
     }
 

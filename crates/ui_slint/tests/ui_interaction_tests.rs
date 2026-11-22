@@ -262,6 +262,15 @@ fn verify_performance_card(ui: &CloudStream) {
     ui.invoke_set_performance_profile("Low-end".into());
     assert_eq!(chosen.borrow().as_str(), "Low-end");
 
+    ui.set_helper_idle_labels(strings(&["1 min", "2 min", "5 min", "15 min", "Never"]));
+    ui.set_helper_idle_value("5 min".into());
+    assert_eq!(ui.get_helper_idle_labels().row_count(), 5);
+    let idle = Rc::new(RefCell::new(String::new()));
+    let idle_ref = Rc::clone(&idle);
+    ui.on_set_helper_idle(move |label| *idle_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_helper_idle("Never".into());
+    assert_eq!(idle.borrow().as_str(), "Never");
+
     let resets = Rc::new(RefCell::new(0usize));
     let resets_ref = Rc::clone(&resets);
     ui.on_reset_performance(move || *resets_ref.borrow_mut() += 1);

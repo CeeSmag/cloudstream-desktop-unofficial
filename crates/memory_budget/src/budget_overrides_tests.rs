@@ -1,5 +1,5 @@
 use super::BudgetOverrides;
-use crate::ResidentPlugins;
+use crate::{HelperIdle, ResidentPlugins};
 
 #[test]
 fn nothing_changed_by_default() {
@@ -17,4 +17,13 @@ fn each_changed_field_counts_once() {
     };
     assert!(!overrides.is_empty());
     assert_eq!(overrides.changed_count(), 2);
+}
+
+#[test]
+fn the_helper_idle_choice_counts_as_a_change() {
+    let overrides = BudgetOverrides {
+        helper_idle: Some(HelperIdle::After(15)),
+        ..BudgetOverrides::default()
+    };
+    assert_eq!(overrides.changed_count(), 1);
 }

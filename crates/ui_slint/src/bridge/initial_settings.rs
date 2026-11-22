@@ -6,6 +6,7 @@ use player_api::all_languages;
 use super::performance_callbacks::show_performance;
 use super::preference_callbacks::apply_player_language_preferences;
 use super::subtitle_languages::show_subtitle_languages;
+use crate::performance_text::{helper_idle_label, helper_idle_labels};
 use crate::posters::string_model;
 use crate::CloudStream;
 
@@ -23,6 +24,15 @@ pub(crate) fn apply_settings_to_ui(ui: &CloudStream, services: &UiServices) {
 pub(crate) fn show_tuning_values(ui: &CloudStream, services: &UiServices) {
     apply_cache_choices(ui, services);
     apply_storage_and_workers(ui, services);
+    apply_helper_idle(ui, services);
+}
+
+fn apply_helper_idle(ui: &CloudStream, services: &UiServices) {
+    ui.set_helper_idle_labels(string_model(helper_idle_labels()));
+    match services.settings.helper_idle() {
+        Ok(idle) => ui.set_helper_idle_value(helper_idle_label(idle).into()),
+        Err(error) => tracing::warn!(%error, "could not read the verification helper idle time"),
+    }
 }
 
 fn apply_switches(ui: &CloudStream, services: &UiServices) {

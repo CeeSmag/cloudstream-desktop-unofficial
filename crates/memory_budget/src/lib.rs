@@ -9,6 +9,7 @@
 mod budget_choices;
 mod budget_overrides;
 mod budget_presets;
+mod helper_idle;
 mod memory_budget;
 mod memory_tier;
 mod profile_choice;
@@ -21,6 +22,7 @@ pub use budget_choices::{
     READ_AHEAD_CHOICES_PERCENT, STORAGE_LIMIT_CHOICES_GB, VIDEO_CACHE_CHOICES_MIB,
 };
 pub use budget_overrides::BudgetOverrides;
+pub use helper_idle::HelperIdle;
 pub use memory_budget::MemoryBudget;
 pub use memory_tier::MemoryTier;
 pub use profile_choice::ProfileChoice;

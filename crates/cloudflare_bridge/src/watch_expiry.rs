@@ -7,6 +7,9 @@ use super::watch_requests::{PendingRequest, RequestStage};
 
 impl Watcher<'_> {
     pub(super) fn browser_status(&mut self, status: HelperStatus) {
+        if let Some(helper) = self.helper.as_mut() {
+            helper.note_activity(); // the helper is doing something: not idle
+        }
         let (host, id) = match &status {
             HelperStatus::WindowOpen { .. } => return,
             HelperStatus::Passed { host, id } | HelperStatus::Failed { host, id, .. } => {

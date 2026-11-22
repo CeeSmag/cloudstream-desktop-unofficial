@@ -55,9 +55,24 @@ fn apply_limits_now(ctx: &BridgeContext) {
             playback.set_cache_limits(cache.while_watching()),
         );
     }
+    apply_helper_idle_now(ctx);
     if let Some(ui) = ctx.window() {
         show_tuning_values(&ui, services);
         show_performance(&ui, services);
+    }
+}
+
+/// Tells the Cloudflare watcher how long a quiet verification helper may stay open.
+pub(crate) fn apply_helper_idle_now(ctx: &BridgeContext) {
+    let idle = match ctx.services.settings.helper_idle() {
+        Ok(idle) => idle.as_duration(),
+        Err(error) => {
+            tracing::warn!(%error, "verification helper idle time not read");
+            return;
+        }
+    };
+    if let Some(watch) = ctx.extras.borrow().cloudflare.as_ref() {
+        watch.set_helper_idle(idle);
     }
 }
 

@@ -1,12 +1,34 @@
 //! The sites the viewer allowed to open a Cloudflare verification window.
 
+use memory_budget::HelperIdle;
+
 use crate::{ServiceError, SettingsService};
 
 const CLOUDFLARE_ALLOWED_KEY: &str = "cloudflare_allowed_hosts";
+pub(crate) const HELPER_IDLE_KEY: &str = "cloudflare_helper_idle";
 /// Hosts cannot contain spaces, so one separates them.
 const HOST_SEPARATOR: char = ' ';
 
 impl SettingsService {
+    /// How long the verification helper may sit idle before it is closed: what the viewer chose,
+    /// else the profile's value (2 minutes on a low-end PC, never on a high-end one).
+    pub fn helper_idle(&self) -> Result<HelperIdle, ServiceError> {
+        Ok(self.performance_budget()?.helper_idle)
+    }
+
+    /// Remembers the viewer's choice of idle time for the verification helper.
+    pub fn set_helper_idle(&self, idle: HelperIdle) -> Result<(), ServiceError> {
+        self.store_value(HELPER_IDLE_KEY, &idle.to_text())
+    }
+
+    /// The viewer's own choice, if one is stored and readable.
+    pub(crate) fn stored_helper_idle(&self) -> Result<Option<HelperIdle>, ServiceError> {
+        Ok(self
+            .stored(HELPER_IDLE_KEY)?
+            .as_deref()
+            .and_then(HelperIdle::parse))
+    }
+
     /// Sites the viewer pressed Verify for; their checks open a window without asking again.
     /// Single-label names are dropped (they would match every host under that TLD).
     pub fn cloudflare_allowed_hosts(&self) -> Result<Vec<String>, ServiceError> {

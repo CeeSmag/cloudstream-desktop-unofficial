@@ -2,7 +2,7 @@
 
 use crate::budget_choices::{is_offered_read_ahead, is_offered_storage_gb, is_offered_video_cache};
 use crate::budget_presets::preset;
-use crate::{BudgetOverrides, MemoryTier, ResidentPlugins};
+use crate::{BudgetOverrides, HelperIdle, MemoryTier, ResidentPlugins};
 
 /// The limits in force: immutable, built once from a tier and the viewer's overrides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +15,8 @@ pub struct MemoryBudget {
     pub video_read_ahead_percent: u8,
     /// Data folder limit, GB.
     pub storage_limit_gb: u32,
+    /// How long the Cloudflare verification helper may sit idle before it is closed.
+    pub helper_idle: HelperIdle,
 }
 
 impl MemoryBudget {
@@ -39,6 +41,10 @@ impl MemoryBudget {
                 .storage_limit_gb
                 .filter(|gb| is_offered_storage_gb(*gb))
                 .unwrap_or(base.storage_limit_gb),
+            helper_idle: overrides
+                .helper_idle
+                .filter(|choice| HelperIdle::CHOICES.contains(choice))
+                .unwrap_or(base.helper_idle),
         }
     }
 }
