@@ -1,13 +1,12 @@
 //! Home's expanded shelf view: vertical grid, page cache, and provider pagination.
 
-use std::collections::HashMap;
-
 use core_model::{HomePage, SearchResult};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::background_work::spawn_work;
-use crate::posters::posters_from_search;
+use crate::posters::{poster_rows_from_search, posters_from_search};
 use crate::request_tickets::RequestKind;
+use crate::shelf_pager::{ShelfPager, EXPANDED_PAGE_SIZE};
 use crate::ui_events::{HomeSectionPage, PosterKind, UiEvent};
 use crate::{CloudStream, HomeExpanded, PosterItem};
 
@@ -21,8 +20,11 @@ use super::poster_hydrate::hydrate_poster_images;
 #[derive(Debug, Clone)]
 pub(crate) struct ExpandedShelfState {
     pub(crate) shelf_index: usize,
+    /// The page on screen (1-based, pages of `EXPANDED_PAGE_SIZE`).
     pub(crate) page: u32,
-    pub(crate) pages: HashMap<u32, (Vec<SearchResult>, bool)>,
+    /// The page the viewer asked for while the provider's next page is being fetched.
+    pub(crate) awaiting: Option<u32>,
+    pub(crate) pager: ShelfPager,
 }
 
 /// Page metadata shown on the expanded shelf header and pager.
@@ -30,6 +32,16 @@ pub(crate) struct ExpandedShelfState {
 struct PageMeta {
     page: u32,
     has_next: bool,
+}
+
+/// What a provider page that arrived means for the expanded view.
+enum LoadedPage {
+    /// Show these titles as the new page.
+    Show(Vec<SearchResult>, PageMeta),
+    /// The provider had nothing more: stay on the last page and say so.
+    End,
+    /// Nobody waits for it (collapsed, replaced, repeated): drop it silently.
+    Ignored,
 }
 
 /// Connects the `HomeExpanded` global's callbacks to the bridge.
@@ -47,42 +59,62 @@ pub(crate) fn wire_home_expanded(ctx: &BridgeContext, ui: &CloudStream) {
     expanded.on_next_page(move || step_expanded_page(&c, 1));
 }
 
-/// Expands shelf `shelf_index` inline on Home, reusing already-hydrated posters.
+/// Expands shelf `shelf_index` inline on Home: page 1 of its titles, reusing the pictures the
+/// collapsed row already loaded.
 pub(crate) fn open_expanded_shelf(ctx: &BridgeContext, shelf_index: usize) {
     let Some(ui) = ctx.window() else {
         return;
     };
-    let shelf = {
-        let mut session = ctx.session.borrow_mut();
-        let Some(shelf) = session.home_shelves.get(shelf_index).cloned() else {
-            return;
-        };
-        session.tickets.cancel(RequestKind::HomeSection);
-        let mut pages = HashMap::new();
-        pages.insert(1, (shelf.items.clone(), shelf.has_next));
-        session.home_expanded = Some(ExpandedShelfState {
-            shelf_index,
-            page: 1,
-            pages,
-        });
-        shelf
+    let Some((titles, meta)) = begin_expanded(ctx, shelf_index) else {
+        return;
     };
-    let items = existing_shelf_posters(&ui, shelf_index)
-        .unwrap_or_else(|| posters_from_search(&shelf.items));
+    let mut rows = poster_rows_from_search(&titles);
+    if let Some(section) = ui.get_home_shelves().row_data(shelf_index) {
+        reuse_loaded_pictures(&mut rows, &section.items);
+    }
+    tracing::debug!(shelf_index, posters = rows.len(), "expanded a Home shelf");
     ui.global::<HomeExpanded>()
         .set_shelf_index(i32::try_from(shelf_index).unwrap_or(-1));
-    apply_page_view(
-        &ui,
-        items,
-        PageMeta {
-            page: 1,
-            has_next: shelf.has_next,
-        },
-    );
+    apply_page_view(&ui, ModelRc::new(VecModel::from(rows)), meta);
     hydrate_poster_images(ctx, PosterKind::HomeExpanded);
 }
 
-/// Collapses the inline expanded shelf so lower shelves reappear on Home.
+/// Starts the expanded state for a shelf and returns page 1's titles.
+fn begin_expanded(
+    ctx: &BridgeContext,
+    shelf_index: usize,
+) -> Option<(Vec<SearchResult>, PageMeta)> {
+    let mut session = ctx.session.borrow_mut();
+    let pager = {
+        let shelf = session.home_shelves.get(shelf_index)?;
+        ShelfPager::new(shelf.items.clone(), shelf.has_next, EXPANDED_PAGE_SIZE)
+    };
+    let titles = pager.page(1).map(<[SearchResult]>::to_vec)?;
+    let meta = PageMeta {
+        page: 1,
+        has_next: pager.has_page_after(1),
+    };
+    session.tickets.cancel(RequestKind::HomeSection);
+    session.home_expanded = Some(ExpandedShelfState {
+        shelf_index,
+        page: 1,
+        awaiting: None,
+        pager,
+    });
+    Some((titles, meta))
+}
+
+/// Copies the pictures of the collapsed row onto the same posters of the expanded page.
+fn reuse_loaded_pictures(rows: &mut [PosterItem], collapsed: &ModelRc<PosterItem>) {
+    for (row, loaded) in rows.iter_mut().zip(collapsed.iter()) {
+        if row.poster == loaded.poster {
+            row.image = loaded.image.clone();
+        }
+    }
+}
+
+/// Collapses the inline expanded shelf so lower shelves reappear on Home. The expanded page's
+/// posters are dropped with its model, so their pictures stop being held by the screen.
 pub(crate) fn close_expanded_shelf(ctx: &BridgeContext) {
     {
         let mut session = ctx.session.borrow_mut();
@@ -92,8 +124,13 @@ pub(crate) fn close_expanded_shelf(ctx: &BridgeContext) {
     if let Some(ui) = ctx.window() {
         let expanded = ui.global::<HomeExpanded>();
         expanded.set_shelf_index(-1);
+        expanded.set_items(ModelRc::new(VecModel::from(Vec::<PosterItem>::new())));
         expanded.set_loading(false);
         expanded.set_message("".into());
+        expanded.set_count_text("".into());
+        expanded.set_page(1);
+        expanded.set_has_prev(false);
+        expanded.set_has_next(false);
     }
 }
 
@@ -107,7 +144,7 @@ fn open_expanded_item(ctx: &BridgeContext, index: usize) {
 }
 
 enum PageStep {
-    Cached(Vec<SearchResult>, PageMeta),
+    Show(Vec<SearchResult>, PageMeta),
     Fetch(HomeShelf, usize, u32),
 }
 
@@ -122,12 +159,17 @@ fn step_expanded_page(ctx: &BridgeContext, delta: i32) {
         return;
     };
     match step {
-        PageStep::Cached(items, meta) => {
-            apply_page_view(&ui, posters_from_search(&items), meta);
+        PageStep::Show(titles, meta) => {
+            tracing::debug!(
+                page = meta.page,
+                posters = titles.len(),
+                "Home shelf page shown"
+            );
+            apply_page_view(&ui, posters_from_search(&titles), meta);
             hydrate_poster_images(ctx, PosterKind::HomeExpanded);
         }
-        PageStep::Fetch(shelf, shelf_index, target) => {
-            fetch_section_page(ctx, shelf, shelf_index, target);
+        PageStep::Fetch(shelf, shelf_index, provider_page) => {
+            fetch_section_page(ctx, shelf, shelf_index, provider_page);
         }
     }
 }
@@ -143,17 +185,24 @@ fn resolve_page_step(ctx: &BridgeContext, delta: i32) -> Option<PageStep> {
     if target < 1 || target == state.page {
         return None;
     }
-    if let Some((items, has_next)) = state.pages.get(&target).cloned() {
+    if let Some(titles) = state.pager.page(target).map(<[SearchResult]>::to_vec) {
         state.page = target;
-        let meta = PageMeta {
-            page: target,
-            has_next,
-        };
-        return Some(PageStep::Cached(items, meta));
+        let has_next = state.pager.has_page_after(target);
+        return Some(PageStep::Show(
+            titles,
+            PageMeta {
+                page: target,
+                has_next,
+            },
+        ));
     }
-    let shelf_index = state.shelf_index;
+    if !state.pager.needs_fetch_for(target) {
+        return None;
+    }
+    state.awaiting = Some(target);
+    let (shelf_index, provider_page) = (state.shelf_index, state.pager.next_provider_page());
     let shelf = session.home_shelves.get(shelf_index).cloned()?;
-    Some(PageStep::Fetch(shelf, shelf_index, target))
+    Some(PageStep::Fetch(shelf, shelf_index, provider_page))
 }
 
 fn fetch_section_page(ctx: &BridgeContext, shelf: HomeShelf, shelf_index: usize, page: u32) {
@@ -185,7 +234,7 @@ fn fetch_section_page(ctx: &BridgeContext, shelf: HomeShelf, shelf_index: usize,
     });
 }
 
-/// Applies a loaded page of the currently expanded Home shelf.
+/// Applies a provider page that arrived for the currently expanded Home shelf.
 pub(crate) fn show_home_section_page(
     ctx: &BridgeContext,
     ui: &CloudStream,
@@ -196,11 +245,12 @@ pub(crate) fn show_home_section_page(
     let (items, has_next) = match loaded.result {
         Ok(data) => data,
         Err(error) => {
-            expanded.set_message(format!("Could not load page {}: {error}", loaded.page).into());
+            clear_awaiting(ctx);
+            expanded.set_message(format!("Could not load more titles: {error}").into());
             return;
         }
     };
-    let applied = {
+    let outcome = {
         let mut session = ctx.session.borrow_mut();
         let Some(state) = session.home_expanded.as_mut() else {
             return;
@@ -208,26 +258,52 @@ pub(crate) fn show_home_section_page(
         if state.shelf_index != loaded.shelf_index {
             return;
         }
-        if items.is_empty() && loaded.page > 1 {
-            if let Some(current) = state.pages.get_mut(&state.page) {
-                current.1 = false;
-            }
-            return show_end_of_section(ui);
-        }
-        state.pages.insert(loaded.page, (items.clone(), has_next));
-        state.page = loaded.page;
-        true
+        accept_loaded_page(state, loaded.page, items, has_next)
     };
-    if applied {
-        apply_page_view(
-            ui,
-            posters_from_search(&items),
-            PageMeta {
-                page: loaded.page,
-                has_next,
-            },
-        );
-        hydrate_poster_images(ctx, PosterKind::HomeExpanded);
+    match outcome {
+        LoadedPage::Show(titles, meta) => {
+            apply_page_view(ui, posters_from_search(&titles), meta);
+            hydrate_poster_images(ctx, PosterKind::HomeExpanded);
+        }
+        LoadedPage::End => show_end_of_section(ui),
+        LoadedPage::Ignored => {}
+    }
+}
+
+/// Adds a delivered provider page to the shelf's pager and decides what the viewer sees.
+fn accept_loaded_page(
+    state: &mut ExpandedShelfState,
+    provider_page: u32,
+    items: Vec<SearchResult>,
+    has_next: bool,
+) -> LoadedPage {
+    let Some(target) = state.awaiting else {
+        return LoadedPage::Ignored;
+    };
+    if !state.pager.append(provider_page, items, has_next) {
+        return LoadedPage::Ignored;
+    }
+    state.awaiting = None;
+    match state.pager.page(target).map(<[SearchResult]>::to_vec) {
+        Some(titles) => {
+            state.page = target;
+            let has_next = state.pager.has_page_after(target);
+            LoadedPage::Show(
+                titles,
+                PageMeta {
+                    page: target,
+                    has_next,
+                },
+            )
+        }
+        None => LoadedPage::End,
+    }
+}
+
+/// Forgets the page being waited for (the fetch failed), so Next can try again.
+fn clear_awaiting(ctx: &BridgeContext) {
+    if let Some(state) = ctx.session.borrow_mut().home_expanded.as_mut() {
+        state.awaiting = None;
     }
 }
 
@@ -247,12 +323,6 @@ fn apply_page_view(ui: &CloudStream, items: ModelRc<PosterItem>, meta: PageMeta)
     expanded.set_has_prev(meta.page > 1);
     expanded.set_has_next(meta.has_next);
     expanded.set_count_text(expanded_count_text(count, meta.page, meta.has_next).into());
-}
-
-fn existing_shelf_posters(ui: &CloudStream, shelf_index: usize) -> Option<ModelRc<PosterItem>> {
-    let section = ui.get_home_shelves().row_data(shelf_index)?;
-    let cloned: Vec<PosterItem> = section.items.iter().collect();
-    Some(ModelRc::new(VecModel::from(cloned)))
 }
 
 /// Extracts the section matching `title` (or fallback index) from a provider's paged `HomePage`.

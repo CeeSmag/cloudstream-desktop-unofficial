@@ -52,6 +52,7 @@ Peak of the whole process tree, PSS:
 | Scenario | Peak total MiB | By role (MiB) | JVMs | Notes |
 |---|---|---|---|---|
 | S1 idle Home, 2 plugins | **1338.5** | app 896.5, jvm 442.0 | 2 | stable over 120 s; second run: app 893 MiB |
+| S1 after step 3b-1 (10 posters per collapsed shelf, expanded pages of 20) | **816.8** | app 356.3, jvm 460.4 | 2 | app process -540 MiB (-60%) vs the row above; same data copy, same binary otherwise |
 | S2-S6 | not measured yet | | | |
 
 Findings from S1 (these replace the estimates in the first version of the plan):
@@ -85,4 +86,4 @@ and the switch that turns it back off. A step stays only if its delta is real.
 
 | Step | Change | Measured delta | Rollback switch |
 |---|---|---|---|
-| (none yet) | | | |
+| 3b-1 | A collapsed Home shelf builds and loads only its first 10 posters (`COLLAPSED_SHELF_POSTERS`); the expanded grid shows pages of 20 (`EXPANDED_PAGE_SIZE`) over a `ShelfPager` that keeps the titles' text and asks the provider for more only when it runs out; collapsing clears the expanded model (it used to keep its pictures alive). Alternative considered: scroll-window hydration of the expanded grid; a page is simpler and bounds memory by construction. | S1 app process 896 -> 356 MiB; tree 1338 -> 817 MiB. Confirms decoded posters were the main cost. | Raise the two constants in `crates/ui_slint/src/shelf_pager.rs` (no runtime switch yet; they move to `MemoryBudget` in step 3a) |

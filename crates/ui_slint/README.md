@@ -20,7 +20,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
 | `browse_filters.rs`, `pagination.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters/pagination, plugin & repository search/sort |
-| `episode_groups.rs`, `posters.rs`, `bridge/home_expanded.rs` | Episode season/chunk grouping, Slint poster models, Home expanded shelf grid |
+| `episode_groups.rs`, `posters.rs`, `shelf_pager.rs`, `bridge/home_expanded.rs` | Episode grouping, poster models, Home shelf memory rule (a collapsed row builds 10 posters; the expanded grid shows pages of 20 over `ShelfPager`) |
 | `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs` | remote / keyboard navigation, Home banner |
 | `startup_progress.rs`, `discovery_progress.rs` | the start-up screen's text/bar and background repo-discovery progress |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |

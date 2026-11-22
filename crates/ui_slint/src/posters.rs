@@ -4,6 +4,7 @@ use core_model::{Bookmark, SearchResult, WatchProgress};
 use slint::{Image, ModelRc, VecModel};
 
 use crate::bridge::HomeShelf;
+use crate::shelf_pager::collapsed_items;
 use crate::text_sanitize::clean_display_text;
 use crate::{CastItem, EpisodeItem, PluginItem, PosterItem, ShelfSection};
 
@@ -48,9 +49,13 @@ pub(crate) fn decode_poster_headers(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Poster rows for `items`, without pictures yet.
+pub(crate) fn poster_rows_from_search(items: &[SearchResult]) -> Vec<PosterItem> {
+    items.iter().map(poster_from_search).collect()
+}
+
 pub(crate) fn posters_from_search(items: &[SearchResult]) -> ModelRc<PosterItem> {
-    let rows: Vec<PosterItem> = items.iter().map(poster_from_search).collect();
-    ModelRc::new(VecModel::from(rows))
+    ModelRc::new(VecModel::from(poster_rows_from_search(items)))
 }
 
 pub(crate) fn shelves_from_sections(sections: &[HomeShelf]) -> ModelRc<ShelfSection> {
@@ -58,13 +63,11 @@ pub(crate) fn shelves_from_sections(sections: &[HomeShelf]) -> ModelRc<ShelfSect
         .iter()
         .map(|shelf| ShelfSection {
             title: clean_display_text(&shelf.title).into(),
-            items: ModelRc::new(VecModel::from(
-                shelf
-                    .items
-                    .iter()
-                    .map(poster_from_search)
-                    .collect::<Vec<_>>(),
-            )),
+            // Only the first posters of a shelf exist as rows (and get pictures); the rest of its
+            // titles wait in the shelf's data until the viewer expands it.
+            items: ModelRc::new(VecModel::from(poster_rows_from_search(collapsed_items(
+                &shelf.items,
+            )))),
         })
         .collect();
     ModelRc::new(VecModel::from(rows))
