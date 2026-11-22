@@ -121,6 +121,19 @@ class CpuTests(unittest.TestCase):
         self.assertAlmostEqual(mm.window_cpu_percent(series, 10.0), 30.0)
         self.assertAlmostEqual(mm.window_cpu_percent(series, 20.0), 20.0)
 
+    def test_window_role_stats_separate_each_kind_of_process(self):
+        series = [
+            mm.TimedSample(0.0, 0, 0, {"app": (100.0, 0.0), "browser_helper": (900.0, 0.0)}),
+            mm.TimedSample(10.0, 0, 0, {"app": (120.0, 2.0), "browser_helper": (1100.0, 8.0)}),
+        ]
+        stats = mm.window_role_stats(series, 10.0)
+        self.assertAlmostEqual(stats["app"]["mib_avg"], 110.0)
+        self.assertAlmostEqual(stats["app"]["cpu_percent"], 20.0)
+        self.assertAlmostEqual(stats["browser_helper"]["cpu_percent"], 80.0)
+
+    def test_window_role_stats_of_a_series_without_roles_is_empty(self):
+        self.assertEqual(mm.window_role_stats([mm.TimedSample(0.0, 1.0, 0.0)], 10.0), {})
+
     def test_window_cpu_percent_of_a_short_series_is_zero(self):
         self.assertEqual(mm.window_cpu_percent([], 10.0), 0.0)
 

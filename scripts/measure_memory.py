@@ -47,6 +47,8 @@ class TimedSample:
     t: float
     total_mib: float
     cpu_seconds: float
+    # role -> (memory MiB, cumulative CPU seconds) of that kind of process
+    roles: dict = field(default_factory=dict)
 
 
 class CpuTotal:
@@ -98,6 +100,24 @@ def window_cpu_percent(series: list, window_s: float) -> float:
     first = next((s for s in series if last.t - s.t <= window_s), series[0])
     span = last.t - first.t
     return 100.0 * (last.cpu_seconds - first.cpu_seconds) / span if span > 0 else 0.0
+
+
+def window_role_stats(series: list, window_s: float) -> dict:
+    """Per role over the last `window_s` seconds: average memory (MiB) and CPU (percent of a core)."""
+    if len(series) < 2:
+        return {}
+    last = series[-1]
+    inside = [s for s in series if last.t - s.t <= window_s] or series[-1:]
+    first = inside[0]
+    span = last.t - first.t
+    stats = {}
+    for role in last.roles:
+        mibs = [s.roles[role][0] for s in inside if role in s.roles]
+        cpu_now = last.roles[role][1]
+        cpu_then = first.roles.get(role, (0.0, 0.0))[1]
+        percent = 100.0 * (cpu_now - cpu_then) / span if span > 0 else 0.0
+        stats[role] = {"mib_avg": sum(mibs) / len(mibs), "cpu_percent": percent}
+    return stats
 
 
 def descendants_of(samples: list, root_pid: int) -> list:
@@ -222,6 +242,7 @@ def read_snapshot() -> list:
 def sample_for(root_pid: int, duration_s: float, interval_s: float):
     """Summaries of the tree under `root_pid`, one per interval, and the timed series."""
     summaries, series, cpu = [], [], CpuTotal()
+    role_cpu = {}
     start = time.monotonic()
     deadline = start + duration_s
     while True:
@@ -230,9 +251,14 @@ def sample_for(root_pid: int, duration_s: float, interval_s: float):
             break  # the app exited
         summary = summarize(tree)
         cpu.add(tree)
+        for role in summary.by_role_mib:
+            role_cpu.setdefault(role, CpuTotal()).add([s for s in tree if role_of(s.name) == role])
         summaries.append(summary)
         now = time.monotonic()
-        series.append(TimedSample(now - start, summary.total_mib, cpu.seconds()))
+        roles = {
+            role: (mib, role_cpu[role].seconds()) for role, mib in summary.by_role_mib.items()
+        }
+        series.append(TimedSample(now - start, summary.total_mib, cpu.seconds(), roles))
         if now >= deadline:
             break
         time.sleep(interval_s)
@@ -254,6 +280,10 @@ def render_report(label: str, summaries: list, series=None, window_s: float = 30
         "metric": "working_set" if os.name == "nt" else "pss",
         "window_s": window_s,
         "window_cpu_percent": round(window_cpu_percent(series, window_s), 1),
+        "window_roles": {
+            role: {key: round(value, 1) for key, value in stat.items()}
+            for role, stat in window_role_stats(series, window_s).items()
+        },
         "series": [
             {"t": round(s.t, 1), "total_mib": round(s.total_mib, 1), "cpu_s": round(s.cpu_seconds, 2)}
             for s in series

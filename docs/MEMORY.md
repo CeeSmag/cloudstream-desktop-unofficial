@@ -88,6 +88,17 @@ Findings from S1 (these replace the estimates in the first version of the plan):
 * Playback on this machine decodes in hardware (`vaapi-copy`, from the app's own playback
   diagnostics line), so the "probably software decode" guess for the player was wrong here.
 
+## Finding: the Cloudflare verification helper can dwarf everything else
+
+During a real playback session (a recent movie whose plugin sources sit behind Cloudflare, 4K HEVC,
+software output, 2026-11-22) the whole tree measured **2000-2400 MiB at 70-100 % CPU**, and
+**1494 MiB of it was `browser_helper`**: the verification helper's WebKit engine (the earlier
+estimate was 100-300 MB). The player and the app together were under 730 MiB. The helper starts when a
+source needs a check (`verification helper started` in the log) and the idle close (step 1f) only
+applies once it is quiet, so while checks are running it is the largest consumer by far. The harness
+now reports memory and CPU per kind of process (`window_roles`) so a comparison can leave it out.
+Not yet addressed: limiting what a verification window loads or keeps; see the decision log.
+
 ## Measurement mistakes to avoid
 
 * Pass environment variables to `env` as separate words. An unquoted `$VAR` holding several
