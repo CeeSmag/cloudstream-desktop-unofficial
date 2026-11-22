@@ -6,8 +6,13 @@ use crate::RepoError;
 /// How long one probe may take; a host that is slower than this is not a good source anyway.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 /// How much of the start of the file is read: enough to tell a video or playlist from a web page
-/// and to read the track list at the start of a Matroska file.
+/// and to read the track list at the start of a Matroska file. Only this much is read; the rest of the
+/// body is never downloaded.
 const PROBE_BYTES: u64 = 32 * 1024;
+/// The range libmpv asks for on every request. The probe asks for exactly this, not for a small bounded
+/// range: some hosts serve a bounded range and refuse an open-ended one (403), so a bounded probe would
+/// call a source "working" that the player then cannot open.
+const PLAYER_RANGE: &str = "bytes=0-";
 /// Statuses with which hosts refuse a `Range` request (same set as `stream_proxy::origin_fetch`).
 const RANGE_REFUSED: &[u16] = &[400, 403, 405, 416];
 
@@ -75,8 +80,7 @@ impl UreqProbe {
         };
         let mut request = self.agent.get(url);
         if with_range {
-            let range = format!("bytes=0-{}", PROBE_BYTES - 1);
-            request = request.header("Range", range.as_str());
+            request = request.header("Range", PLAYER_RANGE);
         }
         for (name, value) in headers {
             request = request.header(name.as_str(), value.as_str());
@@ -169,6 +173,94 @@ mod tests {
             let _ = stream.write_all(next.as_bytes());
         });
         format!("http://127.0.0.1:{port}/video.mp4")
+    }
+
+    /// Serves `reply` to every request and records the request head of the last one.
+    fn serve_recording(reply: &'static str) -> (String, Arc<Mutex<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("address").port();
+        let seen = Arc::new(Mutex::new(String::new()));
+        let record = Arc::clone(&seen);
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0_u8; 2048];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                *record.lock().expect("lock") =
+                    String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        (format!("http://127.0.0.1:{port}/video.mp4"), seen)
+    }
+
+    /// A host like the gdflix workers: a bounded range is served, anything else is refused with 403.
+    fn serve_bounded_ranges_only() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("address").port();
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0_u8; 2048];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let head = String::from_utf8_lossy(&buffer[..read]).to_ascii_lowercase();
+                let bounded = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("range: bytes="))
+                    .is_some_and(|range| {
+                        range
+                            .trim()
+                            .split('-')
+                            .nth(1)
+                            .is_some_and(|end| !end.is_empty())
+                    });
+                let reply = if bounded {
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-3/100\r\nContent-Length: 4\r\nConnection: close\r\n\r\nabcd"
+                } else {
+                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                };
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        format!("http://127.0.0.1:{port}/video.mp4")
+    }
+
+    #[test]
+    fn the_probe_asks_for_the_start_exactly_as_the_player_does() {
+        let (url, seen) = serve_recording(
+            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-3/100\r\nContent-Length: 4\r\nConnection: close\r\n\r\nabcd",
+        );
+        UreqProbe::default().probe(&url, &[]).expect("answers");
+        let head = seen.lock().expect("lock").to_ascii_lowercase();
+        assert!(
+            head.contains("range: bytes=0-\r\n"),
+            "libmpv's open-ended range: {head}"
+        );
+    }
+
+    #[test]
+    fn a_host_that_serves_only_bounded_ranges_is_not_reported_as_working() {
+        let url = serve_bounded_ranges_only();
+        let response = UreqProbe::default().probe(&url, &[]).expect("answers");
+        assert_eq!(
+            response.status, 403,
+            "the player's request is refused, so is the probe's"
+        );
+    }
+
+    #[test]
+    fn only_the_start_of_a_long_body_is_read() {
+        // The host would send far more than the probe wants; the answer says so and the probe stops early.
+        let body: &'static str = Box::leak(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                PROBE_BYTES * 4,
+                "x".repeat(usize::try_from(PROBE_BYTES * 4).expect("fits"))
+            )
+            .into_boxed_str(),
+        );
+        let url = serve_once(body);
+        let response = UreqProbe::default().probe(&url, &[]).expect("answers");
+        assert_eq!(response.head.len() as u64, PROBE_BYTES);
+        assert_eq!(response.total_bytes, Some(PROBE_BYTES * 4));
     }
 
     #[test]
