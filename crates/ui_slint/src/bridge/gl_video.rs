@@ -180,10 +180,10 @@ fn texture_image(picture: &GlPicture) -> Option<Image> {
     // SAFETY: `texture` names a live 2D RGBA texture of the GL context Slint renders with: the
     // player made it in that same context and keeps it until its next `render` (which this code
     // calls before Slint draws) or `detach` (called at teardown, after which the image is
-    // forgotten), so Slint never draws a deleted texture. mpv draws with the origin at the bottom
-    // left, which is declared here.
+    // forgotten), so Slint never draws a deleted texture. mpv's picture comes out with its first row
+    // at the top of the texture (seen upside down when declared bottom-left), which is declared here.
     let image = unsafe { BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(texture, size) }
-        .origin(BorrowedOpenGLTextureOrigin::BottomLeft)
+        .origin(BorrowedOpenGLTextureOrigin::TopLeft)
         .build();
     Some(image)
 }

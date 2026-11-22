@@ -106,7 +106,8 @@ impl MpvRenderContext {
             h: c_int::try_from(height).map_err(|_| too_large(height))?,
             internal_format: 0, // unknown: mpv assumes a usable format
         };
-        // Textures are drawn with their origin at the bottom left, as GL expects: no flip.
+        // No flip here: the picture lands top-row-first in the texture, and the UI declares its
+        // origin as top-left (seen upside down the other way round, on a real run).
         let mut flip: c_int = 0;
         let mut params = [
             RenderParam {
