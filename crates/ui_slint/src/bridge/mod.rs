@@ -26,6 +26,7 @@ mod focus_screens;
 mod home_callbacks;
 mod home_expanded;
 mod home_loading;
+mod image_store;
 mod initial_settings;
 mod library_actions;
 mod performance_callbacks;

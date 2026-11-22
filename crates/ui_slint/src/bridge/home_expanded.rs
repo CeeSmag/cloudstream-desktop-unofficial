@@ -15,7 +15,7 @@ use super::bridge_context::BridgeContext;
 use super::details_loading::load_details;
 use super::home_callbacks::row;
 use super::home_loading::HomeShelf;
-use super::poster_hydrate::hydrate_poster_images;
+use super::poster_hydrate::{hydrate_poster_images, release_poster_images};
 
 /// State kept while a Home shelf is expanded into its vertical grid view.
 #[derive(Debug, Clone)]
@@ -122,6 +122,7 @@ pub(crate) fn close_expanded_shelf(ctx: &BridgeContext) {
         session.tickets.cancel(RequestKind::HomeSection);
         session.home_expanded = None;
     }
+    release_poster_images(ctx, PosterKind::HomeExpanded);
     if let Some(ui) = ctx.window() {
         let expanded = ui.global::<HomeExpanded>();
         expanded.set_shelf_index(-1);

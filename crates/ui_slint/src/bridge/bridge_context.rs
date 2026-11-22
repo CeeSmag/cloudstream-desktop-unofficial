@@ -11,6 +11,7 @@ use crate::CloudStream;
 
 use super::app_extras::AppExtras;
 use super::cloudflare_prompts::PromptQueue;
+use super::image_store::SharedImageStore;
 use super::session::Session;
 
 /// Shared handles of the UI thread. Cloning is cheap (reference counts only).
@@ -23,6 +24,8 @@ pub(crate) struct BridgeContext {
     pub(crate) extras: Rc<RefCell<AppExtras>>,
     /// The Cloudflare checks the banner shows, one at a time.
     pub(crate) prompts: Rc<RefCell<PromptQueue>>,
+    /// The decoded posters on screen, one picture per address.
+    pub(crate) images: SharedImageStore,
 }
 
 impl BridgeContext {

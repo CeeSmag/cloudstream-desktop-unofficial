@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::artwork_loader::{ArtworkResult, Job, Shared};
-use crate::{decode_artwork, DecodedArtwork};
+use crate::{decode_artwork_to, DecodedArtwork};
 
 pub(crate) fn load(shared: &Shared, job: &Job) -> ArtworkResult {
     if let Some(artwork) = from_disk(shared, job) {
@@ -17,7 +17,7 @@ fn from_disk(shared: &Shared, job: &Job) -> Option<Arc<DecodedArtwork>> {
         return None;
     }
     let bytes = shared.disk.as_ref().and_then(|disk| disk.load(&job.url))?;
-    match decode_artwork(&bytes) {
+    match decode_artwork_to(&bytes, job.size.max_width()) {
         Ok(artwork) => Some(Arc::new(artwork)),
         Err(error) => {
             tracing::debug!(%error, "a saved poster was unreadable; downloading it again");
@@ -34,7 +34,7 @@ fn from_network(shared: &Shared, job: &Job) -> ArtworkResult {
 }
 
 fn decode_fetched(shared: &Shared, job: &Job, bytes: Vec<u8>) -> ArtworkResult {
-    match decode_artwork(&bytes) {
+    match decode_artwork_to(&bytes, job.size.max_width()) {
         Ok(artwork) => {
             if job.persist {
                 if let Some(disk) = &shared.disk {

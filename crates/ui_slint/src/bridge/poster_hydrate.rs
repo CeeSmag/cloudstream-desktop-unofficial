@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use poster_artwork::DecodedArtwork;
+use poster_artwork::{ArtworkRequest, ArtworkSize, DecodedArtwork};
 use slint::{ComponentHandle, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer};
 
 use crate::posters::decode_poster_headers;
@@ -20,42 +20,73 @@ struct PosterSlot {
     url: String,
 }
 
-/// Starts loading the artwork of every poster in the `kind` model.
+/// Shows the artwork of every poster in the `kind` model: from the picture store when the address
+/// is already there (shared with every other tile), else loaded at tile size off the UI thread.
+/// The model's addresses are pinned for `kind`, so the pictures on screen are never evicted.
 pub(crate) fn hydrate_poster_images(ctx: &BridgeContext, kind: PosterKind) {
     let Some(ui) = ctx.window() else {
         return;
     };
+    let rows = poster_rows(&ui, kind);
+    ctx.images.with(|store| {
+        store.set_pins(
+            kind,
+            rows.iter().map(|(_, _, item)| item.poster.to_string()),
+        );
+    });
     let referers = provider_referers(ctx);
-    for (shelf, index, item) in poster_rows(&ui, kind) {
-        let url = item.poster.to_string();
+    for (shelf, index, item) in rows {
         let slot = PosterSlot {
             kind,
             shelf,
             index,
-            url: url.clone(),
+            url: item.poster.to_string(),
         };
-        if let Some(artwork) = ctx.services.artwork.cached(&url) {
-            apply_image(&ui, &slot, pixel_buffer(&artwork));
+        if let Some(pixels) = ctx.images.with(|store| store.get(&slot.url)) {
+            apply_image(&ui, &slot, pixels);
             continue;
         }
         let referer = referers.get(item.provider.as_str()).map(String::as_str);
-        let headers = poster_request_headers(&item.poster_headers, referer);
-        let weak = ctx.ui.clone();
-        ctx.services.artwork.request(
-            &url,
-            headers,
-            Box::new(move |result| {
-                let Ok(artwork) = result else {
-                    return; // the loader logged why; the tile keeps its placeholder
-                };
-                let buffer = pixel_buffer(&artwork);
-                let shown = weak.upgrade_in_event_loop(move |ui| apply_image(&ui, &slot, buffer));
-                if let Err(error) = shown {
-                    tracing::debug!(%error, "window closed before a poster arrived");
-                }
-            }),
-        );
+        request_tile(ctx, slot, &item, referer);
     }
+}
+
+/// Lets go of every picture `kind` showed (its model was cleared); they stay only as long as the
+/// budget allows, for a quick return.
+pub(crate) fn release_poster_images(ctx: &BridgeContext, kind: PosterKind) {
+    ctx.images
+        .with(|store| store.set_pins(kind, std::iter::empty()));
+}
+
+fn request_tile(ctx: &BridgeContext, slot: PosterSlot, item: &PosterItem, referer: Option<&str>) {
+    let headers = poster_request_headers(&item.poster_headers, referer);
+    let weak = ctx.ui.clone();
+    let images = ctx.images.clone();
+    let url = slot.url.clone();
+    let request = ArtworkRequest {
+        raw_url: &url,
+        size: ArtworkSize::Tile,
+        headers,
+    };
+    ctx.services.artwork.request_sized(
+        request,
+        Box::new(move |result| {
+            let Ok(artwork) = result else {
+                return; // the loader logged why; the tile keeps its placeholder
+            };
+            let shown = weak.upgrade_in_event_loop(move |ui| {
+                // Every tile of this address ends up with the same buffer, filed once.
+                let pixels = images.with(|store| match store.get(&slot.url) {
+                    Some(stored) => stored,
+                    None => store.insert(&slot.url, pixel_buffer(&artwork)),
+                });
+                apply_image(&ui, &slot, pixels);
+            });
+            if let Err(error) = shown {
+                tracing::debug!(%error, "window closed before a poster arrived");
+            }
+        }),
+    );
 }
 
 /// The provider's own poster headers, plus its site as `Referer` when it named none.

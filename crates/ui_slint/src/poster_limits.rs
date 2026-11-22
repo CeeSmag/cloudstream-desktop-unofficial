@@ -9,6 +9,11 @@ pub(crate) const COLLAPSED_SHELF_POSTERS: usize = 10;
 /// Posters on one page of an expanded shelf.
 pub(crate) const EXPANDED_PAGE_SIZE: usize = 20;
 
+/// Bytes of decoded poster pixels kept: every picture on screen, plus released ones up to this many
+/// bytes (the ones on screen are never dropped, so a screen can exceed it). A tile decoded at 240 px
+/// is 0.35 MB, so this is about 190 tiles.
+pub(crate) const IMAGE_STORE_BYTES: usize = 64 * 1024 * 1024;
+
 // A collapsed row is a prefix of the first expanded page, so expanding reuses its pictures.
 const _: () = assert!(COLLAPSED_SHELF_POSTERS <= EXPANDED_PAGE_SIZE);
 

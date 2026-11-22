@@ -11,7 +11,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use crate::artwork_load;
 use crate::artwork_memory_cache::MemoryCache;
 use crate::{
-    poster_address, ArtworkError, ArtworkFetcher, ArtworkHeaders, DecodedArtwork, DiskCache,
+    poster_address, ArtworkError, ArtworkFetcher, ArtworkHeaders, ArtworkSize, DecodedArtwork,
+    DiskCache,
 };
 
 /// What a request gets back.
@@ -24,6 +25,16 @@ pub type ArtworkCallback = Box<dyn FnOnce(ArtworkResult) + Send>;
 pub const DEFAULT_WORKERS: usize = 6;
 /// Decoded posters kept in memory by default (about 190 tiles of 360x540).
 pub const DEFAULT_MEMORY_BUDGET_BYTES: usize = 144 * 1024 * 1024;
+
+/// What to load: an address, the size to decode it at and the headers to download it with.
+pub struct ArtworkRequest<'a> {
+    /// The poster's address as the provider gave it.
+    pub raw_url: &'a str,
+    /// How wide it is decoded.
+    pub size: ArtworkSize,
+    /// Headers sent if it has to be downloaded.
+    pub headers: ArtworkHeaders,
+}
 
 /// How the loader is set up.
 pub struct ArtworkLoaderConfig {
@@ -47,6 +58,9 @@ impl Default for ArtworkLoaderConfig {
 
 pub(crate) struct Job {
     pub(crate) url: String,
+    /// What the answer is filed under (the address, plus the size when it is a tile).
+    pub(crate) key: String,
+    pub(crate) size: ArtworkSize,
     pub(crate) headers: ArtworkHeaders,
     /// When false, skip disk load/save (details poster); memory cache still used.
     pub(crate) persist: bool,
@@ -54,6 +68,7 @@ pub(crate) struct Job {
 
 struct JobSpec<'a> {
     raw_url: &'a str,
+    size: ArtworkSize,
     headers: ArtworkHeaders,
     persist: bool,
     on_done: ArtworkCallback,
@@ -112,17 +127,35 @@ impl ArtworkLoader {
         Self { shared }
     }
 
-    /// The poster for `raw_url` when it is already in memory.
+    /// The full-size poster for `raw_url` when it is already in memory.
     pub fn cached(&self, raw_url: &str) -> Option<Arc<DecodedArtwork>> {
-        let url = poster_address(raw_url).ok()?;
-        self.shared.lock_memory().get(&url)
+        self.cached_sized(raw_url, ArtworkSize::Full)
     }
 
-    /// Loads `raw_url` (sending `headers` if it has to be downloaded) and calls `on_done` once.
+    /// The poster for `raw_url` at `size` when it is already in memory.
+    pub fn cached_sized(&self, raw_url: &str, size: ArtworkSize) -> Option<Arc<DecodedArtwork>> {
+        let url = poster_address(raw_url).ok()?;
+        self.shared.lock_memory().get(&size.cache_key(&url))
+    }
+
+    /// Loads `raw_url` full size (sending `headers` if it has to be downloaded) and calls `on_done`
+    /// once.
     pub fn request(&self, raw_url: &str, headers: ArtworkHeaders, on_done: ArtworkCallback) {
-        self.enqueue(JobSpec {
+        let request = ArtworkRequest {
             raw_url,
+            size: ArtworkSize::Full,
             headers,
+        };
+        self.request_sized(request, on_done);
+    }
+
+    /// Like [`Self::request`], at the request's size (tiles are decoded narrower and cost less
+    /// memory).
+    pub fn request_sized(&self, request: ArtworkRequest<'_>, on_done: ArtworkCallback) {
+        self.enqueue(JobSpec {
+            raw_url: request.raw_url,
+            size: request.size,
+            headers: request.headers,
             persist: true,
             on_done,
         });
@@ -137,6 +170,7 @@ impl ArtworkLoader {
     ) {
         self.enqueue(JobSpec {
             raw_url,
+            size: ArtworkSize::Full,
             headers,
             persist: false,
             on_done,
@@ -148,7 +182,9 @@ impl ArtworkLoader {
         let Ok(url) = poster_address(raw_url) else {
             return;
         };
-        let _ = self.shared.lock_memory().forget(&url);
+        let mut memory = self.shared.lock_memory();
+        let _ = memory.forget(&ArtworkSize::Full.cache_key(&url));
+        let _ = memory.forget(&ArtworkSize::Tile.cache_key(&url));
     }
 
     fn enqueue(&self, spec: JobSpec<'_>) {
@@ -156,6 +192,7 @@ impl ArtworkLoader {
             Ok(url) => url,
             Err(error) => return (spec.on_done)(Err(error)),
         };
+        let key = spec.size.cache_key(&url);
         let mut state = self.shared.lock_state();
         if state.closed {
             drop(state);
@@ -163,23 +200,25 @@ impl ArtworkLoader {
         }
         // Checked under the queue lock: a worker files its result in memory under the same lock,
         // so an address is never downloaded twice by a request racing its own completion.
-        let hit = self.shared.lock_memory().get(&url);
+        let hit = self.shared.lock_memory().get(&key);
         if let Some(artwork) = hit {
             drop(state);
             return (spec.on_done)(Ok(artwork));
         }
-        if let Some(waiters) = state.waiting.get_mut(&url) {
+        if let Some(waiters) = state.waiting.get_mut(&key) {
             waiters.push(spec.on_done);
             if spec.persist {
-                if let Some(job) = state.jobs.iter_mut().rev().find(|job| job.url == url) {
+                if let Some(job) = state.jobs.iter_mut().rev().find(|job| job.key == key) {
                     job.persist = true;
                 }
             }
             return;
         }
-        state.waiting.insert(url.clone(), vec![spec.on_done]);
+        state.waiting.insert(key.clone(), vec![spec.on_done]);
         state.jobs.push(Job {
             url,
+            key,
+            size: spec.size,
             headers: spec.headers,
             persist: spec.persist,
         });
@@ -239,9 +278,9 @@ fn run_worker(shared: &Shared) {
             if let Ok(artwork) = &result {
                 shared
                     .lock_memory()
-                    .insert(job.url.clone(), Arc::clone(artwork));
+                    .insert(job.key.clone(), Arc::clone(artwork));
             }
-            state.waiting.remove(&job.url).unwrap_or_default()
+            state.waiting.remove(&job.key).unwrap_or_default()
         };
         for on_done in waiters {
             on_done(result.clone());

@@ -7,7 +7,10 @@ use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::{ArtworkError, ArtworkFetcher, ArtworkLoader, ArtworkLoaderConfig, ArtworkResult};
+use crate::{
+    ArtworkError, ArtworkFetcher, ArtworkLoader, ArtworkLoaderConfig, ArtworkRequest,
+    ArtworkResult, ArtworkSize,
+};
 
 /// Counts downloads per address; can hold every download until released.
 #[derive(Default)]
@@ -17,6 +20,8 @@ struct ScriptedFetcher {
     held: Mutex<bool>,
     released: Condvar,
     failing: Mutex<Vec<String>>,
+    /// Serve a 720x1080 image instead of the tiny one.
+    wide: bool,
 }
 
 impl ScriptedFetcher {
@@ -42,7 +47,11 @@ impl ScriptedFetcher {
 }
 
 fn tiny_png() -> Vec<u8> {
-    let image = image::RgbaImage::from_pixel(2, 3, image::Rgba([1, 2, 3, 255]));
+    solid_png(2, 3)
+}
+
+fn solid_png(width: u32, height: u32) -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(width, height, image::Rgba([1, 2, 3, 255]));
     let mut bytes = Vec::new();
     image
         .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
@@ -73,7 +82,11 @@ impl ArtworkFetcher for ScriptedFetcher {
         {
             return Err(ArtworkError::Status(404));
         }
-        Ok(tiny_png())
+        Ok(if self.wide {
+            solid_png(720, 1080)
+        } else {
+            tiny_png()
+        })
     }
 }
 
@@ -347,4 +360,57 @@ fn persistent_request_writes_disk_while_ephemeral_skips_existing_file() {
     assert_eq!(fetcher.calls_for(url), 2);
     assert_eq!(count_img_files(&dir), 1);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_tile_request_is_decoded_narrower_than_a_full_request_for_the_same_address() {
+    let fetcher = Arc::new(ScriptedFetcher {
+        wide: true,
+        ..ScriptedFetcher::default()
+    });
+    let loader = loader(&fetcher, 1);
+    let (tile_tx, tile_rx) = mpsc::channel();
+    loader.request_sized(tile("https://img.test/a.jpg"), reporter(&tile_tx));
+    let tile = tile_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("tile")
+        .expect("ok");
+    assert_eq!((tile.width, tile.height), (240, 360));
+    let (full_tx, full_rx) = mpsc::channel();
+    loader.request("https://img.test/a.jpg", Vec::new(), reporter(&full_tx));
+    let full = full_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("full")
+        .expect("ok");
+    assert_eq!((full.width, full.height), (360, 540));
+}
+
+#[test]
+fn a_tile_loaded_once_is_answered_from_memory_the_second_time() {
+    let fetcher = Arc::new(ScriptedFetcher::default());
+    let loader = loader(&fetcher, 1);
+    let (tx, rx) = mpsc::channel();
+    loader.request_sized(tile("https://img.test/b.jpg"), reporter(&tx));
+    rx.recv_timeout(Duration::from_secs(5))
+        .expect("first")
+        .expect("ok");
+    assert!(loader
+        .cached_sized("https://img.test/b.jpg", ArtworkSize::Tile)
+        .is_some());
+    assert!(loader
+        .cached_sized("https://img.test/b.jpg", ArtworkSize::Full)
+        .is_none());
+    loader.request_sized(tile("https://img.test/b.jpg"), reporter(&tx));
+    rx.recv_timeout(Duration::from_secs(5))
+        .expect("second")
+        .expect("ok");
+    assert_eq!(fetcher.calls_for("https://img.test/b.jpg"), 1);
+}
+
+fn tile(raw_url: &str) -> ArtworkRequest<'_> {
+    ArtworkRequest {
+        raw_url,
+        size: ArtworkSize::Tile,
+        headers: Vec::new(),
+    }
 }

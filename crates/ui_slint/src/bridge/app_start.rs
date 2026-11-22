@@ -20,9 +20,11 @@ use super::cloudflare_prompts::PromptQueue;
 use super::debug_logging::apply_saved_debug_logging;
 use super::event_dispatch::drain_events;
 use super::focus_screens::follow_window_width;
+use super::image_store::SharedImageStore;
 use super::initial_settings::apply_settings_to_ui;
 use super::player_polling::{poll_player, show_latest_frame};
 use super::session::Session;
+use crate::poster_limits::IMAGE_STORE_BYTES;
 
 /// How often the UI thread picks up background results and reads the player's status.
 const UI_TICK: Duration = Duration::from_millis(200);
@@ -40,6 +42,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
         pump: Rc::new(EventPump::new()),
         extras: Rc::new(RefCell::new(extras)),
         prompts: Rc::new(RefCell::new(PromptQueue::default())),
+        images: SharedImageStore::new(IMAGE_STORE_BYTES),
     };
     set_empty_models(&ui);
     apply_settings_to_ui(&ui, &ctx.services);

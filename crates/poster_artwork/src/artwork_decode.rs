@@ -5,6 +5,38 @@ use crate::ArtworkError;
 /// Posters are shown at most this many pixels wide (tiles, hero art on a TV); wider images are
 /// shrunk so each one costs well under a megabyte of memory instead of up to 25 MB.
 pub const MAX_ARTWORK_WIDTH: u32 = 360;
+/// Poster tiles are decoded this wide: a tile is shown about 160 px wide, and every pixel kept in
+/// memory costs 4 bytes, so a tile at 240 px costs 0.35 MB instead of 0.78 MB at 360 px. A fixed
+/// choice for every PC (see `docs/MEMORY.md`).
+pub const TILE_ARTWORK_WIDTH: u32 = 240;
+
+/// How wide a decoded image may be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArtworkSize {
+    /// A poster tile in a row or grid: [`TILE_ARTWORK_WIDTH`].
+    Tile,
+    /// Hero and details artwork: [`MAX_ARTWORK_WIDTH`].
+    Full,
+}
+
+impl ArtworkSize {
+    /// The widest this size is decoded.
+    pub fn max_width(self) -> u32 {
+        match self {
+            Self::Tile => TILE_ARTWORK_WIDTH,
+            Self::Full => MAX_ARTWORK_WIDTH,
+        }
+    }
+
+    /// The key a decoded image of this size is kept under: the plain address for `Full`, so the two
+    /// sizes of one address never answer each other.
+    pub(crate) fn cache_key(self, url: &str) -> String {
+        match self {
+            Self::Tile => format!("tile|{url}"),
+            Self::Full => url.to_owned(),
+        }
+    }
+}
 
 /// A decoded poster, 8-bit RGBA, row after row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,11 +58,16 @@ impl DecodedArtwork {
 
 /// Decodes `bytes` (JPEG, PNG, WebP or GIF) and shrinks it to [`MAX_ARTWORK_WIDTH`].
 pub fn decode_artwork(bytes: &[u8]) -> Result<DecodedArtwork, ArtworkError> {
+    decode_artwork_to(bytes, MAX_ARTWORK_WIDTH)
+}
+
+/// Decodes `bytes` and shrinks it to `max_width` (never enlarges).
+pub fn decode_artwork_to(bytes: &[u8], max_width: u32) -> Result<DecodedArtwork, ArtworkError> {
     let image =
         image::load_from_memory(bytes).map_err(|error| ArtworkError::Decode(error.to_string()))?;
-    let image = if image.width() > MAX_ARTWORK_WIDTH {
-        let height = scaled_height(image.width(), image.height(), MAX_ARTWORK_WIDTH);
-        image.thumbnail_exact(MAX_ARTWORK_WIDTH, height)
+    let image = if image.width() > max_width {
+        let height = scaled_height(image.width(), image.height(), max_width);
+        image.thumbnail_exact(max_width, height)
     } else {
         image
     };
@@ -91,6 +128,34 @@ mod tests {
             decode_artwork(truncated),
             Err(ArtworkError::Decode(_))
         ));
+    }
+
+    #[test]
+    fn decode_artwork_to_shrinks_to_the_width_asked_for() {
+        let decoded = decode_artwork_to(&png(720, 1080), 240).expect("decode");
+        assert_eq!((decoded.width, decoded.height), (240, 360));
+        assert_eq!(decoded.byte_size(), 240 * 360 * 4);
+    }
+
+    #[test]
+    fn a_tile_is_decoded_narrower_than_a_full_image() {
+        assert_eq!(ArtworkSize::Tile.max_width(), TILE_ARTWORK_WIDTH);
+        assert_eq!(ArtworkSize::Full.max_width(), MAX_ARTWORK_WIDTH);
+        assert!(ArtworkSize::Tile.max_width() < ArtworkSize::Full.max_width());
+    }
+
+    #[test]
+    fn the_two_sizes_never_share_a_cache_key() {
+        let url = "https://img.test/a.jpg";
+        assert_ne!(
+            ArtworkSize::Tile.cache_key(url),
+            ArtworkSize::Full.cache_key(url)
+        );
+        assert_eq!(
+            ArtworkSize::Full.cache_key(url),
+            url,
+            "full keeps the plain address"
+        );
     }
 
     #[test]

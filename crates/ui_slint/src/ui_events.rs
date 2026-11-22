@@ -150,7 +150,7 @@ pub(crate) struct ReadySubtitleEvent {
 }
 
 /// Which poster model an artwork result belongs to.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PosterKind {
     Search,
     Browse,

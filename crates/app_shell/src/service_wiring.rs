@@ -126,10 +126,16 @@ fn assemble_services(parts: AssembleParts<'_>) -> UiServices {
     }
 }
 
+/// Decoded posters the loader itself keeps (hero and details art, repeated asks while one loads).
+/// The tiles on screen are kept by the UI's picture store, once per address; a large cache here
+/// would hold every tile a second time.
+const ARTWORK_LOADER_MEMORY_BYTES: usize = 16 * 1024 * 1024;
+
 /// The poster loader, with downloaded files kept in `dir` (trimmed by the post-Home cleanup worker).
 fn build_artwork(dir: &Path) -> Arc<ArtworkLoader> {
     let config = ArtworkLoaderConfig {
         disk: Some(DiskCache::new(dir)),
+        memory_budget_bytes: ARTWORK_LOADER_MEMORY_BYTES,
         ..ArtworkLoaderConfig::default()
     };
     Arc::new(ArtworkLoader::new(
