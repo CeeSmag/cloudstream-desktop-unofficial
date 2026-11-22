@@ -105,7 +105,7 @@ impl SidecarLaunchConfig {
         self
     }
 
-    fn add_java_option(&mut self, option: &str) {
+    pub(crate) fn add_java_option(&mut self, option: &str) {
         let existing = self
             .environment
             .iter_mut()

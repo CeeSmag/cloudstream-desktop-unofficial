@@ -9,6 +9,7 @@ mod call_timeouts;
 pub mod fake_link_search;
 #[cfg(feature = "test-support")]
 pub mod fake_search_runtime;
+mod jvm_profile;
 mod plugin_worker_maps;
 mod plugin_worker_pool;
 mod plugin_worker_resident;
@@ -50,6 +51,7 @@ mod sidecar_process_transport;
 mod sidecar_spawn_mode;
 mod sidecar_spawn_thread;
 
+pub use jvm_profile::JvmProfile;
 pub use plugin_worker_pool::PluginWorkerPool;
 pub use rpc_provider_gateway::RpcProviderGateway;
 pub use rpc_transport::RpcTransport;

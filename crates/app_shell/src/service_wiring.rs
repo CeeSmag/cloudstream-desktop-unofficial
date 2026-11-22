@@ -8,7 +8,7 @@ use app_services::{
 };
 use extension_api::ProviderGateway;
 use extension_repo::{ExtensionInstaller, HttpFetcher, UreqFetcher};
-use extension_runtime::PluginWorkerPool;
+use extension_runtime::{JvmProfile, PluginWorkerPool};
 use memory_budget::SystemProbe;
 use player_api::VideoPlayer;
 use player_mpv::{MpvPlayer, PlayerOptions};
@@ -156,12 +156,28 @@ fn apply_worker_limit(settings: &SettingsService, gateway: &dyn ProviderGateway)
     }
 }
 
+/// The plugin JVM profile: lean unless `CS_JVM_PROFILE=legacy` asks for the JVM's own defaults
+/// (the way back if a plugin does not run lean).
+fn jvm_profile(setting: Option<&str>) -> JvmProfile {
+    let Some(text) = setting else {
+        return JvmProfile::default();
+    };
+    JvmProfile::parse(text).unwrap_or_else(|| {
+        tracing::warn!(
+            setting = text,
+            "unknown CS_JVM_PROFILE; using the lean profile"
+        );
+        JvmProfile::default()
+    })
+}
+
 fn build_gateway(sidecar_data_dir: &Path) -> Arc<dyn ProviderGateway> {
     match sidecar_discovery::discover() {
         Ok(config) => {
             let config = config
                 .with_data_dir(sidecar_data_dir)
-                .with_system_trust_store();
+                .with_system_trust_store()
+                .with_jvm_profile(jvm_profile(std::env::var("CS_JVM_PROFILE").ok().as_deref()));
             tracing::info!(
                 program = %config.program.display(),
                 "using JVM sidecar (one process per plugin)"
@@ -217,5 +233,22 @@ fn build_playback(
             tracing::warn!(%problem, "playback unavailable");
             (None, Some(problem))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_jvm_profile_is_lean_unless_legacy_is_asked_for() {
+        assert_eq!(jvm_profile(None), JvmProfile::Lean);
+        assert_eq!(jvm_profile(Some("legacy")), JvmProfile::Legacy);
+        assert_eq!(jvm_profile(Some("LEAN")), JvmProfile::Lean);
+        assert_eq!(
+            jvm_profile(Some("turbo")),
+            JvmProfile::Lean,
+            "unknown falls back"
+        );
     }
 }
