@@ -166,3 +166,130 @@ fn uninstall_unloads_the_runtime_so_a_reinstall_can_load_again() {
         .any(|provider| provider.name == "Good"));
     let _ = fs::remove_dir_all(dir);
 }
+
+fn with_icon(name: &str, icon: &str) -> PluginListing {
+    PluginListing {
+        icon_url: Some(icon.into()),
+        ..listing(name)
+    }
+}
+
+fn icon_of(service: &ExtensionService, name: &str) -> Option<String> {
+    service
+        .installed()
+        .expect("list")
+        .into_iter()
+        .find(|e| e.internal_name == name)
+        .and_then(|e| e.icon_url)
+}
+
+#[test]
+fn a_blank_icon_from_the_repository_is_not_recorded() {
+    let (service, _, dir) = setup("blank_icon");
+    service
+        .install(&with_icon("Good", "   "), REPO)
+        .expect("installs");
+    assert_eq!(icon_of(&service, "Good"), None);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn remember_icons_fills_in_missing_icons_and_never_replaces_one() {
+    let (service, _, dir) = setup("icons");
+    service.install(&listing("Bare"), REPO).expect("installs");
+    service
+        .install(&with_icon("Dressed", "https://i/own.png"), REPO)
+        .expect("installs");
+    service
+        .install(&listing("StillBare"), REPO)
+        .expect("installs");
+
+    service.remember_icons(&[
+        with_icon("Bare", "https://i/bare.png"),
+        with_icon("Dressed", "https://i/other.png"),
+        with_icon("StillBare", " "),
+        with_icon("NotInstalled", "https://i/x.png"),
+    ]);
+
+    assert_eq!(
+        icon_of(&service, "Bare").as_deref(),
+        Some("https://i/bare.png")
+    );
+    assert_eq!(
+        icon_of(&service, "Dressed").as_deref(),
+        Some("https://i/own.png")
+    );
+    assert_eq!(
+        icon_of(&service, "StillBare"),
+        None,
+        "a blank icon is no icon"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn providers_of_names_what_each_file_registered() {
+    let (service, _, dir) = setup("providers_of");
+    service.install(&listing("Good"), REPO).expect("installs");
+    let record = service.installed().expect("list").remove(0);
+    assert_eq!(service.providers_of(&record.file_name), ["Good"]);
+    assert!(service.providers_of("Unknown.cs3").is_empty());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn repositories_the_plugins_asked_for_are_handed_out_once() {
+    let (service, gateway, dir) = setup("added_repos");
+    let found = DiscoveredRepository {
+        name: "Mega".into(),
+        url: "https://mega.example/repo.json".into(),
+        icon_url: None,
+    };
+    gateway
+        .added_repositories
+        .lock()
+        .expect("lock")
+        .push(found.clone());
+    assert_eq!(service.take_added_repositories().expect("taken"), [found]);
+    assert!(service.take_added_repositories().expect("taken").is_empty());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn runtime_controls_reach_the_runtime_and_a_refused_debug_choice_is_not_an_error() {
+    let (service, gateway, dir) = setup("controls");
+    service.set_debug_logging(true);
+    gateway
+        .refuses_debug_logging
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    service.set_debug_logging(false);
+    service.extend_call_deadline(Duration::from_secs(30));
+    service.shutdown();
+    assert_eq!(
+        *gateway.controls.lock().expect("lock"),
+        ["debug true", "debug false", "extend 30s", "shutdown"]
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn reloading_one_extension_keeps_every_other_extensions_providers() {
+    let (service, _, dir) = setup("reload_keeps");
+    service.install(&listing("Good"), REPO).expect("installs");
+    service.install(&listing("Other"), REPO).expect("installs");
+    let good = service
+        .installed()
+        .expect("list")
+        .into_iter()
+        .find(|e| e.internal_name == "Good")
+        .expect("recorded");
+    service.set_trusted(&good, true).expect("trust");
+    let mut names: Vec<String> = service.providers().into_iter().map(|p| p.name).collect();
+    names.sort();
+    assert_eq!(
+        names,
+        ["Good", "Other"],
+        "one entry each, nothing dropped or doubled"
+    );
+    let _ = fs::remove_dir_all(dir);
+}

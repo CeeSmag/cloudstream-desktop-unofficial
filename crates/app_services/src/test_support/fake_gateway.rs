@@ -4,8 +4,8 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use core_model::{
-    HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry, PlayableLinks,
-    ProviderInfo, SearchPage, SearchResult,
+    DiscoveredRepository, HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry,
+    PlayableLinks, ProviderInfo, SearchPage, SearchResult,
 };
 use extension_api::{GatewayError, ProviderGateway};
 
@@ -26,6 +26,21 @@ pub(crate) struct FakeGateway {
     pub(crate) search_updates: Mutex<Option<VecDeque<Result<LinkSearchUpdate, GatewayError>>>>,
     pub(crate) searches_started: Mutex<u32>,
     pub(crate) searches_cancelled: Mutex<u32>,
+    /// Repositories the plugins asked for; handed out once.
+    pub(crate) added_repositories: Mutex<Vec<DiscoveredRepository>>,
+    /// Runtime controls, in order, as `debug true` / `extend 30s` / `shutdown`.
+    pub(crate) controls: Mutex<Vec<String>>,
+    /// When true, the runtime refuses the debug-logging choice.
+    pub(crate) refuses_debug_logging: std::sync::atomic::AtomicBool,
+}
+
+impl FakeGateway {
+    fn control(&self, call: String) {
+        self.controls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(call);
+    }
 }
 
 fn unavailable<T>() -> Result<T, GatewayError> {
@@ -186,5 +201,33 @@ impl ProviderGateway for FakeGateway {
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
             .map_or_else(unavailable, Ok)
+    }
+
+    fn take_added_repositories(&self) -> Result<Vec<DiscoveredRepository>, GatewayError> {
+        Ok(std::mem::take(
+            &mut *self
+                .added_repositories
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        ))
+    }
+
+    fn extend_call_deadline(&self, extra: Duration) {
+        self.control(format!("extend {}s", extra.as_secs()));
+    }
+
+    fn shutdown(&self) {
+        self.control("shutdown".to_owned());
+    }
+
+    fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
+        self.control(format!("debug {enabled}"));
+        if self
+            .refuses_debug_logging
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(GatewayError::Unavailable("not started".to_owned()));
+        }
+        Ok(())
     }
 }

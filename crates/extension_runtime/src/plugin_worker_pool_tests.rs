@@ -24,6 +24,10 @@ struct ScriptedWorker {
     repos_fail: bool,
     shutdowns: Arc<AtomicUsize>,
     load_fail: bool,
+    /// Runtime controls and routed calls, in order (`debug true`, `load_links Alpha`, ...).
+    controls: Mutex<Vec<String>>,
+    /// When true, `extract` and `set_debug_logging` fail.
+    broken: bool,
 }
 
 impl ScriptedWorker {
@@ -38,7 +42,41 @@ impl ScriptedWorker {
             repos_fail: false,
             shutdowns: Arc::new(AtomicUsize::new(0)),
             load_fail: false,
+            controls: Mutex::new(Vec::new()),
+            broken: false,
         })
+    }
+
+    /// A worker whose `extract` and debug switch fail.
+    fn broken(label: &str, providers: &[&str]) -> Arc<Self> {
+        let worker = Self::ok(label, providers);
+        Arc::new(Self {
+            broken: true,
+            label: worker.label.clone(),
+            providers: worker.providers.clone(),
+            search_hits: Mutex::new(0),
+            extract_reply: Mutex::new(None),
+            extract_calls: Mutex::new(0),
+            repos: Mutex::new(Vec::new()),
+            repos_fail: false,
+            shutdowns: Arc::new(AtomicUsize::new(0)),
+            load_fail: false,
+            controls: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn note(&self, call: String) {
+        self.controls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(call);
+    }
+
+    fn controls(&self) -> Vec<String> {
+        self.controls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn with_repos_fail(self: &Arc<Self>) -> Arc<Self> {
@@ -52,6 +90,8 @@ impl ScriptedWorker {
             repos_fail: true,
             shutdowns: Arc::clone(&self.shutdowns),
             load_fail: false,
+            controls: Mutex::new(Vec::new()),
+            broken: false,
         })
     }
 
@@ -119,18 +159,21 @@ impl ProviderGateway for ScriptedWorker {
 
     fn main_page(
         &self,
-        _: &str,
+        provider: &str,
         _: u32,
         _: &MainPageEntry,
     ) -> Result<Option<HomePage>, GatewayError> {
+        self.note(format!("main_page {provider}"));
         Ok(None)
     }
 
-    fn load(&self, _: &str, _: &str) -> Result<Option<LoadDetails>, GatewayError> {
+    fn load(&self, provider: &str, _: &str) -> Result<Option<LoadDetails>, GatewayError> {
+        self.note(format!("load {provider}"));
         Ok(None)
     }
 
-    fn load_links(&self, _: &str, _: &str) -> Result<PlayableLinks, GatewayError> {
+    fn load_links(&self, provider: &str, _: &str) -> Result<PlayableLinks, GatewayError> {
+        self.note(format!("load_links {provider}"));
         Ok(PlayableLinks::default())
     }
 
@@ -151,7 +194,20 @@ impl ProviderGateway for ScriptedWorker {
         })
     }
 
-    fn cancel_link_search(&self, _id: &str) -> Result<(), GatewayError> {
+    fn cancel_link_search(&self, id: &str) -> Result<(), GatewayError> {
+        self.note(format!("cancel {id}"));
+        Ok(())
+    }
+
+    fn extend_call_deadline(&self, extra: Duration) {
+        self.note(format!("extend {}s", extra.as_secs()));
+    }
+
+    fn set_debug_logging(&self, enabled: bool) -> Result<(), GatewayError> {
+        self.note(format!("debug {enabled}"));
+        if self.broken {
+            return Err(GatewayError::Transport("worker pipe broken".into()));
+        }
         Ok(())
     }
 
@@ -160,6 +216,12 @@ impl ProviderGateway for ScriptedWorker {
             .extract_calls
             .lock()
             .unwrap_or_else(PoisonError::into_inner) += 1;
+        if self.broken {
+            return Err(GatewayError::Remote {
+                kind: "ExtractFailed".into(),
+                message: self.label.clone(),
+            });
+        }
         match self
             .extract_reply
             .lock()
@@ -479,10 +541,222 @@ fn failed_load_does_not_leave_a_routed_worker() {
         repos_fail: false,
         shutdowns: Arc::new(AtomicUsize::new(0)),
         load_fail: true,
+        controls: Mutex::new(Vec::new()),
+        broken: false,
     });
     let shutdowns = Arc::clone(&bad.shutdowns);
     let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![bad]));
     assert!(pool.load_extension(Path::new("/bad.cs3"), false).is_err());
     assert!(pool.search("Bad", "q", 1).is_err());
     assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn every_kind_of_provider_call_goes_to_the_worker_that_registered_the_provider() {
+    let a = ScriptedWorker::ok("A", &["Alpha"]);
+    let b = ScriptedWorker::ok("B", &["Beta"]);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![Arc::clone(&a), Arc::clone(&b)]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+    pool.load_extension(Path::new("/ext/B.cs3"), false)
+        .expect("b");
+
+    pool.main_page("Beta", 1, &MainPageEntry::default())
+        .expect("home");
+    pool.load("Beta", "https://b/t").expect("details");
+    pool.load_links("Alpha", "ep").expect("links");
+
+    assert_eq!(a.controls(), ["load_links Alpha"]);
+    assert_eq!(b.controls(), ["main_page Beta", "load Beta"]);
+    assert!(
+        pool.load("Nobody", "u").is_err(),
+        "no worker offers that provider"
+    );
+}
+
+#[test]
+fn a_cancelled_search_reaches_its_worker_and_is_forgotten() {
+    let a = ScriptedWorker::ok("A", &["Alpha"]);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![Arc::clone(&a)]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+    let id = pool.start_link_search("Alpha", "ep").expect("started");
+
+    pool.cancel_link_search(&id).expect("cancelled");
+
+    assert_eq!(a.controls(), [format!("cancel {id}")]);
+    let cursor = LinkSearchCursor::default();
+    assert!(pool.poll_link_search(&id, cursor, Duration::ZERO).is_err());
+    assert!(pool.cancel_link_search("never-started").is_ok());
+}
+
+#[test]
+fn the_debug_switch_reaches_every_worker_and_later_ones_once() {
+    let a = ScriptedWorker::ok("A", &["Alpha"]);
+    let b = ScriptedWorker::ok("B", &["Beta"]);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![Arc::clone(&a), Arc::clone(&b)]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+
+    pool.set_debug_logging(true).expect("on");
+    pool.set_debug_logging(true).expect("still on");
+    pool.load_extension(Path::new("/ext/B.cs3"), false)
+        .expect("b");
+    pool.set_debug_logging(false).expect("off");
+
+    assert_eq!(
+        a.controls(),
+        ["debug true", "debug false"],
+        "an unchanged switch is not resent"
+    );
+    assert_eq!(
+        b.controls(),
+        ["debug true", "debug false"],
+        "a worker started later gets it too"
+    );
+}
+
+#[test]
+fn a_worker_that_refuses_the_debug_switch_is_reported() {
+    let pool =
+        PluginWorkerPool::with_spawn(queue_spawn(vec![ScriptedWorker::broken("A", &["Alpha"])]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+    assert!(pool.set_debug_logging(true).is_err());
+}
+
+#[test]
+fn a_longer_deadline_reaches_every_live_worker() {
+    let a = ScriptedWorker::ok("A", &["Alpha"]);
+    let b = ScriptedWorker::ok("B", &["Beta"]);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![Arc::clone(&a), Arc::clone(&b)]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+    pool.load_extension(Path::new("/ext/B.cs3"), false)
+        .expect("b");
+    pool.extend_call_deadline(Duration::from_secs(90));
+    assert_eq!(a.controls(), ["extend 90s"]);
+    assert_eq!(b.controls(), ["extend 90s"]);
+}
+
+#[test]
+fn shutdown_ends_every_worker_and_unloading_an_unknown_plugin_is_fine() {
+    let a = ScriptedWorker::ok("A", &["Alpha"]);
+    let b = ScriptedWorker::ok("B", &["Beta"]);
+    let (a_down, b_down) = (Arc::clone(&a.shutdowns), Arc::clone(&b.shutdowns));
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![a, b]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("a");
+    pool.load_extension(Path::new("/ext/B.cs3"), false)
+        .expect("b");
+    assert!(pool.unload_extension(Path::new("/ext/Never.cs3")).is_ok());
+
+    pool.shutdown();
+
+    assert_eq!(
+        (a_down.load(Ordering::SeqCst), b_down.load(Ordering::SeqCst)),
+        (1, 1)
+    );
+    assert!(pool.search("Alpha", "q", 1).is_err());
+}
+
+#[test]
+fn extract_without_a_useful_reply_returns_the_empty_one_and_all_failures_return_the_error() {
+    let empty = ScriptedWorker::ok("empty", &["E"]).with_extract(PlayableLinks::default());
+    let broken = ScriptedWorker::broken("broken", &["B"]);
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![broken, empty]));
+    pool.load_extension(Path::new("/b.cs3"), false).expect("b");
+    pool.load_extension(Path::new("/e.cs3"), false).expect("e");
+    let links = pool.extract("https://host/x", None).expect("an answer");
+    assert!(!links.success && links.links.is_empty());
+
+    let only_broken =
+        PluginWorkerPool::with_spawn(queue_spawn(vec![ScriptedWorker::broken("x", &["X"])]));
+    only_broken
+        .load_extension(Path::new("/x.cs3"), false)
+        .expect("x");
+    assert!(matches!(
+        only_broken.extract("https://host/x", None),
+        Err(GatewayError::Remote { .. })
+    ));
+}
+
+#[test]
+fn loading_the_same_plugin_again_ends_its_old_worker() {
+    let first = ScriptedWorker::ok("first", &["Alpha"]);
+    let second = ScriptedWorker::ok("second", &["Alpha"]);
+    let (first_down, second_down) = (Arc::clone(&first.shutdowns), Arc::clone(&second.shutdowns));
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![first, Arc::clone(&second)]));
+    pool.load_extension(Path::new("/ext/A.cs3"), false)
+        .expect("first load");
+    pool.load_extension(Path::new("/ext/A.cs3"), true)
+        .expect("reload");
+    assert_eq!(
+        first_down.load(Ordering::SeqCst),
+        1,
+        "the old process does not linger"
+    );
+    assert_eq!(second_down.load(Ordering::SeqCst), 0);
+    let page = pool.search("Alpha", "q", 1).expect("search");
+    assert!(page.items[0].name.starts_with("second:"));
+}
+
+#[test]
+fn extract_stops_at_the_first_useful_reply() {
+    // Workers are asked in the order of their plugin paths.
+    let good = ScriptedWorker::ok("good", &["G"]).with_extract(useful_links("https://ok/v"));
+    let empty = ScriptedWorker::ok("empty", &["E"]).with_extract(PlayableLinks::default());
+    let pool =
+        PluginWorkerPool::with_spawn(queue_spawn(vec![Arc::clone(&good), Arc::clone(&empty)]));
+    pool.load_extension(Path::new("/1-good.cs3"), false)
+        .expect("g");
+    pool.load_extension(Path::new("/2-empty.cs3"), false)
+        .expect("e");
+    let links = pool.extract("https://host/x", None).expect("extract");
+    assert_eq!(links.links[0].url, "https://ok/v");
+    assert_eq!(
+        *empty
+            .extract_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+        0,
+        "nobody else is asked once one answered"
+    );
+}
+
+#[test]
+fn a_reply_with_links_counts_as_useful_even_without_the_success_flag() {
+    let mut partial = useful_links("https://ok/partial");
+    partial.success = false;
+    let links_only = ScriptedWorker::ok("links", &["L"]).with_extract(partial);
+    let flagged_only = ScriptedWorker::ok("flag", &["F"]).with_extract(PlayableLinks {
+        success: true,
+        ..PlayableLinks::default()
+    });
+    let pool = PluginWorkerPool::with_spawn(queue_spawn(vec![links_only, flagged_only]));
+    pool.load_extension(Path::new("/1-links.cs3"), false)
+        .expect("l");
+    pool.load_extension(Path::new("/2-flag.cs3"), false)
+        .expect("f");
+    let links = pool.extract("https://host/x", None).expect("extract");
+    assert_eq!(links.links[0].url, "https://ok/partial");
+
+    let flag_first = PluginWorkerPool::with_spawn(queue_spawn(vec![
+        ScriptedWorker::ok("flag", &["F"]).with_extract(PlayableLinks {
+            success: true,
+            ..PlayableLinks::default()
+        }),
+        ScriptedWorker::ok("links", &["L"]).with_extract(useful_links("https://later/v")),
+    ]));
+    flag_first
+        .load_extension(Path::new("/f.cs3"), false)
+        .expect("f");
+    flag_first
+        .load_extension(Path::new("/l.cs3"), false)
+        .expect("l");
+    let answer = flag_first.extract("https://host/x", None).expect("extract");
+    assert!(
+        answer.success && answer.links.is_empty(),
+        "a successful empty answer is final"
+    );
 }

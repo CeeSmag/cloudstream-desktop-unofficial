@@ -122,4 +122,45 @@ mod tests {
         assert_eq!(labels(0, 20), ["1", "2", "3", "4", "5", "…", "20"]);
         assert_eq!(labels(999, 20), ["1", "…", "16", "17", "18", "19", "20"]);
     }
+
+    fn items(current: u32, total: u32) -> Vec<PaginationItem> {
+        use slint::Model;
+        let model = pagination_model(current, total);
+        (0..model.row_count())
+            .filter_map(|row| model.row_data(row))
+            .collect()
+    }
+
+    #[test]
+    fn the_model_marks_only_the_current_page_and_makes_ellipses_unclickable() {
+        let bar = items(84, 167);
+        let shown: Vec<(&str, i32, bool, bool)> = bar
+            .iter()
+            .map(|item| (item.label.as_str(), item.page, item.active, item.ellipsis))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("1", 1, false, false),
+                ("…", 0, false, true),
+                ("83", 83, false, false),
+                ("84", 84, true, false),
+                ("85", 85, false, false),
+                ("…", 0, false, true),
+                ("167", 167, false, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_model_marks_a_clamped_page_and_is_empty_for_one_page() {
+        let active: Vec<i32> = items(999, 5)
+            .iter()
+            .filter(|item| item.active)
+            .map(|item| item.page)
+            .collect();
+        assert_eq!(active, [5], "a page past the end shows the last as current");
+        assert!(items(1, 1).is_empty());
+        assert!(items(3, 0).is_empty());
+    }
 }

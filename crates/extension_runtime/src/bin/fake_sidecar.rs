@@ -23,6 +23,27 @@ fn reply_for(method: &str, id: &Value, params: &Value, handled: u64) -> Option<V
         "set_debug_logging" => Some(json!({"id": id, "result": params.get("enabled")})),
         "echo" => Some(json!({"id": id, "result": params})),
         "fail" => Some(json!({"id": id, "error": {"type": "TestFailure", "message": "scripted"}})),
+        _ => plugin_reply(method, id, params),
+    }
+}
+
+/// The plugin calls: a plugin `<dir>/<Name>.cs3` registers one provider called `Name`, and a
+/// search answers with this process's id, so a test can tell a restarted worker from the old one.
+fn plugin_reply(method: &str, id: &Value, params: &Value) -> Option<Value> {
+    let text = |name: &str| params.get(name).and_then(Value::as_str).unwrap_or_default();
+    match method {
+        "load_extension" => {
+            let provider = std::path::Path::new(text("path"))
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            Some(json!({"id": id, "result": [{"name": provider}]}))
+        }
+        "unload_extension" => Some(json!({"id": id, "result": null})),
+        "search" => {
+            let name = format!("{}:{}", std::process::id(), text("query"));
+            Some(json!({"id": id, "result": {"items": [{"name": name, "url": "u"}]}}))
+        }
         _ => None,
     }
 }

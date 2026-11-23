@@ -209,4 +209,192 @@ mod tests {
         assert_eq!(encode_poster_headers(Some(&broken)), "");
         assert!(decode_poster_headers("no colon here").is_empty());
     }
+
+    use slint::Model;
+
+    fn rows<T: Clone + 'static>(model: &ModelRc<T>) -> Vec<T> {
+        (0..model.row_count())
+            .filter_map(|row| model.row_data(row))
+            .collect()
+    }
+
+    fn found(name: &str, url: &str) -> SearchResult {
+        SearchResult {
+            name: name.to_owned(),
+            url: url.to_owned(),
+            api_name: "Prov".to_owned(),
+            poster_url: Some(format!("{url}.jpg")),
+            ..SearchResult::default()
+        }
+    }
+
+    #[test]
+    fn a_search_result_becomes_a_poster_with_clean_text_and_its_address_as_key() {
+        let mut item = found("\u{1D401}reaking \u{1D401}ad", "https://p/1");
+        item.poster_headers = Some(HashMap::from([(
+            "Referer".to_owned(),
+            "https://p/".to_owned(),
+        )]));
+        let poster = poster_from_search(&item);
+        assert_eq!(
+            poster.title, "Breaking Bad",
+            "styled letters are folded to plain ones"
+        );
+        assert_eq!(
+            (poster.subtitle.as_str(), poster.provider.as_str()),
+            ("Prov", "Prov")
+        );
+        assert_eq!(
+            (poster.url.as_str(), poster.media_key.as_str()),
+            ("https://p/1", "https://p/1")
+        );
+        assert_eq!(poster.poster, "https://p/1.jpg");
+        assert_eq!(poster.poster_headers, "Referer: https://p/");
+        assert!(poster.progress.abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_header_value_on_several_lines_is_kept_on_one() {
+        let headers = HashMap::from([("Cookie".to_owned(), "a=1\nb=2".to_owned())]);
+        assert_eq!(encode_poster_headers(Some(&headers)), "Cookie: a=1 b=2");
+        assert!(decode_poster_headers(": no name").is_empty());
+    }
+
+    #[test]
+    fn a_shelf_holds_only_its_first_posters_until_it_is_expanded() {
+        let items: Vec<SearchResult> = (0..25)
+            .map(|n| found(&format!("T{n}"), &format!("https://p/{n}")))
+            .collect();
+        let shelf = HomeShelf {
+            title: "\u{1D413}rending".to_owned(),
+            items,
+            provider: "Prov".to_owned(),
+            entry: core_model::MainPageEntry::default(),
+            section_index: 0,
+            has_next: true,
+        };
+        let shelves = rows(&shelves_from_sections(&[shelf]));
+        let [section] = shelves.as_slice() else {
+            panic!("one shelf");
+        };
+        assert_eq!(section.title, "Trending");
+        let titles: Vec<String> = rows(&section.items)
+            .iter()
+            .map(|p| p.title.to_string())
+            .collect();
+        assert_eq!(titles.len(), crate::poster_limits::COLLAPSED_SHELF_POSTERS);
+        assert_eq!(titles.first().map(String::as_str), Some("T0"));
+    }
+
+    #[test]
+    fn a_browse_tile_shows_its_year_and_keys_on_the_tmdb_id() {
+        let item = |year| app_services::BrowseItem {
+            id: "movie:603".to_owned(),
+            name: "The Matrix".to_owned(),
+            poster_url: None,
+            year,
+            rating: Some(8.2),
+            media_type: "movie".to_owned(),
+        };
+        let tiles = rows(&posters_from_browse(&[item(Some(1999)), item(None)]));
+        assert_eq!(tiles[0].subtitle, "1999");
+        assert_eq!(tiles[1].subtitle, "", "no year, no subtitle");
+        assert_eq!(
+            (tiles[0].url.as_str(), tiles[0].media_key.as_str()),
+            ("movie:603", "movie:603")
+        );
+        assert_eq!(
+            (tiles[0].provider.as_str(), tiles[0].poster.as_str()),
+            ("", "")
+        );
+    }
+
+    #[test]
+    fn a_bookmark_tile_names_its_provider_and_opens_its_title() {
+        let bookmark = Bookmark {
+            provider: "Prov".to_owned(),
+            url: "https://p/9".to_owned(),
+            name: "Dune".to_owned(),
+            poster_url: Some("https://p/9.jpg".to_owned()),
+            ..Bookmark::default()
+        };
+        let [tile] = rows(&posters_from_bookmarks(&[bookmark]))
+            .try_into()
+            .expect("one");
+        assert_eq!(
+            (tile.title.as_str(), tile.subtitle.as_str()),
+            ("Dune", "Prov")
+        );
+        assert_eq!(
+            (tile.url.as_str(), tile.media_key.as_str()),
+            ("https://p/9", "https://p/9")
+        );
+        assert_eq!(tile.poster, "https://p/9.jpg");
+    }
+
+    #[test]
+    fn a_continue_tile_shows_the_episode_and_how_much_was_watched() {
+        let watched = |season, episode, position_ms| WatchProgress {
+            provider: "Prov".to_owned(),
+            media_key: "ep-key".to_owned(),
+            title: "Show".to_owned(),
+            detail_url: "https://p/show".to_owned(),
+            position_ms,
+            duration_ms: 1_000,
+            season,
+            episode,
+            ..WatchProgress::default()
+        };
+        let tiles = rows(&posters_from_continue(&[
+            watched(Some(2), Some(5), 250),
+            watched(None, Some(5), 2_000),
+        ]));
+        assert_eq!(tiles[0].subtitle, "S2 E5");
+        assert!((tiles[0].progress - 0.25).abs() < 1e-6);
+        assert_eq!(
+            tiles[1].subtitle, "Prov",
+            "without a season the provider is shown"
+        );
+        assert!(
+            (tiles[1].progress - 1.0).abs() < 1e-6,
+            "past the end counts as watched"
+        );
+        assert_eq!(
+            (tiles[0].url.as_str(), tiles[0].media_key.as_str()),
+            ("https://p/show", "ep-key"),
+            "the tile opens the show and resumes the episode"
+        );
+    }
+
+    #[test]
+    fn plugin_rows_show_the_version_and_the_trust_switch() {
+        let ext = core_model::InstalledExtension {
+            file_name: "Good.cs3".to_owned(),
+            internal_name: "Good".to_owned(),
+            version: 7,
+            trusted: true,
+            ..core_model::InstalledExtension::default()
+        };
+        let [row] = rows(&plugin_rows(&[ext])).try_into().expect("one");
+        assert_eq!(
+            (
+                row.name.as_str(),
+                row.detail.as_str(),
+                row.file_name.as_str()
+            ),
+            ("Good", "v7", "Good.cs3")
+        );
+        assert!(row.trusted);
+    }
+
+    #[test]
+    fn empty_and_label_models_hold_what_they_were_given() {
+        assert_eq!(empty_posters().row_count(), 0);
+        assert_eq!(empty_shelves().row_count(), 0);
+        assert_eq!(empty_episodes().row_count(), 0);
+        assert_eq!(empty_cast().row_count(), 0);
+        assert_eq!(rows(&posters_from_search(&[found("A", "u")])).len(), 1);
+        let labels = rows(&string_model(["a".to_owned(), "b".to_owned()]));
+        assert_eq!(labels, ["a", "b"]);
+    }
 }

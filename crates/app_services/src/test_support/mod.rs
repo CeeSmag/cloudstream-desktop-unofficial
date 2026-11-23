@@ -4,5 +4,5 @@ mod fake_player;
 mod fixed_clock;
 
 pub(crate) use fake_gateway::FakeGateway;
-pub(crate) use fake_player::FakePlayer;
+pub(crate) use fake_player::{FakePlayer, PlayerAnswers};
 pub(crate) use fixed_clock::FixedClock;

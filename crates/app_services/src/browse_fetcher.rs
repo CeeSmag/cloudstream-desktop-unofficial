@@ -76,7 +76,114 @@ impl BrowseFetcher for UreqBrowseFetcher {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::thread::JoinHandle;
+
     use super::*;
+
+    /// Answers one request on a local socket; hands back the request's head when joined.
+    fn serve_once(status: &'static str, body: String) -> (String, JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!(
+            "http://{}/discover/movie",
+            listener.local_addr().expect("addr")
+        );
+        let worker = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("a request");
+            let mut reader = BufReader::new(stream);
+            let (mut head, mut line) = (String::new(), String::new());
+            while reader.read_line(&mut line).is_ok_and(|read| read > 2) {
+                head.push_str(&line);
+                line.clear();
+            }
+            let answer = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = reader.get_mut().write_all(answer.as_bytes());
+            head
+        });
+        (url, worker)
+    }
+
+    fn params() -> Vec<(String, String)> {
+        vec![
+            ("page".to_owned(), "2".to_owned()),
+            ("with_genres".to_owned(), "28,12".to_owned()),
+        ]
+    }
+
+    #[test]
+    fn a_page_is_read_and_the_query_and_app_name_are_sent() {
+        let page =
+            r#"{"results":[{"id":7,"title":"Heat"},{"id":8,"name":"Lost"}],"total_pages":4}"#;
+        let (url, server) = serve_once("200 OK", page.to_owned());
+        let response = UreqBrowseFetcher::default()
+            .fetch_page(&url, &params())
+            .expect("a page");
+        assert_eq!(response.total_pages, Some(4));
+        assert_eq!(response.results.map(|items| items.len()), Some(2));
+        let head = server.join().expect("server");
+        let request_line = head.lines().next().unwrap_or_default();
+        assert!(request_line.contains("page=2"), "{request_line}");
+        assert!(
+            request_line.contains("with_genres=28%2C12"),
+            "{request_line}"
+        );
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("user-agent: cloudstream-rs"),
+            "{head}"
+        );
+    }
+
+    #[test]
+    fn a_page_of_a_megabyte_and_a_half_is_read_whole() {
+        // Far bigger than TMDB sends, well within the limit: nothing may be cut off it.
+        let padding = "x".repeat(1_536 * 1024);
+        let page = format!(r#"{{"results":[{{"id":1,"title":"{padding}"}}],"total_pages":1}}"#);
+        let (url, server) = serve_once("200 OK", page);
+        let response = UreqBrowseFetcher::default()
+            .fetch_page(&url, &params())
+            .expect("a page");
+        assert_eq!(response.total_pages, Some(1));
+        let _ = server.join();
+    }
+
+    #[test]
+    fn an_error_status_is_reported_with_its_code() {
+        let (url, server) = serve_once("429 Too Many Requests", "slow down".to_owned());
+        let error = UreqBrowseFetcher::default()
+            .fetch_page(&url, &params())
+            .expect_err("refused");
+        assert_eq!(error, "TMDB returned HTTP 429");
+        let _ = server.join();
+    }
+
+    #[test]
+    fn an_answer_that_is_not_a_page_is_a_decode_error() {
+        let (url, server) = serve_once("200 OK", "<html>maintenance</html>".to_owned());
+        let error = UreqBrowseFetcher::default()
+            .fetch_page(&url, &params())
+            .expect_err("not json");
+        assert!(error.starts_with("JSON decode failed"), "{error}");
+        let _ = server.join();
+    }
+
+    #[test]
+    fn a_failed_connection_never_shows_the_api_key() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .expect("free port")
+            .port();
+        let keyed = vec![("api_key".to_owned(), TMDB_API_KEY.to_owned())];
+        let error = UreqBrowseFetcher::default()
+            .fetch_page(&format!("http://127.0.0.1:{port}/discover/movie"), &keyed)
+            .expect_err("nothing listens");
+        assert!(error.starts_with("HTTP request failed"), "{error}");
+        assert!(!error.contains(TMDB_API_KEY), "{error}");
+    }
 
     #[test]
     fn redact_key_removes_the_tmdb_key_from_an_error() {

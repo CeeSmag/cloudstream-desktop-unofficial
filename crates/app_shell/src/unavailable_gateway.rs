@@ -64,7 +64,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_call_reports_the_reason() {
+    fn a_search_reports_the_reason() {
         let gateway = UnavailableGateway::new("sidecar missing".to_owned());
         let error = gateway.search("p", "q", 1).expect_err("must fail");
         assert_eq!(
@@ -72,5 +72,23 @@ mod tests {
             GatewayError::Unavailable("sidecar missing".to_owned())
         );
         assert!(gateway.load("p", "u").is_err());
+    }
+
+    #[test]
+    fn every_call_that_answers_names_what_is_missing() {
+        let gateway = UnavailableGateway::new("sidecar missing".to_owned());
+        let missing = || GatewayError::Unavailable("sidecar missing".to_owned());
+        assert_eq!(
+            gateway.load_extension(Path::new("a.cs3"), false),
+            Err(missing())
+        );
+        assert_eq!(gateway.search("p", "q", 1), Err(missing()));
+        assert_eq!(
+            gateway.main_page("p", 1, &MainPageEntry::default()),
+            Err(missing())
+        );
+        assert_eq!(gateway.load("p", "u"), Err(missing()));
+        assert_eq!(gateway.load_links("p", "d"), Err(missing()));
+        assert_eq!(gateway.extract("https://h/x", None), Err(missing()));
     }
 }

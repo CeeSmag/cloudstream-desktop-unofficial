@@ -203,3 +203,7 @@ fn collect_browser_caches(browser_dir: &Path, out: &mut Vec<RemovableItem>) {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "cap_scan_tests.rs"]
+mod tests;
