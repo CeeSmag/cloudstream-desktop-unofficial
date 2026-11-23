@@ -619,5 +619,53 @@ class CloudflareSolverTest {
         second.stop()
         assertEquals(1, second.verified.get())
     }
-}
 
+    /** Everything [CloudflareSolver.log] writes while [work] runs. */
+    private fun stderrOf(work: () -> Unit): String {
+        val captured = java.io.ByteArrayOutputStream()
+        val original = System.err
+        System.setErr(java.io.PrintStream(captured, true))
+        try {
+            work()
+        } finally {
+            System.setErr(original)
+        }
+        return captured.toString()
+    }
+
+    /** A site that challenges the first request and fails the retried one with [failure]. */
+    private fun failingRetryClient(failure: IOException): OkHttpClient {
+        val calls = AtomicInteger()
+        return OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                if (calls.incrementAndGet() > 1) throw failure
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(403).message("m")
+                    .header("cf-mitigated", "challenge").body("Just a moment...".toResponseBody()).build()
+            }.build()
+    }
+
+    @Test
+    fun `a retry that fails is logged with the host, the pass and the reason, and the plugin still gets the error`() {
+        val app = FakeApp(exchange, listOf(saved("r1-5", value = "ok")))
+        val failure = IOException("Canceled")
+        lateinit var thrown: IOException
+        val logged = stderrOf { thrown = assertFailsWith<IOException> { get(failingRetryClient(failure)) } }
+        app.stop()
+        assertEquals("Canceled", thrown.message, "the plugin sees the original failure")
+        assertTrue(
+            logged.lines().any { it == "[cloudflare] WARN retry to site.test with the saved pass r1-5 failed: IOException: Canceled" },
+            logged,
+        )
+        assertFalse(logged.contains("cf_clearance=ok"), "no cookie value in the log")
+    }
+
+    @Test
+    fun `a failed retry with a fresh pass says so`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val logged = stderrOf { assertFailsWith<IOException> { get(failingRetryClient(java.net.SocketTimeoutException("connect timed out"))) } }
+        app.stop()
+        assertTrue(logged.contains("WARN retry to site.test with the fresh pass failed: SocketTimeoutException: connect timed out"), logged)
+    }
+}

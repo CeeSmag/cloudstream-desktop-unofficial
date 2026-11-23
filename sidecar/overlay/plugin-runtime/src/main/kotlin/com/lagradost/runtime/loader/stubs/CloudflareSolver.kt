@@ -176,7 +176,7 @@ object CloudflareSolver {
         while (true) {
             if (used.browserOnly) return viaBrowserOnly(request, dir)
             val sentAt = clock()
-            val retried = chain.proceed(request)
+            val retried = proceedLogged(chain, request, used)
             if (used.source != Source.SAVED || !isChallenge(retried)) return afterRetry(request, dir, retried)
             retried.close()
             dropRefused(origin, used)
@@ -186,6 +186,20 @@ object CloudflareSolver {
         log("ERROR", "${origin.host} refused $refusals saved passes in a row; giving up on this request")
         throw IOException("Cloudflare verification of ${origin.host} was not completed: the site refused every saved pass")
     }
+
+    /**
+     * Sends the retried request. If it fails (cancelled, timed out, a TLS or DNS error), the failure is the
+     * plugin's to handle, but it is logged here first: otherwise the Cloudflare log ends at "verified" and
+     * only the plugin's own stack trace says what became of the request.
+     */
+    private fun proceedLogged(chain: Interceptor.Chain, request: Request, used: Clearance): Response =
+        try {
+            chain.proceed(request)
+        } catch (failure: IOException) {
+            val from = if (used.source == Source.SAVED) "saved pass ${used.passId}" else "fresh pass"
+            log("WARN", "retry to ${originOf(request.url).host} with the $from failed: ${failure.javaClass.simpleName}: ${failure.message}")
+            throw failure
+        }
 
     /** The browser was not challenged: there are no cookies to send, so the origin is served by its window. */
     private fun viaBrowserOnly(request: Request, dir: File): Response {
