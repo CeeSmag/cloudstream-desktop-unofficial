@@ -3,6 +3,9 @@ name: Release build
 # Builds every release file on GitHub's machines:
 #   Windows x64   installer + single-file portable exe   (scripts/build_release.ps1)
 #   Linux x86_64  AppImage                               (scripts/build_release.sh)
+#   Linux aarch64 AppImage                               (scripts/build_release.sh, on a native ARM runner)
+# Windows is x64 only: Windows on ARM runs it through emulation, and the updater picks the Windows
+# file by name alone (setup.exe / portable.exe), so a second Windows CPU needs CPU matching there first.
 #
 # Run it by hand (Actions tab > Release build > Run workflow) to get the files as downloadable artifacts,
 # or push a tag like v0.3.4 to also collect them into a DRAFT release. Nothing is published until
@@ -71,6 +74,8 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     # Debian 12 keeps the glibc requirement low, so the AppImage runs on most distros.
     container: debian:bookworm
