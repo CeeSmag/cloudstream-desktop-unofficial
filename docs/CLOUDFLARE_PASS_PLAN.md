@@ -83,14 +83,30 @@ and twenty requests refused with one saved pass naming it once (failed before th
 - `cloudflare_window` (`browser_cookies.rs`, `outbox.rs`, `verification.rs`): 80 mutants, 70 caught, 9
   unviable, 1 missed: `Outbox::status`, the one-line hand-over of the real stdout to the tested
   `send_status`.
-- PITest on `CloudflareSolver*` / `CloudflareExchangeFormat*`: 76 killed; the 5 survivors are four mutations
-  of inlined Kotlin stdlib code mapped past the end of `CloudflareExchangeFormat.kt` and `challengeLocks.clear`
-  in `reset` (equivalent); 7 without coverage are generated property getters and the default clock.
+- PITest on `CloudflareSolver*` / `CloudflareExchangeFormat*`: 200 mutants, 180 killed, test strength 94 %.
+  The first runs reported 76 killed but never reached the solver's logic: PITest creates no mutants in
+  "private methods called only from static initializers" (its FAQ), and `intercept`, called only from the
+  interceptor lambda built in the `CloudflareSolver` object's initializer, was private, so it and everything it
+  calls were filtered. `intercept` is now `internal`. Remaining survivors: wall-clock loop boundaries
+  (`waitForResult`, `refuseIfDeclined`), the redundant pre-lock decline check, closing in-memory browser
+  responses, `challengeLocks.clear`, one same-millisecond boundary whose two paths end alike, and four inlined
+  Kotlin stdlib mutations mapped past the end of `CloudflareExchangeFormat.kt` (the FAQ: Kotlin junk needs the
+  Arcmutate plugin). Without the shared `kotlin.jvm.internal.Intrinsics` `avoidCallsTo` filter the only new
+  survivors are two removed compiler null checks, so that filter stays. Other Kotlin `object`s whose private
+  logic is reached only from initializer-built lambdas would be filtered the same way.
 - Line coverage of the new bridge files 97-100 % (`cloudflare_bridge` crate 92 %, threshold raised to 90 %).
+
+### Verified in a real session (Linux, Nov 23)
+
+First check kept domain-scoped passes (`.vcloud.my`, `.cinevood.loan`); a browser-only site
+(`ww5.m4ufree.lat`) kept none. After a relaunch, vcloud.my and cinevood.loan were answered from their saved
+passes in about 0.2 s with no check window, and the site accepted them. After switching to a VPN, both sites
+refused their saved passes: each refusal was named once, the pass retired, a fresh check made a new pass, and
+neither site became browser-only; m4ufree's pass still worked on the new IP. Folder `0700`, files `0600`, no
+cookie value in any log line.
 
 ## Not verified yet
 
-- A real session: a relaunch answered from a saved pass with no window, and a pass refused after an IP change.
 - WebView2's domain field for a domain cookie (assumed to start with `.`, as in WebKit and Chromium's
   cookie API); compiled and linted for Windows, not run there.
 - Whether real plugins hit sibling subdomains of one protected site (part 2 costs nothing extra, since the
