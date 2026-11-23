@@ -102,6 +102,10 @@ export struct PluginItem {
     detail: string,
     file-name: string,
     trusted: bool,
+    /// False for a plugin that is not a video plugin: it is not loaded; only Remove is offered.
+    supported: bool,
+    /// Why it is not supported; empty when it is.
+    note: string,
 }
 
 /// One row of the player's Audio or Subtitles menu.

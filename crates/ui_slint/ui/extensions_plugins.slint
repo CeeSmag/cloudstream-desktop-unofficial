@@ -232,23 +232,27 @@ export component PluginsTab inherits VerticalLayout {
                                 font-weight: 600;
                                 overflow: elide;
                             }
-                            TvBadge {
+                            if plugin.supported: TvBadge {
                                 text: plugin.trusted ? "Trusted" : "Sandboxed";
                                 tone: plugin.trusted ? "warn" : "ok";
                             }
+                            if !plugin.supported: TvBadge {
+                                text: "Not supported";
+                                tone: "danger";
+                            }
                         }
                         MutedLabel {
-                            text: plugin.detail;
+                            text: plugin.supported ? plugin.detail : plugin.note;
                             overflow: elide;
                         }
                     }
-                    Text {
+                    if plugin.supported: Text {
                         text: "Trust";
                         color: Theme.muted;
                         font-size: 12.5px;
                         vertical-alignment: center;
                     }
-                    TvSwitch {
+                    if plugin.supported: TvSwitch {
                         checked: plugin.trusted;
                         enabled: root.busy-text == "";
                         toggled => { root.set-trusted(plugin.file-name, self.checked); }

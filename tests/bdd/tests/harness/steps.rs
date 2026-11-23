@@ -79,15 +79,15 @@ async fn given_clean_env(world: &mut AppWorld) {
 
 // --- 1. Extension lifecycle ---
 
-#[given(regex = r#"^a remote repository "([^"]+)" offering plugin "([^"]+)" providing "([^"]+)"$"#)]
-async fn given_remote_repo(world: &mut AppWorld, repo: String, plugin: String, provider: String) {
+/// Publishes `repo` with one plugin whose listing declares `tv_types` (a JSON array).
+fn publish_repository(world: &mut AppWorld, repo: &str, plugin: &str, tv_types: &str) {
     let repo_url = format!("https://repo.example/{repo}/repo.json");
     let plugins_url = format!("https://repo.example/{repo}/plugins.json");
     let cs3_url = format!("https://repo.example/{repo}/{plugin}.cs3");
     let payload = b"PK\x03\x04bdd-cs3-bytes".to_vec();
     let repo_json = format!(r#"{{"name":"{repo}","pluginLists":["{plugins_url}"]}}"#);
     let plugins_json = format!(
-        r#"[{{"name":"{plugin}","internalName":"{plugin}","version":2,"url":"{cs3_url}","fileSize":{}}}]"#,
+        r#"[{{"name":"{plugin}","internalName":"{plugin}","version":2,"url":"{cs3_url}","fileSize":{},"tvTypes":{tv_types}}}]"#,
         payload.len()
     );
     {
@@ -96,7 +96,12 @@ async fn given_remote_repo(world: &mut AppWorld, repo: String, plugin: String, p
         files.insert(plugins_url, plugins_json.into_bytes());
         files.insert(cs3_url, payload);
     }
-    world.repo_urls.insert(repo, repo_url);
+    world.repo_urls.insert(repo.to_owned(), repo_url);
+}
+
+#[given(regex = r#"^a remote repository "([^"]+)" offering plugin "([^"]+)" providing "([^"]+)"$"#)]
+async fn given_remote_repo(world: &mut AppWorld, repo: String, plugin: String, provider: String) {
+    publish_repository(world, &repo, &plugin, r#"["Movie","TvSeries"]"#);
     *world.gateway.providers_on_load.lock().expect("providers") = vec![ProviderInfo {
         name: provider,
         main_url: "https://provider.example".into(),
@@ -130,6 +135,45 @@ async fn when_install_plugin(world: &mut AppWorld, plugin: String, repo: String)
         .install(&listing, &url)
         .expect("install");
     assert!(!loaded.is_empty());
+}
+
+#[given(regex = r#"^a remote repository "([^"]+)" offering the game plugin "([^"]+)"$"#)]
+async fn given_game_repo(world: &mut AppWorld, repo: String, plugin: String) {
+    publish_repository(world, &repo, &plugin, r#"["Others"]"#);
+}
+
+#[then(regex = r#"^plugin "([^"]+)" from "([^"]+)" is not offered$"#)]
+async fn then_not_offered(world: &mut AppWorld, plugin: String, repo: String) {
+    let url = world.repo_urls.get(&repo).expect("repo url").clone();
+    let service = repo_service(world);
+    let offered = service.plugins(&url).expect("plugins");
+    assert!(
+        offered.iter().all(|p| p.internal_name != plugin),
+        "{plugin} offered"
+    );
+    let catalog = service.all_plugins().expect("catalog");
+    assert!(
+        catalog.iter().all(|hit| hit.plugin.internal_name != plugin),
+        "{plugin} in the catalog"
+    );
+}
+
+#[then(regex = r#"^installing plugin "([^"]+)" from "([^"]+)" is refused as not a video plugin$"#)]
+async fn then_install_refused(world: &mut AppWorld, plugin: String, repo: String) {
+    let url = world.repo_urls.get(&repo).expect("repo url").clone();
+    let hit = repo_service(world)
+        .refused_plugins()
+        .expect("refused")
+        .into_iter()
+        .find(|hit| hit.plugin.internal_name == plugin)
+        .expect("kept apart as refused");
+    let svc = extension_service(world);
+    let error = svc.install(&hit.plugin, &url).expect_err("refused");
+    assert!(error.to_string().contains("not a video plugin"), "{error}");
+    assert!(
+        svc.installed().expect("installed").is_empty(),
+        "nothing installed"
+    );
 }
 
 #[then(regex = r#"^provider "([^"]+)" is discovered and untrusted$"#)]

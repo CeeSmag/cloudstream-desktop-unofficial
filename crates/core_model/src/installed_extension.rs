@@ -24,4 +24,8 @@ pub struct InstalledExtension {
     /// (rows created before this field existed).
     #[serde(default)]
     pub installed_at_ms: i64,
+    /// The content types its repository listing declared (`tvTypes`), as written. `None` means
+    /// unknown (installed before they were recorded); the content policy is applied to these.
+    #[serde(default)]
+    pub declared_types: Option<Vec<String>>,
 }

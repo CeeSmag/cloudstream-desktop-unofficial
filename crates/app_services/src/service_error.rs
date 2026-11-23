@@ -21,4 +21,12 @@ pub enum ServiceError {
     /// The thing asked for does not exist (unknown provider, no streams, ...).
     #[error("{0}")]
     NotFound(String),
+    /// The plugin is not a video plugin, so the app does not install or load it.
+    #[error("{plugin} is {reason}")]
+    NotVideo {
+        /// Its name.
+        plugin: String,
+        /// Why ("not a video plugin (it declares Others)").
+        reason: String,
+    },
 }

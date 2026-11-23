@@ -21,6 +21,8 @@ pub(crate) struct ExtensionsCatalog {
     pub(crate) repositories: Vec<core_model::RepositoryEntry>,
     pub(crate) plugins: Vec<PluginHit>,
     pub(crate) installed_times: HashMap<String, i64>,
+    /// How many listings were left out because they are not video plugins.
+    pub(crate) not_video: usize,
     pub(crate) error: Option<String>,
 }
 
@@ -40,6 +42,12 @@ pub(crate) fn load_extensions_catalog(ctx: &BridgeContext) {
         match services.repositories.all_plugins() {
             Ok(hits) => catalog.plugins = hits,
             Err(error) => catalog.error = Some(error.to_string()),
+        }
+        if let Ok(refused) = services.repositories.refused_plugins() {
+            catalog.not_video = refused.len();
+            // Installed before content types were recorded: the listings settle them now.
+            let every: Vec<PluginHit> = catalog.plugins.iter().cloned().chain(refused).collect();
+            services.extensions.backfill_declared_types(&every);
         }
         catalog.installed_times = services
             .extensions
@@ -66,10 +74,14 @@ pub(crate) fn show_catalog(ctx: &BridgeContext, ui: &CloudStream, catalog: Exten
         session.repositories = catalog.repositories;
         session.available = catalog.plugins;
         session.installed_times = catalog.installed_times;
+        session.not_video_hidden = catalog.not_video;
     }
     show_repositories(ctx);
     show_new_catalog(ctx, ui);
     sync_open_repo_detail(ctx);
+    // Reading the catalog can settle the support of plugins installed before it was recorded.
+    refresh_plugins(ctx, ui);
+    refresh_providers(ctx, ui);
 }
 
 pub(crate) fn available_row(
@@ -113,7 +125,7 @@ pub(crate) fn plugin_key(hit: &PluginHit) -> String {
 
 /// Shows the installed plugins in Settings.
 pub(crate) fn refresh_plugins(ctx: &BridgeContext, ui: &CloudStream) {
-    match ctx.services.extensions.installed() {
+    match ctx.services.extensions.installed_with_status() {
         Ok(list) => ui.set_plugins(plugin_rows(&list)),
         Err(error) => tracing::warn!(%error, "could not list the installed plugins"),
     }

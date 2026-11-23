@@ -6,6 +6,7 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+content_policy = { path = "../content_policy" }
 core_model = { path = "../core_model" }
 extension_api = { path = "../extension_api" }
 extension_repo = { path = "../extension_repo" }

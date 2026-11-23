@@ -87,6 +87,20 @@ pub(crate) fn language_choices(hits: &[PluginHit]) -> Vec<String> {
     languages
 }
 
+/// The list's count ("12 of 732"), noting how many non-video plugins the catalog left out
+/// ("12 of 732 · 35 non-video hidden"). Empty while there is no catalog.
+pub(crate) fn catalog_count_text(shown: usize, total: usize, not_video_hidden: usize) -> String {
+    if total == 0 && not_video_hidden == 0 {
+        return String::new();
+    }
+    let count = format!("{shown} of {total}");
+    if not_video_hidden == 0 {
+        count
+    } else {
+        format!("{count} · {not_video_hidden} non-video hidden")
+    }
+}
+
 /// Readable file size (`6929` → `"6.8 KB"`), or `None` when unknown.
 pub(crate) fn format_file_size(bytes: Option<u64>) -> Option<String> {
     let bytes = bytes?;

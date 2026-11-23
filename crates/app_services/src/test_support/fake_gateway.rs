@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
@@ -8,6 +8,9 @@ use core_model::{
     PlayableLinks, ProviderInfo, SearchPage, SearchResult,
 };
 use extension_api::{GatewayError, ProviderGateway};
+
+/// A provider a scripted plugin registers: its name and the types it reports.
+pub(crate) type ScriptedProvider = (String, Vec<String>);
 
 /// A gateway with scripted answers and call counters.
 #[derive(Default)]
@@ -32,6 +35,11 @@ pub(crate) struct FakeGateway {
     pub(crate) controls: Mutex<Vec<String>>,
     /// When true, the runtime refuses the debug-logging choice.
     pub(crate) refuses_debug_logging: std::sync::atomic::AtomicBool,
+    /// Providers (name, types) a plugin file registers, by file stem; otherwise one provider named
+    /// after the file with no types.
+    pub(crate) providers_by_file: Mutex<HashMap<String, Vec<ScriptedProvider>>>,
+    /// Runs inside `unload_extension`, before it returns (to look at the service mid-call).
+    pub(crate) on_unload: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 
 impl FakeGateway {
@@ -90,6 +98,21 @@ impl ProviderGateway for FakeGateway {
                 message: name,
             });
         }
+        if let Some(scripted) = self
+            .providers_by_file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&name)
+        {
+            return Ok(scripted
+                .iter()
+                .map(|(provider, types)| ProviderInfo {
+                    name: provider.clone(),
+                    types: types.clone(),
+                    ..ProviderInfo::default()
+                })
+                .collect());
+        }
         Ok(vec![ProviderInfo {
             name,
             ..ProviderInfo::default()
@@ -101,6 +124,14 @@ impl ProviderGateway for FakeGateway {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(path.to_string_lossy().into_owned());
+        if let Some(hook) = self
+            .on_unload
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            hook();
+        }
         Ok(())
     }
 

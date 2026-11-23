@@ -18,7 +18,7 @@ impl InstalledExtensionStore {
     }
 
     /// Inserts or updates an installed extension, keyed by file name.
-    /// An update keeps the original `installed_at_ms`.
+    /// An update keeps the original `installed_at_ms`, and keeps the declared types when it has none.
     #[tracing::instrument(level = "trace", skip_all, err)]
     pub fn upsert(&self, extension: &InstalledExtension) -> Result<(), StorageError> {
         self.database
@@ -26,15 +26,17 @@ impl InstalledExtensionStore {
                 connection
                     .execute(
                         "INSERT INTO installed_extensions
-                         (file_name, internal_name, repository_url, version, trusted, icon_url, installed_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                         (file_name, internal_name, repository_url, version, trusted, icon_url, installed_at,
+                          declared_types)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                      ON CONFLICT(file_name) DO UPDATE SET
                          internal_name = excluded.internal_name,
                          repository_url = excluded.repository_url,
                          version = excluded.version,
                          trusted = excluded.trusted,
                          icon_url = COALESCE(excluded.icon_url, installed_extensions.icon_url),
-                         installed_at = installed_extensions.installed_at",
+                         installed_at = installed_extensions.installed_at,
+                         declared_types = COALESCE(excluded.declared_types, installed_extensions.declared_types)",
                         params![
                             extension.file_name,
                             extension.internal_name,
@@ -42,7 +44,8 @@ impl InstalledExtensionStore {
                             extension.version,
                             extension.trusted,
                             extension.icon_url,
-                            extension.installed_at_ms
+                            extension.installed_at_ms,
+                            extension.declared_types.as_deref().map(encode_types)
                         ],
                     )
                     .map(drop)
@@ -55,7 +58,8 @@ impl InstalledExtensionStore {
         self.database
             .with("list installed extensions", |connection| {
                 let mut statement = connection.prepare(
-                    "SELECT file_name, internal_name, repository_url, version, trusted, icon_url, installed_at
+                    "SELECT file_name, internal_name, repository_url, version, trusted, icon_url, installed_at,
+                        declared_types
                  FROM installed_extensions ORDER BY file_name",
                 )?;
                 let rows = statement.query_map([], |row| {
@@ -69,6 +73,7 @@ impl InstalledExtensionStore {
                             .get::<_, Option<String>>(5)?
                             .filter(|icon| !icon.is_empty()),
                         installed_at_ms: row.get(6)?,
+                        declared_types: row.get::<_, Option<String>>(7)?.and_then(|text| decode_types(&text)),
                     })
                 })?;
                 rows.collect()
@@ -89,6 +94,26 @@ impl InstalledExtensionStore {
         })
     }
 
+    /// Records the content types of an extension whose types are not known yet (rows from before
+    /// they were recorded). Known types are never overwritten: the listing is the better source.
+    #[tracing::instrument(level = "trace", skip_all, fields(file_name = ?file_name), err)]
+    pub fn set_declared_types_if_missing(
+        &self,
+        file_name: &str,
+        types: &[String],
+    ) -> Result<(), StorageError> {
+        self.database
+            .with("save extension content types", |connection| {
+                connection
+                    .execute(
+                        "UPDATE installed_extensions SET declared_types = ?2
+                     WHERE file_name = ?1 AND declared_types IS NULL",
+                        params![file_name, encode_types(types)],
+                    )
+                    .map(drop)
+            })
+    }
+
     /// Forgets an installed extension.
     #[tracing::instrument(level = "trace", skip_all, fields(file_name = ?file_name), err)]
     pub fn remove(&self, file_name: &str) -> Result<(), StorageError> {
@@ -101,6 +126,21 @@ impl InstalledExtensionStore {
                     )
                     .map(drop)
             })
+    }
+}
+
+fn encode_types(types: &[String]) -> String {
+    serde_json::to_string(types).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// A value that is not a JSON list of strings is treated as unknown, so the policy asks again.
+fn decode_types(text: &str) -> Option<Vec<String>> {
+    match serde_json::from_str(text) {
+        Ok(types) => Some(types),
+        Err(error) => {
+            tracing::warn!(%error, "unreadable declared content types; treating them as unknown");
+            None
+        }
     }
 }
 
@@ -122,6 +162,7 @@ mod tests {
             trusted,
             icon_url: None,
             installed_at_ms,
+            declared_types: None,
         }
     }
 
@@ -173,6 +214,47 @@ mod tests {
             .upsert(&extension("a.cs3", 2, false, 9_000))
             .expect("update");
         assert_eq!(store.list().expect("list")[0].installed_at_ms, 1_000);
+    }
+
+    #[test]
+    fn declared_types_round_trip_and_survive_an_update_without_them() {
+        let store = store();
+        let with_types = InstalledExtension {
+            declared_types: Some(vec!["Movie".to_owned(), "Movie,Anime".to_owned()]),
+            ..extension("a.cs3", 1, false, 10)
+        };
+        store.upsert(&with_types).expect("insert");
+        store
+            .upsert(&extension("a.cs3", 2, false, 10))
+            .expect("update without types");
+        assert_eq!(
+            store.list().expect("list")[0].declared_types,
+            with_types.declared_types
+        );
+    }
+
+    #[test]
+    fn missing_types_are_filled_once_and_known_ones_are_kept() {
+        let store = store();
+        store
+            .upsert(&extension("a.cs3", 1, false, 10))
+            .expect("insert");
+        assert_eq!(store.list().expect("list")[0].declared_types, None);
+        let movie = vec!["Movie".to_owned()];
+        store
+            .set_declared_types_if_missing("a.cs3", &movie)
+            .expect("fill");
+        store
+            .set_declared_types_if_missing("a.cs3", &["Others".to_owned()])
+            .expect("kept");
+        assert_eq!(store.list().expect("list")[0].declared_types, Some(movie));
+    }
+
+    #[test]
+    fn unreadable_types_read_as_unknown() {
+        assert_eq!(decode_types("not json"), None);
+        assert_eq!(decode_types("[1, 2]"), None);
+        assert_eq!(decode_types("[]"), Some(vec![]));
     }
 
     #[test]

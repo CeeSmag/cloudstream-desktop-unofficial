@@ -34,11 +34,13 @@ fn setup(label: &str) -> (ExtensionService, Arc<FakeGateway>, PathBuf) {
 
 const REPO: &str = "https://cdn.example/repo.json";
 
+/// A video plugin (the only kind the app installs).
 fn listing(name: &str) -> PluginListing {
     PluginListing {
         internal_name: name.into(),
         url: "https://cdn.example/x.cs3".into(),
         version: 3,
+        tv_types: vec!["Movie".into()],
         ..PluginListing::default()
     }
 }

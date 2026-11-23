@@ -189,12 +189,16 @@ fn populate_extensions(ui: &CloudStream) {
             detail: "v14 · Official Main Repository".into(),
             file_name: "streamflix.cs3".into(),
             trusted: false,
+            supported: true,
+            note: "".into(),
         },
         PluginItem {
             name: "CineVault".into(),
             detail: "v7 · Local".into(),
             file_name: "cinevault.cs3".into(),
             trusted: true,
+            supported: true,
+            note: "".into(),
         },
     ])));
 }

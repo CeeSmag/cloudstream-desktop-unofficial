@@ -25,7 +25,7 @@ fn service() -> RepositoryService {
         ),
         (
             "https://r/plugins.json".to_owned(),
-            br#"[{"internalName":"A","url":"https://r/A.cs3"}]"#.to_vec(),
+            br#"[{"internalName":"A","url":"https://r/A.cs3","tvTypes":["Movie"]}]"#.to_vec(),
         ),
     ]);
     let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
@@ -114,7 +114,8 @@ fn the_catalog_lists_extensions_of_all_repositories_and_follows_added_repositori
         ),
         (
             "https://a/plugins.json".to_owned(),
-            br#"[{"internalName":"MovieHub","name":"Movie Hub","url":"u"}]"#.to_vec(),
+            br#"[{"internalName":"MovieHub","name":"Movie Hub","url":"u","tvTypes":["Movie"]}]"#
+                .to_vec(),
         ),
         (
             "https://b/repo.json".to_owned(),
@@ -122,7 +123,8 @@ fn the_catalog_lists_extensions_of_all_repositories_and_follows_added_repositori
         ),
         (
             "https://b/plugins.json".to_owned(),
-            br#"[{"internalName":"AnimeLand","name":"Anime Land","url":"u"}]"#.to_vec(),
+            br#"[{"internalName":"AnimeLand","name":"Anime Land","url":"u","tvTypes":["Anime"]}]"#
+                .to_vec(),
         ),
     ]);
     let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
@@ -154,4 +156,60 @@ fn the_catalog_lists_extensions_of_all_repositories_and_follows_added_repositori
 fn plugins_lists_what_the_repository_offers() {
     let plugins = service().plugins("https://r/repo.json").expect("lists");
     assert_eq!(plugins[0].internal_name, "A");
+}
+
+/// A repository with a video plugin, a game and a tool whose types are `null`.
+fn mixed_repository() -> RepositoryService {
+    let files = HashMap::from([
+        (
+            "https://g/repo.json".to_owned(),
+            br#"{"name":"G","pluginLists":["https://g/plugins.json"]}"#.to_vec(),
+        ),
+        (
+            "https://g/plugins.json".to_owned(),
+            br#"[{"internalName":"Hub","url":"u","tvTypes":["Movies"]},
+                 {"internalName":"Doom","url":"u","tvTypes":["Others"]},
+                 {"internalName":"Sync","url":"u","tvTypes":null}]"#
+                .to_vec(),
+        ),
+    ]);
+    let store = RepositoryStore::new(Arc::new(Database::open_in_memory().expect("memory db")));
+    let service = RepositoryService::new(
+        Arc::new(MapFetcher(files)),
+        store,
+        Arc::new(FixedClock::at(1)),
+    );
+    service.add("https://g/repo.json").expect("adds");
+    service
+}
+
+fn internal_names(hits: Vec<PluginHit>) -> Vec<String> {
+    hits.into_iter()
+        .map(|hit| hit.plugin.internal_name)
+        .collect()
+}
+
+#[test]
+fn plugins_that_are_not_video_are_kept_out_of_the_catalog_but_remembered() {
+    let service = mixed_repository();
+    assert_eq!(
+        internal_names(service.all_plugins().expect("lists")),
+        ["Hub"],
+        "Movies is read as Movie"
+    );
+    assert_eq!(
+        internal_names(service.refused_plugins().expect("lists")),
+        ["Doom", "Sync"]
+    );
+}
+
+#[test]
+fn one_repository_list_follows_the_same_rule() {
+    let single: Vec<String> = mixed_repository()
+        .plugins("https://g/repo.json")
+        .expect("lists")
+        .into_iter()
+        .map(|listing| listing.internal_name)
+        .collect();
+    assert_eq!(single, ["Hub"]);
 }

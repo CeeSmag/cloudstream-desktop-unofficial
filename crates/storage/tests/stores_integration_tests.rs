@@ -66,6 +66,7 @@ fn settings_repo_and_extension_stores_round_trip() {
         trusted: false,
         icon_url: None,
         installed_at_ms: 2_000,
+        declared_types: Some(vec!["Movie".into()]),
     })
     .expect("upsert");
     exts.set_icon_if_missing("Demo", "https://repo.example/p.png")

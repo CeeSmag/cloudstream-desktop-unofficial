@@ -3,22 +3,26 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use content_policy::{ContentPolicy, Verdict};
 use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
 use extension_api::ProviderGateway;
 use extension_repo::{plugin_path_in, ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
 
 use crate::clock::Clock;
+use crate::content_support::{judge_by_providers, judge_installed, judge_listing, listing_label};
 use crate::extension_load_report::{ExtensionLoadReport, LoadProgress};
 use crate::ServiceError;
 
-/// Installs, removes and loads extension files.
+/// Installs, removes and loads extension files. Only video plugins ([`ContentPolicy`]) are
+/// installed, loaded and offered; see `content_support`.
 #[derive(Clone)]
 pub struct ExtensionService {
     pub(crate) gateway: Arc<dyn ProviderGateway>,
-    installer: Arc<ExtensionInstaller<Arc<dyn HttpFetcher>>>,
-    installed: InstalledExtensionStore,
+    pub(crate) installer: Arc<ExtensionInstaller<Arc<dyn HttpFetcher>>>,
+    pub(crate) installed: InstalledExtensionStore,
     clock: Arc<dyn Clock>,
+    pub(crate) policy: ContentPolicy,
     providers: Arc<Mutex<Vec<ProviderInfo>>>,
     /// Provider names each extension file registered, so uninstalling can hide exactly those.
     provided_by: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -37,9 +41,17 @@ impl ExtensionService {
             installer: Arc::new(installer),
             installed,
             clock,
+            policy: ContentPolicy::standard(),
             providers: Arc::default(),
             provided_by: Arc::default(),
         }
+    }
+
+    /// Uses `policy` instead of the app's standard content policy (tests).
+    #[must_use]
+    pub fn with_content_policy(mut self, policy: ContentPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Providers loaded so far.
@@ -56,13 +68,22 @@ impl ExtensionService {
         Ok(self.installed.list()?)
     }
 
-    /// Downloads a plugin, records it and loads it into the runtime.
+    /// Downloads a plugin, records it and loads it into the runtime. A plugin that is not a video
+    /// plugin is refused before anything is downloaded.
     #[tracing::instrument(level = "debug", skip_all, fields(repository_url = ?repository_url), err)]
     pub fn install(
         &self,
         listing: &PluginListing,
         repository_url: &str,
     ) -> Result<Vec<ProviderInfo>, ServiceError> {
+        let verdict = judge_listing(&self.policy, repository_url, listing);
+        if let Verdict::NotVideo(refusal) = &verdict {
+            tracing::info!(plugin = %listing.internal_name, %refusal, "install refused");
+            return Err(ServiceError::NotVideo {
+                plugin: listing_label(listing).to_owned(),
+                reason: refusal.to_string(),
+            });
+        }
         let path = self.installer.install(listing, repository_url)?;
         let record = InstalledExtension {
             file_name: file_name_of(&path),
@@ -75,9 +96,10 @@ impl ExtensionService {
                 .clone()
                 .filter(|icon| !icon.trim().is_empty()),
             installed_at_ms: self.clock.now_ms(),
+            declared_types: Some(listing.tv_types.clone()),
         };
         self.installed.upsert(&record)?;
-        self.load_one(&path, record.trusted)
+        self.load_judged(&path, record.trusted, &verdict)
     }
 
     /// Unloads the extension in the runtime, deletes the file and the record, and stops offering
@@ -95,17 +117,22 @@ impl ExtensionService {
         }
         self.installer.uninstall(&extension.internal_name)?;
         self.installed.remove(&extension.file_name)?;
+        self.unregister(&extension.file_name);
+        Ok(())
+    }
+
+    /// Stops offering the providers an extension file registered.
+    pub(crate) fn unregister(&self, file_name: &str) {
         let names = self
             .provided_by
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .remove(&extension.file_name)
+            .remove(file_name)
             .unwrap_or_default();
         self.providers
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|provider| !names.contains(&provider.name));
-        Ok(())
     }
 
     /// Names of the providers an installed extension file registered.
@@ -169,12 +196,20 @@ impl ExtensionService {
     }
 
     /// Changes whether an extension is trusted and reloads it so the new sandbox mode applies now.
+    /// Refused for an extension that is not a video plugin (it is never loaded).
     #[tracing::instrument(level = "debug", skip_all, fields(trusted = ?trusted), err)]
     pub fn set_trusted(
         &self,
         extension: &InstalledExtension,
         trusted: bool,
     ) -> Result<(), ServiceError> {
+        let verdict = judge_installed(&self.policy, extension);
+        if let Some(Verdict::NotVideo(refusal)) = &verdict {
+            return Err(ServiceError::NotVideo {
+                plugin: extension.internal_name.clone(),
+                reason: refusal.to_string(),
+            });
+        }
         let updated = InstalledExtension {
             trusted,
             ..extension.clone()
@@ -188,8 +223,18 @@ impl ExtensionService {
                 "the extension runtime did not unload before the trust reload"
             );
         }
-        self.load_one(&path, trusted)?;
-        Ok(())
+        self.unregister(&updated.file_name);
+        match verdict {
+            Some(verdict) => self.load_judged(&path, trusted, &verdict).map(drop),
+            None => match self.load_unjudged(&updated, &path) {
+                LoadOutcome::Loaded(_) => Ok(()),
+                LoadOutcome::Failed(error) => Err(error),
+                LoadOutcome::NotVideo(reason) => Err(ServiceError::NotVideo {
+                    plugin: updated.internal_name.clone(),
+                    reason,
+                }),
+            },
+        }
     }
 
     /// Loads every installed extension; one failing extension never blocks the others.
@@ -199,7 +244,8 @@ impl ExtensionService {
     }
 
     /// Like [`Self::load_installed`], telling `on_progress` before each extension starts and
-    /// once more when all are done.
+    /// once more when all are done. Extensions that are not video plugins are not loaded
+    /// ([`ExtensionLoadReport::not_video`]).
     #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn load_installed_reporting(
         &self,
@@ -214,29 +260,7 @@ impl ExtensionService {
                 total,
                 current: extension.internal_name.clone(),
             });
-            let path = match plugin_path_in(self.installer.extensions_dir(), &extension.file_name) {
-                Ok(path) => path,
-                Err(error) => {
-                    tracing::warn!(
-                        extension = %extension.file_name,
-                        %error,
-                        "extension file name failed the path jail"
-                    );
-                    report
-                        .failures
-                        .push((extension.file_name, error.to_string()));
-                    continue;
-                }
-            };
-            match self.load_one(&path, extension.trusted) {
-                Ok(mut providers) => report.providers.append(&mut providers),
-                Err(error) => {
-                    tracing::warn!(extension = %extension.file_name, %error, "extension failed to load");
-                    report
-                        .failures
-                        .push((extension.file_name, error.to_string()));
-                }
-            }
+            self.load_recorded(extension, &mut report);
         }
         on_progress(&LoadProgress {
             finished: total,
@@ -246,7 +270,92 @@ impl ExtensionService {
         Ok(report)
     }
 
-    fn load_one(&self, path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, ServiceError> {
+    /// Loads one installed extension into `report`: judged by its recorded types, or by its
+    /// providers' types when those are unknown.
+    fn load_recorded(&self, extension: InstalledExtension, report: &mut ExtensionLoadReport) {
+        let path = match plugin_path_in(self.installer.extensions_dir(), &extension.file_name) {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!(extension = %extension.file_name, %error, "extension file name failed the path jail");
+                report
+                    .failures
+                    .push((extension.file_name, error.to_string()));
+                return;
+            }
+        };
+        let outcome = match judge_installed(&self.policy, &extension) {
+            Some(Verdict::NotVideo(refusal)) => LoadOutcome::NotVideo(refusal.to_string()),
+            Some(verdict) => self.load_judged(&path, extension.trusted, &verdict).into(),
+            None => self.load_unjudged(&extension, &path),
+        };
+        match outcome {
+            LoadOutcome::Loaded(mut providers) => report.providers.append(&mut providers),
+            LoadOutcome::Failed(error) => {
+                tracing::warn!(extension = %extension.file_name, %error, "extension failed to load");
+                report
+                    .failures
+                    .push((extension.file_name, error.to_string()));
+            }
+            LoadOutcome::NotVideo(reason) => {
+                tracing::info!(extension = %extension.file_name, %reason, "extension not loaded");
+                report.not_video.push((extension.file_name, reason));
+            }
+        }
+    }
+
+    /// Loads an extension whose verdict is known and offers the providers the policy shows.
+    fn load_judged(
+        &self,
+        path: &Path,
+        trusted: bool,
+        verdict: &Verdict,
+    ) -> Result<Vec<ProviderInfo>, ServiceError> {
+        let loaded = self.load_raw(path, trusted)?;
+        let (shown, hidden): (Vec<ProviderInfo>, Vec<ProviderInfo>) = loaded
+            .into_iter()
+            .partition(|provider| self.policy.shows_provider(verdict, &provider.types));
+        if !hidden.is_empty() {
+            let names: Vec<&str> = hidden.iter().map(|p| p.name.as_str()).collect();
+            tracing::info!(extension = %file_name_of(path), hidden = ?names, "providers that are not video are not offered");
+        }
+        self.register(path, &shown);
+        Ok(shown)
+    }
+
+    /// Loads an extension recorded before content types were (`declared_types` unknown). Its
+    /// providers' types decide and are recorded; a refused extension is unloaded again before
+    /// any of its providers is offered.
+    fn load_unjudged(&self, extension: &InstalledExtension, path: &Path) -> LoadOutcome {
+        let loaded = match self.load_raw(path, extension.trusted) {
+            Ok(loaded) => loaded,
+            Err(error) => return LoadOutcome::Failed(error),
+        };
+        let (verdict, types) = judge_by_providers(&self.policy, extension, &loaded);
+        // Providers that report no types tell nothing: stay unknown, so the listing can still decide.
+        if !types.is_empty() {
+            if let Err(error) = self
+                .installed
+                .set_declared_types_if_missing(&extension.file_name, &types)
+            {
+                tracing::warn!(extension = %extension.file_name, %error, "could not record the content types");
+            }
+        }
+        if let Verdict::NotVideo(refusal) = &verdict {
+            if let Err(error) = self.gateway.unload_extension(path) {
+                tracing::warn!(extension = %extension.file_name, %error, "could not unload a refused extension");
+            }
+            return LoadOutcome::NotVideo(refusal.to_string());
+        }
+        let shown: Vec<ProviderInfo> = loaded
+            .into_iter()
+            .filter(|provider| self.policy.shows_provider(&verdict, &provider.types))
+            .collect();
+        self.register(path, &shown);
+        LoadOutcome::Loaded(shown)
+    }
+
+    /// Loads the file into the runtime; nothing is offered yet.
+    fn load_raw(&self, path: &Path, trusted: bool) -> Result<Vec<ProviderInfo>, ServiceError> {
         let extension = file_name_of(path);
         let started = Instant::now();
         tracing::info!(%extension, trusted, "loading extension");
@@ -264,12 +373,17 @@ impl ExtensionService {
             elapsed_ms = started.elapsed().as_millis(),
             "extension loaded"
         );
+        Ok(loaded)
+    }
+
+    /// Offers `providers` as the ones the file at `path` registered.
+    fn register(&self, path: &Path, providers: &[ProviderInfo]) {
         self.provided_by
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(
                 file_name_of(path),
-                loaded
+                providers
                     .iter()
                     .map(|provider| provider.name.clone())
                     .collect(),
@@ -278,11 +392,26 @@ impl ExtensionService {
             .providers
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        for provider in &loaded {
+        for provider in providers {
             known.retain(|existing| existing.name != provider.name);
             known.push(provider.clone());
         }
-        Ok(loaded)
+    }
+}
+
+/// What loading one installed extension came to.
+enum LoadOutcome {
+    /// Loaded; these providers are offered.
+    Loaded(Vec<ProviderInfo>),
+    /// It could not be loaded.
+    Failed(ServiceError),
+    /// Not loaded: not a video plugin (why).
+    NotVideo(String),
+}
+
+impl From<Result<Vec<ProviderInfo>, ServiceError>> for LoadOutcome {
+    fn from(result: Result<Vec<ProviderInfo>, ServiceError>) -> Self {
+        result.map_or_else(Self::Failed, Self::Loaded)
     }
 }
 

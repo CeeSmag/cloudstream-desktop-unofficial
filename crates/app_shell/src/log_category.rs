@@ -231,8 +231,8 @@ mod tests {
     }
 
     /// Workspace crates that write no logs: the portable launcher only unpacks and starts the app,
-    /// and `memory_budget` is pure (no I/O, no logging).
-    const CRATES_WITHOUT_LOGS: &[&str] = &["portable_launcher", "memory_budget"];
+    /// and `memory_budget` and `content_policy` are pure (no I/O, no logging).
+    const CRATES_WITHOUT_LOGS: &[&str] = &["portable_launcher", "memory_budget", "content_policy"];
 
     #[test]
     fn own_targets_every_workspace_crate_that_logs_is_listed() {

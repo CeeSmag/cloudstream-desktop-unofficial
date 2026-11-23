@@ -271,6 +271,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app_services"
 version = "0.5.3"
 dependencies = [
+ "content_policy",
  "core_model",
  "criterion",
  "extension_api",
@@ -6253,6 +6254,7 @@ version = "0.5.3"
 dependencies = [
  "core_model",
  "rusqlite",
+ "serde_json",
  "thiserror 2.0.21",
  "tracing",
 ]

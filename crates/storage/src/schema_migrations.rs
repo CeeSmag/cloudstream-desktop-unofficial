@@ -44,6 +44,9 @@ const MIGRATIONS: &[&str] = &[
              AND w.updated_at = latest.max_updated;",
     // When each extension was first installed; 0 means unknown (existing rows).
     "ALTER TABLE installed_extensions ADD COLUMN installed_at INTEGER NOT NULL DEFAULT 0;",
+    // The content types each extension's listing declared, as a JSON array; NULL means unknown
+    // (existing rows), filled in later from the catalog or the providers it registers.
+    "ALTER TABLE installed_extensions ADD COLUMN declared_types TEXT;",
 ];
 
 /// SQLite stores the schema version as a signed integer; one that does not fit is reported as
@@ -160,6 +163,36 @@ mod tests {
             )
             .expect("read");
         assert_eq!(installed_at, 0);
+    }
+
+    #[test]
+    fn migration_5_adds_declared_types_as_unknown_for_existing_rows() {
+        let connection = Connection::open_in_memory().expect("memory db");
+        for step in &MIGRATIONS[..4] {
+            connection.execute_batch(step).expect("earlier step");
+        }
+        connection
+            .pragma_update(None, "user_version", 4)
+            .expect("version 4");
+        connection
+            .execute(
+                "INSERT INTO installed_extensions (file_name, internal_name, repository_url, version, trusted)
+                 VALUES ('a.cs3', 'A', NULL, 1, 0)",
+                [],
+            )
+            .expect("insert");
+        migrate(&connection).expect("migrate to 5");
+        let declared: Option<String> = connection
+            .query_row(
+                "SELECT declared_types FROM installed_extensions WHERE file_name = 'a.cs3'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read");
+        assert_eq!(
+            declared, None,
+            "unknown until the catalog or the providers tell"
+        );
     }
 
     #[test]

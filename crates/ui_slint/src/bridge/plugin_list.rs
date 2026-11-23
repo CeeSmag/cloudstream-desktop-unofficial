@@ -3,7 +3,9 @@
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::plugin_filter::{filter_plugins, language_choices, PluginQuery, PluginSort, PluginView};
+use crate::plugin_filter::{
+    catalog_count_text, filter_plugins, language_choices, PluginQuery, PluginSort, PluginView,
+};
 use crate::posters::string_model;
 use crate::{CloudStream, PluginList};
 
@@ -53,11 +55,14 @@ pub(crate) fn show_available(ctx: &BridgeContext) {
         .collect();
     let list = ui.global::<PluginList>();
     list.set_has_more(found.len() > rows.len());
-    list.set_count_text(if session.available.is_empty() {
-        String::new().into()
-    } else {
-        format!("{} of {}", found.len(), session.available.len()).into()
-    });
+    list.set_count_text(
+        catalog_count_text(
+            found.len(),
+            session.available.len(),
+            session.not_video_hidden,
+        )
+        .into(),
+    );
     ui.set_available_plugins(ModelRc::new(VecModel::from(rows)));
 }
 

@@ -167,6 +167,8 @@ fn verify_extensions_and_shelves(ui: &CloudStream) {
         detail: "v1".into(),
         file_name: "cinestream.cs3".into(),
         trusted: false,
+        supported: true,
+        note: "".into(),
     }])));
     ui.set_available_plugins(ModelRc::new(VecModel::from(vec![AvailablePlugin {
         key: "k1".into(),

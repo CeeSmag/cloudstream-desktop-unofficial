@@ -12,3 +12,10 @@ Feature: Extension repository and plugin lifecycle
     Then plugin "CineStream" is recorded as untrusted and reloaded in sandboxed mode
     When the user uninstalls plugin "CineStream"
     Then provider "CineStreamProvider" is no longer offered and no extensions remain installed
+
+  Scenario: A plugin that is not a video plugin is neither offered nor installed
+    Given a clean app data directory with a local SQLite database
+    And a remote repository "GameRepo" offering the game plugin "Doom"
+    When the user adds the repository "GameRepo"
+    Then plugin "Doom" from "GameRepo" is not offered
+    And installing plugin "Doom" from "GameRepo" is refused as not a video plugin

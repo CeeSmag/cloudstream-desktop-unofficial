@@ -1,21 +1,25 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
+use content_policy::ContentPolicy;
 use core_model::{DiscoveredRepository, PluginListing, RepositoryEntry};
 use extension_repo::{HttpFetcher, RepositoryClient};
 use storage::RepositoryStore;
 
+use crate::content_support::judge_listing;
 use crate::plugin_index::{IndexedRepository, PluginHit, PluginIndex};
 use crate::{Clock, ServiceError};
 
 /// How many repositories are asked for their icon at the same time.
 const ICON_WORKERS: usize = 6;
 
-/// Repositories the user subscribed to and the plugins they offer.
+/// Repositories the user subscribed to and the plugins they offer. Only video plugins
+/// ([`ContentPolicy`]) are offered; the rest are kept apart ([`PluginIndex::refused`]).
 #[derive(Clone)]
 pub struct RepositoryService {
     client: Arc<RepositoryClient<Arc<dyn HttpFetcher>>>,
     store: RepositoryStore,
     clock: Arc<dyn Clock>,
+    policy: ContentPolicy,
     /// Every extension of every repository, once it has been downloaded.
     index: Arc<Mutex<Option<Arc<PluginIndex>>>>,
     /// Held while the index is being built, so two searches do not both download everything.
@@ -33,9 +37,17 @@ impl RepositoryService {
             client: Arc::new(RepositoryClient::new(fetcher)),
             store,
             clock,
+            policy: ContentPolicy::standard(),
             index: Arc::default(),
             building: Arc::default(),
         }
+    }
+
+    /// Uses `policy` instead of the app's standard content policy (tests).
+    #[must_use]
+    pub fn with_content_policy(mut self, policy: ContentPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Validates a repository URL by downloading its manifest, then remembers it.
@@ -117,12 +129,12 @@ impl RepositoryService {
         Ok(self.store.list()?)
     }
 
-    /// Downloads the plugin list of one repository.
+    /// Downloads the plugin list of one repository: the video plugins it offers.
     #[tracing::instrument(level = "debug", skip_all, fields(url = ?url), err)]
     pub fn plugins(&self, url: &str) -> Result<Vec<PluginListing>, ServiceError> {
         let manifest = self.client.fetch_manifest(url)?;
         self.remember_icon(url, &manifest);
-        Ok(self.client.fetch_plugins(&manifest))
+        Ok(self.split(url, self.client.fetch_plugins(&manifest)).0)
     }
 
     /// Downloads the extensions of every saved repository (a few repositories at a time) so they
@@ -140,6 +152,24 @@ impl RepositoryService {
         Ok(self.plugin_index()?.all())
     }
 
+    /// The listings that are not offered because they are not video plugins, for matching installed
+    /// extensions to their listing ([`crate::ExtensionService::backfill_declared_types`]).
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn refused_plugins(&self) -> Result<Vec<PluginHit>, ServiceError> {
+        Ok(self.plugin_index()?.refused())
+    }
+
+    /// Splits a repository's listings into (video plugins, the rest).
+    fn split(
+        &self,
+        url: &str,
+        listings: Vec<PluginListing>,
+    ) -> (Vec<PluginListing>, Vec<PluginListing>) {
+        listings
+            .into_iter()
+            .partition(|listing| judge_listing(&self.policy, url, listing).is_video())
+    }
+
     fn plugin_index(&self) -> Result<Arc<PluginIndex>, ServiceError> {
         let _building = self.building.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(index) = self.current_index() {
@@ -149,6 +179,7 @@ impl RepositoryService {
         let index = Arc::new(PluginIndex::new(self.download_everything()?));
         tracing::info!(
             plugins = index.plugin_count(),
+            not_video = index.refused_count(),
             elapsed_ms = started.elapsed().as_millis(),
             "extension list built"
         );
@@ -178,25 +209,11 @@ impl RepositoryService {
                     let Some(entry) = repositories.get(position) else {
                         break;
                     };
-                    match self.client.fetch_manifest(&entry.url) {
-                        Ok(manifest) => {
-                            self.remember_icon(&entry.url, &manifest);
-                            let indexed = IndexedRepository {
-                                url: entry.url.clone(),
-                                name: entry.name.clone(),
-                                icon_url: manifest
-                                    .icon_url
-                                    .clone()
-                                    .filter(|icon| !icon.trim().is_empty())
-                                    .or_else(|| entry.icon_url.clone()),
-                                plugins: self.client.fetch_plugins(&manifest),
-                            };
-                            found
-                                .lock()
-                                .unwrap_or_else(PoisonError::into_inner)
-                                .push((position, indexed));
-                        }
-                        Err(error) => tracing::debug!(url = %entry.url, %error, "repository left out of the extension list"),
+                    if let Some(indexed) = self.index_repository(entry) {
+                        found
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .push((position, indexed));
                     }
                 });
             }
@@ -207,6 +224,31 @@ impl RepositoryService {
             .into_iter()
             .map(|(_, repository)| repository)
             .collect())
+    }
+
+    /// Downloads one repository's listings, split by the content policy; `None` when it cannot be
+    /// read (it is left out until the next time).
+    fn index_repository(&self, entry: &RepositoryEntry) -> Option<IndexedRepository> {
+        let manifest = match self.client.fetch_manifest(&entry.url) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                tracing::debug!(url = %entry.url, %error, "repository left out of the extension list");
+                return None;
+            }
+        };
+        self.remember_icon(&entry.url, &manifest);
+        let (plugins, refused) = self.split(&entry.url, self.client.fetch_plugins(&manifest));
+        Some(IndexedRepository {
+            url: entry.url.clone(),
+            name: entry.name.clone(),
+            icon_url: manifest
+                .icon_url
+                .clone()
+                .filter(|icon| !icon.trim().is_empty())
+                .or_else(|| entry.icon_url.clone()),
+            plugins,
+            refused,
+        })
     }
 
     fn remember_icon(&self, url: &str, manifest: &extension_repo::RepositoryManifest) {

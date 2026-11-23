@@ -9,6 +9,9 @@ pub struct ExtensionLoadReport {
     pub providers: Vec<ProviderInfo>,
     /// Extensions that failed to load, with a readable reason; the rest still loaded.
     pub failures: Vec<(String, String)>,
+    /// Extensions not loaded because they are not video plugins (file name, why). Not failures:
+    /// the viewer can uninstall them in Settings.
+    pub not_video: Vec<(String, String)>,
 }
 
 /// Where the loading of installed extensions stands, reported before each one starts.

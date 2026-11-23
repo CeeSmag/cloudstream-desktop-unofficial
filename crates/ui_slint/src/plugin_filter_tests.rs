@@ -144,3 +144,18 @@ fn format_file_size_handles_bytes_kb_and_mb() {
     assert_eq!(format_file_size(Some(6_929)), Some("6.8 KB".to_owned()));
     assert_eq!(format_file_size(Some(2_097_152)), Some("2.0 MB".to_owned()));
 }
+
+#[test]
+fn the_count_says_how_many_non_video_plugins_are_hidden() {
+    assert_eq!(catalog_count_text(0, 0, 0), "", "no catalog yet");
+    assert_eq!(catalog_count_text(12, 732, 0), "12 of 732");
+    assert_eq!(
+        catalog_count_text(12, 732, 35),
+        "12 of 732 · 35 non-video hidden"
+    );
+    assert_eq!(
+        catalog_count_text(0, 0, 3),
+        "0 of 0 · 3 non-video hidden",
+        "all hidden"
+    );
+}

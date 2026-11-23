@@ -139,14 +139,27 @@ pub(crate) fn posters_from_continue(items: &[WatchProgress]) -> ModelRc<PosterIt
     ModelRc::new(VecModel::from(rows))
 }
 
-pub(crate) fn plugin_rows(installed: &[core_model::InstalledExtension]) -> ModelRc<PluginItem> {
+/// Settings' installed plugins. One that is not a video plugin says so and why, and offers only
+/// Remove; one not judged yet (installed before content types were recorded) shows as usual.
+pub(crate) fn plugin_rows(installed: &[app_services::InstalledStatus]) -> ModelRc<PluginItem> {
     let rows: Vec<PluginItem> = installed
         .iter()
-        .map(|ext| PluginItem {
-            name: ext.internal_name.clone().into(),
-            detail: format!("v{}", ext.version).into(),
-            file_name: ext.file_name.clone().into(),
-            trusted: ext.trusted,
+        .map(|status| {
+            let ext = &status.extension;
+            let note = match &status.support {
+                app_services::Support::NotVideo(reason) => {
+                    format!("Not loaded: {reason}. You can remove it.")
+                }
+                app_services::Support::Supported | app_services::Support::Unknown => String::new(),
+            };
+            PluginItem {
+                name: ext.internal_name.clone().into(),
+                detail: format!("v{}", ext.version).into(),
+                file_name: ext.file_name.clone().into(),
+                trusted: ext.trusted,
+                supported: note.is_empty(),
+                note: note.into(),
+            }
         })
         .collect();
     ModelRc::new(VecModel::from(rows))
@@ -375,7 +388,11 @@ mod tests {
             trusted: true,
             ..core_model::InstalledExtension::default()
         };
-        let [row] = rows(&plugin_rows(&[ext])).try_into().expect("one");
+        let status = app_services::InstalledStatus {
+            extension: ext,
+            support: app_services::Support::Supported,
+        };
+        let [row] = rows(&plugin_rows(&[status])).try_into().expect("one");
         assert_eq!(
             (
                 row.name.as_str(),
@@ -385,6 +402,36 @@ mod tests {
             ("Good", "v7", "Good.cs3")
         );
         assert!(row.trusted);
+        assert!(row.supported);
+        assert!(row.note.is_empty());
+    }
+
+    #[test]
+    fn a_plugin_that_is_not_video_says_why_and_one_not_judged_yet_shows_as_usual() {
+        let status = |name: &str, support| app_services::InstalledStatus {
+            extension: core_model::InstalledExtension {
+                internal_name: name.to_owned(),
+                file_name: format!("{name}.cs3"),
+                ..core_model::InstalledExtension::default()
+            },
+            support,
+        };
+        let shown = rows(&plugin_rows(&[
+            status(
+                "Doom",
+                app_services::Support::NotVideo("not a video plugin (it declares Others)".into()),
+            ),
+            status("Old", app_services::Support::Unknown),
+        ]));
+        assert!(!shown[0].supported);
+        assert_eq!(
+            shown[0].note.as_str(),
+            "Not loaded: not a video plugin (it declares Others). You can remove it."
+        );
+        assert!(
+            shown[1].supported,
+            "not judged yet: it loads, so it is shown as usual"
+        );
     }
 
     #[test]

@@ -85,6 +85,8 @@ pub(crate) struct Session {
     pub(crate) available: Vec<app_services::PluginHit>,
     /// Installed plugins' internal names mapped to `installed_at_ms` (0 when unknown).
     pub(crate) installed_times: std::collections::HashMap<String, i64>,
+    /// How many listings the catalog left out because they are not video plugins.
+    pub(crate) not_video_hidden: usize,
     /// How many plugins the Plugins tab shows ("Show more" adds a page).
     pub(crate) plugin_page: usize,
     /// How many plugins the open repository detail view shows ("Show more" adds a page).
