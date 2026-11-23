@@ -78,6 +78,11 @@ public class Context {
         return resources;
     }
 
+    /** The context's own assets (none on desktop); a plugin's files are in {@code plugin.resources}. */
+    public android.content.res.AssetManager getAssets() {
+        return resources.getAssets();
+    }
+
     public PackageManager getPackageManager() {
         return packageManager;
     }

@@ -259,6 +259,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (product: `cloudflare_bridge` + Slint banner; archived detail under `archive/desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
   - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
+  - Plugin assets (overlay `android-stubs` `AssetManager` / `DesktopAssetSource` / `Resources.getAssets()`, `plugin-runtime` `assets/PluginArchiveAssets.kt`): like CloudStream's PluginManager for `requiresResources`, `plugin.resources.assets` reads the `assets/` folder of the plugin's own `.cs3` (Eclipsia's scraper list and scripts). Names are checked in `AssetManager` (relative, no `.`/`..`/empty parts, no `\`); the reader lives in `com.lagradost.runtime.*` (plugins cannot reference or reflect on it), opens the archive per read (no handle kept, so uninstall works on Windows) and caps each asset at 32 MiB while inflating. Wired by `scripts/patch_extension_loader.py`. Tests: `PluginArchiveAssetsTest` (`CS_TEST_ECLIPSIA_CS3=<Eclipsia.cs3>` adds the real plugin).
   - `sidecar/ExtensionPathJail.kt`, `sidecar/NoOpPreferencesFactory.kt`, `sidecar/SidecarLog.kt`: Enforces `<data>/extensions` path jail, provides no-op `java.util.prefs` for AppContainer compatibility, and gates sidecar stderr diagnostics behind the debug-logging switch.
   - `sidecar/LinkSearches.kt`: Coordinates asynchronous streaming link searches and channel buffers.
   - `sidecar/AddedRepositories.kt`, `plugins/Repository.kt`, `plugins/RepositoryManager.kt`, `ui/settings/extensions/RepositoryData.kt`: Buffers repositories discovered/added dynamically by extensions.
@@ -455,9 +456,9 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 #### Automation Scripts (`scripts/` & `tools/`)
 - `scripts/setup_sidecar.ps1`:
   - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`.
-  - Overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_shadowui_cache_version.py`, and builds the sidecar distribution with JDK 21.
-- `scripts/patch_shadowui_cache_version.py`:
-  - Syncs `ExtensionLoader.kt` cache version check with `ShadowUiTransform.VERSION` after the sidecar overlay is applied.
+  - Overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_extension_loader.py`, and builds the sidecar distribution with JDK 21.
+- `scripts/patch_extension_loader.py` (tests: `patch_extension_loader_test.py`):
+  - Patches the pinned `ExtensionLoader.kt` after the overlay is applied, where the overlay cannot: the cached-jar check follows `ShadowUiTransform.VERSION`, and `initializePlugin` gives each plugin `PluginAssets.resourcesFor(...)` (its own archive's assets). Each patch applies to exactly one place, is already applied, or stops the build.
 - `scripts/test_sidecar.ps1`:
   - Runs the JUnit suites of the plugin runtime (with the overlay) and of `cs-sidecar` (`:plugin-runtime:test :cs-sidecar:test`, `--continue`); CI's `sidecar-check` job.
 - `scripts/record_sidecar_replies.py`:

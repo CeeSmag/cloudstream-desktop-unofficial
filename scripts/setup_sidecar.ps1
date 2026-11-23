@@ -63,8 +63,8 @@ if (Test-Path $Overlay) {
     Copy-Item -Recurse -Force "$Overlay\*" $Repo
 }
 Write-Step "syncing ShadowUi JVM cache version check"
-python3 (Join-Path $ProjectRoot "scripts\patch_shadowui_cache_version.py") $Repo
-if ($LASTEXITCODE -ne 0) { throw "patch_shadowui_cache_version.py failed" }
+python3 (Join-Path $ProjectRoot "scripts\patch_extension_loader.py") $Repo
+if ($LASTEXITCODE -ne 0) { throw "patch_extension_loader.py failed" }
 
 Write-Step "installing sidecar module"
 $Target = Join-Path $Repo "cs-sidecar"

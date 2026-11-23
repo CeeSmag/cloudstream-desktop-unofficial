@@ -93,7 +93,7 @@ ensure_sidecar() {
         git submodule update --init --depth 1
     )
     cp -rf "$REPO_ROOT/sidecar/overlay/"* "$repo/"
-    python3 "$REPO_ROOT/scripts/patch_shadowui_cache_version.py" "$repo"
+    python3 "$REPO_ROOT/scripts/patch_extension_loader.py" "$repo"
     rm -rf "$repo/cs-sidecar"
     cp -rf "$REPO_ROOT/sidecar/cs-sidecar" "$repo/cs-sidecar"
     grep -q 'include(":cs-sidecar")' "$repo/settings.gradle.kts" || printf '\ninclude(":cs-sidecar")\n' >> "$repo/settings.gradle.kts"
