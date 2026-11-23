@@ -42,6 +42,19 @@ function Find-Jdk21 {
     throw "No JDK 21 found. Install one or pass -Jdk21 <path>."
 }
 
+function Find-Python {
+    foreach ($candidate in @("python", "python3")) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) {
+            & $cmd.Source --version *> $null
+            if ($LASTEXITCODE -eq 0) { return $cmd.Source }
+        }
+    }
+    throw "Python 3 not found on PATH (needed by patch_extension_loader.py and sidecar_stamp.py)."
+}
+
+$Python = Find-Python
+
 if (-not (Test-Path (Join-Path $Repo ".git"))) {
     Write-Step "cloning desktop client into $Repo"
     New-Item -ItemType Directory -Force $Root | Out-Null
@@ -63,7 +76,7 @@ if (Test-Path $Overlay) {
     Copy-Item -Recurse -Force "$Overlay\*" $Repo
 }
 Write-Step "syncing ShadowUi JVM cache version check"
-python3 (Join-Path $ProjectRoot "scripts\patch_extension_loader.py") $Repo
+& $Python (Join-Path $ProjectRoot "scripts\patch_extension_loader.py") $Repo
 if ($LASTEXITCODE -ne 0) { throw "patch_extension_loader.py failed" }
 
 # Our Gradle modules (same list as scripts/prepare_sidecar_repo.sh). Only cs-sidecar is packaged;
@@ -89,4 +102,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "gradle build failed" }
 } finally { Pop-Location }
 
-Write-Step "done. Set CS_SIDECAR_HOME=$Target\build\install\cs-sidecar and CS_SIDECAR_JAVA_HOME=$env:JAVA_HOME"
+$InstallDir = Join-Path $Target "build\install\cs-sidecar"
+Write-Step "recording sidecar source fingerprint"
+& $Python (Join-Path $ProjectRoot "scripts\sidecar_stamp.py") --write $InstallDir
+if ($LASTEXITCODE -ne 0) { throw "sidecar_stamp.py --write failed" }
+
+Write-Step "done. Set CS_SIDECAR_HOME=$InstallDir and CS_SIDECAR_JAVA_HOME=$env:JAVA_HOME"

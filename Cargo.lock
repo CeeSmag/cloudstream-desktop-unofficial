@@ -1088,6 +1088,7 @@ dependencies = [
 name = "cloudflare_bridge"
 version = "0.5.3"
 dependencies = [
+ "cloudflare_bridge",
  "proptest",
  "serde",
  "serde_json",

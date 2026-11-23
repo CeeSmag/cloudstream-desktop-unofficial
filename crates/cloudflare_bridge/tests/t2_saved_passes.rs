@@ -1,12 +1,11 @@
 //! T2: saved Cloudflare passes end to end. The real watcher thread, a scripted helper process that passes
 //! every check and reports the pass, a real exchange folder and a real pass folder.
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)] // test code: failing fast is the point
-#![cfg(unix)]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use cloudflare_bridge::{
     spawn_watcher, AllowedHosts, HelperLaunch, SavedPasses, WatchConfig, WatchHandle,
@@ -109,52 +108,17 @@ fn wait_up_to<T>(limit: Duration, mut probe: impl FnMut() -> Option<T>) -> Optio
     None
 }
 
-/// The pass the fake browser reports: a clearance for `domain` lasting an hour, and a session cookie.
-fn payload(domain: &str) -> String {
-    let expires = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("after 1970")
-        .as_millis()
-        + 3_600_000;
-    let cookie = |name: &str, value: &str, expiry: &str| {
-        format!(
-            r#"{{"name":"{name}","value":"{value}","domain":"{domain}","path":"/","secure":true,"http_only":true{expiry}}}"#
-        )
-    };
-    let clearance = cookie(
-        "cf_clearance",
-        "clear-value",
-        &format!(r#","expires_ms":{expires}"#),
-    );
-    let session = cookie("sess", "session-value", "");
-    format!(r#"{{"user_agent":"Fake/1","cookies":[{clearance},{session}]}}"#)
-}
-
 /// A helper that passes every check at once: it answers the sidecar's file and reports the pass. Hosts
 /// under `solo.test` get a host-only clearance, others one for `.site.test`.
 fn fake_helper(dir: &Path) -> HelperLaunch {
-    let script = format!(
-        r#"while IFS="$(printf '\t')" read -r kind id host url method standalone; do
-  case "$kind" in
-    verify|present)
-      : > "{dir}/$kind-$id.received"
-      printf 'ok=true\nuserAgent=Fake/1\ncookie=cf_clearance=clear-value\n' > "{dir}/result-$id.tmp"
-      mv "{dir}/result-$id.tmp" "{dir}/result-$id.txt"
-      case "$host" in
-        *solo.test) pass='{solo}';;
-        *) pass='{shared}';;
-      esac
-      printf 'passed\t%s\t%s\t%s\n' "$host" "$id" "$pass";;
-    quit) exit 0;;
-  esac
-done"#,
-        dir = dir.display(),
-        solo = payload("www.solo.test"),
-        shared = payload(".site.test"),
-    );
     HelperLaunch {
-        program: "sh".into(),
-        args: vec!["-c".into(), script],
+        program: PathBuf::from(env!("CARGO_BIN_EXE_fake_verify_helper")),
+        args: vec![
+            "--mode".into(),
+            "saved-passes".into(),
+            "--exchange".into(),
+            dir.to_string_lossy().into_owned(),
+        ],
     }
 }
 

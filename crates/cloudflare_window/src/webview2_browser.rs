@@ -1,5 +1,7 @@
 //! Windows browser hosting and native visibility control.
 
+#[path = "webview2_cookies.rs"]
+mod cookies;
 #[path = "webview2_protocol.rs"]
 mod protocol;
 
@@ -10,9 +12,8 @@ use tao::platform::windows::WindowExtWindows;
 use windows_webview::{EnvironmentOptions, WebViewHost};
 
 use super::*;
-use crate::browser_cookies::{checked, expiry_from_fractional_seconds};
 use crate::verification::DocumentId;
-use cloudflare_bridge::{CookieParts, CookieValue};
+use cookies::read_cookies;
 
 pub(crate) struct BrowserContext(EnvironmentOptions);
 
@@ -221,37 +222,5 @@ fn identify_cookies(native: &WebViewHost, source: BrowserSource, agent: String) 
         Err(error) => receiver.unavailable("could not read the browser identity", error),
     }) {
         source.unavailable("could not read the browser identity", error);
-    }
-}
-
-fn read_cookies(
-    native: &WebViewHost,
-    target: &Url,
-    done: impl FnOnce(windows_webview::Result<Cookies>) + 'static,
-) -> windows_webview::Result<()> {
-    let scope = target.clone();
-    native
-        .webview()
-        .cookie_manager()?
-        .get_cookies(target.as_str(), move |result| {
-            done(result.map(|cookies| {
-                cookies
-                    .into_iter()
-                    .filter_map(|cookie| checked(webview2_parts(cookie), &scope))
-                    .collect()
-            }));
-        })
-}
-
-/// WebView2's cookie as the fields the bridge checks (a leading dot marks a domain cookie, as in WebKit).
-fn webview2_parts(cookie: windows_webview::Cookie) -> CookieParts {
-    CookieParts {
-        name: cookie.name,
-        value: CookieValue::new(cookie.value),
-        domain: cookie.domain,
-        path: cookie.path,
-        secure: cookie.is_secure,
-        http_only: cookie.is_http_only,
-        expires: expiry_from_fractional_seconds(cookie.expires),
     }
 }

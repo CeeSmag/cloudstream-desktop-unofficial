@@ -28,7 +28,7 @@ pub const MAX_PASS_FILE_BYTES: u64 = 64 * 1024;
 const LOCK_WAIT: Duration = Duration::from_secs(2);
 
 /// How often a waiting change tries the lock again.
-const LOCK_RETRY: Duration = Duration::from_millis(5);
+const LOCK_RETRY: Duration = Duration::from_millis(1);
 
 /// A temporary file older than this was left by a writer that stopped.
 const STALE_TEMP_AGE: Duration = Duration::from_secs(60);
@@ -59,6 +59,7 @@ impl DiskPassBook {
             path: dir.clone(),
             source,
         })?;
+        ensure_lock_file(&dir)?;
         Ok(Self {
             dir,
             cap,
@@ -141,7 +142,7 @@ impl DiskPassBook {
         })
     }
 
-    /// Runs `change` while holding the book's lock.
+    /// Runs `change` while holding the book's exclusive lock.
     fn locked<T>(
         &self,
         change: impl FnOnce() -> Result<T, PassStoreError>,
@@ -157,9 +158,29 @@ impl DiskPassBook {
                 path: path.clone(),
                 source,
             })?;
-        acquire(&lock, &path)?;
+        acquire(&lock, &path, LockMode::Exclusive)?;
         let result = change();
         // Dropping the file releases the lock, also if `unlock` fails.
+        let _ = lock.unlock();
+        result
+    }
+
+    /// Runs `read` while holding the book's lock so readers never race with a writer renaming or
+    /// deleting a scope file (preventing Windows NTFS `DELETE_PENDING` access errors). Uses the
+    /// exclusive lock when `.lock` is writable so continuous readers cannot overlap and starve a
+    /// waiting writer, and falls back to a shared lock on a read-only folder (where no writer runs).
+    fn read_locked<T: Default>(&self, read: impl FnOnce() -> T) -> T {
+        let path = self.dir.join(LOCK_FILE);
+        let (lock, mode) = match open_read_lock(&path) {
+            ReadLockOpen::Locked(file, mode) => (file, mode),
+            ReadLockOpen::Absent => return read(),
+            ReadLockOpen::Failed => return T::default(),
+        };
+        if let Err(error) = acquire(&lock, &path, mode) {
+            tracing::warn!(%error, "cannot acquire lock on saved Cloudflare passes");
+            return T::default();
+        }
+        let result = read();
         let _ = lock.unlock();
         result
     }
@@ -195,10 +216,12 @@ impl DiskPassBook {
 
 impl PassBook for DiskPassBook {
     fn live_passes(&self, now: SystemTime) -> Vec<SavedPass> {
-        self.scopes()
-            .into_iter()
-            .filter_map(|(_, entry)| entry.live_pass(now).cloned())
-            .collect()
+        self.read_locked(|| {
+            self.scopes()
+                .into_iter()
+                .filter_map(|(_, entry)| entry.live_pass(now).cloned())
+                .collect()
+        })
     }
 
     fn save(&self, pass: SavedPass, now: SystemTime) -> Result<SaveOutcome, PassStoreError> {
@@ -249,11 +272,66 @@ impl PassBook for DiskPassBook {
     }
 }
 
-/// Takes the exclusive lock, waiting at most [`LOCK_WAIT`].
-fn acquire(lock: &File, path: &Path) -> Result<(), PassStoreError> {
+#[derive(Clone, Copy)]
+enum LockMode {
+    Exclusive,
+    Shared,
+}
+
+enum ReadLockOpen {
+    Locked(File, LockMode),
+    Absent,
+    Failed,
+}
+
+fn is_shared_fallback_error(kind: io::ErrorKind) -> bool {
+    kind == io::ErrorKind::PermissionDenied
+}
+
+fn open_read_lock(path: &Path) -> ReadLockOpen {
+    match OpenOptions::new().write(true).open(path) {
+        Ok(file) => ReadLockOpen::Locked(file, LockMode::Exclusive),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => ReadLockOpen::Absent,
+        Err(error) if is_shared_fallback_error(error.kind()) => {
+            match OpenOptions::new().read(true).open(path) {
+                Ok(file) => ReadLockOpen::Locked(file, LockMode::Shared),
+                Err(read_err) => {
+                    tracing::warn!(file = %path.display(), error = %read_err, "cannot open the pass book's lock for reading");
+                    ReadLockOpen::Failed
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(file = %path.display(), %error, "cannot open the pass book's lock for reading");
+            ReadLockOpen::Failed
+        }
+    }
+}
+
+fn ensure_lock_file(dir: &Path) -> Result<(), PassStoreError> {
+    let path = dir.join(LOCK_FILE);
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map(|_| ())
+        .map_err(|source| PassStoreError::Io {
+            operation: "open the pass book's lock",
+            path,
+            source,
+        })
+}
+
+/// Takes the exclusive or shared lock, waiting at most [`LOCK_WAIT`].
+fn acquire(lock: &File, path: &Path, mode: LockMode) -> Result<(), PassStoreError> {
     let started = Instant::now();
     loop {
-        match lock.try_lock() {
+        let attempt = match mode {
+            LockMode::Exclusive => lock.try_lock(),
+            LockMode::Shared => lock.try_lock_shared(),
+        };
+        match attempt {
             Ok(()) => return Ok(()),
             Err(TryLockError::WouldBlock) if may_wait_longer(started.elapsed()) => {
                 std::thread::sleep(LOCK_RETRY);

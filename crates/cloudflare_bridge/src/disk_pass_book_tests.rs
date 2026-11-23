@@ -60,6 +60,29 @@ fn the_folder_and_its_files_are_private_to_this_user() {
     let _ = fs::remove_dir_all(made.dir());
 }
 
+#[cfg(windows)]
+#[test]
+fn the_windows_pass_folder_and_files_have_no_app_container_sid_in_their_acl() {
+    use std::process::Command;
+    let made = book("private_win");
+    made.save(pass("p1", "a"), now()).expect("save");
+    for path in [made.dir(), scope_path(&made).as_path()] {
+        let output = Command::new("icacls").arg(path).output().expect("icacls");
+        assert!(
+            output.status.success(),
+            "icacls failed for {}",
+            path.display()
+        );
+        let acl = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            !acl.contains("S-1-15-2-"),
+            "{} must not grant access to any AppContainer SID: {acl}",
+            path.display()
+        );
+    }
+    let _ = fs::remove_dir_all(made.dir());
+}
+
 #[test]
 fn an_unreadable_file_is_removed_and_logged_without_its_content() {
     let cases: [(&str, String); 4] = [
@@ -425,5 +448,256 @@ fn a_read_only_folder_fails_writes_and_keeps_a_damaged_file_it_cannot_remove() {
         "{logs}"
     );
     let _ = fs::set_permissions(made.dir(), fs::Permissions::from_mode(0o700));
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+fn assert_clean_pass_logs(role: &str, logs: &str) {
+    assert!(
+        !logs.contains("cannot read a saved Cloudflare pass")
+            && !logs.contains("removing a saved Cloudflare pass")
+            && !logs.contains("cannot acquire lock"),
+        "{role} logs: {logs}"
+    );
+}
+
+fn spawn_live_readers(
+    dir: &Path,
+    count: usize,
+    stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    start: &std::sync::Arc<std::sync::Barrier>,
+) -> Vec<thread::JoinHandle<(usize, String)>> {
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    (0..count)
+        .map(|_| {
+            let book = DiskPassBook::open(dir).expect("reader book");
+            let stop = Arc::clone(stop);
+            let start = Arc::clone(start);
+            thread::spawn(move || {
+                captured(|| {
+                    start.wait();
+                    let mut reads = 0usize;
+                    while !stop.load(Ordering::Relaxed) {
+                        for found in book.live_passes(now()) {
+                            assert!(found.is_fresh(now()));
+                        }
+                        reads += 1;
+                    }
+                    reads
+                })
+            })
+        })
+        .collect()
+}
+
+fn run_single_scope_writer(dir: &Path, side: usize, rounds: usize) -> Vec<String> {
+    let book = DiskPassBook::open(dir).expect("writer book");
+    let mut rejected = Vec::new();
+    for index in 0..rounds {
+        let (id, value) = (format!("s{side}-{index}"), format!("v{side}-{index}"));
+        book.save(Spec::new(&id, &value).build(), now())
+            .expect("save");
+        // At most 8 rejections per writer = 16 total <= MAX_REJECTED_PER_SCOPE.
+        if index % 20 == 0
+            && book
+                .reject(&PassId::parse(&id).expect("id"), now())
+                .expect("reject")
+        {
+            rejected.push(value);
+        }
+        if index % 25 == 0 {
+            book.prune(now()).expect("prune");
+        }
+    }
+    rejected
+}
+
+/// T2 race (Doc Step 6): multiple instances hammer the *exact same* scope file with concurrent
+/// saves, rejections, prunes, and `live_passes` reads. Neither readers nor writers may emit
+/// read/damage warnings or lose a rejection under Windows NTFS or POSIX file semantics.
+#[test]
+fn single_scope_concurrent_readers_and_writers_never_log_read_errors_or_lose_rejections() {
+    use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Barrier};
+    let dir = folder("single_scope_race");
+    let stop = Arc::new(AtomicBool::new(false));
+    let start = Arc::new(Barrier::new(6));
+    let readers = spawn_live_readers(&dir, 4, &stop, &start);
+    let writers: Vec<_> = (0..2)
+        .map(|side| {
+            let (dir, start) = (dir.clone(), Arc::clone(&start));
+            thread::spawn(move || {
+                captured(|| {
+                    start.wait();
+                    run_single_scope_writer(&dir, side, 160)
+                })
+            })
+        })
+        .collect();
+    let mut rejected = Vec::new();
+    for writer in writers {
+        let (values, logs) = writer.join().expect("writer");
+        assert_clean_pass_logs("writer", &logs);
+        rejected.extend(values);
+    }
+    stop.store(true, Ordering::Relaxed);
+    for reader in readers {
+        let (reads, logs) = reader.join().expect("reader");
+        assert!(reads > 0, "reader exercised concurrent reads");
+        assert_clean_pass_logs("reader", &logs);
+    }
+    assert!(!rejected.is_empty());
+    let verifier = DiskPassBook::open(&dir).expect("verifier");
+    for value in rejected {
+        let again = Spec::new("again", &value).build();
+        assert_eq!(
+            verifier.save(again, later(1)).expect("save"),
+            SaveOutcome::Rejected
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn write_private_writes_exact_bytes_and_refuses_to_overwrite_existing_file() {
+    let dir = folder("write_private");
+    let target = dir.join("probe.tmp");
+    write_private(&target, b"payload").expect("first write");
+    assert_eq!(fs::read(&target).expect("read"), b"payload");
+    let err = write_private(&target, b"second").expect_err("create_new refuses collision");
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// T2 race (Windows NTFS DELETE_PENDING window): readers open the scope file continuously while
+/// writers alternate `save` (creating/renaming the file) and `prune` after expiry (deleting it).
+#[test]
+fn concurrent_prune_delete_and_read_on_one_scope_never_fails_or_warns() {
+    use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Barrier};
+    let dir = folder("delete_pending_race");
+    let stop = Arc::new(AtomicBool::new(false));
+    let start = Arc::new(Barrier::new(5));
+    let readers = spawn_live_readers(&dir, 4, &stop, &start);
+    let writer_book = DiskPassBook::open(&dir).expect("writer");
+    let writer_logs = captured(|| {
+        start.wait();
+        for index in 0..80 {
+            let made = Spec::new(&format!("d{index}"), &format!("v{index}")).build();
+            writer_book.save(made, now()).expect("save");
+            // Prune well past the pass's expiry so `write_scope` calls `remove_if_present`.
+            writer_book.prune(later(7_200)).expect("prune");
+        }
+    })
+    .1;
+    stop.store(true, Ordering::Relaxed);
+    assert_clean_pass_logs("writer", &writer_logs);
+    for reader in readers {
+        let (reads, logs) = reader.join().expect("reader");
+        assert!(reads > 0);
+        assert_clean_pass_logs("reader", &logs);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn live_passes_times_out_cleanly_when_another_instance_holds_the_lock() {
+    let made = book("read_lock_timeout");
+    made.save(pass("p1", "a"), now()).expect("save");
+    let holder = File::options()
+        .write(true)
+        .open(made.dir().join(LOCK_FILE))
+        .expect("lock file");
+    holder.lock().expect("exclusive lock");
+    let (found, logs) = captured(|| made.live_passes(now()));
+    assert!(found.is_empty());
+    assert!(logs.contains("cannot acquire lock"), "{logs}");
+    holder.unlock().expect("release");
+    assert_eq!(made.live_passes(now()).len(), 1);
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn live_passes_reads_cleanly_when_lock_is_read_only_absent_or_unopenable() {
+    let ro = book("read_lock_ro");
+    ro.save(pass("p1", "a"), now()).expect("save");
+    let ro_lock = ro.dir().join(LOCK_FILE);
+    let mut perms = fs::metadata(&ro_lock).expect("meta").permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&ro_lock, perms).expect("readonly");
+    assert_eq!(
+        ro.live_passes(now()).len(),
+        1,
+        "read-only lock uses shared lock"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&ro_lock, fs::Permissions::from_mode(0o600));
+    }
+    let _ = fs::remove_dir_all(ro.dir());
+
+    let made = book("read_lock_modes");
+    made.save(pass("p1", "a"), now()).expect("save");
+    let lock_path = made.dir().join(LOCK_FILE);
+    fs::remove_file(&lock_path).expect("remove lock");
+    assert_eq!(made.live_passes(now()).len(), 1, "absent lock still reads");
+
+    fs::create_dir_all(&lock_path).expect("dir in place of lock");
+    let (found, logs) = captured(|| made.live_passes(now()));
+    assert!(found.is_empty());
+    assert!(
+        logs.contains("cannot open the pass book's lock for reading"),
+        "{logs}"
+    );
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn opening_creates_the_lock_file_and_rejects_a_directory_in_its_place() {
+    let made = book("lock_created");
+    assert!(
+        made.dir().join(LOCK_FILE).is_file(),
+        "open prepares the lock file before the first write"
+    );
+    let _ = fs::remove_dir_all(made.dir());
+
+    let blocked = folder("lock_blocked");
+    fs::create_dir_all(blocked.join(LOCK_FILE)).expect("dir in place of lock");
+    let error = DiskPassBook::open(&blocked).expect_err("cannot open lock over directory");
+    assert!(matches!(
+        error,
+        PassStoreError::Io {
+            operation: "open the pass book's lock",
+            ..
+        }
+    ));
+    let _ = fs::remove_dir_all(&blocked);
+}
+
+#[test]
+fn open_read_lock_falls_back_to_shared_only_on_permission_denied() {
+    assert!(is_shared_fallback_error(io::ErrorKind::PermissionDenied));
+    assert!(!is_shared_fallback_error(io::ErrorKind::NotFound));
+    assert!(!is_shared_fallback_error(io::ErrorKind::Other));
+
+    let made = book("open_read_lock_variants");
+    let lock_path = made.dir().join(LOCK_FILE);
+    assert!(matches!(
+        open_read_lock(&lock_path),
+        ReadLockOpen::Locked(_, LockMode::Exclusive)
+    ));
+    let mut perms = fs::metadata(&lock_path).expect("meta").permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&lock_path, perms).expect("readonly");
+    if cfg!(not(unix)) || OpenOptions::new().write(true).open(&lock_path).is_err() {
+        assert!(matches!(
+            open_read_lock(&lock_path),
+            ReadLockOpen::Locked(_, LockMode::Shared)
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600));
+    }
     let _ = fs::remove_dir_all(made.dir());
 }

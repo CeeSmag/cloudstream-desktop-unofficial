@@ -12,7 +12,17 @@ thiserror.workspace = true
 tracing.workspace = true
 url = "=2.5.9"
 
+[features]
+# Cross-platform test helper binary used by this crate's T2 integration tests.
+test-support = []
+
+[[bin]]
+name = "fake_verify_helper"
+path = "src/bin/fake_verify_helper.rs"
+required-features = ["test-support"]
+
 [dev-dependencies]
+cloudflare_bridge = { path = ".", features = ["test-support"] }
 proptest = "1"
 tracing-subscriber.workspace = true
 

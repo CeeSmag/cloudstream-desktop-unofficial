@@ -76,4 +76,48 @@ mod tests {
         grant_modify(&dir, &sid).expect("grant");
         let _ = fs::remove_dir_all(&dir);
     }
+
+    fn read_icacls(path: &Path) -> String {
+        let output = Command::new("icacls")
+            .arg(path)
+            .output()
+            .expect("icacls execution");
+        assert!(
+            output.status.success(),
+            "icacls failed for {}",
+            path.display()
+        );
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    #[test]
+    fn granting_sidecar_folder_never_grants_sibling_cloudflare_passes_folder() {
+        let sid = get_or_create_sidecar_container().expect("sid");
+        let data = std::env::temp_dir().join(format!("cs_ac_iso_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&data);
+        let sidecar = data.join("sidecar");
+        let passes = data.join("cloudflare_passes");
+        fs::create_dir_all(&sidecar).expect("sidecar");
+        fs::create_dir_all(&passes).expect("passes");
+        let pass_file = passes.join("domain-site.test.json");
+        fs::write(&pass_file, "{}").expect("pass file");
+
+        grant_modify(&sidecar, &sid).expect("grant sidecar");
+
+        let sidecar_acl = read_icacls(&sidecar);
+        assert!(
+            sidecar_acl.contains(sid.as_str()),
+            "sidecar must grant AppContainer SID {}: {sidecar_acl}",
+            sid.as_str()
+        );
+        for protected in [&passes, &pass_file] {
+            let acl = read_icacls(protected);
+            assert!(
+                !acl.contains(sid.as_str()) && !acl.contains("S-1-15-2-"),
+                "{} must never carry an AppContainer SID: {acl}",
+                protected.display()
+            );
+        }
+        let _ = fs::remove_dir_all(&data);
+    }
 }

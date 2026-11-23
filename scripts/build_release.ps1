@@ -279,11 +279,32 @@ function New-Portable([string]$stage) {
     return $dest
 }
 
+function Find-Python {
+    foreach ($candidate in @('python', 'python3')) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) {
+            & $cmd.Source --version *> $null
+            if ($LASTEXITCODE -eq 0) { return $cmd.Source }
+        }
+    }
+    throw 'Python 3 not found on PATH (needed to verify sidecar freshness).'
+}
+
+function Assert-SidecarFresh([string]$installDir) {
+    $python = Find-Python
+    $stampScript = Join-Path $PSScriptRoot 'sidecar_stamp.py'
+    & $python $stampScript --verify $installDir
+    if ($LASTEXITCODE -ne 0) {
+        throw "Sidecar at '$installDir' is stale or incomplete. Rebuild with: powershell -File scripts\setup_sidecar.ps1"
+    }
+}
+
 # --- main -------------------------------------------------------------------------------------
 
 if (-not (Test-Path (Join-Path $SidecarHome 'bin'))) {
     throw "The extension sidecar is not built at '$SidecarHome'. Run scripts\setup_sidecar.ps1 or pass -SidecarHome."
 }
+Assert-SidecarFresh $SidecarHome
 New-Item -ItemType Directory -Force $OutDir, $cache | Out-Null
 
 $stage = New-Stage

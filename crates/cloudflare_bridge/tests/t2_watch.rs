@@ -1,6 +1,5 @@
 //! T2: the watcher with a scripted helper process, on a real exchange folder.
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)] // test code: failing fast is the point
-#![cfg(unix)]
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -18,35 +17,18 @@ fn folder(name: &str) -> PathBuf {
 
 /// A helper that reports the window open and passes every verify at once (writes the result file).
 fn fake_helper(dir: &Path) -> HelperLaunch {
-    let script = format!(
-        r#"publish() {{
-  printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$1.tmp"
-  mv "{dir}/result-$1.tmp" "{dir}/result-$1.txt"
-}}
-finish() {{
-  publish "$1"
-  printf 'passed\t%s\t%s\n' "$2" "$1"
-}}
-while IFS="$(printf '\t')" read -r kind id host url method standalone; do
-  printf '%s\n' "$url" > "{dir}/$kind-$id.received"
-  case "$kind" in
-    verify|present) printf 'open\t%s\t%s\n' "$host" "$id"
-            case "$id" in
-              failed-first) printf 'failed\t%s\t%s\tfixture failure\n' "$host" "$id";;
-              first|app-retry-*|hold-*) ;;
-              second) finish "$id" "$host"; finish "first" "$host";;
-              committed) publish "$id"; exit 1;;
-              *) finish "$id" "$host";;
-            esac;;
-    cancel) printf 'failed\tsite.test\t%s\tcancelled\n' "$id";;
-    quit) exit 0;;
-  esac
-done"#,
-        dir = dir.display()
-    );
+    helper_in_mode(dir, "watch")
+}
+
+fn helper_in_mode(dir: &Path, mode: &str) -> HelperLaunch {
     HelperLaunch {
-        program: "sh".into(),
-        args: vec!["-c".into(), script],
+        program: PathBuf::from(env!("CARGO_BIN_EXE_fake_verify_helper")),
+        args: vec![
+            "--mode".into(),
+            mode.into(),
+            "--exchange".into(),
+            dir.to_string_lossy().into_owned(),
+        ],
     }
 }
 
@@ -537,18 +519,7 @@ fn concurrent_requests_for_several_sites_are_all_answered_and_only_owners_speak(
 
 /// A helper that writes the arguments it was started with, then waits for `quit`.
 fn args_recording_helper(dir: &Path) -> HelperLaunch {
-    let script = format!(
-        r#"printf '%s %s\n' "$0" "$1" > "{dir}/args.tmp"
-mv "{dir}/args.tmp" "{dir}/args.txt"
-while IFS="$(printf '\t')" read -r kind id host url method standalone; do
-  case "$kind" in quit) exit 0;; esac
-done"#,
-        dir = dir.display()
-    );
-    HelperLaunch {
-        program: "sh".into(),
-        args: vec!["-c".into(), script],
-    }
+    helper_in_mode(dir, "record-args")
 }
 
 fn started_with(name: &str, windows: Option<usize>) -> String {
@@ -583,23 +554,7 @@ fn a_helper_is_started_without_a_window_limit_until_one_is_set() {
 /// 200 ms) and notes each beat in a file for as long as the helper process lives, so the test can
 /// tell whether the helper was closed.
 fn fetch_serving_helper(dir: &Path) -> HelperLaunch {
-    let script = format!(
-        r#"while IFS="$(printf '\t')" read -r kind id host url method standalone; do
-  case "$kind" in
-    verify|present)
-      printf 'ok=true\nuserAgent=Fake\ncookie=cf_clearance=x\n' > "{dir}/result-$id.tmp"
-      mv "{dir}/result-$id.tmp" "{dir}/result-$id.txt"
-      printf 'passed\t%s\t%s\n' "$host" "$id"
-      ( while kill -0 $$ 2>/dev/null; do printf 'fetched\t%s\tf-1\n' "$host"; echo beat >> "{dir}/beats.txt"; sleep 0.2; done ) &;;
-    quit) exit 0;;
-  esac
-done"#,
-        dir = dir.display()
-    );
-    HelperLaunch {
-        program: "sh".into(),
-        args: vec!["-c".into(), script],
-    }
+    helper_in_mode(dir, "fetch-beats")
 }
 
 fn beats(dir: &Path) -> usize {
