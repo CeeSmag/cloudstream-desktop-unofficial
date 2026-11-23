@@ -11,8 +11,12 @@ name = "cloudstream"
 path = "src/main.rs"
 
 [features]
-default = ["wayland"]
+# ui_slint is a dependency without its default features, so each of them is passed on here: a release
+# build (`cargo build -p app_shell`) gets only what this list names.
+default = ["wayland", "pointer-hiding"]
 wayland = ["ui_slint/wayland"]
+# The pointer hides with the player's controls (`ui_slint::bridge::cursor_sync`).
+pointer-hiding = ["ui_slint/pointer-hiding"]
 
 [dependencies]
 anyhow.workspace = true

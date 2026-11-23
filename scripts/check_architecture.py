@@ -71,6 +71,54 @@ def load_workspace_graph(repo_root: Path = REPO_ROOT) -> dict[str, set[str]]:
     return graph
 
 
+def load_workspace_packages(repo_root: Path = REPO_ROOT) -> list[dict]:
+    raw = subprocess.check_output(
+        ["cargo", "metadata", "--no-deps", "--format-version=1"],
+        cwd=repo_root,
+        text=True,
+    )
+    meta = json.loads(raw)
+    ws_ids = set(meta["workspace_members"])
+    return [p for p in meta["packages"] if p["id"] in ws_ids]
+
+
+def default_closure(features: dict[str, list[str]]) -> set[str]:
+    """Every entry a crate's `default` feature turns on, its own features followed through."""
+    seen: set[str] = set()
+    pending = list(features.get("default", []))
+    while pending:
+        entry = pending.pop()
+        if entry in seen:
+            continue
+        seen.add(entry)
+        pending.extend(features.get(entry, []))
+    return seen
+
+
+def check_forwarded_defaults(packages: list[dict]) -> list[str]:
+    """A crate that takes a workspace crate without its default features must turn each of them on
+    again in its own defaults: a build of that crate alone (`cargo build -p app_shell`, as the
+    release scripts do) gets only what it names, while a whole-workspace build adds the dependency's
+    defaults back and hides the gap (pointer hiding went missing from the AppImage that way)."""
+    by_name = {p["name"]: p for p in packages}
+    problems: list[str] = []
+    for pkg in sorted(packages, key=lambda p: p["name"]):
+        enabled = default_closure(pkg.get("features", {}))
+        for dep in pkg.get("dependencies", []):
+            target = by_name.get(dep["name"])
+            if target is None or dep.get("kind") is not None or dep.get("uses_default_features", True):
+                continue
+            given = set(dep.get("features", []))
+            for feature in sorted(target.get("features", {}).get("default", [])):
+                forwarded = {f"{dep['name']}/{feature}", f"{dep['name']}?/{feature}"}
+                if feature not in given and not (forwarded & enabled):
+                    problems.append(
+                        f"{pkg['name']}: takes {dep['name']} without its default features but its own "
+                        f"defaults never enable '{feature}' (add \"{dep['name']}/{feature}\")"
+                    )
+    return problems
+
+
 def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
     visited: dict[str, int] = defaultdict(int)  # 0=unvisited, 1=visiting, 2=done
     stack: list[str] = []
@@ -130,7 +178,7 @@ def check_graph(graph: dict[str, set[str]]) -> list[str]:
 
 def main() -> int:
     graph = load_workspace_graph()
-    problems = check_graph(graph)
+    problems = check_graph(graph) + check_forwarded_defaults(load_workspace_packages())
     if problems:
         for problem in problems:
             print(f"architecture: {problem}", file=sys.stderr)
