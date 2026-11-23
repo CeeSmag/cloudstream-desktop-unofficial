@@ -1,8 +1,10 @@
 //! Evidence from the browser's main navigation and the verification lifecycle.
 
+use cloudflare_bridge::{PassCookie, CLEARANCE_COOKIE};
 use url::Url;
 
-pub(crate) type Cookies = Vec<(String, String)>;
+/// The browser's cookies for the challenged address, with their attributes.
+pub(crate) type Cookies = Vec<PassCookie>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentId(pub(crate) u64);
@@ -186,9 +188,10 @@ impl Verification {
         response.answered()
             && matches_target(&self.target, &response.url)
             && cookies.iter().any(|cookie| {
-                cookie.0 == "cf_clearance"
-                    && !cookie.1.is_empty()
-                    && (!self.encountered_challenge || !self.baseline.contains(cookie))
+                cookie.name() == CLEARANCE_COOKIE
+                    && !cookie.value().is_empty()
+                    && (!self.encountered_challenge
+                        || !self.baseline.iter().any(|old| old.same_credential(cookie)))
             })
     }
 }
@@ -218,26 +221,6 @@ fn is_attachment(value: &str) -> bool {
         .split(';')
         .next()
         .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("attachment"))
-}
-
-pub(crate) fn cookie_matches(target: &Url, domain: &str, path: &str, secure: bool) -> bool {
-    let Some(host) = target.host_str() else {
-        return false;
-    };
-    let domain_matches = if let Some(suffix) = domain.strip_prefix('.') {
-        host.eq_ignore_ascii_case(suffix)
-            || host
-                .strip_suffix(suffix)
-                .is_some_and(|prefix| prefix.ends_with('.'))
-    } else {
-        host.eq_ignore_ascii_case(domain)
-    };
-    let request_path = target.path();
-    let path_matches = request_path == path
-        || request_path
-            .strip_prefix(path)
-            .is_some_and(|tail| path.ends_with('/') || tail.starts_with('/'));
-    domain_matches && path_matches && (!secure || target.scheme() == "https")
 }
 
 #[cfg(test)]

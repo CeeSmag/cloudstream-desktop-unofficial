@@ -3,7 +3,9 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use cloudflare_bridge::{FetchOutcome, FetchRequest, HelperStatus, Outcome, VerifyRequest};
+use cloudflare_bridge::{
+    FetchOutcome, FetchRequest, HelperStatus, Outcome, PassCookie, VerifyRequest,
+};
 use tao::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 use tao::window::Window;
 use url::{Origin, Url};
@@ -209,7 +211,7 @@ impl SiteWindow {
 
     /// What the browser's main response says: where a redirect leads and which cookies exist (names only).
     fn log_response(&self, document: DocumentId, response: &MainResponse, cookies: &Cookies) {
-        let names: Vec<&str> = cookies.iter().map(|(name, _)| name.as_str()).collect();
+        let names: Vec<&str> = cookies.iter().map(PassCookie::name).collect();
         let redirect_origin = response
             .redirect
             .as_ref()

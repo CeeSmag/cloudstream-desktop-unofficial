@@ -211,3 +211,34 @@ proptest! {
         prop_assert!(!made.applies_to(&lookalike));
     }
 }
+
+fn named(name: &str, value: &str, expires: CookieExpiry) -> PassCookie {
+    let mut raw = parts(".site.test", "/", true);
+    raw.name = name.into();
+    raw.value = CookieValue::new(value);
+    raw.expires = expires;
+    PassCookie::new(raw).expect("valid")
+}
+
+#[test]
+fn clearance_expiry_is_the_earliest_non_empty_clearance_with_a_time() {
+    let at = |secs: u64| CookieExpiry::At(UNIX_EPOCH + Duration::from_secs(secs));
+    assert_eq!(clearance_expiry(&[]), None);
+    assert_eq!(
+        clearance_expiry(&[named("cf_clearance", "v", CookieExpiry::Session)]),
+        None,
+        "a session clearance says nothing about how long it lasts"
+    );
+    assert_eq!(clearance_expiry(&[named("__cf_bm", "v", at(5))]), None);
+    assert_eq!(clearance_expiry(&[named("cf_clearance", "", at(5))]), None);
+    let cookies = [
+        named("cf_clearance", "a", at(30)),
+        named("cf_clearance", "b", CookieExpiry::Session),
+        named("cf_clearance", "c", at(20)),
+        named("__cf_bm", "d", at(1)),
+    ];
+    assert_eq!(
+        clearance_expiry(&cookies),
+        Some(UNIX_EPOCH + Duration::from_secs(20))
+    );
+}

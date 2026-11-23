@@ -1,9 +1,11 @@
-//! Reads the WebKit cookie store for the challenged URL.
+//! Reads the WebKit cookie store for the challenged URL, with each cookie's attributes.
 
+use cloudflare_bridge::{CookieParts, CookieValue};
 use url::Url;
 use webkit2gtk::{gio::Cancellable, CookieManager, CookieManagerExt};
 
-use crate::verification::{cookie_matches, Cookies};
+use crate::browser_cookies::{checked, expiry_from_unix_seconds};
+use crate::verification::Cookies;
 
 pub(super) fn read_cookies(
     store: &CookieManager,
@@ -24,15 +26,16 @@ fn filter_cookies(cookies: Vec<soup::Cookie>, target: &Url) -> Cookies {
     cookies
         .into_iter()
         .filter_map(|mut cookie| {
-            if !cookie_matches(
-                target,
-                &cookie.domain()?,
-                &cookie.path()?,
-                cookie.is_secure(),
-            ) {
-                return None;
-            }
-            Some((cookie.name()?.to_string(), cookie.value()?.to_string()))
+            let parts = CookieParts {
+                name: cookie.name()?.to_string(),
+                value: CookieValue::new(cookie.value()?.to_string()),
+                domain: cookie.domain()?.to_string(),
+                path: cookie.path()?.to_string(),
+                secure: cookie.is_secure(),
+                http_only: cookie.is_http_only(),
+                expires: expiry_from_unix_seconds(cookie.expires().map(|time| time.to_unix())),
+            };
+            checked(parts, target)
         })
         .collect()
 }

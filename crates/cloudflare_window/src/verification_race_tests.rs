@@ -5,7 +5,22 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use cloudflare_bridge::{CookieExpiry, CookieParts, CookieValue};
+
 use super::*;
+
+fn clearance(value: &str) -> PassCookie {
+    PassCookie::new(CookieParts {
+        name: "cf_clearance".into(),
+        value: CookieValue::new(value),
+        domain: "fixture.test".into(),
+        path: "/".into(),
+        secure: true,
+        http_only: true,
+        expires: CookieExpiry::Session,
+    })
+    .expect("fixture cookie")
+}
 
 const WORKERS: u64 = 4;
 const ATTEMPTS: u64 = 1000;
@@ -38,11 +53,11 @@ fn reordered_browser_callbacks_only_complete_their_current_document() {
     let mut completed = HashSet::new();
     for _ in 0..WORKERS * ATTEMPTS * 2 {
         let (request, document) = receive.recv_timeout(Duration::from_secs(1)).unwrap();
-        let cookies = vec![("cf_clearance".to_owned(), request.to_string())];
+        let cookies = vec![clearance(&request.to_string())];
         let decision = checks[request as usize].response(document, &response, cookies);
         if let Decision::Passed(cookies) = decision {
             assert_eq!(document, DocumentId(request * 2 + 1));
-            assert_eq!(cookies[0].1, request.to_string());
+            assert_eq!(cookies[0].value().expose(), request.to_string());
             assert!(completed.insert(request));
         }
     }

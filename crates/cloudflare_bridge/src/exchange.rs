@@ -8,8 +8,10 @@
 use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
+
+use crate::pass_cookie::{clearance_expiry, PassCookie};
 
 /// A site the sidecar wants verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,8 +58,8 @@ pub enum Outcome {
     Passed {
         /// The `User-Agent` the browser sent; Cloudflare ties its cookie to it.
         user_agent: String,
-        /// Every cookie the browser holds for the site.
-        cookies: Vec<(String, String)>,
+        /// Every cookie the browser holds for the challenged address, with its attributes.
+        cookies: Vec<PassCookie>,
     },
     /// The browser was not challenged, so there are no cookies to give: the sidecar reaches this origin
     /// through the browser document (`transport=browser` in the result file).
@@ -115,12 +117,26 @@ pub fn format_result(outcome: &Outcome) -> String {
             cookies,
         } => {
             let mut text = format!("ok=true\nuserAgent={}\n", user_agent.replace('\n', " "));
-            for (name, value) in cookies {
-                text.push_str(&format!("cookie={name}={value}\n"));
+            if let Some(until) = clearance_expiry(cookies).and_then(epoch_millis) {
+                text.push_str(&format!("validUntil={until}\n"));
+            }
+            for cookie in cookies {
+                text.push_str(&format!(
+                    "cookie={}={}\n",
+                    cookie.name(),
+                    cookie.value().expose()
+                ));
             }
             text
         }
     }
+}
+
+/// `time` as milliseconds since 1970, the sidecar's clock unit; None before 1970.
+pub(crate) fn epoch_millis(time: SystemTime) -> Option<u128> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|since| since.as_millis())
 }
 
 /// Recent files of the exchange folder named `<prefix>*.txt`, oldest first: their text and file name.
@@ -185,6 +201,7 @@ pub fn clear_folder(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{CookieExpiry, CookieParts, CookieValue};
 
     fn folder(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cs_cfx_{name}_{}", std::process::id()));
@@ -204,11 +221,24 @@ mod tests {
         assert_eq!(parse_request("id=../x\nhost=h\nurl=https://h/\n"), None);
     }
 
+    fn cookie(name: &str, value: &str, expires: CookieExpiry) -> PassCookie {
+        PassCookie::new(CookieParts {
+            name: name.into(),
+            value: CookieValue::new(value),
+            domain: ".site.test".into(),
+            path: "/".into(),
+            secure: true,
+            http_only: true,
+            expires,
+        })
+        .expect("valid cookie")
+    }
+
     #[test]
     fn results_carry_the_cookies_and_the_agent_or_the_reason() {
         let passed = Outcome::Passed {
             user_agent: "Agent/1".to_owned(),
-            cookies: vec![("cf_clearance".to_owned(), "a=b".to_owned())],
+            cookies: vec![cookie("cf_clearance", "a=b", CookieExpiry::Session)],
         };
         assert_eq!(
             format_result(&passed),
@@ -218,6 +248,34 @@ mod tests {
             format_result(&Outcome::Declined("closed".into())),
             "ok=false\nreason=closed\n"
         );
+    }
+
+    #[test]
+    fn a_pass_says_until_when_its_clearance_lasts_the_earliest_one_wins() {
+        let at = |secs: u64| CookieExpiry::At(UNIX_EPOCH + Duration::from_secs(secs));
+        let passed = Outcome::Passed {
+            user_agent: "Agent/1".to_owned(),
+            cookies: vec![
+                cookie("__cf_bm", "x", at(10)),
+                cookie("cf_clearance", "late", at(3_000)),
+                cookie("cf_clearance", "early", at(2_000)),
+                cookie("cf_clearance", "", at(1_000)),
+            ],
+        };
+        assert_eq!(
+            format_result(&passed),
+            "ok=true\nuserAgent=Agent/1\nvalidUntil=2000000\ncookie=__cf_bm=x\n\
+             cookie=cf_clearance=late\ncookie=cf_clearance=early\ncookie=cf_clearance=\n"
+        );
+    }
+
+    #[test]
+    fn epoch_millis_counts_from_1970_and_refuses_earlier_times() {
+        assert_eq!(
+            epoch_millis(UNIX_EPOCH + Duration::from_millis(1_234)),
+            Some(1_234)
+        );
+        assert_eq!(epoch_millis(UNIX_EPOCH - Duration::from_secs(1)), None);
     }
 
     #[test]

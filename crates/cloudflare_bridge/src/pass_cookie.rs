@@ -12,6 +12,9 @@ use url::Url;
 
 use crate::cookie_value::CookieValue;
 
+/// The cookie Cloudflare sets when its check is passed; a pass is worth keeping only while it lives.
+pub const CLEARANCE_COOKIE: &str = "cf_clearance";
+
 /// Which hosts a cookie is sent to.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CookieDomain {
@@ -217,6 +220,19 @@ impl PassCookie {
     pub fn same_credential(&self, other: &Self) -> bool {
         self.name == other.name && self.value == other.value
     }
+}
+
+/// When the pass in `cookies` ends: the earliest expiry of a non-empty `cf_clearance`. None when there is no
+/// such cookie or it lasts only the browser session (nothing then says how long the site honours it).
+pub fn clearance_expiry(cookies: &[PassCookie]) -> Option<SystemTime> {
+    cookies
+        .iter()
+        .filter(|cookie| cookie.name == CLEARANCE_COOKIE && !cookie.value.is_empty())
+        .filter_map(|cookie| match cookie.expires {
+            CookieExpiry::At(time) => Some(time),
+            CookieExpiry::Session => None,
+        })
+        .min()
 }
 
 /// RFC 6265 §5.1.4: the cookie path is the request path, or a prefix of it ending at a `/` boundary.

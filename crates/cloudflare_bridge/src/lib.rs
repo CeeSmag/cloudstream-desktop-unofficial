@@ -34,7 +34,10 @@ pub use fetch_exchange::{
 pub use helper_protocol::{
     format_command, format_status, parse_command, parse_status, HelperCommand, HelperStatus,
 };
-pub use pass_cookie::{CookieDomain, CookieExpiry, CookieParts, CookieRefusal, PassCookie};
+pub use pass_cookie::{
+    clearance_expiry, CookieDomain, CookieExpiry, CookieParts, CookieRefusal, PassCookie,
+    CLEARANCE_COOKIE,
+};
 pub use verify_helper::{HelperLaunch, VerifyHelper};
 pub use watch::{spawn_watcher, WatchConfig, WatchHandle};
 pub use watch_event::CloudflareEvent;

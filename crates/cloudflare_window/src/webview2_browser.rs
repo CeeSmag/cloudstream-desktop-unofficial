@@ -10,7 +10,9 @@ use tao::platform::windows::WindowExtWindows;
 use windows_webview::{EnvironmentOptions, WebViewHost};
 
 use super::*;
-use crate::verification::{cookie_matches, DocumentId};
+use crate::browser_cookies::{checked, expiry_from_fractional_seconds};
+use crate::verification::DocumentId;
+use cloudflare_bridge::{CookieParts, CookieValue};
 
 pub(crate) struct BrowserContext(EnvironmentOptions);
 
@@ -235,11 +237,21 @@ fn read_cookies(
             done(result.map(|cookies| {
                 cookies
                     .into_iter()
-                    .filter(|cookie| {
-                        cookie_matches(&scope, &cookie.domain, &cookie.path, cookie.is_secure)
-                    })
-                    .map(|cookie| (cookie.name, cookie.value))
+                    .filter_map(|cookie| checked(webview2_parts(cookie), &scope))
                     .collect()
             }));
         })
+}
+
+/// WebView2's cookie as the fields the bridge checks (a leading dot marks a domain cookie, as in WebKit).
+fn webview2_parts(cookie: windows_webview::Cookie) -> CookieParts {
+    CookieParts {
+        name: cookie.name,
+        value: CookieValue::new(cookie.value),
+        domain: cookie.domain,
+        path: cookie.path,
+        secure: cookie.is_secure,
+        http_only: cookie.is_http_only,
+        expires: expiry_from_fractional_seconds(cookie.expires),
+    }
 }

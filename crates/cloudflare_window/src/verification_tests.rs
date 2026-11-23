@@ -1,3 +1,5 @@
+use cloudflare_bridge::{CookieExpiry, CookieParts, CookieValue};
+
 use super::*;
 
 const TARGET: &str = "https://source.test/watch/title?ticket=one";
@@ -14,7 +16,20 @@ fn response(url: &str, status: u16, challenge: bool) -> MainResponse {
 }
 
 fn clearance(value: &str) -> Cookies {
-    vec![("cf_clearance".into(), value.into())]
+    vec![cookie("cf_clearance", value, ".source.test")]
+}
+
+fn cookie(name: &str, value: &str, domain: &str) -> PassCookie {
+    PassCookie::new(CookieParts {
+        name: name.into(),
+        value: CookieValue::new(value),
+        domain: domain.into(),
+        path: "/".into(),
+        secure: true,
+        http_only: true,
+        expires: CookieExpiry::Session,
+    })
+    .expect("fixture cookie")
 }
 
 #[test]
@@ -91,14 +106,35 @@ fn passage_rejects_unrelated_redirect_and_allows_same_origin_completion() {
 }
 
 #[test]
-fn cookie_scope_matches_the_path_and_host_boundary() {
+fn the_same_clearance_under_another_domain_is_still_the_stale_one() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), clearance("old"));
+    let id = DocumentId(1);
+    check.start(id);
+    check.response(id, &response(TARGET, 403, true), Vec::new());
+    let moved = vec![cookie("cf_clearance", "old", "source.test")];
+    assert_eq!(
+        check.response(id, &response(TARGET, 200, false), moved),
+        Decision::Unconfirmed,
+        "the site sees name and value; attributes do not make an old pass new"
+    );
+}
+
+#[test]
+fn only_a_non_empty_clearance_cookie_is_a_passage() {
     let target = Url::parse(TARGET).unwrap();
-    assert!(cookie_matches(&target, ".source.test", "/watch", true));
-    assert!(!cookie_matches(&target, "source.test", "/wat", true));
-    assert!(!cookie_matches(&target, "other.test", "/watch", false));
-    assert!(!cookie_matches(&target, ".test.invalid", "/", false));
-    let plain = Url::parse("http://source.test/watch/title").unwrap();
-    assert!(!cookie_matches(&plain, "source.test", "/", true));
+    for cookies in [
+        vec![cookie("cf_clearance", "", ".source.test")],
+        vec![cookie("__cf_bm", "x", ".source.test")],
+    ] {
+        let mut check = Verification::new(target.clone(), Vec::new());
+        let id = DocumentId(1);
+        check.start(id);
+        check.response(id, &response(TARGET, 403, true), Vec::new());
+        assert_eq!(
+            check.response(id, &response(TARGET, 200, false), cookies),
+            Decision::Unconfirmed
+        );
+    }
 }
 
 #[test]
