@@ -3,7 +3,9 @@
 use std::path::{Path, PathBuf};
 
 use app_services::SettingsService;
-use cloudflare_bridge::{spawn_watcher, AllowedHosts, HelperLaunch, WatchConfig, WatchHandle};
+use cloudflare_bridge::{
+    spawn_watcher, AllowedHosts, HelperLaunch, SavedPasses, WatchConfig, WatchHandle,
+};
 
 /// Overrides where the verification helper is (for development builds).
 const HELPER_VARIABLE: &str = "CS_VERIFY_HELPER";
@@ -38,8 +40,7 @@ pub fn start_cloudflare_watch(data_dir: &Path, settings: &SettingsService) -> Wa
         dir: exchange,
         allowed: AllowedHosts::new(saved),
         helper,
-        // Off until the sidecar understands saved passes (`source=saved`, `rejected=`).
-        passes: None,
+        passes: saved_passes(data_dir),
     });
     let idle = settings
         .helper_idle()
@@ -56,6 +57,21 @@ pub fn start_cloudflare_watch(data_dir: &Path, settings: &SettingsService) -> Wa
         }
     }
     watch
+}
+
+/// Passes kept in `<data>/cloudflare_passes`, outside `<data>/sidecar` (the only part of the data folder a
+/// plugin's sandbox may read). Without the folder every request is checked in the window, as before.
+fn saved_passes(data_dir: &Path) -> Option<SavedPasses> {
+    SavedPasses::on_disk(passes_dir(data_dir))
+        .map_err(|error| {
+            tracing::warn!(%error, "saved Cloudflare passes are off: every site is checked again");
+        })
+        .ok()
+}
+
+/// Where saved passes live: beside the sidecar's folder, never inside it.
+fn passes_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("cloudflare_passes")
 }
 
 fn helper_args(exchange: &Path, profile: &Path) -> Vec<String> {
@@ -80,6 +96,30 @@ fn find_helper() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_passes_live_beside_the_sandboxed_sidecar_folder_not_inside_it() {
+        let data = Path::new("/d");
+        let passes = passes_dir(data);
+        assert_eq!(passes, Path::new("/d/cloudflare_passes"));
+        assert!(!passes.starts_with(data.join("sidecar")));
+    }
+
+    #[test]
+    fn saved_passes_open_a_private_folder_and_report_a_blocked_one() {
+        let data = std::env::temp_dir().join(format!("cs_wiring_passes_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).expect("data");
+        assert!(saved_passes(&data).is_some());
+        assert!(data.join("cloudflare_passes").is_dir());
+        let blocked = data.join("file");
+        std::fs::write(&blocked, "x").expect("file");
+        assert!(
+            saved_passes(&blocked).is_none(),
+            "a data folder that is a file turns the feature off"
+        );
+        let _ = std::fs::remove_dir_all(&data);
+    }
 
     #[test]
     fn helper_args_name_both_folders() {
