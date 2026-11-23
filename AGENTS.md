@@ -477,6 +477,8 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - Patches the pinned `ExtensionLoader.kt` after the overlay is applied, where the overlay cannot: the cached-jar check follows `ShadowUiTransform.VERSION`, and `initializePlugin` gives each plugin `PluginAssets.resourcesFor(...)` (its own archive's assets). Each patch applies to exactly one place, is already applied, or stops the build.
 - `scripts/test_sidecar.ps1`:
   - Runs the JUnit suites of the plugin runtime (with the overlay), `cs-sidecar` and `api-scanner` (`:plugin-runtime:test :cs-sidecar:test :api-scanner:test`, `--continue`); CI's `sidecar-check` job.
+- `scripts/run_mutants.sh`:
+  - Mutation testing for both Rust (`cargo-mutants`: `--core`, `--crate <name>`, `--diff [ref]`, `--in-diff <file>`) and the JVM sidecar (PITest `1.30.2` + `pitest-junit5-plugin:1.2.3` wired as `pitest` `JavaExec` tasks in `:plugin-runtime` incl. `:android-stubs` overlays, `:cs-sidecar` incl. `CloudflareSolver`/`BrowserFetch`, and `:api-scanner`: `--sidecar [targets]`, `--all`; HTML/XML reports land in `target/mutants/sidecar/<module>/`).
 - `scripts/record_sidecar_replies.py`:
   - Executes the JVM sidecar with CineStream extension and saves sanitized golden JSON responses to `crates/extension_runtime/tests/fixtures/sidecar_replies/`.
 - `scripts/build_release.ps1` (Windows PC):

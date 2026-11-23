@@ -28,6 +28,8 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) }
 }
 
+val pitestRuntime: Configuration by configurations.creating
+
 dependencies {
     // The whole runtime a plugin sees: the sidecar's own CloudStream classes (RepositoryManager,
     // account stubs, ...) as well as the plugin runtime, the Android stubs and the library.
@@ -40,8 +42,41 @@ dependencies {
     implementation("org.ow2.asm:asm-tree:9.6")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3")
     testImplementation(kotlin("test"))
+
+    pitestRuntime("org.pitest:pitest-command-line:1.30.2")
+    pitestRuntime("org.pitest:pitest-junit5-plugin:1.2.3")
 }
 
 application {
     mainClass.set("apiscanner.ApiScannerMainKt")
+}
+
+tasks.register<JavaExec>("pitest") {
+    group = "verification"
+    description = "Run PITest mutation testing on api-scanner."
+    dependsOn("testClasses")
+    mainClass.set("org.pitest.mutationtest.commandline.MutationCoverageReport")
+
+    val scannerMain = sourceSets["main"].output.classesDirs
+    val targets = (findProperty("pitestTargets") as String?)?.takeIf { it.isNotBlank() } ?: "apiscanner.*"
+    val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, 6).toString()
+
+    classpath = pitestRuntime + scannerMain + sourceSets["test"].runtimeClasspath
+    doFirst {
+        val mutablePaths = scannerMain.files
+            .filter { it.exists() }
+            .joinToString(",") { it.absolutePath }
+        args(
+            "--reportDir", layout.buildDirectory.dir("reports/pitest").get().asFile.absolutePath,
+            "--targetClasses", targets,
+            "--targetTests", "apiscanner.*",
+            "--sourceDirs", "${projectDir}/src/main/kotlin",
+            "--mutableCodePaths", mutablePaths,
+            "--threads", threads,
+            "--timeoutConst", "6000",
+            "--outputFormats", "HTML,XML",
+            "--timestampedReports", "false",
+            "--failWhenNoMutations", "false",
+        )
+    }
 }
