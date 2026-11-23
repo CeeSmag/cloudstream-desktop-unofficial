@@ -141,7 +141,12 @@ object CloudflareSolver {
     /** One log line the app picks up by its `[cloudflare]` tag. */
     fun log(level: String, message: String) = System.err.println("[cloudflare] $level $message")
 
-    private fun intercept(chain: Interceptor.Chain): Response {
+    /*
+     * Not private: PITest skips private methods called only from a static initializer (the FAQ's static
+     * initializer filter), and this one is called only from the [interceptor] lambda created in this object's
+     * initializer. Private, it and everything it calls (the whole solver) were never mutation-tested.
+     */
+    internal fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val dir = exchangeDir
         if (dir != null && originOf(original.url) in browserOnly) return viaBrowser(original, dir)

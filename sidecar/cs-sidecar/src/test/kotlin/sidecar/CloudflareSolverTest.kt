@@ -8,7 +8,10 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import okio.BufferedSource
 import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -100,7 +103,12 @@ class CloudflareSolverTest {
      * The app. `verifications` are the answers to verification requests and `fetches` the answers to
      * browser-fetch requests, each used in turn (the last one for every later request); it counts both.
      */
-    private class FakeApp(val exchange: File, val verifications: List<String>, val fetches: List<String> = emptyList()) {
+    private class FakeApp(
+        val exchange: File,
+        val verifications: List<String>,
+        val fetches: List<String> = emptyList(),
+        val delayMs: Long = 100,
+    ) {
         val verified = AtomicInteger()
         val fetched = AtomicInteger()
         /** The text of every verification request, in the order they were answered. */
@@ -125,7 +133,7 @@ class CloudflareSolverTest {
             val counter = if (kind.first == "request-") verified else fetched
             val answers = if (kind.first == "request-") verifications else fetches
             val text = answers[minOf(counter.getAndIncrement(), answers.size - 1)]
-            Thread.sleep(100)
+            Thread.sleep(delayMs)
             File(exchange, kind.second + name.removePrefix(kind.first)).writeText(text)
         }
 
@@ -276,12 +284,18 @@ class CloudflareSolverTest {
         val shared = client()
         val failures = CopyOnWriteArrayList<String>()
         val start = CountDownLatch(1)
-        val workers = (1..12).map {
-            thread { start.await(); runCatching { get(shared) }.onFailure { failures.add(it.message.orEmpty()) } }
+        val log = lines {
+            val workers = (1..12).map {
+                thread { start.await(); runCatching { get(shared) }.onFailure { failures.add(it.message.orEmpty()) } }
+            }
+            start.countDown()
+            workers.forEach { it.join(20_000) }
         }
-        start.countDown()
-        workers.forEach { it.join(20_000) }
         app.stop()
+        assertTrue(
+            "[cloudflare] INFO site.test was asked about while this request waited (waiting for the go-ahead); failing at once" in log,
+            "$log",
+        )
         assertEquals(12, failures.size, "every request fails with the reason")
         assertTrue(failures.all { it.contains("waiting for the go-ahead") }, "$failures")
         assertTrue(app.verified.get() < 12, "not one round trip per request: ${app.verified.get()}")
@@ -365,10 +379,13 @@ class CloudflareSolverTest {
         val shared = client()
         val results = CopyOnWriteArrayList<Int>()
         val start = CountDownLatch(1)
-        val workers = (1..12).map { thread { start.await(); results.add(get(shared).first) } }
-        start.countDown()
-        workers.forEach { it.join(20_000) }
+        val log = lines {
+            val workers = (1..12).map { thread { start.await(); results.add(get(shared).first) } }
+            start.countDown()
+            workers.forEach { it.join(20_000) }
+        }
         app.stop()
+        assertTrue("[cloudflare] INFO site.test was verified while this request waited; using that" in log, "$log")
         assertEquals(12, results.size, "every request finishes")
         assertTrue(results.all { it == 200 }, "every request ends with the content: $results")
         assertEquals(1, app.verified.get(), "one verification for all of them")
@@ -668,4 +685,195 @@ class CloudflareSolverTest {
         app.stop()
         assertTrue(logged.contains("WARN retry to site.test with the fresh pass failed: SocketTimeoutException: connect timed out"), logged)
     }
+
+    // --- The log the app keeps in cloudflare-logs.jsonl: each step of a request's story, word for word. ---
+
+    private fun lines(work: () -> Unit): List<String> = stderrOf(work).lines().filter { it.isNotBlank() }
+
+    @Test
+    fun `the log tells a challenge's story from challenge to accepted retry`() {
+        val app = FakeApp(exchange, listOf(passed))
+        val log = lines { assertEquals(200, get(client()).first) }
+        app.stop()
+        assertTrue("[cloudflare] INFO challenge from site.test: status 403, server=cloudflare, cf-mitigated=challenge for GET" in log, "$log")
+        assertTrue(log.any { it.startsWith("[cloudflare] INFO asked the app to verify site.test (request ") && it.endsWith(", answer expected within 10s)") }, "$log")
+        assertTrue("[cloudflare] INFO the app verified site.test after 0s from the browser: cookies=[cf_clearance] userAgent=Agent/9" in log, "$log")
+        assertTrue("[cloudflare] INFO retried request to site.test with the verification cookies: status 200, server=cloudflare, cf-mitigated=null; the site accepted them" in log, "$log")
+        assertTrue(log.none { it.contains("still waiting") }, "a quick answer is not reported as a wait: $log")
+    }
+
+    @Test
+    fun `the log names a saved pass, its refusal and a give-up`() {
+        val app = FakeApp(exchange, listOf(saved("r1-1"), saved("r1-2"), saved("r1-3"), saved("r1-4")))
+        val log = lines { assertFailsWith<IOException> { get(client()) } }
+        app.stop()
+        assertTrue("[cloudflare] INFO the app verified site.test after 0s from a saved pass (r1-1): cookies=[cf_clearance] userAgent=Agent/9" in log, "$log")
+        assertTrue("[cloudflare] WARN site.test refused the saved pass r1-1; the app will check it again" in log, "$log")
+        assertTrue("[cloudflare] ERROR site.test refused 4 saved passes in a row; giving up on this request" in log, "$log")
+    }
+
+    @Test
+    fun `the log says when a site is left alone after a refusal, and not after a go-ahead`() {
+        val closed = FakeApp(exchange, listOf("ok=false\nreason=the window was closed\n"))
+        val declined = lines {
+            assertFailsWith<IOException> { get(client()) }
+            assertFailsWith<IOException> { get(client()) }
+        }
+        closed.stop()
+        assertTrue("[cloudflare] WARN verification of site.test not done: the window was closed; not asking again for 60s" in declined, "$declined")
+        assertTrue("[cloudflare] INFO site.test was not verified a moment ago (the window was closed); failing at once, not asking again yet" in declined, "$declined")
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val waiting = FakeApp(exchange, listOf("ok=false\nreason=waiting for the go-ahead\nretry=true\n"))
+        val asked = lines { assertFailsWith<IOException> { get(client()) } }
+        waiting.stop()
+        assertTrue("[cloudflare] WARN verification of site.test not done: waiting for the go-ahead" in asked, "$asked")
+    }
+
+    @Test
+    fun `the log says a request is still waiting and when the app never answers`() {
+        CloudflareSolver.heartbeatMs = 100
+        val slow = FakeApp(exchange, listOf(passed), delayMs = 450)
+        val waited = lines { assertEquals(200, get(client()).first) }
+        slow.stop()
+        assertTrue("[cloudflare] INFO still waiting for the viewer to verify site.test (0s)" in waited, "$waited")
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        CloudflareSolver.solveTimeoutMs = 700
+        val silent = lines { assertFailsWith<IOException> { get(client()) } }
+        assertTrue("[cloudflare] WARN no answer from the app for site.test after 0s (is the app's verification watcher running?)" in silent, "$silent")
+        assertTrue("[cloudflare] WARN verification of site.test not done: no answer within 0s; not asking again for 60s" in silent, "$silent")
+    }
+
+    @Test
+    fun `the log follows a site onto the browser window and to the end of the line`() {
+        val challenge = "ok=true\nstatus=403\nheader=server: cloudflare\nheader=cf-mitigated: challenge\nbody=" +
+            Base64.getEncoder().encodeToString("Just a moment...".toByteArray()) + "\n"
+        val app = FakeApp(exchange, listOf(passed), listOf("ok=false\ngone=true\nreason=no window\n", challenge))
+        val log = lines { assertFailsWith<IOException> { get(pickyClient()) } }
+        app.stop()
+        assertTrue("[cloudflare] WARN site.test did not accept the verification cookies over this connection (status 403, server=cloudflare, cf-mitigated=challenge); from now on its requests are made by the browser window" in log, "$log")
+        assertTrue("[cloudflare] WARN the browser window for site.test is gone (no window); verifying again" in log, "$log")
+        assertTrue("[cloudflare] ERROR Cloudflare still showed its check even in the browser window; site.test cannot be reached; not asking again for 60s" in log, "$log")
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val again = FakeApp(exchange, listOf(passed), listOf(challenge))
+        val repeated = lines { assertFailsWith<IOException> { get(pickyClient()) } }
+        again.stop()
+        assertTrue("[cloudflare] WARN the browser got a Cloudflare challenge again for site.test; verifying again" in repeated, "$repeated")
+        assertTrue(repeated.none { it.contains("browser window for site.test is gone") }, "a challenge is not a missing window: $repeated")
+    }
+
+    @Test
+    fun `the log says when the browser alone serves a site and when a pass has ended`() {
+        val app = FakeApp(exchange, listOf("ok=true\nuserAgent=Agent/9\ntransport=browser\n"), listOf(browserAnswer))
+        val log = lines { get(pickyClient()) }
+        app.stop()
+        assertTrue("[cloudflare] INFO site.test does not challenge the browser, only this connection; its requests are made by the browser window" in log, "$log")
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val now = java.util.concurrent.atomic.AtomicLong(5_000L)
+        CloudflareSolver.clock = { now.get() }
+        val ending = FakeApp(exchange, listOf("ok=true\nuserAgent=A\nvalidUntil=6000\ncookie=cf_clearance=ok\n", passed))
+        get(client())
+        now.set(6_000L)
+        val ended = lines { get(client()) }
+        ending.stop()
+        assertTrue("[cloudflare] INFO the pass for site.test has ended; not sending it" in ended, "$ended")
+    }
+
+    // --- Every response the solver does not hand to the plugin is closed (a leaked body holds a connection). ---
+
+    /** A body that remembers whether it was closed. */
+    private class TrackedBody(text: String) : ResponseBody() {
+        @Volatile var closed = false
+        private val buffer = Buffer().writeUtf8(text)
+        private val length = text.length.toLong()
+        override fun contentType() = null
+        override fun contentLength() = length
+        override fun source(): BufferedSource = buffer
+        override fun close() {
+            closed = true
+            buffer.close()
+        }
+    }
+
+    /** A site that accepts a request when [accepts] says so, and keeps every body it answered with. */
+    private fun trackedClient(bodies: MutableList<TrackedBody>, accepts: (Request) -> Boolean): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                val accepted = accepts(chain.request())
+                val body = TrackedBody(if (accepted) "content" else "Just a moment...").also { bodies.add(it) }
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(if (accepted) 200 else 403).message("m").header("server", "cloudflare")
+                    .apply { if (!accepted) header("cf-mitigated", "challenge") }
+                    .body(body).build()
+            }.build()
+
+    @Test
+    fun `every challenge page and refused retry is closed, whichever way the request goes`() {
+        val bodies = CopyOnWriteArrayList<TrackedBody>()
+        val okCookie: (Request) -> Boolean = { it.header("Cookie").orEmpty().contains("cf_clearance=ok") }
+        val app = FakeApp(exchange, listOf(saved("r1-1"), passed), listOf(browserAnswer))
+        assertEquals(200, get(trackedClient(bodies, okCookie)).first)
+        assertEquals("from the browser", get(trackedClient(bodies) { false }, host = "picky.test").second)
+        app.stop()
+        assertTrue(bodies.size >= 5, "the scenarios ran: ${bodies.size}")
+        assertTrue(bodies.all { it.closed }, "${bodies.count { !it.closed }} of ${bodies.size} bodies left open")
+    }
+
+    // --- Races at the edges of the shared check. ---
+
+    @Test
+    fun `requests that start in the same millisecond as the answer share the check`() {
+        CloudflareSolver.clock = { 1_000L } // time stands still: an answer is never strictly newer
+        val app = FakeApp(exchange, listOf(passed))
+        val shared = client()
+        val results = CopyOnWriteArrayList<Int>()
+        val start = CountDownLatch(1)
+        val workers = (1..12).map { thread { start.await(); results.add(get(shared).first) } }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(List(12) { 200 }, results.toList())
+        assertEquals(1, app.verified.get(), "one verification, even within one millisecond")
+    }
+
+    @Test
+    fun `requests queued while the viewer declines fail with that answer instead of asking again`() {
+        val app = FakeApp(exchange, listOf("ok=false\nreason=the window was closed\n", passed))
+        val shared = client()
+        val failures = CopyOnWriteArrayList<String>()
+        val start = CountDownLatch(1)
+        val workers = (1..12).map {
+            thread { start.await(); runCatching { get(shared) }.onFailure { failures.add(it.message.orEmpty()) } }
+        }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(12, failures.size, "every queued request fails")
+        assertTrue(failures.all { it.contains("the window was closed") }, "$failures")
+        assertEquals(1, app.verified.get(), "the viewer is asked once")
+    }
+
+    @Test
+    fun `a saved pass that a later request finds refused is reported at the next question`() {
+        // The second request starts after the pass was obtained: it carried the pass, so the challenge refuses it.
+        val now = java.util.concurrent.atomic.AtomicLong(1_000L)
+        CloudflareSolver.clock = { now.get() }
+        val accepted = AtomicReference("first")
+        val bodies = CopyOnWriteArrayList<TrackedBody>()
+        val shared = trackedClient(bodies) { it.header("Cookie").orEmpty().contains("cf_clearance=${accepted.get()}") }
+        val app = FakeApp(exchange, listOf(saved("r1-1", value = "first"), passed.replace("cf_clearance=ok", "cf_clearance=second")))
+        assertEquals(200, get(shared).first)
+        now.set(2_000L)
+        accepted.set("second") // the site raised its protection: the kept saved pass no longer opens it
+        assertEquals(200, get(shared, path = "/later").first)
+        app.stop()
+        assertEquals(2, app.verified.get())
+        assertTrue(app.requests[1].lines().contains("rejected=r1-1"), app.requests[1])
+    }
 }
+
