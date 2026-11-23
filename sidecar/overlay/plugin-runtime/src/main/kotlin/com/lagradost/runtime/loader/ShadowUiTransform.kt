@@ -7,9 +7,9 @@ package com.lagradost.runtime.loader
  *
  * History: 4 = raw-socket and Thread remap; 5 = member-guarded `InetAddress` calls
  * ([GuardedCallRewriter]); 6 = WebView/MotionEvent/Fragment/BottomSheet stubs replace previously
- * neutralised calls.
+ * neutralised calls; 7 = OkHttp-backed `URLStub` + member-guarded `URLConnection` hierarchy.
  */
 object ShadowUiTransform {
     /** Keep in sync with what [PluginBytecodeTransformer] writes after a successful transform. */
-    const val VERSION: String = "6"
+    const val VERSION: String = "7"
 }

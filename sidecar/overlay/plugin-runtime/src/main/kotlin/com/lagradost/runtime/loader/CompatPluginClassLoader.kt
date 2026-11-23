@@ -188,6 +188,28 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
                     return true
                 }
             }
+            if (opcode == Opcodes.INVOKEVIRTUAL && owner == "java/net/URL") {
+                if (name == "openConnection" || name == "getContent") {
+                    super.visitMethodInsn(
+                        Opcodes.INVOKESTATIC,
+                        "com/lagradost/runtime/loader/stubs/URLStub",
+                        name,
+                        descriptor.replace("(", "(Ljava/net/URL;"),
+                        false,
+                    )
+                    return true
+                }
+                if (name == "openStream" && descriptor == "()Ljava/io/InputStream;") {
+                    super.visitMethodInsn(
+                        Opcodes.INVOKESTATIC,
+                        "com/lagradost/runtime/loader/stubs/URLStub",
+                        "openStream",
+                        "(Ljava/net/URL;)Ljava/io/InputStream;",
+                        false,
+                    )
+                    return true
+                }
+            }
             if (opcode == Opcodes.INVOKEVIRTUAL &&
                 owner == "okhttp3/OkHttpClient\$Builder" &&
                 name == "build" &&

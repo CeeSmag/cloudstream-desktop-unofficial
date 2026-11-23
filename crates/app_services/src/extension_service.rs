@@ -115,7 +115,7 @@ impl ExtensionService {
                 "the extension runtime did not unload the plugin; a reinstall may need an app restart"
             );
         }
-        self.installer.uninstall(&extension.internal_name)?;
+        self.installer.uninstall_file(&extension.file_name)?;
         self.installed.remove(&extension.file_name)?;
         self.unregister(&extension.file_name);
         Ok(())

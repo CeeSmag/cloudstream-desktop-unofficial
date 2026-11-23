@@ -52,10 +52,17 @@ impl<F: HttpFetcher> ExtensionInstaller<F> {
         self.write_plugin_file(&file_name, &bytes, &listing.internal_name)
     }
 
-    /// Deletes an installed plugin file; a file that is already gone counts as success.
+    /// Deletes an installed plugin file by `internal_name`; a missing file counts as success.
     #[tracing::instrument(level = "debug", skip_all, fields(internal_name = ?internal_name), err)]
     pub fn uninstall(&self, internal_name: &str) -> Result<(), RepoError> {
-        let path = self.extensions_dir.join(plugin_file_name(internal_name)?);
+        let file_name = plugin_file_name(internal_name)?;
+        self.uninstall_file(&file_name)
+    }
+
+    /// Deletes an installed plugin file by its stored safe `file_name`; a missing file counts as success.
+    #[tracing::instrument(level = "debug", skip_all, fields(file_name = ?file_name), err)]
+    pub fn uninstall_file(&self, file_name: &str) -> Result<(), RepoError> {
+        let path = crate::safe_file_name::plugin_path_in(&self.extensions_dir, file_name)?;
         match fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),

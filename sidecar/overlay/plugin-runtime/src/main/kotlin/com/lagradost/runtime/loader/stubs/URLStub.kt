@@ -63,6 +63,9 @@ object URLStub {
         if (!builder.interceptors().contains(SafeInterceptor)) {
             builder.addInterceptor(SafeInterceptor)
         }
+        if (!builder.networkInterceptors().contains(SafeInterceptor)) {
+            builder.addNetworkInterceptor(SafeInterceptor)
+        }
         if (!builder.interceptors().contains(CloudflareSolver.interceptor)) {
             builder.addInterceptor(CloudflareSolver.interceptor)
         }
@@ -170,33 +173,57 @@ object URLStub {
         return false
     }
 
+    private val HTTP_ONLY_SCHEMES = setOf("http", "https")
+
+    /** Shared SSRF-hardened OkHttp client used by [openConnection] / [openStream]. */
+    private val safeHttpClient: OkHttpClient by lazy {
+        buildSafeOkHttpClient(OkHttpClient.Builder())
+    }
+
     @JvmStatic
     fun openConnection(url: URL): URLConnection {
-        validateUrl(url)
-        return url.openConnection()
+        val scheme = validateHttpUrl(url)
+        return if (scheme == "https") {
+            SafeHttpsURLConnection(url, safeHttpClient)
+        } else {
+            SafeHttpURLConnection(url, safeHttpClient)
+        }
     }
 
     @JvmStatic
     fun openConnection(url: URL, proxy: Proxy): URLConnection {
-        validateUrl(url)
-        return url.openConnection(proxy)
+        if (proxy != Proxy.NO_PROXY) {
+            throw SecurityException("Plugin Security: Custom proxy in URL.openConnection is blocked!")
+        }
+        return openConnection(url)
     }
 
     @JvmStatic
     fun openStream(url: URL): InputStream {
-        validateUrl(url)
-        return url.openStream()
+        return openConnection(url).getInputStream()
     }
 
     @JvmStatic
     fun getContent(url: URL): Any {
-        validateUrl(url)
-        return url.content
+        return openConnection(url).getInputStream()
     }
 
     @JvmStatic
     fun getContent(url: URL, classes: Array<Class<*>>): Any? {
+        val stream = openConnection(url).getInputStream()
+        if (classes.any { it.isAssignableFrom(InputStream::class.java) }) {
+            return stream
+        }
+        stream.close()
+        return null
+    }
+
+    private fun validateHttpUrl(url: URL): String {
+        val scheme = url.protocol?.lowercase()?.trim() ?: ""
+        if (scheme !in HTTP_ONLY_SCHEMES) {
+            throw SecurityException("Plugin Security: Disallowed URL.openConnection scheme '$scheme'!")
+        }
         validateUrl(url)
-        return url.getContent(classes)
+        return scheme
     }
 }

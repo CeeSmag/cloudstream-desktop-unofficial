@@ -15,7 +15,8 @@ object PluginSecurityPolicy {
         // Core Primitives & Wrappers
         "java.lang.Object", "java.lang.String", "java.lang.CharSequence", "java.lang.Number",
         "java.lang.Integer", "java.lang.Long", "java.lang.Double", "java.lang.Float",
-        "java.lang.Short", "java.lang.Byte", "java.lang.Boolean", "java.lang.Character", "java.lang.Void",
+        "java.lang.Short", "java.lang.Byte", "java.lang.Boolean", "java.lang.Character",
+        "java.lang.Character\$UnicodeScript", "java.lang.Void",
         // Language & Computation Constructs
         "java.lang.Enum", "java.lang.Comparable", "java.lang.Iterable", "java.lang.Cloneable",
         "java.lang.Appendable", "java.lang.StringBuilder", "java.lang.StringBuffer",
@@ -31,6 +32,7 @@ object PluginSecurityPolicy {
         "java.lang.UnsupportedOperationException", "java.lang.IllegalAccessException",
         "java.lang.NoSuchMethodException", "java.lang.NoSuchFieldException",
         "java.lang.ClassNotFoundException", "java.lang.NoClassDefFoundError",
+        "java.lang.InterruptedException",
         "java.lang.Error", "java.lang.AssertionError", "java.lang.NumberFormatException",
         "java.lang.ArithmeticException", "java.lang.ClassCastException", "java.lang.SecurityException",
         "java.lang.TypeNotPresentException", "java.lang.ArrayStoreException",
@@ -120,7 +122,6 @@ object PluginSecurityPolicy {
 
     private val RAW_SOCKET_CLASSES = setOf(
         "java.net.Socket", "java.net.ServerSocket", "java.net.DatagramSocket",
-        "java.net.HttpURLConnection", "java.net.URLConnection", "javax.net.ssl.HttpsURLConnection",
         // SSL sockets were reachable via LANGUAGE_CORE `javax.net.ssl.` without NETWORK_SOCKETS.
         "javax.net.ssl.SSLSocket", "javax.net.ssl.SSLServerSocket",
         "javax.net.ssl.SSLSocketFactory", "javax.net.ssl.SSLServerSocketFactory",

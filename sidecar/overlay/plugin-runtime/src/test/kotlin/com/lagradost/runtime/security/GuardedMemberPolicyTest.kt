@@ -7,10 +7,13 @@ import com.lagradost.runtime.security.GuardedMemberPolicy.MemberRule
 import org.junit.jupiter.api.Test
 import org.objectweb.asm.Type
 import java.lang.reflect.Modifier
+import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.Proxy
+import java.net.URLConnection
+import javax.net.ssl.HttpsURLConnection
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -24,14 +27,23 @@ import kotlin.test.fail
  */
 class GuardedMemberPolicyTest {
 
-    private val guardedClasses = listOf(InetAddress::class.java, Inet4Address::class.java, Inet6Address::class.java, Proxy::class.java)
+    private val guardedClasses = listOf(
+        InetAddress::class.java,
+        Inet4Address::class.java,
+        Inet6Address::class.java,
+        Proxy::class.java,
+        URLConnection::class.java,
+        HttpURLConnection::class.java,
+        HttpsURLConnection::class.java,
+    )
 
     /**
      * Members of guarded classes that were reviewed and are denied on purpose. Anything public in
-     * `java.net` that is neither listed in the policy nor here fails [everyPublicJdkMemberIsReviewed],
-     * so a JDK upgrade that adds a member forces a decision instead of silently denying or allowing.
+     * `java.net` / `javax.net.ssl` that is neither listed in the policy nor here fails
+     * [everyPublicJdkMemberIsReviewed], so a JDK upgrade that adds a member forces a decision
+     * instead of silently denying or allowing.
      */
-    private val reviewedDenied = setOf(
+    private val reviewedDenied: Set<String> = setOf(
         // Hands out a NetworkInterface (denied type).
         "java/net/Inet6Address.getScopedInterface()Ljava/net/NetworkInterface;",
         "java/net/Inet6Address.getByAddress(Ljava/lang/String;[BLjava/net/NetworkInterface;)Ljava/net/Inet6Address;",
@@ -43,7 +55,51 @@ class GuardedMemberPolicyTest {
         // Proxy: arbitrary proxies and their SocketAddress stay out of plugin hands.
         "java/net/Proxy.<init>(Ljava/net/Proxy\$Type;Ljava/net/SocketAddress;)V",
         "java/net/Proxy.address()Ljava/net/SocketAddress;",
-    )
+    ) + httpConnectionReviewedDenied()
+
+    private fun httpConnectionReviewedDenied(): Set<String> {
+        val urlConnDenied = listOf(
+            "getContent()Ljava/lang/Object;",
+            "getContent([Ljava/lang/Class;)Ljava/lang/Object;",
+            "getPermission()Ljava/security/Permission;",
+            "getDefaultUseCaches()Z",
+            "getDefaultUseCaches(Ljava/lang/String;)Z",
+            "setDefaultUseCaches(Z)V",
+            "setDefaultUseCaches(Ljava/lang/String;Z)V",
+            "getDefaultAllowUserInteraction()Z",
+            "setDefaultAllowUserInteraction(Z)V",
+            "getDefaultRequestProperty(Ljava/lang/String;)Ljava/lang/String;",
+            "setDefaultRequestProperty(Ljava/lang/String;Ljava/lang/String;)V",
+            "getFileNameMap()Ljava/net/FileNameMap;",
+            "setFileNameMap(Ljava/net/FileNameMap;)V",
+            "setContentHandlerFactory(Ljava/net/ContentHandlerFactory;)V",
+        )
+        val httpOnlyDenied = listOf(
+            "setFollowRedirects(Z)V",
+            "getFollowRedirects()Z",
+            "setAuthenticator(Ljava/net/Authenticator;)V",
+        )
+        val httpsOnlyDenied = listOf(
+            "setSSLSocketFactory(Ljavax/net/ssl/SSLSocketFactory;)V",
+            "getSSLSocketFactory()Ljavax/net/ssl/SSLSocketFactory;",
+            "setDefaultSSLSocketFactory(Ljavax/net/ssl/SSLSocketFactory;)V",
+            "getDefaultSSLSocketFactory()Ljavax/net/ssl/SSLSocketFactory;",
+            "setHostnameVerifier(Ljavax/net/ssl/HostnameVerifier;)V",
+            "getHostnameVerifier()Ljavax/net/ssl/HostnameVerifier;",
+            "setDefaultHostnameVerifier(Ljavax/net/ssl/HostnameVerifier;)V",
+            "getDefaultHostnameVerifier()Ljavax/net/ssl/HostnameVerifier;",
+            "getSSLSession()Ljava/util/Optional;",
+        )
+        val out = LinkedHashSet<String>()
+        for (owner in listOf("java/net/URLConnection", "java/net/HttpURLConnection", "javax/net/ssl/HttpsURLConnection")) {
+            for (m in urlConnDenied) out += "$owner.$m"
+        }
+        for (owner in listOf("java/net/HttpURLConnection", "javax/net/ssl/HttpsURLConnection")) {
+            for (m in httpOnlyDenied) out += "$owner.$m"
+        }
+        for (m in httpsOnlyDenied) out += "javax/net/ssl/HttpsURLConnection.$m"
+        return out
+    }
 
     @Test
     fun `network and host-revealing members are never allowed directly`() {

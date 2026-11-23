@@ -179,7 +179,7 @@ object PluginSecurityVerifier {
             if (owner == "java/lang/Runtime" && name in setOf("exec", "loadLibrary", "load", "exit", "halt")) {
                 violations += "Blocked Runtime.$name() invocation in $where"
             }
-            if (owner == "java/net/URL" && (name == "openStream" || name == "openConnection")) {
+            if (owner == "java/net/URL" && (name == "openStream" || name == "openConnection" || name == "getContent")) {
                 violations += "Illegal URL.$name() call in $where. Use the NiceHttp 'app' object for network requests."
             }
             if (owner == "java/lang/Class" && name == "forName" && insn.desc.contains("ClassLoader")) {
@@ -208,21 +208,17 @@ object PluginSecurityVerifier {
             }
         }
 
-        /** Raw HTTP connections and sockets need the NETWORK_SOCKETS permission. */
+        /** Raw sockets need the NETWORK_SOCKETS permission (HTTP via URLConnection is member-guarded & SSRF-safe via URLStub). */
         private fun checkPermissionGatedCalls(insn: MethodInsnNode) {
             val owner = insn.owner
-            val rawHttp = owner == "java/net/HttpURLConnection" ||
-                owner == "java/net/URLConnection" ||
-                owner == "javax/net/ssl/HttpsURLConnection"
             val rawSocket = owner == "java/net/Socket" || owner == "java/net/ServerSocket" || owner == "java/net/DatagramSocket"
-            if (!rawHttp && !rawSocket) return
+            if (!rawSocket) return
             if (PluginPermissionAPI.hasPermission(pluginInternalName, PluginPermission.NETWORK_SOCKETS)) return
             val permission = PluginPermission.NETWORK_SOCKETS.displayName
-            val what = if (rawHttp) "Raw HTTP connection" else "Raw socket access"
             if (permissionNeeded != null) return
             permissionNeeded = RequiresPermissionException(
                 permission,
-                "$what in ${where.substringBeforeLast('.')}. Requires '$permission' permission.",
+                "Raw socket access in ${where.substringBeforeLast('.')}. Requires '$permission' permission.",
             )
         }
 
