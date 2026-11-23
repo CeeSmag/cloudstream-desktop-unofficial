@@ -124,6 +124,9 @@ class CompatPluginClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassL
             descriptor: String,
             isInterface: Boolean,
         ) {
+            if (GuardedCallRewriter.tryRewrite(mv, opcode, owner, name, descriptor)) {
+                return
+            }
             if (tryRewriteSandboxCall(opcode, owner, name, descriptor)) {
                 return
             }

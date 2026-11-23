@@ -71,6 +71,8 @@ object PluginSecurityPolicy {
         "java.net.MalformedURLException", "java.net.URISyntaxException",
         "java.net.UnknownHostException", "java.net.SocketTimeoutException",
         "java.net.ConnectException", "java.net.ProtocolException",
+        // Plain enum (DIRECT/HTTP/SOCKS); Proxy itself is member-guarded by GuardedMemberPolicy.
+        "java.net.Proxy\$Type",
     )
 
     private val SAFE_INVOKE = setOf(
@@ -145,6 +147,8 @@ object PluginSecurityPolicy {
         if (className.startsWith("com.lagradost.runtime.loader.stubs.")) return true
         if (BLOCKED_PREFIXES.any { className.startsWith(it) }) return false
         if (isTrusted) return true
+        // Loading the class is fine; its members are enforced per member (verifier + call rewrites).
+        if (className in GuardedMemberPolicy.GUARDED_CLASS_NAMES) return true
         if (RAW_SOCKET_CLASSES.contains(className)) return hasSocketPermission
         return isAllowedStandardOrEcosystemClass(className)
     }
@@ -163,10 +167,15 @@ object PluginSecurityPolicy {
         else -> NETWORK_SAFE_SUBSET.contains(className)
     }
 
+    /** True for JDK types whose members are classified one by one in [GuardedMemberPolicy]. */
+    fun isMemberGuarded(internalName: String): Boolean = GuardedMemberPolicy.isGuardedOwner(internalName)
+
     /**
      * ASM owner check for static verification. Socket and Thread types are remapped to stubs by
      * [com.lagradost.runtime.loader.RawSocketRemapper] before verify; leftovers are treated as
      * allowed owners so the verifier can emit a clear permission/stub path instead of a vague deny.
+     * For [isMemberGuarded] owners this only answers for the type itself (class literals); member
+     * access is checked with [GuardedMemberPolicy.ruleFor].
      */
     fun isAsmOwnerAllowed(internalName: String, isTrusted: Boolean = false): Boolean {
         val cleanInternal = internalName.trimStart('[').removePrefix("L").removeSuffix(";")

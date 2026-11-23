@@ -25,19 +25,9 @@ object URLStub {
     private val ALLOWED_SCHEMES = setOf("http", "https", "ws", "wss", "socket")
     private val guardInstalled = AtomicBoolean(false)
 
+    /** OkHttp's resolver for plugin clients: the shared [GuardedResolver]. */
     private object SafeDns : Dns {
-        override fun lookup(hostname: String): List<InetAddress> {
-            validateHost(hostname)
-            val resolved = Dns.SYSTEM.lookup(hostname)
-            for (addr in resolved) {
-                if (isPrivateOrLocalAddress(addr)) {
-                    throw SecurityException(
-                        "Plugin Security: Private/local network address '${addr.hostAddress}' for '$hostname' is blocked!",
-                    )
-                }
-            }
-            return resolved
-        }
+        override fun lookup(hostname: String): List<InetAddress> = GuardedResolver.SYSTEM.resolve(hostname)
     }
 
     private object SafeInterceptor : Interceptor {
@@ -122,14 +112,7 @@ object URLStub {
 
     @JvmStatic
     fun validateHost(host: String) {
-        val normalized = host.trim().trimStart('[').trimEnd(']').lowercase()
-        if (normalized.isEmpty() ||
-            normalized == "localhost" ||
-            normalized.endsWith(".localhost") ||
-            normalized.endsWith(".local")
-        ) {
-            throw SecurityException("Plugin Security: Local network access to '$host' is blocked!")
-        }
+        val normalized = validateHostName(host)
         val addresses = try {
             InetAddress.getAllByName(normalized)
         } catch (_: Throwable) {
@@ -142,6 +125,23 @@ object URLStub {
                 )
             }
         }
+    }
+
+    /**
+     * Refuses local host names without any lookup and returns the normalized name
+     * (lower case, brackets and surrounding blanks removed).
+     */
+    @JvmStatic
+    fun validateHostName(host: String): String {
+        val normalized = host.trim().trimStart('[').trimEnd(']').lowercase()
+        if (normalized.isEmpty() ||
+            normalized == "localhost" ||
+            normalized.endsWith(".localhost") ||
+            normalized.endsWith(".local")
+        ) {
+            throw SecurityException("Plugin Security: Local network access to '$host' is blocked!")
+        }
+        return normalized
     }
 
     @JvmStatic

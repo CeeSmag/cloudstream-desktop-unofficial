@@ -114,6 +114,11 @@ object PluginBytecodeTransformer {
                                                 return
                                             }
 
+                                            // InetAddress & co.: member-level policy (GuardedMemberPolicy).
+                                            if (GuardedCallRewriter.tryRewrite(mv, opcode, owner, methodName, descriptor)) {
+                                                return
+                                            }
+
                                             var newOpcode = opcode
                                             var newOwner = owner
                                             var newDesc = descriptor
