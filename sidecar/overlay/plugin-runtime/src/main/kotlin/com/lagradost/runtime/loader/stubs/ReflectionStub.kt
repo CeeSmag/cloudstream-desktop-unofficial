@@ -241,13 +241,13 @@ object ReflectionStub {
 
     @JvmStatic
     fun setAccessible(accessibleObject: AccessibleObject, flag: Boolean) {
-        val declaringClass = when (accessibleObject) {
-            is Method -> accessibleObject.declaringClass
-            is Field -> accessibleObject.declaringClass
-            is Constructor<*> -> accessibleObject.declaringClass
-            else -> null
+        val (declaringClass, memberName) = when (accessibleObject) {
+            is Method -> accessibleObject.declaringClass to accessibleObject.name
+            is Field -> accessibleObject.declaringClass to accessibleObject.name
+            is Constructor<*> -> accessibleObject.declaringClass to "<init>"
+            else -> null to null
         }
-        if (declaringClass != null && !isReflectionAllowed(declaringClass)) {
+        if (declaringClass != null && !isReflectionAllowed(declaringClass, memberName)) {
             AppLogger.w("Plugin Security: Blocked setAccessible on ${declaringClass.name}")
             throw SecurityException("Plugin Security: Reflection setAccessible on ${declaringClass.name} is blocked by Default Deny policy.")
         }

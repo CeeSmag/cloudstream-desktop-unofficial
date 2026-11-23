@@ -22,8 +22,18 @@ class SyntheticClass(val internalName: String) {
         writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, internalName, null, "java/lang/Object", null)
     }
 
-    fun method(name: String, descriptor: String, body: MethodVisitor.() -> Unit): SyntheticClass {
-        val mv = writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, name, descriptor, null, null)
+    fun field(name: String, descriptor: String, access: Int = Opcodes.ACC_PRIVATE): SyntheticClass {
+        writer.visitField(access, name, descriptor, null, null).visitEnd()
+        return this
+    }
+
+    fun method(
+        name: String,
+        descriptor: String,
+        access: Int = Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        body: MethodVisitor.() -> Unit,
+    ): SyntheticClass {
+        val mv = writer.visitMethod(access, name, descriptor, null, null)
         mv.visitCode()
         mv.body()
         mv.visitMaxs(0, 0)

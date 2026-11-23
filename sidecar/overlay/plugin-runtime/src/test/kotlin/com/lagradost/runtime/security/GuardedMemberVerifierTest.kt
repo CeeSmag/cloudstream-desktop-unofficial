@@ -237,6 +237,120 @@ class GuardedMemberVerifierTest {
         PluginSecurityVerifier.verifyJar(jar, "trusted-plugin", isTrusted = true)
     }
 
+    @Test
+    fun `exact max reported violations has no overflow suffix and cache skips rescan`() {
+        val cls = SyntheticClass("test/Exact")
+        for (i in 0 until PluginSecurityVerifier.MAX_REPORTED_VIOLATIONS) {
+            cls.method("m$i", "()V") {
+                visitMethodInsn(Opcodes.INVOKESTATIC, inet, "getLocalHost", "()L$inet;", false)
+                visitInsn(Opcodes.POP)
+                visitInsn(Opcodes.RETURN)
+            }
+        }
+        val msg = refusal(jarOf(cls))
+        assertFalse("(and " in msg, msg)
+        assertEquals(PluginSecurityVerifier.MAX_REPORTED_VIOLATIONS, msg.split("; ").size)
+
+        val clean = single {
+            visitLdcInsn("benign-constant")
+            visitInsn(Opcodes.POP)
+        }
+        verify(clean)
+        // Second call with identical mtime exercises the verifiedJarSignatures cache hit.
+        verify(clean)
+    }
+
+    @Test
+    fun `disallowed field accesses and targeted calls are refused`() {
+        val fieldMsg = refusal(
+            single {
+                visitFieldInsn(Opcodes.GETSTATIC, "java/nio/file/StandardOpenOption", "READ", "Ljava/nio/file/StandardOpenOption;")
+                visitInsn(Opcodes.POP)
+            },
+        )
+        assertTrue("java.nio.file.StandardOpenOption" in fieldMsg, fieldMsg)
+
+        val targetedMsg = refusal(
+            single {
+                visitInsn(Opcodes.ACONST_NULL)
+                visitLdcInsn("id")
+                visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Runtime", "exec", "(Ljava/lang/String;)Ljava/lang/Process;", false)
+                visitInsn(Opcodes.POP)
+                visitInsn(Opcodes.ACONST_NULL)
+                visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/net/URL", "openStream", "()Ljava/io/InputStream;", false)
+                visitInsn(Opcodes.POP)
+                visitInsn(Opcodes.ACONST_NULL)
+                visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/net/URL", "getContent", "()Ljava/lang/Object;", false)
+                visitInsn(Opcodes.POP)
+                visitLdcInsn("java.lang.String")
+                visitInsn(Opcodes.ICONST_1)
+                visitInsn(Opcodes.ACONST_NULL)
+                visitMethodInsn(
+                    Opcodes.INVOKESTATIC,
+                    "java/lang/Class",
+                    "forName",
+                    "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;",
+                    false,
+                )
+                visitInsn(Opcodes.POP)
+            },
+        )
+        assertTrue("Blocked Runtime.exec()" in targetedMsg, targetedMsg)
+        assertTrue("Illegal URL.openStream()" in targetedMsg, targetedMsg)
+        assertTrue("Illegal URL.getContent()" in targetedMsg, targetedMsg)
+        assertTrue("Illegal ClassLoader injection via Class.forName" in targetedMsg, targetedMsg)
+    }
+
+    @Test
+    fun `reflection by name and disallowed string or type LDC constants are refused`() {
+        val reflMsg = refusal(
+            single {
+                visitLdcInsn("java.lang.Runtime")
+                visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Class", "forName", "(Ljava/lang/String;)Ljava/lang/Class;", false)
+                visitInsn(Opcodes.POP)
+                visitInsn(Opcodes.ACONST_NULL)
+                visitLdcInsn("SUN.MISC.UNSAFE")
+                visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ClassLoader", "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", false)
+                visitInsn(Opcodes.POP)
+                visitLdcInsn("java.lang.ProcessBuilder\$Redirect")
+                visitInsn(Opcodes.POP)
+                visitLdcInsn("java.lang.Runtime.Sub")
+                visitInsn(Opcodes.POP)
+                visitLdcInsn(Type.getObjectType("java/lang/ProcessBuilder"))
+                visitInsn(Opcodes.POP)
+            },
+        )
+        assertTrue("Disallowed reflective invocation java.lang.Class.forName(\"java.lang.Runtime\")" in reflMsg, reflMsg)
+        assertTrue("Disallowed reflective invocation java.lang.ClassLoader.loadClass(\"SUN.MISC.UNSAFE\")" in reflMsg, reflMsg)
+        assertTrue("java.lang.ProcessBuilder\$Redirect" in reflMsg, reflMsg)
+        assertTrue("java.lang.Runtime.Sub" in reflMsg, reflMsg)
+        assertTrue("Disallowed Type 'java.lang.ProcessBuilder' loaded via LDC" in reflMsg, reflMsg)
+    }
+
+    @Test
+    fun `invokedynamic refuses disallowed bootstrap owners types and non-guarded handles`() {
+        val badBsm = Handle(Opcodes.H_INVOKESTATIC, "java/lang/ProcessBuilder", "bsm", "()Ljava/lang/invoke/CallSite;", false)
+        val okBsm = Handle(
+            Opcodes.H_INVOKESTATIC,
+            "java/lang/invoke/LambdaMetafactory",
+            "metafactory",
+            "(Ljava/lang/invoke/MethodHandles\$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;" +
+                "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)" +
+                "Ljava/lang/invoke/CallSite;",
+            false,
+        )
+        val badHandle = Handle(Opcodes.H_NEWINVOKESPECIAL, "java/lang/ProcessBuilder", "<init>", "([Ljava/lang/String;)V", false)
+        val msg = refusal(
+            single {
+                visitInvokeDynamicInsn("bad1", "()V", badBsm)
+                visitInvokeDynamicInsn("bad2", "()V", okBsm, Type.getObjectType("java/lang/ProcessBuilder"), badHandle)
+            },
+        )
+        assertTrue("Disallowed invokedynamic bootstrap method owner 'java.lang.ProcessBuilder'" in msg, msg)
+        assertTrue("Disallowed Type 'java.lang.ProcessBuilder' in invokedynamic arguments" in msg, msg)
+        assertTrue("Disallowed MethodHandle 'java.lang.ProcessBuilder'" in msg, msg)
+    }
+
     /**
      * The real plugin, when its converted JAR is at hand: `CS_TEST_ECLIPSIA_JAR=<path to Eclipsia-jvm.jar>`.
      * Works on a copy, so the app's cache is untouched.

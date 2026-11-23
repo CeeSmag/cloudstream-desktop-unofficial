@@ -218,6 +218,26 @@ class GuardedMemberPolicyTest {
     }
 
     @Test
+    fun `allRules includes every guarded owner and matches ruleFor`() {
+        val rules = GuardedMemberPolicy.allRules()
+        val expectedAllow = listOf(
+            MemberRef("java/net/InetAddress", "getAddress", "()[B"),
+            MemberRef("java/net/Inet6Address", "getScopeId", "()I"),
+            MemberRef("java/net/Proxy", "NO_PROXY", "Ljava/net/Proxy;"),
+            MemberRef("java/net/URLConnection", "getInputStream", "()Ljava/io/InputStream;"),
+            MemberRef("java/net/HttpURLConnection", "getResponseCode", "()I"),
+            MemberRef("javax/net/ssl/HttpsURLConnection", "getCipherSuite", "()Ljava/lang/String;"),
+        )
+        for (ref in expectedAllow) {
+            assertEquals(MemberRule.Allow, rules[ref], "allRules missing $ref")
+        }
+        assertNull(rules[MemberRef("java/net/Inet4Address", "getScopeId", "()I")])
+        for ((ref, rule) in rules) {
+            assertEquals(GuardedMemberPolicy.ruleFor(ref), rule, "ruleFor drift for $ref")
+        }
+    }
+
+    @Test
     fun `reflection cannot reach guarded members`() {
         // Member rules are enforced on bytecode; reflection would bypass them, so it stays default-denied.
         for (cls in guardedClasses) {
