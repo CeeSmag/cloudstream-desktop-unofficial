@@ -15,6 +15,7 @@ use crate::{CloudStream, TrackChoice};
 
 use super::bridge_context::BridgeContext;
 use super::playback_reactions::react_to_status;
+use super::player_callbacks::flush_single_click;
 use super::player_seeking::{send_due_seek, shown_position};
 use super::player_timeline::show_timeline;
 
@@ -87,6 +88,7 @@ pub(crate) fn show_latest_frame(ctx: &BridgeContext, ui: &CloudStream) {
         return;
     }
     send_due_seek(ctx);
+    flush_single_click(ctx);
     if let Some(target) = playback.gl_target() {
         // Zero-copy: the window's own redraw draws the picture. Ask for one while the player
         // waits to be attached to the GL context and whenever it has a new picture.

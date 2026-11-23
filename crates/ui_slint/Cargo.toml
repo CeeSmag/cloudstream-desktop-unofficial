@@ -11,8 +11,12 @@ build = "build.rs"
 # `clippy::cognitive_complexity`. Default builds keep both X11 and Wayland (same as
 # `slint/backend-default`); `--no-default-features` drops Wayland so Linux can check
 # `cognitive_complexity` across the whole workspace.
-default = ["wayland"]
+default = ["wayland", "pointer-hiding"]
 wayland = ["slint/backend-winit-wayland"]
+# `with_winit_window`: the mouse pointer is hidden on the window itself (`bridge/cursor_sync.rs`).
+# Slint's `unstable-winit-030` implies `backend-winit` (X11 *and* Wayland), so it must stay out of
+# the `--no-default-features` lint pass, like `wayland`. Without it the pointer is never hidden.
+pointer-hiding = ["slint/unstable-winit-030"]
 
 [dependencies]
 app_services = { path = "../app_services" }

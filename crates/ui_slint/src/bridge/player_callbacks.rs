@@ -1,15 +1,19 @@
 //! Player controls: pause, seek, volume, sources, leave and close.
 
+use std::time::Instant;
+
 use player_api::PlaybackState;
 
 use slint::ComponentHandle;
 
+use crate::click_sorter::ClickAction;
 use crate::CloudStream;
 
 use crate::feedback_text::{volume_text, wheel_volume_delta};
 
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
+use super::cursor_sync::wire_cursor;
 use super::player_feedback::show_feedback;
 use super::player_polling::clear_video_frame;
 use super::player_seeking::wire_seeking;
@@ -20,6 +24,9 @@ use super::stream_refresh::refresh_playing;
 pub(crate) fn wire_player(ctx: &BridgeContext, ui: &CloudStream) {
     let c = ctx.clone();
     ui.on_toggle_pause(move || toggle_pause(&c));
+    let c = ctx.clone();
+    ui.on_video_clicked(move || video_clicked(&c));
+    wire_cursor(ctx, ui);
     wire_seeking(ctx, ui);
     wire_volume(ctx, ui);
     let c = ctx.clone();
@@ -121,6 +128,25 @@ fn toggle_fullscreen(ui: &CloudStream) {
         ("windowed", "Windowed")
     };
     show_feedback(ui, icon, text.to_owned(), None);
+}
+
+/// A click on the video: the first waits to see if a second follows (a double click goes
+/// fullscreen and leaves the video as it is), see [`flush_single_click`].
+fn video_clicked(ctx: &BridgeContext) {
+    let action = ctx.session.borrow_mut().clicks.click(Instant::now());
+    if action == ClickAction::DoubleClick {
+        if let Some(ui) = ctx.window() {
+            toggle_fullscreen(&ui);
+        }
+    }
+}
+
+/// Pauses or resumes for a click on the video that no second click followed in time.
+pub(crate) fn flush_single_click(ctx: &BridgeContext) {
+    let single = ctx.session.borrow_mut().clicks.due(Instant::now());
+    if single {
+        toggle_pause(ctx);
+    }
 }
 
 fn toggle_pause(ctx: &BridgeContext) {

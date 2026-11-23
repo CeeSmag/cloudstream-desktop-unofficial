@@ -140,6 +140,7 @@ export component CloudStream inherits Window {
     in-out property <int> extensions-tab: 0;
     in-out property <string> repo-url: "";
     in-out property <bool> player-chrome-visible: true;
+    changed player-chrome-visible => { root.chrome-visibility-changed(); }
     in-out property <int> season-filter: -1;
 
     in property <[ShelfSection]> home-shelves: [];
@@ -220,6 +221,9 @@ export component CloudStream inherits Window {
     callback toggle-source-tier(int);
     callback toggle-source-subtitle(int);
     callback toggle-pause();
+    callback video-clicked();
+    /// The player showed or hid its controls (the mouse pointer follows them).
+    callback chrome-visibility-changed();
     pure callback preview-seek(float) -> SeekPreview;
     callback seek-to(float);
     callback seek-by(float);
@@ -628,6 +632,7 @@ export component CloudStream inherits Window {
             audio-tracks: audio-tracks;
             subtitle-tracks: subtitle-tracks;
             toggle-pause => { toggle-pause(); }
+            video-clicked => { video-clicked(); }
             seek-to(v) => { seek-to(v); }
             seek-by(v) => { seek-by(v); }
             set-volume(v) => { set-volume(v); }

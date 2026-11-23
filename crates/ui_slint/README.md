@@ -37,4 +37,15 @@ Notes: no `transform-scale` on tiles (FemtoVG drew nothing for it); no std `Slid
 (dragging drops its binding; `DragBar` instead).
 The player's Back button exits fullscreen and returns to a maximized details page.
 
+The mouse pointer is hidden by Rust, not by a `mouse-cursor` binding: Slint hands the pointer to the
+OS only while a mouse event is handled, and the controls hide on a timer with no event after it.
+`bridge/cursor_sync.rs` sets it on the winit window (feature `pointer-hiding` = slint's
+`unstable-winit-030`, on by default) when the player's controls change (`chrome-visibility-changed`)
+and on every UI tick; the rule is `cursor_policy.rs`. Slint's `unstable-winit-030` forces X11 and
+Wayland on, so the `--no-default-features` lint pass (`just clippy-strict`) leaves the feature out.
+
+A click on the video goes through `click_sorter.rs` instead of Slint's `double-clicked`: the first
+click waits 250 ms, a second one inside that is fullscreen (no pause), otherwise the frame tick
+pauses. Pausing on each click paused and resumed the video on a double click.
+
 Test: `cargo test -p ui_slint` (unit + headless render & window constraint tests in `tests/`).

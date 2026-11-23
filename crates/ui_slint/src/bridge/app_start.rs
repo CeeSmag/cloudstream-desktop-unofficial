@@ -17,6 +17,7 @@ use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
 use super::cloudflare_prompts::PromptQueue;
+use super::cursor_sync::sync_cursor;
 use super::debug_logging::apply_saved_debug_logging;
 use super::event_dispatch::drain_events;
 use super::focus_screens::follow_window_width;
@@ -55,12 +56,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
     let timer = slint::Timer::default();
     let tick_ctx = ctx.clone();
     timer.start(slint::TimerMode::Repeated, UI_TICK, move || {
-        if let Some(ui) = tick_ctx.window() {
-            drain_events(&tick_ctx, &ui);
-            poll_player(&tick_ctx, &ui);
-            drain_cloudflare(&tick_ctx, &ui);
-            follow_window_width(&ui);
-        }
+        ui_tick(&tick_ctx)
     });
     let frames = slint::Timer::default();
     let frame_ctx = ctx.clone();
@@ -74,6 +70,18 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
     drop(frames);
     drop(timer);
     Ok(())
+}
+
+/// One UI tick: background results, the player's status, the pointer, Cloudflare prompts.
+fn ui_tick(ctx: &BridgeContext) {
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    drain_events(ctx, &ui);
+    poll_player(ctx, &ui);
+    sync_cursor(ctx, &ui);
+    drain_cloudflare(ctx, &ui);
+    follow_window_width(&ui);
 }
 
 fn set_empty_models(ui: &CloudStream) {

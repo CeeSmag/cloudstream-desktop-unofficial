@@ -53,6 +53,8 @@ export component PlayerOverlay inherits Rectangle {
     in property <[TrackChoice]> subtitle-tracks: [];
 
     callback toggle-pause();
+    /// A click on the video: pauses, or goes fullscreen when it is the second of a double click.
+    callback video-clicked();
     /// Structured hover/drag preview over the seek bar (time, chapter, skip part).
     pure callback preview-seek(float) -> SeekPreview;
     callback seek-to(float);
@@ -176,7 +178,6 @@ export component PlayerOverlay inherits Rectangle {
 
     // Video frame surface
     video-area := TouchArea {
-        mouse-cursor: root.chrome-visible ? MouseCursor.default : MouseCursor.none;
         changed mouse-x => { root.show-chrome(); }
         changed mouse-y => { root.show-chrome(); }
         clicked => {
@@ -189,11 +190,7 @@ export component PlayerOverlay inherits Rectangle {
             }
             keys.focus();
             root.show-chrome();
-            root.toggle-pause();
-        }
-        double-clicked => {
-            root.toggle-pause();
-            root.toggle-fullscreen();
+            root.video-clicked();
         }
         scroll-event(event) => {
             root.show-chrome();

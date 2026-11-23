@@ -4,6 +4,8 @@ use app_services::PlaybackItem;
 use playback_session::{LiveSources, OpenControl};
 
 use crate::browse_filters::BrowseFilters;
+use crate::click_sorter::ClickSorter;
+use crate::cursor_policy::CursorPolicy;
 use crate::focus_grid::FocusGrid;
 use crate::playback_watch::{PlaybackWatch, SourceCheck};
 use crate::repository_discovery::RepositoryDiscovery;
@@ -19,6 +21,7 @@ use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
 
 /// The title page and the opening video on screen right now.
+#[derive(Default)]
 pub(crate) struct Session {
     pub(crate) control: OpenControl,
     pub(crate) live: LiveSources,
@@ -50,6 +53,10 @@ pub(crate) struct Session {
     pub(crate) seeks: SeekScheduler,
     /// Wheel movement that has not made a whole percent of volume yet.
     pub(crate) wheel_carry: f32,
+    /// A click on the video that may still turn into a double click.
+    pub(crate) clicks: ClickSorter,
+    /// Whether the mouse pointer is hidden (while the player has hidden its controls).
+    pub(crate) cursor: CursorPolicy,
     /// The size the player renders at (physical pixels).
     pub(crate) surface_size: (u32, u32),
     pub(crate) tickets: RequestTickets,
@@ -110,51 +117,6 @@ pub(crate) struct DetailsTarget {
     pub(crate) ephemeral_urls: Vec<String>,
 }
 
-impl Default for Session {
-    fn default() -> Self {
-        Self {
-            control: OpenControl::default(),
-            live: LiveSources::new(),
-            links: Vec::new(),
-            ready_subtitles: Vec::new(),
-            delivered_subtitle_urls: std::collections::HashSet::new(),
-            provider_subtitles: Vec::new(),
-            subtitle_delivery: None,
-            sources_loading: false,
-            sources_searching: false,
-            sources_refreshing: false,
-            selected: 0,
-            target: None,
-            episode_data: String::new(),
-            details: DetailsTarget::default(),
-            last_frame: 0,
-            shown_tracks: Vec::new(),
-            timeline: Timeline::default(),
-            seeks: SeekScheduler::default(),
-            wheel_carry: 0.0,
-            surface_size: (0, 0),
-            tickets: RequestTickets::default(),
-            home_shelves: Vec::new(),
-            home_expanded: None,
-            browse_items: Vec::new(),
-            browse_filters: BrowseFilters::default(),
-            browse_page: (0, 0),
-            episodes: Vec::new(),
-            watch: PlaybackWatch::default(),
-            source_filter: SourceFilter::default(),
-            source_checks: Vec::new(),
-            kept_sources: None,
-            repositories: Vec::new(),
-            available: Vec::new(),
-            installed_times: std::collections::HashMap::new(),
-            plugin_page: 0,
-            repo_detail_page: 0,
-            focus: std::collections::HashMap::new(),
-            repository_discovery: RepositoryDiscovery::default(),
-        }
-    }
-}
-
 impl Session {
     /// Stops an in-flight open and drops its late answers (and skip lookups / key seeks).
     /// Used when leaving or closing the player so `OpenReady` cannot reopen it.
@@ -169,6 +131,7 @@ impl Session {
         self.tickets.cancel(RequestKind::Open);
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
+        self.clicks = ClickSorter::default();
     }
 
     /// Clears per-stream UI state when a different video starts opening.
