@@ -10,8 +10,6 @@ use sha2::{Digest, Sha256};
 use crate::update_assets::GitHubRelease;
 use crate::update_error::UpdateError;
 
-const GITHUB_RELEASES_API: &str =
-    "https://api.github.com/repos/CeeSmag/cloudstream-desktop-unofficial/releases?per_page=10";
 /// The version of the running program.
 pub(crate) const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long the release check may take in total.
@@ -56,10 +54,11 @@ pub(crate) fn newest_published(releases: Vec<GitHubRelease>) -> Option<GitHubRel
     releases.into_iter().find(|release| !release.draft)
 }
 
-/// Asks GitHub for the newest published release, pre-releases included.
-pub(crate) fn fetch_latest_release() -> Result<GitHubRelease, UpdateError> {
+/// Reads the release list at `releases_url` and returns its newest published release,
+/// pre-releases included.
+pub(crate) fn fetch_latest_release(releases_url: &str) -> Result<GitHubRelease, UpdateError> {
     let response = http_agent(REQUEST_TIMEOUT)
-        .get(GITHUB_RELEASES_API)
+        .get(releases_url)
         .header("User-Agent", &user_agent())
         .header("Accept", "application/vnd.github.v3+json")
         .call()

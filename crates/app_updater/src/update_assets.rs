@@ -176,4 +176,19 @@ mod tests {
         assert!(select_windows_asset(&assets, false).is_none());
         assert!(select_linux_asset(&assets).is_none());
     }
+
+    #[test]
+    fn names_cpu_knows_the_other_names_of_x86_64_and_never_mixes_cpus() {
+        assert!(names_cpu("cloudstream-1.0-x86_64.appimage", "x86_64"));
+        assert!(names_cpu("cloudstream-1.0-x64.appimage", "x86_64"));
+        assert!(names_cpu("cloudstream-1.0-amd64.appimage", "x86_64"));
+        assert!(!names_cpu("cloudstream-1.0-aarch64.appimage", "x86_64"));
+        assert!(names_cpu("cloudstream-1.0-aarch64.appimage", "aarch64"));
+        assert!(!names_cpu("cloudstream-1.0-x64.appimage", "aarch64"));
+        assert!(!names_cpu("cloudstream-1.0-amd64.appimage", "aarch64"));
+        assert!(
+            names_cpu("cloudstream-1.0.appimage", ""),
+            "an unknown CPU takes any file"
+        );
+    }
 }

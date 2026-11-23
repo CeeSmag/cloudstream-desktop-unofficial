@@ -115,7 +115,8 @@ mod tests {
     fn create_update_folder_recent_attempt_is_kept() {
         let data_dir = test_data_dir("recent");
         let first = create_update_folder(&data_dir, SystemTime::now()).unwrap();
-        let soon = SystemTime::now() + Duration::from_secs(60);
+        // Half an hour on: well past a download's 5-minute limit, still not an hour old.
+        let soon = SystemTime::now() + Duration::from_secs(30 * 60);
         let second = create_update_folder(&data_dir, soon).unwrap();
         assert!(first.is_dir() && second.is_dir() && first != second);
         let _ = std::fs::remove_dir_all(&data_dir);

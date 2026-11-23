@@ -10,6 +10,7 @@ mod update_folder;
 mod update_helper_script;
 mod update_install;
 mod update_prepare;
+mod update_source;
 mod update_verify;
 mod update_version;
 
@@ -17,6 +18,9 @@ use std::path::Path;
 
 pub use update_download::DownloadProgress;
 pub use update_error::UpdateError;
+
+use update_install::Installation;
+use update_source::UpdateSource;
 
 /// What the latest release offers this installation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,8 +43,18 @@ pub struct UpdateCheck {
 
 /// Asks GitHub for the latest release.
 pub fn check_latest() -> Result<UpdateCheck, UpdateError> {
-    let release = update_download::fetch_latest_release()?;
-    let portable = update_install::is_portable_environment();
+    check_latest_from(
+        &UpdateSource::OFFICIAL,
+        update_install::is_portable_environment(),
+    )
+}
+
+/// What the latest release of `source` offers a copy of the app (`portable` or installed).
+fn check_latest_from(
+    source: &UpdateSource<'_>,
+    portable: bool,
+) -> Result<UpdateCheck, UpdateError> {
+    let release = update_download::fetch_latest_release(source.releases_url)?;
     let asset = update_assets::select_platform_asset(&release.assets, portable);
     Ok(UpdateCheck {
         current_version: update_download::CURRENT_VERSION.to_owned(),
@@ -59,7 +73,13 @@ pub fn download_and_install(
     data_dir: &Path,
     on_progress: &mut dyn FnMut(DownloadProgress),
 ) -> Result<(), UpdateError> {
-    let prepared = update_prepare::prepare_update(data_dir, on_progress)?;
+    let installation = Installation::of_this_app()?;
+    let prepared = update_prepare::prepare_update(
+        data_dir,
+        &UpdateSource::OFFICIAL,
+        installation,
+        on_progress,
+    )?;
     update_install::start_install_helper(&prepared.file, &prepared.method, &prepared.folder)?;
     tracing::info!(
         downloaded = %prepared.file.display(),
@@ -73,3 +93,11 @@ pub fn download_and_install(
 pub fn remove_stale_downloads(data_dir: &Path) {
     update_folder::cleanup_stale_updates(data_dir);
 }
+
+#[cfg(test)]
+mod test_release_server;
+
+#[cfg(test)]
+#[cfg(any(windows, target_os = "linux"))]
+#[path = "update_flow_tests.rs"]
+mod flow_tests;
