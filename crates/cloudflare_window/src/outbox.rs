@@ -67,13 +67,17 @@ impl Outbox {
 
     /// Tells the app how a site's check goes.
     pub(crate) fn status(&self, status: &HelperStatus) {
-        let mut stdout = std::io::stdout().lock();
-        let written = stdout
-            .write_all(format_status(status).as_bytes())
-            .and_then(|()| stdout.flush());
-        if let Err(error) = written {
-            tracing::warn!(%error, "the app no longer reads the helper's statuses");
-        }
+        send_status(&mut std::io::stdout().lock(), status);
+    }
+}
+
+/// Writes one status line to the app's pipe and flushes it (the app acts on each line as it comes).
+fn send_status(pipe: &mut impl Write, status: &HelperStatus) {
+    let written = pipe
+        .write_all(format_status(status).as_bytes())
+        .and_then(|()| pipe.flush());
+    if let Err(error) = written {
+        tracing::warn!(%error, "the app no longer reads the helper's statuses");
     }
 }
 
@@ -180,6 +184,64 @@ mod tests {
         assert!(
             matches!(failed, HelperStatus::Failed { ref reason, .. } if reason.contains("could not be delivered"))
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pipe that records what was written and flushed, or fails.
+    #[derive(Default)]
+    struct Pipe {
+        written: Vec<u8>,
+        flushed: usize,
+        broken: bool,
+    }
+
+    impl Write for Pipe {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.broken {
+                return Err(std::io::Error::other("closed"));
+            }
+            self.written.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushed += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_status_is_sent_as_one_flushed_line_and_a_closed_pipe_is_survived() {
+        let status = HelperStatus::Fetched {
+            host: "site.test".into(),
+            id: "f1".into(),
+        };
+        let mut pipe = Pipe::default();
+        send_status(&mut pipe, &status);
+        assert_eq!(pipe.written, format_status(&status).into_bytes());
+        assert_eq!(pipe.flushed, 1, "the app reads it at once");
+        let mut closed = Pipe {
+            broken: true,
+            ..Pipe::default()
+        };
+        send_status(&mut closed, &status);
+        assert!(closed.written.is_empty());
+    }
+
+    #[test]
+    fn a_fetch_result_is_handed_to_the_sidecar() {
+        let dir = folder("fetch");
+        let out = Outbox {
+            exchange: dir.clone(),
+        };
+        out.fetch_result("f1", &FetchOutcome::failed("no window"));
+        let answer = std::fs::read_to_string(dir.join("fetchresult-f1.txt")).expect("answer");
+        assert!(answer.contains("no window"), "{answer}");
+        let blocked = Outbox {
+            exchange: dir.join("result-missing").join("x"),
+        };
+        std::fs::write(dir.join("result-missing"), "file").expect("file");
+        blocked.fetch_result("f2", &FetchOutcome::failed("x"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

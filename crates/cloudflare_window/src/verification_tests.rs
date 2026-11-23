@@ -250,3 +250,72 @@ fn a_page_that_does_not_exist_on_a_site_that_never_challenges_the_browser_is_cle
         );
     }
 }
+
+fn headers<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+    move |name| {
+        pairs
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| (*value).to_owned())
+    }
+}
+
+#[test]
+fn a_main_response_reads_the_challenge_type_and_download_headers() {
+    let url = Url::parse(TARGET).unwrap();
+    let read =
+        |pairs: &[(&str, &str)]| MainResponse::from_headers(url.clone(), 403, headers(pairs));
+    let interstitial = read(&[
+        ("cf-mitigated", " Challenge "),
+        ("content-type", "TEXT/HTML; charset=utf-8"),
+    ]);
+    assert!(interstitial.challenge && interstitial.html && !interstitial.attachment);
+    assert!(interstitial.is_interstitial());
+    let block = read(&[("cf-mitigated", "block"), ("content-type", "text/html")]);
+    assert!(!block.challenge && !block.is_interstitial());
+    let json = read(&[
+        ("cf-mitigated", "challenge"),
+        ("content-type", "application/json"),
+    ]);
+    assert!(json.challenge && !json.html && !json.is_interstitial());
+    let download = read(&[
+        ("cf-mitigated", "challenge"),
+        ("content-type", "text/html"),
+        ("content-disposition", "Attachment; filename=x.html"),
+    ]);
+    assert!(download.attachment && !download.is_interstitial());
+    let inline = read(&[("content-disposition", "inline")]);
+    assert!(!inline.attachment && !inline.challenge && !inline.html);
+}
+
+#[test]
+fn matches_target_needs_the_same_page_and_its_query_but_ignores_challenge_tokens() {
+    let target = Url::parse(TARGET).unwrap();
+    let same = |text: &str| matches_target(&target, &Url::parse(text).unwrap());
+    assert!(same("https://source.test/watch/title?ticket=one"));
+    assert!(same(
+        "https://source.test/watch/title?ticket=one&__cf_chl_tk=abc"
+    ));
+    assert!(same("https://source.test/watch/title?extra=1&ticket=one"));
+    assert!(
+        !same("https://other.test/watch/title?ticket=one"),
+        "another origin"
+    );
+    assert!(
+        !same("https://source.test/watch/other?ticket=one"),
+        "another page"
+    );
+    assert!(
+        !same("https://source.test/watch/title?ticket=two"),
+        "another query"
+    );
+    assert!(
+        !same("https://source.test/watch/title"),
+        "the query is lost"
+    );
+    let challenged = Url::parse("https://source.test/p?__cf_chl_rt=1").unwrap();
+    assert!(matches_target(
+        &challenged,
+        &Url::parse("https://source.test/p").unwrap()
+    ));
+}

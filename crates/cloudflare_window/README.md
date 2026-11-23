@@ -23,6 +23,8 @@ with `--exchange <dir> --profile <dir>` and communicates over stdin and stdout.
   off-origin redirect cannot become that document (the sidecar then stops asking for that origin for a
   while, see `CloudflareSolver`). TLS uses the browser's default validation.
 - The debug log of each main response names where a redirect leads and which cookies exist (names only).
+  Cookies carry domain, path, flags and expiry (`browser_cookies.rs`); a pass is also reported to the app on
+  the `passed` status line, so the app can keep it (`cloudflare_bridge` saved passes).
 - On Windows the app grants foreground permission to its child. The helper uses that grant
   at most once per presentation action, after the matching challenge is eligible to show.
 

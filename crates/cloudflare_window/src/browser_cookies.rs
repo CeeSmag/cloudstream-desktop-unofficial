@@ -29,11 +29,10 @@ pub(crate) fn expiry_from_unix_seconds(seconds: Option<i64>) -> CookieExpiry {
 }
 
 /// WebView2's `expires` as fractional seconds since 1970; None, a negative or a non-finite number is a
-/// session cookie (WebView2 reports `-1` for those).
+/// session cookie (WebView2 reports `-1` for those; `try_from_secs_f64` refuses all of them).
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn expiry_from_fractional_seconds(seconds: Option<f64>) -> CookieExpiry {
     seconds
-        .filter(|secs| secs.is_finite() && *secs >= 0.0)
         .and_then(|secs| Duration::try_from_secs_f64(secs).ok())
         .map_or(CookieExpiry::Session, since_1970)
 }
