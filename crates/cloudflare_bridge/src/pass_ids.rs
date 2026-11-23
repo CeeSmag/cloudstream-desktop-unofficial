@@ -127,10 +127,11 @@ mod tests {
 
     #[test]
     fn runs_started_apart_or_by_another_process_differ_and_parse_back() {
-        let at = UNIX_EPOCH + Duration::from_nanos(0x1234);
+        // Whole microseconds: Windows keeps time in 100 ns ticks, so finer values would be rounded.
+        let at = UNIX_EPOCH + Duration::from_micros(5);
         let run = RunId::for_run(at, 0xab);
-        assert_eq!(run.as_str(), "r1234-ab");
-        assert_ne!(run, RunId::for_run(at + Duration::from_nanos(1), 0xab));
+        assert_eq!(run.as_str(), "r1388-ab", "5000 ns in hex");
+        assert_ne!(run, RunId::for_run(at + Duration::from_micros(1), 0xab));
         assert_ne!(run, RunId::for_run(at, 0xac));
         assert_eq!(RunId::parse(run.as_str()), Some(run));
         assert_eq!(
