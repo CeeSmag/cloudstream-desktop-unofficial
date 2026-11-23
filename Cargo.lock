@@ -1087,6 +1087,7 @@ dependencies = [
 name = "cloudflare_bridge"
 version = "0.5.3"
 dependencies = [
+ "proptest",
  "tracing",
  "url",
  "winsafe",

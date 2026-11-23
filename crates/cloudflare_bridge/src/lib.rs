@@ -8,10 +8,12 @@
 #![forbid(unsafe_code)]
 
 mod allowed_hosts;
+mod cookie_value;
 mod exchange;
 mod fetch_exchange;
 mod helper_idle;
 mod helper_protocol;
+mod pass_cookie;
 mod prompt_owners;
 mod verify_helper;
 mod watch;
@@ -20,6 +22,7 @@ mod watch_expiry;
 mod watch_requests;
 
 pub use allowed_hosts::AllowedHosts;
+pub use cookie_value::CookieValue;
 pub use exchange::{
     clear_folder, format_result, fresh_files, parse_request, pending_requests, write_named,
     write_result, Outcome, VerifyRequest,
@@ -31,6 +34,7 @@ pub use fetch_exchange::{
 pub use helper_protocol::{
     format_command, format_status, parse_command, parse_status, HelperCommand, HelperStatus,
 };
+pub use pass_cookie::{CookieDomain, CookieExpiry, CookieParts, CookieRefusal, PassCookie};
 pub use verify_helper::{HelperLaunch, VerifyHelper};
 pub use watch::{spawn_watcher, WatchConfig, WatchHandle};
 pub use watch_event::CloudflareEvent;
