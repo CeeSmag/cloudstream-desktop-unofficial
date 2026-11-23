@@ -14,6 +14,19 @@ use crate::verification::{cookie_matches, DocumentId};
 
 pub(crate) struct BrowserContext(EnvironmentOptions);
 
+/// WebView2's browser is not replaced (see [`BrowserView::recycle`]), so recycling needs nothing.
+pub(crate) struct RecycleParts;
+
+impl RecycleParts {
+    pub(crate) fn new(
+        _context: &mut BrowserContext,
+        _window: &Rc<Window>,
+        _source: &BrowserSource,
+    ) -> Self {
+        Self
+    }
+}
+
 impl BrowserContext {
     pub(crate) fn new(profile: &Path) -> Self {
         Self(EnvironmentOptions::new().user_data_folder(profile.to_string_lossy()))
@@ -63,7 +76,7 @@ impl BrowserView {
 
     /// WebView2's browser is created asynchronously and this build cannot test replacing it, so
     /// the window only navigates to the small page: the old page is left for the browser to trim.
-    pub(crate) fn recycle(&mut self, _parts: RecycleParts<'_>, url: &Url) {
+    pub(crate) fn recycle(&mut self, _parts: RecycleParts, url: &Url) {
         self.navigate(url);
     }
 

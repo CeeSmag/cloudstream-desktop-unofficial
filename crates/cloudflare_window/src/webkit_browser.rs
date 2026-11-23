@@ -19,6 +19,28 @@ const TINY_PAGE: &str = "<!doctype html><title>.</title>";
 
 pub(crate) struct BrowserContext(wry::WebContext);
 
+/// What replacing a window's browser needs: a new browser is opened in the same window, from the
+/// same context, reporting to the same source.
+pub(crate) struct RecycleParts<'a> {
+    context: &'a mut BrowserContext,
+    window: &'a Rc<Window>,
+    source: &'a BrowserSource,
+}
+
+impl<'a> RecycleParts<'a> {
+    pub(crate) fn new(
+        context: &'a mut BrowserContext,
+        window: &'a Rc<Window>,
+        source: &'a BrowserSource,
+    ) -> Self {
+        Self {
+            context,
+            window,
+            source,
+        }
+    }
+}
+
 impl BrowserContext {
     pub(crate) fn new(profile: &Path) -> Self {
         Self(wry::WebContext::new(Some(profile.to_owned())))

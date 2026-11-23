@@ -19,14 +19,9 @@ mod platform;
 #[path = "webview2_browser.rs"]
 mod platform;
 
-pub(crate) use platform::{BrowserContext, BrowserView};
-
-/// What replacing a window's browser needs.
-pub(crate) struct RecycleParts<'a> {
-    pub(crate) context: &'a mut BrowserContext,
-    pub(crate) window: &'a Rc<Window>,
-    pub(crate) source: &'a BrowserSource,
-}
+/// What a platform needs to recycle a quiet window's browser ([`BrowserView::recycle`]); each
+/// platform defines it, because only some replace the browser and need its parts.
+pub(crate) use platform::{BrowserContext, BrowserView, RecycleParts};
 
 #[derive(Clone)]
 pub(crate) struct BrowserSource {
@@ -106,6 +101,19 @@ mod platform {
     pub(crate) struct BrowserContext;
     pub(crate) struct BrowserView;
 
+    /// There is no browser to recycle here.
+    pub(crate) struct RecycleParts;
+
+    impl RecycleParts {
+        pub(crate) fn new(
+            _context: &mut BrowserContext,
+            _window: &Rc<Window>,
+            _source: &BrowserSource,
+        ) -> Self {
+            Self
+        }
+    }
+
     impl BrowserContext {
         pub(crate) fn new(_profile: &Path) -> Self {
             Self
@@ -122,7 +130,7 @@ mod platform {
         }
         pub(crate) fn identify(&self) {}
         pub(crate) fn navigate(&self, _url: &Url) {}
-        pub(crate) fn recycle(&mut self, _parts: RecycleParts<'_>, _url: &Url) {}
+        pub(crate) fn recycle(&mut self, _parts: RecycleParts, _url: &Url) {}
         pub(crate) fn reveal(&self, _document: DocumentId) -> bool {
             false
         }

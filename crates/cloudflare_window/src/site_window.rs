@@ -304,11 +304,7 @@ impl SiteWindow {
         self.slimmed = true;
         if let Some(address) = slim_address(&self.target) {
             tracing::debug!(id = %self.waiters.owner().id, %address, "moving a quiet verified window to a small page");
-            let parts = RecycleParts {
-                context,
-                window: &self.window,
-                source: &self.browser_events,
-            };
+            let parts = RecycleParts::new(context, &self.window, &self.browser_events);
             self.view.recycle(parts, &address);
         }
     }
