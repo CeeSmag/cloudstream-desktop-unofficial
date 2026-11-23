@@ -12,7 +12,7 @@ class ShadowUiTransformTest {
     @Test
     fun transformerVersionIsNonEmptyAndBumpable() {
         assertTrue(ShadowUiTransform.VERSION.isNotBlank())
-        // Current sandbox pass (raw sockets + Thread stubs + guarded InetAddress calls).
-        assertEquals("5", ShadowUiTransform.VERSION)
+        // Current sandbox pass (raw sockets + Thread stubs + guarded InetAddress + WebView/BottomSheet stubs).
+        assertEquals("6", ShadowUiTransform.VERSION)
     }
 }

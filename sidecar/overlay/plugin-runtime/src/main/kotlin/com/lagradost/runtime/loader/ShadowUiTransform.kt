@@ -6,9 +6,10 @@ package com.lagradost.runtime.loader
  * so bumping it forces a re-transpile + [PluginBytecodeTransformer] pass.
  *
  * History: 4 = raw-socket and Thread remap; 5 = member-guarded `InetAddress` calls
- * ([GuardedCallRewriter]).
+ * ([GuardedCallRewriter]); 6 = WebView/MotionEvent/Fragment/BottomSheet stubs replace previously
+ * neutralised calls.
  */
 object ShadowUiTransform {
     /** Keep in sync with what [PluginBytecodeTransformer] writes after a successful transform. */
-    const val VERSION: String = "5"
+    const val VERSION: String = "6"
 }

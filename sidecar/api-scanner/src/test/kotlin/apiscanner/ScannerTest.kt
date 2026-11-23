@@ -142,6 +142,47 @@ class ClassifierTest {
     }
 
     @Test
+    fun `webview and bottomsheet android contract references resolve without widening the sandbox`() {
+        val expectedResolved = listOf(
+            Reference(RefKind.CLASS, "android/view/MotionEvent", "", ""),
+            Reference(RefKind.METHOD, "android/view/MotionEvent", "obtain", "(JJIFFI)Landroid/view/MotionEvent;"),
+            Reference(RefKind.METHOD, "android/view/MotionEvent", "recycle", "()V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "getProgress", "()I"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "loadUrl", "(Ljava/lang/String;Ljava/util/Map;)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "removeAllViews", "()V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "removeJavascriptInterface", "(Ljava/lang/String;)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "getHandler", "()Landroid/os/Handler;"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "scrollBy", "(II)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "layout", "(IIII)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebView", "onWindowVisibilityChanged", "(I)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebChromeClient", "onProgressChanged", "(Landroid/webkit/WebView;I)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebChromeClient", "onReceivedTitle", "(Landroid/webkit/WebView;Ljava/lang/String;)V"),
+            Reference(RefKind.CLASS, "android/webkit/WebStorage", "", ""),
+            Reference(RefKind.METHOD, "android/webkit/WebStorage", "getInstance", "()Landroid/webkit/WebStorage;"),
+            Reference(RefKind.METHOD, "android/webkit/WebStorage", "deleteOrigin", "(Ljava/lang/String;)V"),
+            Reference(RefKind.METHOD, "android/webkit/WebStorage", "deleteAllData", "()V"),
+            Reference(RefKind.METHOD, "android/webkit/WebSettings", "getDefaultUserAgent", "(Landroid/content/Context;)Ljava/lang/String;"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetBehavior", "setSkipCollapsed", "(Z)V"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetBehavior", "setDraggable", "(Z)V"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetBehavior", "setHideable", "(Z)V"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetBehavior", "setPeekHeight", "(I)V"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetBehavior", "from", "(Landroid/view/View;)Lcom/google/android/material/bottomsheet/BottomSheetBehavior;"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetDialogFragment", "isAdded", "()Z"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetDialogFragment", "onDismiss", "(Landroid/content/DialogInterface;)V"),
+            Reference(RefKind.METHOD, "com/google/android/material/bottomsheet/BottomSheetDialogFragment", "startActivity", "(Landroid/content/Intent;)V"),
+        )
+        for (ref in expectedResolved) {
+            assertEquals(Status.RESOLVED, classifier.classify(ref), "Expected RESOLVED for ${ref.display()}")
+        }
+        // ClassLoader stays explicitly denied by the sandbox: WebView.getWebViewClassLoader() must not be exposed.
+        assertEquals(
+            Status.MISSING_MEMBER,
+            status(RefKind.METHOD, "android/webkit/WebView", "getWebViewClassLoader", "()Ljava/lang/ClassLoader;"),
+        )
+    }
+
+    @Test
     fun `a stub whose members cannot be listed is reported as broken`() {
         // A class with a method returning a type nobody has: reflection cannot list its methods.
         val writer = ClassWriter(0)
