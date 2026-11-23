@@ -85,6 +85,16 @@ fn find_head_end(buffer: &[u8]) -> Option<usize> {
         .position(|window| window == HEAD_END)
 }
 
+/// The request in `buffer` once its head is complete; `None` while it is not. A head longer than
+/// [`MAX_HEAD_BYTES`] is refused even when it ended in the read that crossed the limit.
+fn finished_head(buffer: &[u8]) -> Option<Result<HttpRequest, RequestError>> {
+    let end = find_head_end(buffer)?;
+    if end + HEAD_END.len() > MAX_HEAD_BYTES {
+        return Some(Err(RequestError::TooLarge));
+    }
+    Some(parse_head(buffer.get(..end).unwrap_or_default()))
+}
+
 /// Reads until the head is complete. The reader should time out on its own after a short while
 /// (the socket's read timeout); `deadline` bounds the whole read, so that a client sending a byte
 /// at a time cannot hold a connection for ever.
@@ -95,10 +105,10 @@ pub(crate) fn read_request(
     let mut buffer: Vec<u8> = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
     loop {
-        if let Some(end) = find_head_end(&buffer) {
-            return parse_head(buffer.get(..end).unwrap_or_default());
+        if let Some(request) = finished_head(&buffer) {
+            return request;
         }
-        if buffer.len() > MAX_HEAD_BYTES {
+        if buffer.len() >= MAX_HEAD_BYTES {
             return Err(RequestError::TooLarge);
         }
         if Instant::now() >= deadline {
@@ -206,6 +216,113 @@ mod tests {
         assert!(matches!(
             read_request(&mut reader, later()),
             Err(RequestError::TooLarge)
+        ));
+    }
+
+    /// Hands out `data` in pieces of `piece` bytes, after the scripted failures.
+    struct Pieces {
+        failures: Vec<ErrorKind>,
+        data: Vec<u8>,
+        piece: usize,
+        endless: bool,
+    }
+
+    impl Read for Pieces {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if let Some(kind) = self.failures.pop() {
+                return Err(kind.into());
+            }
+            if self.endless {
+                let count = self.piece.min(out.len());
+                out[..count].fill(b'a');
+                return Ok(count);
+            }
+            let count = self.piece.min(out.len()).min(self.data.len());
+            out[..count].copy_from_slice(&self.data[..count]);
+            self.data.drain(..count);
+            Ok(count)
+        }
+    }
+
+    /// A request whose head, blank line included, is exactly `length` bytes.
+    fn head_of(length: usize) -> Vec<u8> {
+        let start = b"GET /a HTTP/1.1\r\nX-Pad: ";
+        let end = b"\r\n\r\n";
+        let mut head = start.to_vec();
+        head.resize(length - end.len(), b'p');
+        head.extend_from_slice(end);
+        head
+    }
+
+    fn pieces(data: Vec<u8>) -> Pieces {
+        Pieces {
+            failures: Vec::new(),
+            data,
+            piece: 1000,
+            endless: false,
+        }
+    }
+
+    #[test]
+    fn read_request_a_head_of_exactly_the_limit_is_read() {
+        let mut reader = pieces(head_of(MAX_HEAD_BYTES));
+        let request = read_request(&mut reader, later()).expect("a request");
+        assert_eq!(request.target, "/a");
+    }
+
+    #[test]
+    fn read_request_a_head_one_byte_over_the_limit_is_too_large() {
+        let mut reader = pieces(head_of(MAX_HEAD_BYTES + 1));
+        assert!(matches!(
+            read_request(&mut reader, later()),
+            Err(RequestError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn read_request_a_long_real_head_is_read() {
+        // Cookies and a signed referer can make a head a few kilobytes long.
+        let mut reader = pieces(head_of(8 * 1024));
+        assert!(read_request(&mut reader, later()).is_ok());
+    }
+
+    #[test]
+    fn read_request_a_head_that_never_ends_in_odd_pieces_is_too_large() {
+        let mut reader = Pieces {
+            endless: true,
+            ..pieces(Vec::new())
+        };
+        assert!(matches!(
+            read_request(&mut reader, later()),
+            Err(RequestError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn read_request_waits_through_a_slow_or_interrupted_socket() {
+        for kind in [
+            ErrorKind::WouldBlock,
+            ErrorKind::TimedOut,
+            ErrorKind::Interrupted,
+        ] {
+            let mut reader = Pieces {
+                failures: vec![kind, kind],
+                ..pieces(head_of(64))
+            };
+            let request = read_request(&mut reader, later());
+            assert!(request.is_ok(), "{kind:?}: {request:?}");
+        }
+    }
+
+    #[test]
+    fn read_request_a_broken_connection_is_reported_at_once() {
+        let mut reader = Pieces {
+            failures: vec![ErrorKind::ConnectionReset],
+            ..pieces(head_of(64))
+        };
+        assert!(matches!(
+            read_request(&mut reader, later()),
+            Err(RequestError::Io(_))
         ));
     }
 

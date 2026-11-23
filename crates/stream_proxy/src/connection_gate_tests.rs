@@ -112,3 +112,25 @@ fn many_threads_entering_and_leaving_never_exceed_the_limit_and_end_with_none_op
         assert!(gate.wait_idle(Duration::ZERO));
     });
 }
+
+#[test]
+fn wait_idle_returns_as_soon_as_the_last_connection_closes() {
+    let gate = ConnectionGate::new(2);
+    let permit = gate.try_enter().expect("a place");
+    let closer = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        drop(permit);
+    });
+    let limit = Duration::from_secs(10);
+    let started = Instant::now();
+    assert!(
+        gate.wait_idle(limit),
+        "the connection closed well within the limit"
+    );
+    assert!(
+        started.elapsed() < limit / 2,
+        "woken by the close, not by the limit running out ({:?})",
+        started.elapsed()
+    );
+    closer.join().expect("closer");
+}

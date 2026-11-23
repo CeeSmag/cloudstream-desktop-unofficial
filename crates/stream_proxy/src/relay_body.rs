@@ -170,4 +170,29 @@ mod tests {
         let result = copy_body(&mut Closed, &mut Cursor::new(b"data".to_vec()), &session());
         assert_eq!(result.expect_err("fails").kind(), ErrorKind::BrokenPipe);
     }
+
+    #[test]
+    fn copy_body_a_read_interrupted_by_a_signal_is_tried_again() {
+        /// Sends "first", is interrupted once, then sends "second" and ends.
+        struct Interrupted(u8);
+        impl Read for Interrupted {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                let piece: &[u8] = match self.0 {
+                    1 => b"first",
+                    2 => return Err(Error::from(ErrorKind::Interrupted)),
+                    3 => b"second",
+                    _ => b"",
+                };
+                out[..piece.len()].copy_from_slice(piece);
+                Ok(piece.len())
+            }
+        }
+        let mut sink = Vec::new();
+        copy_body(&mut sink, &mut Interrupted(0), &session()).expect("no error");
+        assert_eq!(
+            sink, b"firstsecond",
+            "an interrupted read is not the end of the piece"
+        );
+    }
 }

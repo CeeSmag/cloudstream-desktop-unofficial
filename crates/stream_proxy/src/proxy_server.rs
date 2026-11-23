@@ -21,7 +21,7 @@ const READ_SLICE: Duration = Duration::from_secs(1);
 const BUSY_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// How long a refusal waits for the request it refuses (see `refuse_busy`).
-const BUSY_READ_TIMEOUT: Duration = Duration::from_millis(200);
+pub(crate) const BUSY_READ_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// How long waking the accept thread at shutdown may take.
 const WAKE_TIMEOUT: Duration = Duration::from_secs(1);

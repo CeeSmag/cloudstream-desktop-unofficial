@@ -1,7 +1,7 @@
 //! T2: what the proxy refuses, and how a stream ends: closed, replaced, unreachable, shut down.
 
 use super::*;
-use crate::fake_origin::{get, request, FakeOrigin};
+use crate::fake_origin::{get, request, Answer, FakeOrigin};
 use crate::proxy_test_support::*;
 
 #[test]
@@ -104,4 +104,110 @@ fn a_stopped_proxy_no_longer_listens() {
     // The listening socket is closed: the port can be taken by somebody else. (Connecting to it
     // would show the same, but Windows takes two seconds to refuse a connection.)
     assert!(std::net::TcpListener::bind(("127.0.0.1", port)).is_ok());
+}
+
+/// Sends `bytes` on a raw connection to the proxy, closes the sending side and returns the
+/// status of the answer (0 when there was none).
+fn raw_status(port: u16, bytes: &[u8]) -> u16 {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connects");
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .expect("timeout");
+    stream.write_all(bytes).expect("sent");
+    stream
+        .shutdown(std::net::Shutdown::Write)
+        .expect("half closed");
+    let mut answer = Vec::new();
+    let _ = stream.read_to_end(&mut answer);
+    String::from_utf8_lossy(&answer)
+        .split_whitespace()
+        .nth(1)
+        .and_then(|status| status.parse().ok())
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_request_the_proxy_cannot_read_is_answered_with_why() {
+    let proxy = proxy();
+    let port = proxy.port();
+    assert_eq!(raw_status(port, b"NONSENSE\r\n\r\n"), 400, "not understood");
+    let mut huge = b"GET /x HTTP/1.1\r\nX-Pad: ".to_vec();
+    huge.resize(crate::http_request::MAX_HEAD_BYTES + 100, b'p');
+    huge.extend_from_slice(b"\r\n\r\n");
+    assert_eq!(raw_status(port, &huge), 431, "too large");
+    assert_eq!(
+        raw_status(port, b"GET /x HTTP/1.1\r\nHo"),
+        408,
+        "never finished"
+    );
+}
+
+#[test]
+fn dropping_the_proxy_shuts_it_down() {
+    let origin = FakeOrigin::start(show);
+    let proxy = proxy();
+    let url = proxy
+        .open(&spec(origin.url("/show/master.m3u8")))
+        .expect("opens");
+    assert_eq!(get(&url).status, 200);
+    drop(proxy);
+    assert!(
+        request("GET", &url, &[]).is_err(),
+        "nothing may answer on the port of a dropped proxy"
+    );
+}
+
+#[test]
+fn a_large_playlist_is_rewritten_and_one_past_the_limit_is_refused() {
+    let limit = usize::try_from(crate::playlist_response::MAX_PLAYLIST_BYTES).expect("fits");
+    let playlist = |length: usize| {
+        let mut text = "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\nseg.ts\n#X-PAD:".to_owned();
+        text.push_str(&"p".repeat(length.saturating_sub(text.len() + 15)));
+        text.push_str("\n#EXT-X-ENDLIST\n");
+        text
+    };
+    let (big, too_big) = (playlist(2 * 1024 * 1024), playlist(limit + 4096));
+    let origin = FakeOrigin::start(move |request| match request.target.as_str() {
+        "/big.m3u8" => Answer::ok(big.clone()),
+        "/too-big.m3u8" => Answer::ok(too_big.clone()),
+        _ => Answer::status(404),
+    });
+    let proxy = proxy();
+    let fine = get(&proxy.open(&spec(origin.url("/big.m3u8"))).expect("opens"));
+    assert_eq!(fine.status, 200);
+    assert_eq!(
+        media_lines(&fine.text()).len(),
+        1,
+        "the piece was rewritten"
+    );
+    let refused = get(&proxy
+        .open(&spec(origin.url("/too-big.m3u8")))
+        .expect("opens"));
+    assert_eq!(
+        refused.status, 502,
+        "a playlist past the limit is not a playlist"
+    );
+}
+
+#[test]
+fn a_piece_asked_for_with_a_range_is_fetched_from_the_host_once() {
+    let origin = FakeOrigin::start(show);
+    let proxy = proxy();
+    let master = get(&proxy
+        .open(&spec(origin.url("/show/master.m3u8")))
+        .expect("opens"));
+    let variant = get(&media_lines(&master.text())[0]);
+    let piece = media_lines(&variant.text())[0].clone();
+    let answer = request("GET", &piece, &[("Range", "bytes=0-")]).expect("answers");
+    assert_eq!(answer.body, b"SEGMENT-ONE");
+    let asked = origin
+        .requests()
+        .iter()
+        .filter(|request| request.target == "/show/v/seg1.jpg")
+        .count();
+    assert_eq!(
+        asked, 1,
+        "a rate-limited host must not be asked twice for one piece"
+    );
 }

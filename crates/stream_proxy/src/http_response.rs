@@ -89,6 +89,7 @@ mod tests {
         assert_eq!(reason_phrase(429), "Client Error");
         assert_eq!(reason_phrase(500), "Server Error");
         assert_eq!(reason_phrase(204), "Success");
+        assert_eq!(reason_phrase(304), "Redirection");
         assert_eq!(reason_phrase(404), "Not Found");
     }
 }

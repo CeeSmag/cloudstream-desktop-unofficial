@@ -194,3 +194,25 @@ fn rewrite_playlist_the_stream_tag_makes_only_the_next_line_a_playlist() {
     let kinds: Vec<EntryKind> = outcome.registered.iter().map(|(_, kind)| *kind).collect();
     assert_eq!(kinds, [EntryKind::Playlist, EntryKind::Segment]);
 }
+
+#[test]
+fn rewrite_playlist_low_latency_parts_and_preload_hints_are_pieces_of_the_proxy() {
+    let live = "#EXTM3U\n\
+#EXT-X-TARGETDURATION:4\n\
+#EXT-X-PART-INF:PART-TARGET=1.0\n\
+#EXT-X-PART:DURATION=1.0,URI=\"part1.mp4\"\n\
+#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"part2.mp4\"\n";
+    let outcome = rewrite(live).expect("a playlist");
+    assert_eq!(
+        registered(&outcome),
+        [
+            ("https://cdn.test/show/ep1/part1.mp4", EntryKind::Segment),
+            ("https://cdn.test/show/ep1/part2.mp4", EntryKind::Segment),
+        ]
+    );
+    assert!(
+        !outcome.text.contains("part1.mp4") && !outcome.text.contains("part2.mp4"),
+        "no address of the host may stay in the playlist: {}",
+        outcome.text
+    );
+}

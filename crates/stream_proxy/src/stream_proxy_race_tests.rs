@@ -201,6 +201,87 @@ fn a_busy_proxy_refuses_with_503_and_serves_again_as_soon_as_a_place_is_free() {
     });
 }
 
+/// The refusal is read only after the proxy has closed the connection: had the proxy closed it
+/// with the request unread, TCP would have reset it, and on Windows a reset destroys the 503
+/// before it is read (Linux keeps it; the next test covers the same rule on every system).
+#[test]
+fn a_busy_refusal_is_still_there_to_read_after_the_proxy_has_closed_the_connection() {
+    use std::io::{Read, Write};
+    finishes_within_limit(|| {
+        let slow = slow_origin();
+        let proxy = proxy_with(ProxyConfig {
+            max_connections: 1,
+            ..ProxyConfig::default()
+        });
+        let piece = piece_of(&proxy, slow.origin.url("/p.m3u8"));
+        let stuck = {
+            let piece = piece.clone();
+            std::thread::spawn(move || get(&piece))
+        };
+        slow.arrived
+            .recv_timeout(TEST_LIMIT)
+            .expect("the origin was asked");
+        let mut refused =
+            std::net::TcpStream::connect(("127.0.0.1", proxy.port())).expect("connects");
+        let host = format!("127.0.0.1:{}", proxy.port());
+        let path = piece
+            .split_once(host.as_str())
+            .map_or("/", |(_, path)| path);
+        write!(refused, "GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n").expect("sent");
+        // Long enough for the proxy to answer and close; a slow proxy only makes this pass late.
+        std::thread::sleep(Duration::from_millis(300));
+        let mut answer = Vec::new();
+        let read = refused.read_to_end(&mut answer);
+        assert!(read.is_ok(), "the refusal was destroyed: {read:?}");
+        assert!(
+            answer.starts_with(b"HTTP/1.1 503"),
+            "{}",
+            String::from_utf8_lossy(&answer)
+        );
+        slow.release.send(()).expect("released");
+        stuck.join().expect("finished");
+    });
+}
+
+/// A busy proxy reads the player's request before it refuses (see `refuse_busy`): it answers only
+/// once the request is complete or its short wait for it is over, never before.
+#[test]
+fn a_busy_refusal_waits_for_the_request_before_answering() {
+    use std::io::{Read, Write};
+    finishes_within_limit(|| {
+        let slow = slow_origin();
+        let proxy = proxy_with(ProxyConfig {
+            max_connections: 1,
+            ..ProxyConfig::default()
+        });
+        let piece = piece_of(&proxy, slow.origin.url("/p.m3u8"));
+        let stuck = {
+            let piece = piece.clone();
+            std::thread::spawn(move || get(&piece))
+        };
+        slow.arrived
+            .recv_timeout(TEST_LIMIT)
+            .expect("the origin was asked");
+        // Timed from before the connection exists, so the proxy's wait cannot have started first.
+        let started = Instant::now();
+        let mut refused =
+            std::net::TcpStream::connect(("127.0.0.1", proxy.port())).expect("connects");
+        refused
+            .write_all(b"GET /half HTTP/1.1\r\nHo")
+            .expect("half sent");
+        let mut answer = Vec::new();
+        let _ = refused.read_to_end(&mut answer);
+        let waited = started.elapsed();
+        assert!(answer.starts_with(b"HTTP/1.1 503"), "{answer:?}");
+        assert!(
+            waited >= crate::proxy_server::BUSY_READ_TIMEOUT,
+            "refused after {waited:?}, before the rest of the request could arrive"
+        );
+        slow.release.send(()).expect("released");
+        stuck.join().expect("finished");
+    });
+}
+
 #[test]
 fn shutdown_waits_for_a_stuck_connection_only_as_long_as_configured() {
     finishes_within_limit(|| {

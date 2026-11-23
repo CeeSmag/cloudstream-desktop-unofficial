@@ -15,7 +15,7 @@ use crate::stream_session::StreamSession;
 const SNIFF_BYTES: u64 = 1024;
 
 /// A playlist longer than this is not a playlist (a full-day live stream is a few hundred KB).
-const MAX_PLAYLIST_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const MAX_PLAYLIST_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Where an answered playlist's addresses are registered, and what was asked of it.
 pub(crate) struct PlaylistJob<'a> {
