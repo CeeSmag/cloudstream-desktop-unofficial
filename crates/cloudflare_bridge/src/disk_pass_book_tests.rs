@@ -364,3 +364,66 @@ fn a_change_waits_for_the_lock_up_to_its_limit_and_not_beyond() {
     assert!(may_wait_longer(LOCK_WAIT - Duration::from_millis(1)));
     assert!(!may_wait_longer(LOCK_WAIT));
 }
+
+#[test]
+fn a_scope_file_that_cannot_be_replaced_fails_the_save_and_leaves_no_temporary() {
+    let made = book("unreplaceable");
+    fs::create_dir_all(scope_path(&made).join("inner")).expect("a folder in the file's place");
+    let error = made
+        .save(pass("p1", "a"), now())
+        .expect_err("cannot rename over a folder");
+    assert!(
+        matches!(
+            error,
+            PassStoreError::Io {
+                operation: "publish a saved pass",
+                ..
+            }
+        ),
+        "{error}"
+    );
+    let temps = fs::read_dir(made.dir())
+        .expect("list")
+        .flatten()
+        .filter(|item| item.path().extension().is_some_and(|ext| ext == "tmp"))
+        .count();
+    assert_eq!(temps, 0);
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+/// A folder this user may read but not change (as after a permission mix-up). Skipped when running
+/// as root, which may write anyway.
+#[cfg(unix)]
+#[test]
+fn a_read_only_folder_fails_writes_and_keeps_a_damaged_file_it_cannot_remove() {
+    use std::os::unix::fs::PermissionsExt;
+    let made = book("read_only");
+    made.save(pass("p1", "a"), now()).expect("save");
+    fs::write(made.dir().join("host-x.test.json"), "{damaged").expect("damaged file");
+    fs::set_permissions(made.dir(), fs::Permissions::from_mode(0o500)).expect("read only");
+    if fs::write(made.dir().join("probe"), "x").is_ok() {
+        let _ = fs::set_permissions(made.dir(), fs::Permissions::from_mode(0o700));
+        let _ = fs::remove_dir_all(made.dir());
+        return; // root: permissions do not hold
+    }
+    let other = Spec::new("p2", "b").domain("www.site.test").build();
+    let error = made.save(other, now()).expect_err("read only");
+    assert!(
+        matches!(
+            error,
+            PassStoreError::Io {
+                operation: "write a saved pass",
+                ..
+            }
+        ),
+        "{error}"
+    );
+    let (found, logs) = captured(|| made.live_passes(now()));
+    assert_eq!(found.len(), 1, "the good pass is still read");
+    assert!(
+        logs.contains("could not remove an unreadable saved pass"),
+        "{logs}"
+    );
+    let _ = fs::set_permissions(made.dir(), fs::Permissions::from_mode(0o700));
+    let _ = fs::remove_dir_all(made.dir());
+}

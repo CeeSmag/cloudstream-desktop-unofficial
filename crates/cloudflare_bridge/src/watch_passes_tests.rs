@@ -394,3 +394,75 @@ fn opening_the_desk_over_nothing_to_prune_logs_nothing() {
     assert!(!logs.contains("pruned"), "{logs}");
     assert_eq!(desk.passes.book.live_passes(desk.now()).len(), 1);
 }
+
+/// A pass book whose disk is gone: every change fails.
+struct BrokenBook;
+
+impl PassBook for BrokenBook {
+    fn live_passes(&self, _now: SystemTime) -> Vec<SavedPass> {
+        Vec::new()
+    }
+
+    fn save(
+        &self,
+        _pass: SavedPass,
+        _now: SystemTime,
+    ) -> Result<crate::SaveOutcome, PassStoreError> {
+        Err(broken())
+    }
+
+    fn reject(&self, _id: &PassId, _now: SystemTime) -> Result<bool, PassStoreError> {
+        Err(broken())
+    }
+
+    fn prune(&self, _now: SystemTime) -> Result<crate::PruneReport, PassStoreError> {
+        Err(broken())
+    }
+}
+
+fn broken() -> PassStoreError {
+    PassStoreError::LockTimeout {
+        path: PathBuf::from("/passes/.lock"),
+        waited: Duration::from_secs(2),
+    }
+}
+
+#[test]
+fn a_failing_pass_book_is_logged_and_every_request_still_routes() {
+    let rig = Rig::new("broken");
+    let passes = SavedPasses {
+        book: Box::new(BrokenBook),
+        clock: Box::new(Arc::clone(&rig.clock)),
+        run: run(),
+    };
+    let allowed = AllowedHosts::new(["www.site.test".to_owned()]);
+    let ((), logs) = captured(|| {
+        let mut watcher =
+            Watcher::for_tests(rig.dir.clone(), allowed, &rig.events_tx, Some(passes));
+        pass_check(
+            &mut watcher,
+            request("r1", "www.site.test"),
+            issued(vec![clearance(SECRET, ".site.test")]),
+        );
+        let mut refused = request("r2", "www.site.test");
+        refused.reason.rejected = crate::RejectedPass::Named(PassId::parse("p9").expect("id"));
+        watcher.route(refused);
+        assert!(
+            rig.result("r2").starts_with("ok=false"),
+            "routed to the (missing) window"
+        );
+    });
+    assert!(
+        logs.contains("could not prune the saved Cloudflare passes"),
+        "{logs}"
+    );
+    assert!(
+        logs.contains("could not keep the check's Cloudflare pass"),
+        "{logs}"
+    );
+    assert!(
+        logs.contains("could not retire a refused Cloudflare pass"),
+        "{logs}"
+    );
+    assert!(!logs.contains(SECRET), "{logs}");
+}
