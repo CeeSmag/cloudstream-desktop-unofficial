@@ -86,7 +86,9 @@ ensure_sidecar() {
     if [ ! -d "$repo/.git" ]; then git clone --no-checkout "$url" "$repo"; fi
     (
         cd "$repo"
-        git fetch --quiet origin "$commit"
+        # Not into submodules: newer upstream commits point at submodule commits that are gone;
+        # the pinned one is checked out by the submodule update below.
+        git fetch --quiet --no-recurse-submodules origin "$commit"
         git checkout --quiet "$commit"
         git submodule update --init --depth 1
     )

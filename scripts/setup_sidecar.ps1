@@ -50,7 +50,9 @@ if (-not (Test-Path (Join-Path $Repo ".git"))) {
 Push-Location $Repo
 try {
     git config core.longpaths true
-    git fetch --quiet origin $PinnedCommit
+    # Not into submodules: newer upstream commits point at submodule commits that are gone;
+    # the pinned one is checked out by the submodule update below.
+    git fetch --quiet --no-recurse-submodules origin $PinnedCommit
     git checkout --quiet $PinnedCommit
     git submodule update --init --depth 1
 } finally { Pop-Location }
