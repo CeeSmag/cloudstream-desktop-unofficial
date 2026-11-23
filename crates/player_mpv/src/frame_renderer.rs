@@ -226,7 +226,6 @@ pub(crate) fn start_embedding(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
 
     use super::*;
@@ -316,10 +315,14 @@ mod tests {
         }
     }
 
-    /// Publishes 6000 frames the way the render thread does, recycling the buffer handed back.
-    fn produce(shared: &FrameShared, stop: &AtomicBool) {
+    /// How many frames the stress producer publishes; the last one stays published.
+    const FINAL_SERIAL: u64 = 6_000;
+
+    /// Publishes every frame up to [`FINAL_SERIAL`] the way the render thread does, recycling the
+    /// buffer handed back.
+    fn produce(shared: &FrameShared) {
         let mut spare: Option<Vec<u8>> = None;
-        for serial in 1..=6_000_u64 {
+        for serial in 1..=FINAL_SERIAL {
             let mut buffer = spare.take().unwrap_or_default();
             buffer.clear();
             buffer.resize(4096, (serial % 251) as u8);
@@ -330,15 +333,15 @@ mod tests {
                 rgba: buffer,
             });
         }
-        stop.store(true, Ordering::SeqCst);
     }
 
-    /// Reads frames until the producer is done; returns how many it saw. Every frame must keep its
-    /// one value while it is read, and serials only grow.
-    fn consume(shared: &FrameShared, stop: &AtomicBool) -> u32 {
-        let (mut last, mut seen) = (0_u64, 0_u32);
+    /// Reads frames until it has seen the final one (it stays published, so every reader gets
+    /// there however late it was scheduled); returns the last serial it saw. Every frame must keep
+    /// its one value while it is read, and serials only grow. The deadline only guards a hang.
+    fn consume(shared: &FrameShared) -> u64 {
+        let mut last = 0_u64;
         let deadline = Instant::now() + Duration::from_secs(20);
-        while !stop.load(Ordering::SeqCst) && Instant::now() < deadline {
+        while last < FINAL_SERIAL && Instant::now() < deadline {
             let Some(frame) = shared.latest(last) else {
                 continue;
             };
@@ -352,31 +355,32 @@ mod tests {
             );
             assert_eq!(first, (frame.serial % 251) as u8);
             last = frame.serial;
-            seen += 1;
         }
-        seen
+        last
     }
 
-    /// A consumer must never see a recycled frame change under it or mix two frames.
+    /// A consumer must never see a recycled frame change under it or mix two frames, and every
+    /// consumer ends on the final frame whatever the scheduling (the test once ended a consumer
+    /// when the producer finished, so a consumer scheduled late on a loaded PC saw nothing).
     #[test]
     fn stress_recycled_buffers_are_never_seen_changing_by_a_consumer() {
         let shared = Arc::new(FrameShared::new(64, 64));
-        let stop = Arc::new(AtomicBool::new(false));
         let producer = {
-            let (shared, stop) = (Arc::clone(&shared), Arc::clone(&stop));
-            std::thread::spawn(move || produce(&shared, &stop))
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || produce(&shared))
         };
         let consumers: Vec<_> = (0..3)
             .map(|_| {
-                let (shared, stop) = (Arc::clone(&shared), Arc::clone(&stop));
-                std::thread::spawn(move || consume(&shared, &stop))
+                let shared = Arc::clone(&shared);
+                std::thread::spawn(move || consume(&shared))
             })
             .collect();
         producer.join().expect("producer");
         for consumer in consumers {
-            assert!(
-                consumer.join().expect("consumer") > 0,
-                "a consumer saw no frame"
+            assert_eq!(
+                consumer.join().expect("consumer"),
+                FINAL_SERIAL,
+                "a consumer never reached the final frame"
             );
         }
     }
