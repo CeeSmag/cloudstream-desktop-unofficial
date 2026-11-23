@@ -21,6 +21,7 @@ use crate::helper_idle::{newest_fetch_file_age, should_stop, IdleInputs};
 use crate::helper_protocol::HelperStatus;
 use crate::prompt_owners::PromptOwners;
 use crate::verify_helper::{HelperLaunch, VerifyHelper};
+use crate::watch_passes::{PassDesk, SavedPasses};
 use crate::watch_requests::PendingRequest;
 use crate::{AllowedHosts, CloudflareEvent};
 
@@ -35,6 +36,8 @@ pub struct WatchConfig {
     pub allowed: AllowedHosts,
     /// How to start the verification helper; None when this build has none.
     pub helper: Option<HelperLaunch>,
+    /// Where passes are kept for later; None answers every request with a check, as before.
+    pub passes: Option<SavedPasses>,
 }
 
 /// Stops the background watcher when dropped.
@@ -178,6 +181,7 @@ pub(super) struct Watcher<'a> {
     pub(super) requests: HashMap<String, PendingRequest>,
     pub(super) owners: PromptOwners,
     pub(super) promotions: Vec<String>,
+    pub(super) passes: Option<PassDesk>,
     helper_idle_secs: Arc<AtomicU64>,
 }
 
@@ -205,11 +209,37 @@ fn run_loop(
         requests: HashMap::new(),
         owners: PromptOwners::default(),
         promotions: Vec::new(),
+        passes: config.passes.map(PassDesk::new),
         helper_idle_secs: Arc::clone(&flags.helper_idle_secs),
     };
     while !flags.stop.load(Ordering::SeqCst) {
         watcher.tick(commands, &statuses);
         thread::sleep(POLL);
+    }
+}
+
+#[cfg(test)]
+impl<'a> Watcher<'a> {
+    /// A watcher without a helper or thread, for tests that drive it step by step.
+    pub(super) fn for_tests(
+        dir: PathBuf,
+        allowed: AllowedHosts,
+        events: &'a Sender<CloudflareEvent>,
+        passes: Option<SavedPasses>,
+    ) -> Self {
+        Watcher {
+            dir,
+            allowed,
+            helper: None,
+            events,
+            seen_requests: HashSet::new(),
+            seen_fetches: HashSet::new(),
+            requests: HashMap::new(),
+            owners: PromptOwners::default(),
+            promotions: Vec::new(),
+            passes: passes.map(PassDesk::new),
+            helper_idle_secs: Arc::new(AtomicU64::new(0)),
+        }
     }
 }
 

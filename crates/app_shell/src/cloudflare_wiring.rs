@@ -38,6 +38,8 @@ pub fn start_cloudflare_watch(data_dir: &Path, settings: &SettingsService) -> Wa
         dir: exchange,
         allowed: AllowedHosts::new(saved),
         helper,
+        // Off until the sidecar understands saved passes (`source=saved`, `rejected=`).
+        passes: None,
     });
     let idle = settings
         .helper_idle()

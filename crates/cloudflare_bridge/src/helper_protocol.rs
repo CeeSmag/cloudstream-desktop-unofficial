@@ -269,6 +269,7 @@ mod tests {
             url: "https://site.test/a?b=c".into(),
             method: "GET".into(),
             standalone: false,
+            reason: Default::default(),
         }
     }
 

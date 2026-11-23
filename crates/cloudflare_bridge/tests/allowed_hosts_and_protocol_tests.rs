@@ -38,6 +38,7 @@ fn protocol_commands_statuses_and_exchange_formats_round_trip() {
         url: "https://site.example/page".into(),
         method: "GET".into(),
         standalone: false,
+        reason: Default::default(),
     };
     let cmd = HelperCommand::Verify(req_val.clone());
     let line = format_command(&cmd);
@@ -65,6 +66,7 @@ fn protocol_commands_statuses_and_exchange_formats_round_trip() {
             url: "https://site.example/video".into(),
             method: "GET".into(),
             standalone: false,
+            reason: Default::default(),
         })
     );
     assert!(parse_request("id=bad\nhost=site.example\nurl=ftp://not-http.example\n").is_none());

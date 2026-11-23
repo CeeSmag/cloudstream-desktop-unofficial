@@ -12,6 +12,7 @@ fn request(id: &str, url: &str) -> VerifyRequest {
         url: url.into(),
         method: "GET".into(),
         standalone: false,
+        reason: Default::default(),
     }
 }
 

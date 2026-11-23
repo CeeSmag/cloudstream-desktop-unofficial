@@ -134,6 +134,7 @@ fn pending_request_is_answered_when_the_viewer_dismisses_it() {
         dir: dir.clone(),
         allowed: AllowedHosts::default(),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     request(&dir, "r1", "site.test");
     let event = watch
@@ -165,6 +166,7 @@ fn a_burst_for_an_allowed_site_reaches_the_helper_whole_while_the_banner_hears_o
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".to_owned()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     let ids: Vec<String> = (0..20).map(|index| format!("hold-b{index}")).collect();
     for id in &ids {
@@ -221,6 +223,7 @@ fn requests_for_one_site_share_one_prompt_and_the_prompted_request_is_the_one_op
         dir: dir.clone(),
         allowed: allowed.clone(),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     prompt_once_and_defer_the_extra_request(&dir, &watch);
     watch.verify_now("first");
@@ -253,6 +256,7 @@ fn viewer_click_after_the_provider_withdraws_does_not_open_a_window() {
         dir: dir.clone(),
         allowed: AllowedHosts::default(),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     request(&dir, "withdrawn", "site.test");
     assert!(matches!(
@@ -279,6 +283,7 @@ fn retry_immediately_dismissed_cancels_its_new_window_id() {
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".into()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     request(&dir, "failed-first", "site.test");
     for _ in 0..2 {
@@ -311,6 +316,7 @@ fn browser_fetch_without_helper_is_answered_gone_at_once() {
         dir: dir.clone(),
         allowed: AllowedHosts::default(),
         helper: None,
+        passes: None,
     });
     std::fs::write(
         dir.join("fetch-f1.txt"),
@@ -331,6 +337,7 @@ fn allowed_site_without_helper_is_declined_with_reason() {
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".to_owned()]),
         helper: None,
+        passes: None,
     });
     request(&dir, "n1", "site.test");
     let answer = wait_for_file(&dir.join("result-n1.txt"), Duration::from_secs(3)).expect("answer");
@@ -355,6 +362,7 @@ fn helper_exit_after_publishing_success_preserves_the_terminal_result() {
         dir: dir.clone(),
         allowed: AllowedHosts::new([host.to_owned()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     request(&dir, id, host);
     assert_eq!(collect_passed(&watch, 1), [id]);
@@ -375,6 +383,7 @@ fn a_burst_for_an_unapproved_site_asks_the_viewer_once_and_the_rest_fail_at_once
         dir: dir.clone(),
         allowed: AllowedHosts::default(),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     let ids: Vec<String> = (0..5).map(|index| format!("u{index}")).collect();
     for id in &ids {
@@ -417,6 +426,7 @@ fn when_the_provider_withdraws_the_prompted_request_the_banner_passes_to_the_nex
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".to_owned()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     let ids: Vec<String> = ["hold-1", "hold-2", "hold-3"].map(String::from).to_vec();
     for id in &ids {
@@ -440,6 +450,7 @@ fn dismissing_the_prompt_retires_every_request_that_waited_behind_it() {
         dir: dir.clone(),
         allowed: AllowedHosts::new(["site.test".to_owned()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     let ids: Vec<String> = ["hold-1", "hold-2", "hold-3"].map(String::from).to_vec();
     for id in &ids {
@@ -499,6 +510,7 @@ fn concurrent_requests_for_several_sites_are_all_answered_and_only_owners_speak(
         dir: dir.clone(),
         allowed: AllowedHosts::new(["one.test".into(), "two.test".into(), "three.test".into()]),
         helper: Some(fake_helper(&dir)),
+        passes: None,
     });
     write_concurrently(&dir);
     for writer in 0..WRITERS {
@@ -545,6 +557,7 @@ fn started_with(name: &str, windows: Option<usize>) -> String {
         dir: dir.clone(),
         allowed: AllowedHosts::new(vec!["site.test".to_owned()]),
         helper: Some(args_recording_helper(&dir)),
+        passes: None,
     });
     if let Some(count) = windows {
         watch.set_helper_windows(count);
@@ -600,6 +613,7 @@ fn a_helper_that_keeps_serving_browser_fetches_is_not_closed_as_idle() {
         dir: dir.clone(),
         allowed: AllowedHosts::new(vec!["site.test".to_owned()]),
         helper: Some(fetch_serving_helper(&dir)),
+        passes: None,
     });
     watch.set_helper_idle(Some(Duration::from_secs(1)));
     request(&dir, "one", "site.test");

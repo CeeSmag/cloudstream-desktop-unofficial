@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
 
+use crate::ask_reason::AskReason;
 use crate::pass_cookie::{clearance_expiry, PassCookie};
+use crate::saved_pass::ServedPass;
 
 /// A site the sidecar wants verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +28,8 @@ pub struct VerifyRequest {
     pub method: String,
     /// A viewer retry after the original sidecar call ended has no result-file consumer.
     pub standalone: bool,
+    /// Why the sidecar asks (a refused saved pass, a browser-only origin).
+    pub reason: AskReason,
 }
 
 impl VerifyRequest {
@@ -91,6 +95,7 @@ pub fn parse_request(text: &str) -> Option<VerifyRequest> {
         url: field("url=")?,
         method: field("method=")?,
         standalone: false,
+        reason: AskReason::parse(text),
     };
     let safe_id = request
         .id
@@ -130,6 +135,32 @@ pub fn format_result(outcome: &Outcome) -> String {
             text
         }
     }
+}
+
+/// The text of a result answered from a saved pass: like a passed check, plus `source=saved` and the
+/// pass's id (the sidecar names it in `rejected=` if the site refuses it).
+pub fn format_saved_result(served: &ServedPass) -> String {
+    let mut text = format!(
+        "ok=true\nuserAgent={}\nsource=saved\npass={}\n",
+        served.user_agent.replace('\n', " "),
+        served.id
+    );
+    if let Some(until) = epoch_millis(served.valid_until) {
+        text.push_str(&format!("validUntil={until}\n"));
+    }
+    for cookie in &served.cookies {
+        text.push_str(&format!(
+            "cookie={}={}\n",
+            cookie.name(),
+            cookie.value().expose()
+        ));
+    }
+    text
+}
+
+/// Hands a saved pass to the sidecar for request `id`.
+pub fn write_saved_result(dir: &Path, id: &str, served: &ServedPass) -> io::Result<PathBuf> {
+    write_named(dir, &format!("result-{id}"), &format_saved_result(served))
 }
 
 /// `time` as milliseconds since 1970, the sidecar's clock unit; None before 1970.
@@ -286,6 +317,7 @@ mod tests {
             url: url.into(),
             method: "GET".into(),
             standalone: false,
+            reason: Default::default(),
         };
         let key = at("https://site.test/one?x=1").origin_key();
         assert_eq!(key, at("https://site.test/two/three").origin_key());

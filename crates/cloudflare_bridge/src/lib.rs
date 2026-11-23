@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod allowed_hosts;
+mod ask_reason;
 mod cookie_value;
 mod disk_pass_book;
 mod exchange;
@@ -21,8 +22,10 @@ mod pass_file;
 #[cfg(test)]
 mod pass_fixtures;
 mod pass_ids;
+mod pass_policy;
 mod pass_scope;
 mod prompt_owners;
+mod reask_guard;
 mod saved_pass;
 #[cfg(test)]
 mod test_logs;
@@ -31,14 +34,16 @@ mod wall_clock;
 mod watch;
 mod watch_event;
 mod watch_expiry;
+mod watch_passes;
 mod watch_requests;
 
 pub use allowed_hosts::AllowedHosts;
+pub use ask_reason::{AskReason, RejectedPass, RequestNeed};
 pub use cookie_value::CookieValue;
 pub use disk_pass_book::{DiskPassBook, MAX_PASS_FILE_BYTES};
 pub use exchange::{
-    clear_folder, format_result, fresh_files, parse_request, pending_requests, write_named,
-    write_result, Outcome, VerifyRequest,
+    clear_folder, format_result, format_saved_result, fresh_files, parse_request, pending_requests,
+    write_named, write_result, write_saved_result, Outcome, VerifyRequest,
 };
 pub use fetch_exchange::{
     format_fetch_result, parse_fetch_request, pending_fetches, write_fetch_result, FetchOutcome,
@@ -62,3 +67,4 @@ pub use verify_helper::{HelperLaunch, VerifyHelper};
 pub use wall_clock::{SystemClock, WallClock};
 pub use watch::{spawn_watcher, WatchConfig, WatchHandle};
 pub use watch_event::CloudflareEvent;
+pub use watch_passes::SavedPasses;

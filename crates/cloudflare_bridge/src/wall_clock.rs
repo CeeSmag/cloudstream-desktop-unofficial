@@ -19,6 +19,13 @@ impl WallClock for SystemClock {
     }
 }
 
+/// A shared clock (a test keeps one handle to move it while the watcher reads the other).
+impl<T: WallClock + ?Sized> WallClock for std::sync::Arc<T> {
+    fn now(&self) -> SystemTime {
+        (**self).now()
+    }
+}
+
 /// A clock that says what a test sets.
 #[cfg(test)]
 #[derive(Debug)]

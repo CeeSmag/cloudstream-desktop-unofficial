@@ -16,19 +16,15 @@ impl Watcher<'_> {
                 (host.clone(), id.clone())
             }
         };
-        let valid = self.requests.get(&id).is_some_and(|entry| {
-            entry.matches(&host)
-                && matches!(
-                    entry.stage,
-                    RequestStage::Helper(_) | RequestStage::Withdrawing(_)
-                )
-        });
-        if !valid {
-            return;
-        }
-        let Some(entry) = self.requests.remove(&id) else {
+        let Some(entry) = self.take_helper_request(&host, &id) else {
             return;
         };
+        if let HelperStatus::Passed {
+            issued: Some(pass), ..
+        } = &status
+        {
+            self.remember_pass(&entry.request, pass.clone());
+        }
         let quiet = self.owners.is_quiet(&id);
         if matches!(status, HelperStatus::Failed { .. }) {
             if matches!(entry.stage, RequestStage::Withdrawing(_)) {
@@ -47,6 +43,22 @@ impl Watcher<'_> {
             self.emit(event);
         }
         self.owners.finish(&id);
+    }
+
+    /// The request a terminal status of the helper is about, if the helper really holds it for `host`.
+    fn take_helper_request(&mut self, host: &str, id: &str) -> Option<PendingRequest> {
+        let valid = self.requests.get(id).is_some_and(|entry| {
+            entry.matches(host)
+                && matches!(
+                    entry.stage,
+                    RequestStage::Helper(_) | RequestStage::Withdrawing(_)
+                )
+        });
+        if valid {
+            self.requests.remove(id)
+        } else {
+            None
+        }
     }
 
     /// The provider withdrew `id` while its check goes on for others: the prompt passes to the next request.

@@ -97,6 +97,7 @@ mod tests {
             url: "https://site.test/".into(),
             method: "GET".into(),
             standalone,
+            reason: Default::default(),
         }
     }
 

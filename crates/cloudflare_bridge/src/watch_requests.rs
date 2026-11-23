@@ -51,6 +51,7 @@ impl PendingRequest {
 impl Watcher<'_> {
     pub(super) fn route(&mut self, request: VerifyRequest) {
         tracing::debug!(host = %request.host, id = %request.id, "verification request arrived");
+        self.retire_rejected_pass(&request);
         let Some(origin) = request
             .can_navigate()
             .then(|| request.origin_key())
@@ -63,6 +64,9 @@ impl Watcher<'_> {
             );
             return;
         };
+        if self.answer_from_saved_pass(&request, &origin) {
+            return;
+        }
         if self.allowed.is_allowed(&request.host) {
             self.owners.join(&origin, &request.id);
             self.launch(request, false);
