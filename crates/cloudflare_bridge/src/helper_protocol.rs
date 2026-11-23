@@ -3,6 +3,7 @@
 //! One command or status per line, fields separated by tabs (none of them can hold a tab: ids,
 //! hosts and web addresses are checked or have their tabs replaced).
 
+use crate::issued_pass::{decode_pass, encode_pass, IssuedPass, PassWireError};
 use crate::VerifyRequest;
 
 /// What the app asks the helper to do.
@@ -51,6 +52,9 @@ pub enum HelperStatus {
         host: String,
         /// The completed request.
         id: String,
+        /// The cookies and identity handed to the sidecar, so the app can keep them; None when there are
+        /// none to keep (the browser was not challenged) or the line came from an older helper.
+        issued: Option<IssuedPass>,
     },
     /// The check was not passed (closed, timed out, could not open).
     Failed {
@@ -140,7 +144,15 @@ pub fn parse_command(line: &str) -> Option<HelperCommand> {
 pub fn format_status(status: &HelperStatus) -> String {
     match status {
         HelperStatus::WindowOpen { host, id } => format!("open\t{}\t{}\n", field(host), field(id)),
-        HelperStatus::Passed { host, id } => format!("passed\t{}\t{}\n", field(host), field(id)),
+        HelperStatus::Passed { host, id, issued } => match issued {
+            None => format!("passed\t{}\t{}\n", field(host), field(id)),
+            Some(pass) => format!(
+                "passed\t{}\t{}\t{}\n",
+                field(host),
+                field(id),
+                field(&encode_pass(pass))
+            ),
+        },
         HelperStatus::Failed { host, id, reason } => {
             format!(
                 "failed\t{}\t{}\t{}\n",
@@ -153,22 +165,87 @@ pub fn format_status(status: &HelperStatus) -> String {
     }
 }
 
-/// Reads a status line; None for anything else (the helper's own log lines, for example).
-pub fn parse_status(line: &str) -> Option<HelperStatus> {
+/// What one line of the helper's stdout is.
+#[derive(Debug)]
+pub enum StatusLine {
+    /// A status.
+    Status(HelperStatus),
+    /// A `passed` line whose pass cannot be read. The request did pass (the helper has answered the
+    /// sidecar); only the pass is not kept.
+    PassUnreadable {
+        /// The status, without its pass.
+        status: HelperStatus,
+        /// Why the pass was refused (never quotes the payload).
+        reason: PassWireError,
+    },
+    /// Starts with a status word but is no valid status. It may hold a pass, so it is never logged as text.
+    Malformed {
+        /// The status word.
+        verb: &'static str,
+    },
+    /// Anything else: the helper's own log output.
+    Log,
+}
+
+/// The status words; a line starting with one of them is a status, valid or not.
+const STATUS_VERBS: [&str; 4] = ["open", "passed", "fetched", "failed"];
+
+/// Sorts one stdout line of the helper.
+pub fn classify_status_line(line: &str) -> StatusLine {
     let mut parts = line.trim_end_matches(['\n', '\r']).split('\t');
-    let kind = parts.next()?;
-    let host = parts.next().filter(|host| !host.is_empty())?.to_owned();
-    let id = parts.next().filter(|id| !id.is_empty())?.to_owned();
-    match kind {
-        "open" => Some(HelperStatus::WindowOpen { host, id }),
-        "passed" => Some(HelperStatus::Passed { host, id }),
-        "fetched" => Some(HelperStatus::Fetched { host, id }),
-        "failed" => Some(HelperStatus::Failed {
+    let Some(verb) = parts
+        .next()
+        .and_then(|word| STATUS_VERBS.into_iter().find(|known| *known == word))
+    else {
+        return StatusLine::Log;
+    };
+    let host = parts.next().filter(|host| !host.is_empty());
+    let id = parts.next().filter(|id| !id.is_empty());
+    let (Some(host), Some(id)) = (host, id) else {
+        return StatusLine::Malformed { verb };
+    };
+    let (host, id) = (host.to_owned(), id.to_owned());
+    match verb {
+        "open" => StatusLine::Status(HelperStatus::WindowOpen { host, id }),
+        "fetched" => StatusLine::Status(HelperStatus::Fetched { host, id }),
+        "failed" => StatusLine::Status(HelperStatus::Failed {
             host,
             id,
             reason: parts.next().unwrap_or("not verified").to_owned(),
         }),
-        _ => None,
+        _ => passed_line(host, id, parts.next()),
+    }
+}
+
+fn passed_line(host: String, id: String, payload: Option<&str>) -> StatusLine {
+    match payload.filter(|text| !text.is_empty()).map(decode_pass) {
+        None => StatusLine::Status(HelperStatus::Passed {
+            host,
+            id,
+            issued: None,
+        }),
+        Some(Ok(pass)) => StatusLine::Status(HelperStatus::Passed {
+            host,
+            id,
+            issued: Some(pass),
+        }),
+        Some(Err(reason)) => StatusLine::PassUnreadable {
+            status: HelperStatus::Passed {
+                host,
+                id,
+                issued: None,
+            },
+            reason,
+        },
+    }
+}
+
+/// Reads a status line; None for anything else (the helper's own log lines, for example). A `passed`
+/// line with an unreadable pass is still a pass of the check, without the pass.
+pub fn parse_status(line: &str) -> Option<HelperStatus> {
+    match classify_status_line(line) {
+        StatusLine::Status(status) | StatusLine::PassUnreadable { status, .. } => Some(status),
+        StatusLine::Malformed { .. } | StatusLine::Log => None,
     }
 }
 
@@ -227,6 +304,7 @@ mod tests {
             HelperStatus::Passed {
                 host: "a.test".into(),
                 id: "r1".into(),
+                issued: None,
             },
             HelperStatus::Failed {
                 host: "a.test".into(),
@@ -251,6 +329,110 @@ mod tests {
                 host: "a.test".into(),
                 id: "r1".into(),
                 reason: "closed by viewer".into()
+            })
+        );
+    }
+
+    fn issued() -> IssuedPass {
+        IssuedPass {
+            user_agent: "Agent\t/1".into(),
+            cookies: vec![crate::PassCookie::new(crate::CookieParts {
+                name: "cf_clearance".into(),
+                value: crate::CookieValue::new("secret-value"),
+                domain: ".a.test".into(),
+                path: "/".into(),
+                secure: true,
+                http_only: true,
+                expires: crate::CookieExpiry::Session,
+            })
+            .expect("cookie")],
+        }
+    }
+
+    #[test]
+    fn a_passed_status_carries_its_pass_on_one_line() {
+        let status = HelperStatus::Passed {
+            host: "a.test".into(),
+            id: "r1".into(),
+            issued: Some(issued()),
+        };
+        let line = format_status(&status);
+        assert_eq!(line.matches('\n').count(), 1);
+        assert_eq!(line.matches('\t').count(), 3);
+        assert_eq!(parse_status(&line), Some(status));
+    }
+
+    #[test]
+    fn an_older_helper_s_passed_line_has_no_pass() {
+        let expected = HelperStatus::Passed {
+            host: "a.test".into(),
+            id: "r1".into(),
+            issued: None,
+        };
+        assert_eq!(parse_status("passed\ta.test\tr1\n"), Some(expected.clone()));
+        assert_eq!(parse_status("passed\ta.test\tr1\t\n"), Some(expected));
+    }
+
+    #[test]
+    fn an_unreadable_pass_still_passes_the_check_without_the_pass() {
+        let line = "passed\ta.test\tr1\t{not json secret-value";
+        match classify_status_line(line) {
+            StatusLine::PassUnreadable { status, reason } => {
+                assert_eq!(
+                    status,
+                    HelperStatus::Passed {
+                        host: "a.test".into(),
+                        id: "r1".into(),
+                        issued: None
+                    }
+                );
+                assert!(!reason.to_string().contains("secret-value"));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            parse_status(line),
+            Some(HelperStatus::Passed { issued: None, .. })
+        ));
+    }
+
+    fn malformed_verb(line: &str) -> Option<&'static str> {
+        match classify_status_line(line) {
+            StatusLine::Malformed { verb } => Some(verb),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_status_word_without_host_or_id_is_malformed_never_a_log_line() {
+        let lines = STATUS_VERBS
+            .into_iter()
+            .flat_map(|verb| [verb.to_owned(), format!("{verb}\t"), format!("{verb}\th\t")]);
+        for line in lines {
+            let verb = line.split('\t').next().unwrap_or_default().to_owned();
+            assert_eq!(malformed_verb(&line), Some(verb.as_str()), "{line:?}");
+            assert_eq!(parse_status(&line), None);
+        }
+    }
+
+    #[test]
+    fn a_line_not_starting_with_a_status_word_is_the_helper_s_log() {
+        for line in ["2026 INFO passed", "passedx\th\ti", ""] {
+            assert!(
+                matches!(classify_status_line(line), StatusLine::Log),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_failed_status_without_a_reason_says_not_verified() {
+        assert_eq!(
+            parse_status("failed\th\ti"),
+            Some(HelperStatus::Failed {
+                host: "h".into(),
+                id: "i".into(),
+                reason: "not verified".into()
             })
         );
     }

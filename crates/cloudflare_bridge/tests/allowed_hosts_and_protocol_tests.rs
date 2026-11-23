@@ -50,6 +50,7 @@ fn protocol_commands_statuses_and_exchange_formats_round_trip() {
     let status = HelperStatus::Passed {
         host: "site.example".into(),
         id: "req-1".into(),
+        issued: None,
     };
     let sline = format_status(&status);
     assert_eq!(parse_status(sline.trim()), Some(status));

@@ -13,7 +13,9 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::helper_protocol::{format_command, parse_status, HelperCommand, HelperStatus};
+use crate::helper_protocol::{
+    classify_status_line, format_command, HelperCommand, HelperStatus, StatusLine,
+};
 
 /// How to start the helper.
 #[derive(Debug, Clone)]
@@ -233,13 +235,31 @@ fn forward_statuses(stdout: std::process::ChildStdout, statuses: &Sender<HelperS
         let Ok(line) = line else {
             break;
         };
-        match parse_status(&line) {
-            Some(status) => {
-                if statuses.send(status).is_err() {
-                    break;
-                }
-            }
-            None => log_helper_line(&line),
+        let Some(status) = status_of(&line) else {
+            continue;
+        };
+        if statuses.send(status).is_err() {
+            break;
+        }
+    }
+}
+
+/// The status a line reports, logging what is not one. A line that starts like a status but is not
+/// one is never logged as text: it may hold a pass (cookie values).
+fn status_of(line: &str) -> Option<HelperStatus> {
+    match classify_status_line(line) {
+        StatusLine::Status(status) => Some(status),
+        StatusLine::PassUnreadable { status, reason } => {
+            tracing::warn!(%reason, "the helper's pass could not be read; the check passed but its pass is not kept");
+            Some(status)
+        }
+        StatusLine::Malformed { verb } => {
+            tracing::warn!(verb, "the verification helper sent a malformed status line");
+            None
+        }
+        StatusLine::Log => {
+            log_helper_line(line);
+            None
         }
     }
 }
@@ -255,3 +275,7 @@ fn log_helper_line(line: &str) {
         tracing::info!(%line, "verification helper");
     }
 }
+
+#[cfg(test)]
+#[path = "verify_helper_tests.rs"]
+mod tests;

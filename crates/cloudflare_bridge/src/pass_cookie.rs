@@ -224,7 +224,7 @@ impl PassCookie {
 
 /// When the pass in `cookies` ends: the earliest expiry of a non-empty `cf_clearance`. None when there is no
 /// such cookie or it lasts only the browser session (nothing then says how long the site honours it).
-pub fn clearance_expiry(cookies: &[PassCookie]) -> Option<SystemTime> {
+pub(crate) fn clearance_expiry(cookies: &[PassCookie]) -> Option<SystemTime> {
     cookies
         .iter()
         .filter(|cookie| cookie.name == CLEARANCE_COOKIE && !cookie.value.is_empty())

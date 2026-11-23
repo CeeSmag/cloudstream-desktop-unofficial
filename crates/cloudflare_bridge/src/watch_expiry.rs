@@ -12,7 +12,7 @@ impl Watcher<'_> {
         }
         let (host, id) = match &status {
             HelperStatus::WindowOpen { .. } | HelperStatus::Fetched { .. } => return,
-            HelperStatus::Passed { host, id } | HelperStatus::Failed { host, id, .. } => {
+            HelperStatus::Passed { host, id, .. } | HelperStatus::Failed { host, id, .. } => {
                 (host.clone(), id.clone())
             }
         };

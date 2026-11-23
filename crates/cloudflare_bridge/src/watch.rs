@@ -321,7 +321,11 @@ pub(super) fn published_status(
     let host = request.host.clone();
     let id = request.id.clone();
     match fields.next() {
-        Some("ok=true") => Ok(Some(HelperStatus::Passed { host, id })),
+        Some("ok=true") => Ok(Some(HelperStatus::Passed {
+            host,
+            id,
+            issued: None,
+        })),
         Some("ok=false") => {
             let reason = fields
                 .find_map(|field| field.strip_prefix("reason="))

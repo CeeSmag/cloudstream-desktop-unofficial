@@ -68,7 +68,7 @@ impl CloudflareEvent {
     pub(crate) fn from_status(status: HelperStatus) -> Option<Self> {
         match status {
             HelperStatus::WindowOpen { host, id } => Some(Self::Verifying { host, id }),
-            HelperStatus::Passed { host, id } => Some(Self::Passed { host, id }),
+            HelperStatus::Passed { host, id, .. } => Some(Self::Passed { host, id }),
             HelperStatus::Failed { host, id, reason } => Some(Self::Failed {
                 host,
                 id,

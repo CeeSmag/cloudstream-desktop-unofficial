@@ -1088,7 +1088,11 @@ name = "cloudflare_bridge"
 version = "0.5.3"
 dependencies = [
  "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
  "tracing",
+ "tracing-subscriber",
  "url",
  "winsafe",
 ]

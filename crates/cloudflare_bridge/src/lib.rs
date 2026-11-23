@@ -13,8 +13,11 @@ mod exchange;
 mod fetch_exchange;
 mod helper_idle;
 mod helper_protocol;
+mod issued_pass;
 mod pass_cookie;
 mod prompt_owners;
+#[cfg(test)]
+mod test_logs;
 mod verify_helper;
 mod watch;
 mod watch_event;
@@ -32,11 +35,12 @@ pub use fetch_exchange::{
     FetchRequest,
 };
 pub use helper_protocol::{
-    format_command, format_status, parse_command, parse_status, HelperCommand, HelperStatus,
+    classify_status_line, format_command, format_status, parse_command, parse_status,
+    HelperCommand, HelperStatus, StatusLine,
 };
+pub use issued_pass::{decode_pass, IssuedPass, PassWireError};
 pub use pass_cookie::{
-    clearance_expiry, CookieDomain, CookieExpiry, CookieParts, CookieRefusal, PassCookie,
-    CLEARANCE_COOKIE,
+    CookieDomain, CookieExpiry, CookieParts, CookieRefusal, PassCookie, CLEARANCE_COOKIE,
 };
 pub use verify_helper::{HelperLaunch, VerifyHelper};
 pub use watch::{spawn_watcher, WatchConfig, WatchHandle};
