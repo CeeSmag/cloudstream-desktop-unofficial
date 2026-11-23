@@ -87,6 +87,7 @@ Build instructions, architecture, and contribution rules live in:
 
 - [AGENTS.md](AGENTS.md) — codebase map and how-to recipes  
 - [RULES.md](RULES.md) — coding invariants and quality gates  
+- [docs/QA.md](docs/QA.md) — QA verification matrix and release sign-off  
 - [docs/RELEASING.md](docs/RELEASING.md) — how releases are built and signed  
 
 Quality gates (same checks as CI):

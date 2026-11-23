@@ -19,17 +19,16 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
    - [Extension Execution & Crash Recovery](#extension-execution--crash-recovery)
    - [Video Stream Resolution, Open Gate & Fallback](#video-stream-resolution-open-gate--fallback)
    - [Subtitle Ingestion & Local Normalization](#subtitle-ingestion--local-normalization)
-4. [Archived Tauri IPC (reference)](#4-archived-tauri-ipc-reference)
-5. [Code Navigation Guide ("Where is X?")](#5-code-navigation-guide-where-is-x)
-6. [Step-by-Step Modification Recipes ("How do I do X?")](#6-step-by-step-modification-recipes-how-do-i-do-x)
+4. [Code Navigation Guide ("Where is X?")](#4-code-navigation-guide-where-is-x)
+5. [Step-by-Step Modification Recipes ("How do I do X?")](#5-step-by-step-modification-recipes-how-do-i-do-x)
    - [Recipe 1: Adding a Slint UI callback / bridge hook](#recipe-1-adding-a-slint-ui-callback--bridge-hook)
    - [Recipe 2: Changing a Slint layout or screen](#recipe-2-changing-a-slint-layout-or-screen)
    - [Recipe 3: Adding or updating an Application Service](#recipe-3-adding-or-updating-an-application-service)
    - [Recipe 4: Adding a database migration and store method](#recipe-4-adding-a-database-migration-and-store-method)
    - [Recipe 5: Modifying stream checking or playback fallback](#recipe-5-modifying-stream-checking-or-playback-fallback)
    - [Recipe 6: Writing concurrent code and mandatory race tests](#recipe-6-writing-concurrent-code-and-mandatory-race-tests)
-7. [Invariants, Quality Gates & Project Rules (RULES.md)](#7-invariants-quality-gates--project-rules-rulesmd)
-8. [Developer Commands & Environment Variables](#8-developer-commands--environment-variables)
+6. [Invariants, Quality Gates & Project Rules (RULES.md)](#6-invariants-quality-gates--project-rules-rulesmd)
+7. [Developer Commands & Environment Variables](#7-developer-commands--environment-variables)
 
 ---
 
@@ -297,13 +296,12 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 ---
 
 #### `crates/cloudflare_bridge` and `crates/cloudflare_window`
-- **Principle**: state is keyed by what owns it. Clearance, permission-to-ask, "this site refuses us", the check in flight and the browser document belong to an **origin** (scheme, host, port); a request id is only a waiter (its result file, its exact address, its terminal status). Keying by exact URL or by request is what made a page's dozens of requests cost dozens of checks.
-- **Sidecar** (`CloudflareSolver.kt`): `clearances`, `declined`, the lock, `retryAnswers` and `browserOnly` are keyed by `Origin`, so requests for different paths of one site share one verification. The request file still names the exact challenged URL and method (the window opens on it). `clearanceScope` is a network interceptor that attaches an origin's clearance to the outbound request for that origin on every hop, so it never reaches a redirect destination. A result with `transport=browser` marks the origin browser-only with no cookie retry; an origin that neither cookies nor the browser window can reach is declined for `declineMemoryMs` after one fresh verification instead of looping.
-- **Saved passes** (`cloudflare_bridge`: `saved_pass`, `pass_scope`, `pass_book`, `disk_pass_book`, `pass_file`, `pass_policy`, `reask_guard`, `watch_passes`; plan and findings in `docs/CLOUDFLARE_PASS_PLAN.md`): a pass survives restarts and parked plugins and is shared across a site's subdomains exactly where its `cf_clearance` cookie's own `Domain` reaches (host-only stays single-host). The helper reports each pass on its private stdout (`passed\t<host>\t<id>\t<json>`; a malformed status line is logged by verb only); the watcher keeps it in `<data>/cloudflare_passes` (wired in `app_shell::cloudflare_wiring`; beside `<data>/sidecar`, never inside, since plugins' sandboxes may read that), one versioned JSON file per scope, `0600`, temp+rename, exclusive lock (2 s limit) for two app instances. A request is answered at once (`source=saved`, `pass=<id>`, `validUntil`) unless it is a viewer retry, says `need=browser`, names `rejected=`, or the pass's site is no longer allowed. Lifetime = earliest applying clearance `Expires` (capped at 400 days, 60 s margin); session cookies only within the run that saved them. The sidecar (`CloudflareExchangeFormat.kt`) names a refused saved pass once per origin (the next question to the app reports it), retires it for good there, and only a refused *fresh* pass makes an origin browser-only; `reask_guard` (4 hand-outs per origin per 10 s) catches a sidecar that does not say.
-- **Idle close** (`cloudflare_bridge/src/helper_idle.rs`): `Watcher::close_helper_if_idle` (every 250 ms tick) stops a helper that has been quiet for `WatchHandle::set_helper_idle` (profile or viewer's choice, `HelperIdle` in `memory_budget`), unless a check is pending, a browser-fetch file is newer than the limit, or the helper said `fetched` (it prints that status each time it takes a browser fetch, because the app never sees those requests); the next check starts it again.
-- **Bridge** (no GUI): file formats of the sidecar exchange (`request-`/`result-`, `fetch-`/`fetchresult-`), `AllowedHosts` (sites the viewer pressed Verify for, saved as setting `cloudflare_allowed_hosts`), the helper protocol, `VerifyHelper` (starts `cloudstream-verify` on demand) and `spawn_watcher`. The first request of an origin owns the prompt (`prompt_owners.rs`); later ones are quiet (still sent to the helper and answered, no events). Not allowed: the owner gets a `NeedsPermission` event and waits, later requests of that origin are answered "ask again" at once. Allowed: every request goes to the helper. Dismissing the owner retires its group; a withdrawn owner hands the prompt to the oldest waiting request. Started by `app_shell::start_cloudflare_watch` (helper next to the program, or `CS_VERIFY_HELPER`; browser profile `<data>/cloudflare_browser`).
-- **Window** (`cloudstream-verify`, tao + wry / WebKitGTK): one window per origin check (`waiters.rs`: an owner plus the requests that joined it, each answered once; `cancel` retires one request only). It navigates the owner's exact challenged GET (concealed, downloads and popups refused) and decides in `verification.rs`: a fresh `cf_clearance` after a challenge hands the cookies over; a browser that was never challenged and lands on a same-origin 2xx document passes with `transport=browser` and no cookies; anything else is unconfirmed. A passed same-origin document stays hidden for browser fetches; an off-origin redirect cannot become that document. Each window is a browser process of its own (about 150 MiB measured), so `context_reaper.rs` releases passed windows nobody uses: any unused for 2 minutes, and above `--max-windows` (setting "Verified browser windows kept", `HelperWindows` in `memory_budget`, taken when the helper starts) the least recently used, never one checking, fetching or used in the last 30 seconds. A released window costs the sidecar one re-check (`gone`, then "verifying again"). A passed window quiet for 10 s is shrunk (`context_slimming.rs`, `SiteWindow::slim_if_quiet`): on Linux its browser is replaced by a new one holding a tiny page of our own (the site's origin as base address; dropping the old browser ends every process the page had, which ending only the main process did not for challenge pages), about 60-75 MiB instead of 300-460 and still serving browser fetches; on Windows it navigates to the site's `robots.txt`. Linux needs the system's WebKitGTK 4.1 (not bundled in the AppImage); Windows uses WebView2.
-- **UI**: `ui_slint::bridge::cloudflare_prompts::PromptQueue` shows one check at a time ("+N more"): permission requests before failures before running checks, FIFO within, and a check that ends before its turn is never shown.
+- **Principle**: state is keyed by owner — clearance, permission, declines, active check, and browser document belong to an **origin** (scheme, host, port); a request id is only a waiter.
+- **Sidecar** (`CloudflareSolver.kt`, `CloudflareExchangeFormat.kt`): origin-keyed clearances/locks/declines; `clearanceScope` attaches cookies only to the matching origin; `transport=browser` marks browser-only; refused *saved* passes send `rejected=<id>` once per origin without marking the origin browser-only.
+- **Saved passes** (`saved_pass`, `pass_scope`, `pass_book`, `disk_pass_book`, `pass_file`, `pass_policy`, `reask_guard`, `watch_passes`; see `docs/CLOUDFLARE_PASS_PLAN.md`): passes persist in `<data>/cloudflare_passes` (beside `<data>/sidecar`, outside plugin Landlock/AppContainer sandboxes) as versioned JSON per cookie scope, atomic temp+rename, coordinated via `.lock` (`ensure_lock_file`, exclusive lock on writes and writable reads to prevent Windows NTFS `DELETE_PENDING` read errors and writer starvation, shared lock fallback on read-only lock files). `CookieValue` redacts values in `Debug`; malformed status lines log only the verb.
+- **Bridge & tests** (`cloudflare_bridge`, no GUI): file exchange (`request-`/`result-`, `fetch-`/`fetchresult-`), `AllowedHosts`, `PromptOwners`, `helper_idle`, `VerifyHelper`, and `spawn_watcher` (started by `app_shell::start_cloudflare_watch`). Cross-platform `fake_verify_helper` (`test-support` feature) drives `t2_saved_passes` and `t2_watch` on both Windows and Linux; `t4_windows_saved_passes` (`#[ignore]`) exercises live Windows WebView2 end-to-end.
+- **Window** (`cloudstream-verify`, tao + WebKitGTK 4.1 on Linux / WebView2 on Windows): one window per origin (`waiters.rs`, `verification.rs`). Cookie readers: `webkit_cookies.rs` (Linux), `webview2_cookies.rs` (Windows), shared validation in `browser_cookies.rs`. `context_reaper.rs` releases idle/excess passed windows (`--max-windows`); `context_slimming.rs` shrinks quiet windows after 10 s (Linux replaces browser with tiny same-origin page; Windows navigates to `/robots.txt`). Native check script: `scripts/check_verify_window.py`.
+- **UI**: `ui_slint::bridge::cloudflare_prompts::PromptQueue` shows one check at a time ("+N more"), prioritizing permission prompts over failures over running checks.
 
 ### Chunk 4: Video Player Engine (libmpv)
 
@@ -411,57 +409,9 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks. Layout of the bridge, request tickets, playback watch and known Slint pitfalls: `crates/ui_slint/README.md`.
 - **Ported from the old Tauri UI** (pure rules with tests, named after the TS files they replace): the player's Sources menu (`source_menu.rs`: broken hidden, best first, kind / size / preferred-subtitle tags, 1080p / 2160p filter with size sort, "only with subtitles" filter), track menus with preferred languages first and picks by id (`track_menu.rs`), feedback pop-up and buffering text (`feedback_text.rs`), seek bar extras (`seek_bar.rs`), skip prompts from chapters plus online times from `UiServices::skips` (`skip_segments.rs`, `bridge/skip_lookup_start.rs`), spaced-out key seeks (`seek_scheduler.rs`), the opening panel (`check_text.rs`), Browse filters (`browse_filters.rs`), plugin search / filter / sort (`plugin_filter.rs`), the per-provider Home banner (`resume_hero.rs`). Slint globals `PluginList` and `BrowseFilter` hold those lists' controls. Extensions: installed plugins that are not video plugins show "Not supported" with the reason and only Remove (`posters::plugin_rows` over `InstalledStatus`); the catalog count says how many non-video plugins are hidden (`plugin_filter::catalog_count_text`). Settings: removable subtitle-language chips, a debug-logging switch (`AppExtras::debug_logs`), storage usage (`app_services::measure_storage`).
 
-#### `crates/ui_app` (reference only)
-- **Location**: `crates/ui_app/`
-- **Dependencies**: `egui = "0.37"`, `eframe = "0.37"`, `egui_extras`, `image`, `app_services`, `cloudflare_bridge`, `core_model`, `extension_api`, `open = "5"`, `playback_session`, `player_api`, `semver = "1"`, `serde`, `serde_json`, `tracing`, `ureq = "3"`
-- **Status**: Former product UI; kept for porting reference. Listed in Cargo.toml `exclude` (not a workspace member — fontconfig `dlopen` conflicts with Slint `fontique`). Product binary uses `ui_slint`.
-- **Architecture**: Unidirectional reactive pattern:
-  - `screens/` and `widgets/` render state and emit `UiAction`.
-  - `actions/dispatcher.rs` executes use cases asynchronously on `TaskRunner`.
-  - Resulting `UiEvent` values update `AppModel`.
-  - `event_handler.rs` applies changes and triggers UI redraws.
-- **Navigation & Screens**:
-  - Top Tabs (`navigation.rs`): `Home`, `Search`, `Library`, `Downloads`, `Settings`.
-  - Screens: `home_screen.rs`, `search_screen.rs`, `details_screen.rs`, `library_screen.rs`, `downloads_screen.rs`, `settings_screen.rs`, `player_screen.rs`, `extensions_panel.rs`.
-  - Glass/Backdrop Blur: Stretches player frame down to 48px and scales up via GPU linear filtering (`video_presenter::blur_thumbnail`, `widgets::glass`). Hero banners stretch artwork to 24x36px (`ambient_backdrop`).
-- **Input State**: `UiServices` bundle passed to `run_desktop_app(services)`.
-
-#### `archive/desktop_tauri`
-- **Location**: `archive/desktop_tauri/` (**not** a workspace member; former Tauri + React shell kept for porting)
-- **Status**: Reference only. Product open/playback/UI live in `playback_session` + `ui_slint` + `app_shell`.
-- **Backend Architecture (`src/`)**:
-  - `main.rs`: Registers IPC commands (including `get_resume_pointer`) and sets up `AppState`, `SourceManager`, and `StartupTracker`.
-  - `source_manager.rs`: Session-based coordinator managing stream search, checking queue, title caching, and subtitle prefetch.
-  - `source_fallback.rs` & `source_fallback_steps.rs`: Monitors playback and automatically fails over to the next best source upon playback error.
-  - *(Archived Tauri behavior; the Slint product has no away-hold: leaving the player stops playback.)* `video_away.rs` + `video_cache_commands.rs`: leaving the player (`leave_playback`) keeps a video that holds a stream waiting when Preferences "Keep video ready when leaving" is on: progress saved, paused, cache shrunk (`VideoCache::while_away`: zero ahead, half behind; mpv trims behind and reads no further ahead), sources kept, `ActiveSources.away` set. When that switch is off, leave stops like a full exit. `play_media` for that same video first tries `come_back_to`: full cache, play, no search. Leave and come-back check the open list under the `Opening` lock, so a video that started opening is never paused or resumed instead. Playing another video or closing the app drops it.
-  - `source_refresh.rs`: the player's "Refresh sources" (`refresh_sources`): removes the title's saved sources, restarts the list with only the playing stream (`SourceSession::restart_playing`, `source_session_restart.rs`) and runs a new search and checks while playback goes on. Refused while no stream plays, and when another video started opening (`SourceManager::restart_list` checks the `Opening`'s generation under its lock).
-  - `check_gate.rs`: Manages wait limits: 30s cap for the first working source, 60s cap for complete search, or immediate playback on skip.
-  - `library_commands.rs`: `get_bookmarks`, `add_bookmark`, `remove_bookmark`, `is_bookmarked`, `get_continue_watching`, `get_resume_pointer`, `remove_continue_watching`, `clear_continue_watching`. Purges title cache & subtitles via `SourceManager::forget_title`.
-  - `native_video.rs`: native video on Windows. The main window is transparent (`tauri.conf.json`); mpv gets the window's own handle (`wid`, `vo=gpu`) and draws below the transparent web view, so the player screen (`PlayerOverlay.tsx`, see-through while `Playing`/`Paused`, `hooks/useNativeVideo.ts`) floats over the picture and no frame crosses the IPC. On Windows native is the only mode (no setting); other platforms, and a missing window handle, still use the canvas path. Plan: `docs/NATIVE_VIDEO_PLAN.md`.
-  - Web view flags (`webview_browser_args.rs` applies platform args at start; `tauri.conf.json` keeps the Windows line, and Cloudflare check views on Windows read the same config): `--disable-gpu` on Windows only (since `9195eae`: a frozen mouse pointer in fullscreen), omitted on Linux so the WebView can composite on the GPU; both keep `--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows` with `CalculateNativeWinOcclusion` disabled. The last group exists because the native video window covers the web view: a couple of minutes into a video the page's timers were slowed to once per second (the page's status poll fell from 4 to 1 per second, `useStallWatch` logged a `page stalled for ~500 ms` line every second, one 6 s freeze ended when the window was resized). With the flags the poll stayed at 4 per second for a 9-minute 4K session, and for 6 min 22 s of hands-off windowed 4K playback with the controls hidden (no stalls in either). Check it with `get_playback_status` lines per second in `logs/debug/player-logs.txt`; remember that `useStallWatch` only logs while debug logging is on.
-  - `video_commands.rs`: Delivers mpv RGBA frames to the frontend as binary data (`16-byte header: width, height, serial + pixels`).
-  - `data_commands.rs`: `delete_all_data` (stops playback, starts the helper, closes the app).
-  - `data_helper.rs`: the helper behind it: a PowerShell (Windows) or `sh` script written to the temp folder and started detached. It waits for the app's PID to exit, ends `java.exe` processes whose command line holds the data folder (the sidecar), deletes everything except the folder of the running program (`-KeepDir`, a `runtime-*` folder; older ones are deleted), retrying while files are in use, starts the app again (portable exe via `CS_PORTABLE_EXE`, AppImage via `APPIMAGE`, else the running program) and removes itself.
-  - Cloudflare verification (`cloudflare_*.rs`): sites behind Cloudflare answer plugins with a "verify you are human" page. The sidecar (`CloudflareSolver`, `BrowserFetch`) detects it and asks the app through files in `<data>/sidecar/cloudflare` (`request-/result-` for verification, `fetch-/fetchresult-` for requests made in the browser). `cloudflare_watch.rs` answers for as long as the app runs: the check opens (`cloudflare_window.rs` waits for it, `cloudflare_open.rs` opens it, one per site, parked/hidden and kept after it passes) inside the app: `cloudflare_panel.rs` builds a second browser view in the main window (own profile `<data>/cloudflare_browser`, else the app's profile) that the page's `CloudflarePanel.tsx` frame places with `place_cloudflare_panel` (the `cloudflare-panel` event opens/closes the frame, `cancel_cloudflare_panel` cancels; `PanelControl` holds cancel and the placed rectangle); if no view can be built it falls back to a window of its own. After a pass, cloudflare_share.rs copies the check view's cookies (cf_* also for i.<host>, the image server) into the app's own browser so site pictures load; names/domains are logged, never values. Title details go through `utils/detailsLoader.ts` (`api.getDetails`): a title loaded in the last 30 min is answered from memory and a load already running is joined, because the extension runtime answers one call at a time and one slow load (92 s for One Piece) delayed playback; `useTitleDetails` retries a failed load when a Cloudflare check ends. Opening a title shows `DetailsLoading.tsx` with a Cancel button (also any tab or provider click cancels): `App.tsx` keeps a `createLatestRequest` ticket per open, so a late answer is dropped (the load itself keeps running in the sidecar and is kept by `detailsLoader` for the next open). If an action fails while a site still waits for the viewer's Verify, `App.tsx` `guard` shows `CloudflareAsk.tsx` (the Verify card as a dialog, `utils/failureAction.ts`) instead of the plugin's vague error and runs the action again after verifying. While a plugin keeps the browser busy, `cloudflare_patience.rs` holds its call past the 60 s timeout (10 min cap per burst) and `cloudflare_watch.rs` sends the `plugin-progress` event (requests, rate-limited count, seconds) that `DetailsLoading.tsx` shows after 5 s with an explanation. Placement, cancel, parking and every failure are logged to `cloudflare-logs.txt` (frontend lines via `webapp-logs.txt`: placed rectangle, heartbeat every 5 s). Because the main window has two views, look it up with `get_webview("main")`/`Window`, never `get_webview_window("main")`. The check opens only for a site the viewer allowed (`cloudflare_gate.rs`: picking the provider, or the Verify card on Home via `allow_cloudflare_host`); otherwise the page gets the `cloudflare-needed` event. Cloudflare rejects the passed cookies over the sidecar's own HTTP client (it checks the connection too), so the sidecar then sends that site's requests through the window (`cloudflare_fetch.rs`: `fetch` in the page, result read back with `eval_with_callback`). `cloudflare_exchange.rs` holds the file formats. Images: `utils/imageLog.ts` reports the first loaded/failed image per site to `report_image`, which logs the cookies the app's browser holds for it. Everything is logged to `cloudflare-logs.txt` (own debug category, also in the main log at info level); sidecar lines carry the tag `[cloudflare]`.
-  - Cleanup queue (`cleanup_queue.rs`, `cleanup_start.rs`, `cleanup_tasks.rs`): every background cleanup is a task in one queue run by one thread. It does nothing until start-up has finished (extensions loaded), then waits 60 s, then runs one task at a time with 3 s between them, and waits while a video plays or loads. Tasks: older `runtime-*` folders (once), stale sidecar exchange files (> 1 h), saved stream sources and subtitles (the former own-thread cleanups), the main log (`cloudstream.log` cut to its newest 2 MB when over 8 MB), rotated `*.old` debug logs (> 3 days; the debug logs themselves rotate at 20 MB in `log_file.rs`), the check browser's cache (> 150 MB, cookies stay) and the storage limit. A panicking task is logged and skipped. Each start, finish, duration and deletion is logged.
-  - Storage limit (`storage_cap*.rs`): Settings > General > "Storage limit" (`StorageCapCard.tsx`, drop-down 1-10 GB, default 2, setting `storage_cap_gb` in `SettingsService`). The card shows sizes for `logs/`, `subtitles/`, `sources/` and `updates/`. `storage_cap_scan.rs` lists what can be made again (older `runtime-*` folders, stale update downloads, finished debug logs, subtitles, saved sources, the check browser's cache), `storage_cap_plan.rs` (pure) picks the cheapest first, oldest first, only as much as needed, `storage_cap.rs` deletes and logs each one. Cleanup runs on home-after-ready and via `run_storage_cleanup` ("Clean up now", which resets the hourly schedule), as a cleanup-queue task (hourly, including stale updates), when the limit is changed, and whenever a measure finds the folder over the limit. The database, plugins, settings and the running program are never listed, so a folder can stay over the limit; that is logged and shown in red.
-  - `shutdown.rs`: the closer. Runs on the main window's close request and on exit (once; later callers wait): closes every other window/view (a hidden Cloudflare check would keep the app alive), stops the player, ends every plugin worker (`ProviderGateway::shutdown` -> `PluginWorkerPool` drops each `SidecarProcessTransport`, which also blocks restarts), with a 10 s watchdog that ends the process. Every step is logged with its time (`closing: ...` lines in `app-logs.txt` and the main log).
-  - `deadlock_tests.rs` (tests only): fails when a synchronous `#[tauri::command]` calls something that waits for the window's own thread (`cookies_for_url`, building a window or view, `eval_with_callback`) or blocks (`recv`, `join`, `sleep`, `block_on`): that freezes the whole app on Windows. Make such a command `async`. Also holds `finishes_within`, a watchdog for tests of shared state.
-  - `update_commands.rs`: The self-updater (`check_for_updates`, `apply_update`). Reads the latest GitHub release and chooses the asset by name: `*-setup.exe` (installed Windows app), `*_portable.exe` (portable, replaced through `CS_PORTABLE_EXE`), `*.AppImage` whose name contains `x86_64` or `aarch64` (Linux). Keep the release file names (see `docs/RELEASING.md`). The command file only runs the work and turns `UpdateError` (`update_error.rs`) into text; the work is split by step: `update_version.rs` (tag comparison), `update_assets.rs` (release JSON, choosing the file), `update_download.rs` (GitHub requests, download with progress), `update_install.rs` (`InstallMethod`: the installed Windows app runs the downloaded installer with `/P /R /UPDATE`; the portable exe and the AppImage have the file moved over them), `update_helper_script.rs` (the `.bat`/`.sh` helper text with quoted paths, started by plain name from its own folder), `update_verify.rs` (minisign signature of the release's `SHA256SUMS`, checked with the key in `crates/app_updater/update_signing_key.pub`, then the download's SHA-256), `update_folder.rs` (a fresh `<data>/updates/<attempt>/` per try, old ones removed), `update_prepare.rs` (the order: newer? file for this PC, signed list, download, hash; a failure removes the folder). `apply_update` takes no address: the backend picks the file. A release without `SHA256SUMS` + `SHA256SUMS.minisig`, or a build whose key file holds no key, installs nothing.
-- **Frontend Architecture (`frontend/src/`, archived React UI)**:
-  - `App.tsx`: Main application shell, keyboard shortcuts, and tab routing (`home`, `browse`, `search`, `library`, `settings`).
-  - `screens/`: `HomeScreen.tsx`, `BrowseScreen.tsx`, `SearchScreen.tsx`, `DetailsScreen.tsx` (shows "Resume" button with time left, highlights/scrolls to resume episode), `LibraryScreen.tsx`, `SettingsScreen.tsx`, `PlayerOverlay.tsx`.
-  - `screens/settings/`: `GeneralSettings.tsx`, `PreferencesPage.tsx`, `SubtitleLanguages.tsx`, `RepositoryPage.tsx`, `PluginsTab.tsx`, `ExtensionsPage.tsx`.
-  - `components/`: `VideoCanvas.tsx` (canvas pixel renderer, non-Windows fallback), `ResolutionFilter.tsx` (1080p / 2160p toggles above the Sources list in the player, rule in `utils/resolutionFilter.ts`: 1080p = 1080p and lower, 2160p = anything above, including 1440p; based on the quality number the provider reports, not a measured resolution; sources with unknown quality are hidden while a group is toggled; while a group is toggled the list is sorted by file size, biggest first, and sources without a known size follow below; combines with the subtitle filter), `SourceMenuHeader.tsx` (top of the player's Sources menu: the "Refresh sources" button, enabled once the opening is over, rule in `utils/sourceRefresh.ts`, calling `refresh_sources` through `usePlayback.refreshSources`; then the resolution and subtitle filters), `SeekBar.tsx`, `SourceCheckPanel.tsx`, `OptionMenu.tsx`, `SubtitleFilter.tsx`, `PosterCard.tsx`, `BrowseCard.tsx`, `BrowseFilterBar.tsx`, `ContinueWatchingCard.tsx` (badge "S1 E3", progress bar), `ContextMenu.tsx`, `FeedbackPopup.tsx`, `DebugLoggingCard.tsx`, `StartupScreen.tsx`, `ResumeHero.tsx` (Home banner for the last unfinished title of the selected provider only: `pickResumeHero(list, provider)`; the Continue Watching row still lists every provider), `EpisodeButtons.tsx`, `UpdateIndicator.tsx` (nav bar update check) and `UpdateCard.tsx` (Settings > General update card), `NoPluginsPrompt.tsx` (Home's "add a plugin" card), `DeleteDataCard.tsx` (the "Delete all saved data" card at the bottom of Settings > General), `VideoCacheCard.tsx` (Settings > General > "Video cache": size and ahead share drop-downs, `get_video_cache` / `set_video_cache`, texts in `utils/videoCache.ts`). Leaving the player calls `leave_playback` (`usePlayback.leave`), not `stop_playback`.
-  - `components/details/`: `CastRow.tsx`, `EpisodeSection.tsx` (supports `highlightedKey` and auto-scrolling).
-  - `playback/`: `episodeLookup.ts` (`orderedEpisodes`, `findNextEpisode`, `findPreviousEpisode`, `findEpisodeForKey`, `movieAsEpisode`, `playbackTitle`), `autoAdvance.ts` (`shouldAutoAdvance`: next episode starts when a video ended at >= 90 %), `skipPrompt.ts` (Skip Intro / Next episode button), `skipRequest.ts`, `chapterSkips.ts` (skip segments from the playing file's own chapters: titles such as Opening, Ending, Recap, Next Time; no network, works with `skip_lookup` off; for every kind the chapters name they replace the online times, the online times fill the rest; `hooks/useChapterSkips.ts` merges them and keeps the list while its content is unchanged).
-  - Player responsiveness: input acts at once and the screen shows it before the player confirms. `utils/playerShortcuts.ts` (Space pauses/plays, arrows, M, F; not while typing), `utils/clickSorter.ts` (a click pauses at once; a double click takes it back and goes fullscreen), `utils/seekScheduler.ts` (first arrow press jumps at once, later ones at most every 200 ms, every 500 ms for a held key, against HTTP 429), `utils/playIntent.ts` (a fresh pause/play wins over a late status answer for 1 s), `utils/seekTarget.ts` `shownPosition` (the seek bar shows a jump's target at once). The status is read every 250 ms (`usePlayback.ts`); `player_mpv::StatusTracker::set_paused` shows a pause at once and drops a reading taken before it (`Reading::pause_commands`). Timings against the real libmpv: `crates/player_mpv/tests/t4_responsiveness.rs` (needs `CS_BENCH_VIDEO`).
-  - `utils/episodeMarks.ts`: episode marks on the title page (bar while started, Watched from 80 %).
-  - `utils/homeEmptyState.ts`: `homeEmptyState()` decides when Home shows `NoPluginsPrompt`: `no-plugins` on a fresh start (nothing installed), `plugins-unavailable` when plugins are installed but none gives a provider.
-  - `utils/`: `continueWatching.ts` (`watchedPercent`, `episodeBadgeText`, `formatRemainingTime`, `continueKey`), `browseFilters.ts` (`GENRES`, `RATINGS`, `YEARS`, `defaultBrowseFilters`, `pickBestSearchMatch`).
-  - `components/extensions/`: `IconTile.tsx`, `InstalledExtensionList.tsx`, `PluginList.tsx`, `RepositoryPanel.tsx`.
-  - `hooks/`: `usePlayback.ts`, `usePlayerControls.ts`, `usePlayerPreferences.ts`, `usePlayerShortcuts.ts`, `useExtensions.ts`, `useAllPlugins.ts`, `useDebugLogging.ts`, `useStallWatch.ts`, `useStartup.ts`, `useWindowFullscreen.ts`.
-  - `services/api.ts`: Typed TypeScript client invoking backend Tauri commands.
+#### Legacy / Reference Shells (non-workspace)
+- **`crates/ui_app/`**: former egui UI (excluded from workspace due to fontconfig conflict with Slint `fontique`); reference only.
+- **`archive/desktop_tauri/`**: former Tauri + React UI (not a workspace member); kept solely as porting reference. All product logic now lives in `app_shell`, `ui_slint`, `playback_session`, `app_updater`, `cloudflare_bridge`, and `cloudflare_window`.
 
 #### `crates/portable_launcher`
 - **Location**: `crates/portable_launcher/`
@@ -473,8 +423,11 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 
 #### Automation Scripts (`scripts/` & `tools/`)
 - `scripts/setup_sidecar.ps1`:
-  - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`.
-  - Overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_extension_loader.py`, and builds the sidecar distribution with JDK 21.
+  - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`, overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_extension_loader.py`, builds with JDK 21, and writes `.sidecar-sources.stamp` via `scripts/sidecar_stamp.py`.
+- `scripts/sidecar_stamp.py` (tests: `sidecar_stamp_test.py`):
+  - Fingerprints `sidecar/` + build scripts and checks `CloudflareExchangeFormat.class` in `plugin-runtime.jar`; enforced by `scripts/build_release.ps1` so stale sidecars cannot ship on Windows.
+- `scripts/check_verify_window.py`:
+  - Native `cloudstream-verify` browser/window test harness (WebView2 on Windows, WebKitGTK under X11 on Linux) verifying redirects, `BrowserClear`, multi-origin terminal order, and domain/host-only/expiry/session cookies (`*.localhost`).
 - `scripts/prepare_sidecar_repo.sh <repo>` (Linux): clones/fetches the pinned client, applies `sidecar/overlay`, runs `patch_extension_loader.py` and installs our Gradle modules (`cs-sidecar`, `api-scanner`); used by `build_release.sh` and `tools/extension_recorder`.
 - `scripts/patch_extension_loader.py` (tests: `patch_extension_loader_test.py`):
   - Patches the pinned `ExtensionLoader.kt` after the overlay is applied, where the overlay cannot: the cached-jar check follows `ShadowUiTransform.VERSION`, and `initializePlugin` gives each plugin `PluginAssets.resourcesFor(...)` (its own archive's assets). Each patch applies to exactly one place, is already applied, or stops the build.
@@ -579,83 +532,7 @@ flowchart LR
 
 ---
 
-## 4. Archived Tauri IPC (reference)
-
-**Not product.** The Slint shell does not use Tauri IPC. The table below documents commands that still exist under `archive/desktop_tauri/src/main.rs` for porting. `docs_drift_tests.rs` in that archive tree guards the list there.
-
-| Category | Command Identifier | Description |
-|---|---|---|
-| **Startup** | `get_startup_status` | Status of sidecar, libmpv, and extension loading. |
-| **Preferences** | `get_preferences` | Audio/subtitle language preferences & auto-subtitle flag. |
-| | `set_preferred_audio` | Sets preferred audio language. |
-| | `set_preferred_subtitles` | Sets ordered subtitle language preference list. |
-| | `set_auto_subtitles` | Enables or disables automatic subtitle track activation. |
-| **Debug Logs** | `get_debug_logging` | Checks if debug logging is enabled. |
-| | `set_debug_logging` | Toggles verbose debug logging. |
-| | `open_logs_folder` | Opens OS file explorer at `<data_dir>/logs/`. |
-| | `log_from_webapp` | Writes frontend console log messages into the backend trace. |
-| **Catalog** | `get_available_providers` | Lists active providers and capabilities. |
-| | `get_home_sections` | Fetches homepage shelves (`offset`/`limit` over `main_page` entries so the first shelf can paint before the rest). |
-| | `search_media` | Queries multiple providers simultaneously. |
-| | `get_media_details` | Loads metadata, cast, and episode list for a title. |
-| | `browse_catalog` | Queries TMDB Discover API (60 items/page) filtered by media type, year, sort/rating, and genre. |
-| **Playback** | `play_media` | Starts opening flow (cache check -> verification -> mpv). |
-| | `skip_source_check` | Bypasses remaining stream checks and plays first ready stream. |
-| | `pause_playback` | Pauses playback. |
-| | `resume_playback` | Resumes playback. |
-| | `seek_to` | Seeks to millisecond position. |
-| | `stop_playback` | Stops player and clears active session. |
-| | `leave_playback` | *(Archived Tauri only; the Slint product stops playback on leave.)* The viewer left the player: a video that holds a stream waits paused and loaded with half its cache (`video_away.rs`); anything else is stopped. Opening it again with `play_media` plays on from memory. |
-| | `get_video_cache` / `set_video_cache` | Settings > General > "Video cache": size (128 MB-4 GB) and ahead share (25-90 %); a change applies at once (half while the video waits). |
-| | `get_plugin_worker_limit` / `set_plugin_worker_limit` | Settings > General > "Plugin processes (low-end)": how many plugin JVMs stay resident (`0` = unlimited; in the Slint product the default follows the performance profile). |
-| | `get_playback_status` | Returns state, position, duration, and track list. |
-| | `select_media_track` | Switches audio or subtitle track by ID. |
-| | `set_volume` | Adjusts output volume percentage (0-130%). |
-| **Sources** | `get_playback_sources` | Returns stream candidates and verification statuses. |
-| | `switch_source` | Manually switches playback to another stream URL. |
-| | `refresh_sources` | The Sources menu's Refresh: drops the title's saved sources and searches and checks again, the playing stream goes on (`source_refresh.rs`). |
-| **Library** | `get_bookmarks` | Lists all bookmarked items. |
-| | `add_bookmark` | Saves item to library. |
-| | `remove_bookmark` | Removes item from library. |
-| | `is_bookmarked` | Checks bookmark status. |
-| | `get_continue_watching` | Returns in-progress watch history items. |
-| | `get_resume_pointer` | Where a show or movie was left off (the title page's Resume button and highlighted episode). |
-| | `remove_continue_watching`| Forgets progress and deletes cached sources for item. |
-| | `clear_continue_watching` | Clears all continue-watching records. |
-| **Settings** | `get_repositories` | Lists configured extension repositories. |
-| | `add_repository` | Adds and probes a new extension repository. |
-| | `remove_repository` | Removes an extension repository. |
-| | `get_disabled_providers` | Lists provider IDs switched off by user. |
-| | `set_provider_enabled` | Toggles provider enabled state. |
-| **Extensions** | `get_installed_extensions` | Lists installed extensions and versions. |
-| | `get_repository_plugins` | Lists plugins available in a repository. |
-| | `refresh_repository_icons`| Background worker downloading repository icons. |
-| | `install_plugin` | Downloads `.cs3` and registers extension. |
-| | `uninstall_extension` | Deletes `.cs3` and removes providers. |
-| | `set_extension_trusted` | Flags plugin as trusted (skips static bytecode verify and most classloader denies; hard denies like ProcessBuilder remain; also skips AppContainer/Landlock while keeping Job/rlimit). Unloads and reloads the plugin immediately under the new mode. |
-| **Plugin Catalog**| `prepare_plugin_catalog` | Pre-indexes all repository plugins. |
-| | `list_all_plugins` | Returns indexed plugins with repository metadata. |
-| **Episodes** | `get_show_progress` | Saved position of every episode of a show (episode marks on the title page). |
-| | `get_skip_segments` | Intro, recap and credits of the playing video from online databases. |
-| | `set_playback_option` | Switches `autoplay_next`, `skip_lookup` or `stream_proxy`. |
-| | `provider_switched` | The viewer picked another provider: saved stream links from before are not used. |
-| **Cloudflare** | `allow_cloudflare_host` | The viewer allowed the verification check for a site (and its subdomains) from now on. |
-| | `place_cloudflare_panel` | The page says where the `CloudflarePanel.tsx` frame is; the check view moves over it. |
-| | `cancel_cloudflare_panel` | The viewer pressed Cancel on the check frame. |
-| | `report_image` | How an image from a site fared; the first few per site are logged with the cookies the app's browser holds for it. |
-| **Video/Window** | `get_video_mode` | True when mpv draws into the main window itself (native video), so the page needs no canvas. |
-| | `set_video_surface` | Informs player of viewport dimensions. |
-| | `get_video_frame` | Returns binary header + RGBA pixels for canvas rendering. |
-| | `set_window_fullscreen` | Toggles fullscreen window state. |
-| **Updates** | `check_for_updates` | Asks GitHub for the latest release and picks the file for this PC (installer, portable exe or AppImage, by file name). |
-| | `apply_update` | Finds that file itself (takes no address from the page), checks the release's signed `SHA256SUMS` and the download's SHA-256, then a helper script swaps it in for the running program (the portable exe via `CS_PORTABLE_EXE`, the AppImage via `APPIMAGE`) and restarts it. |
-| **Data** | `get_storage_cap` / `set_storage_cap` | The data folder's size limit (1-10 GB) with the size used and per-folder breakdown; setting it applies it at once (`storage_cap.rs`). Over the limit on read also enforces and asks the cleanup queue to run soon. |
-| | `run_storage_cleanup` | Tidies regenerable data (old runtimes, stale updates, sources, subtitles, logs, browser cache), enforces the storage limit, and resets the hourly cleanup schedule (`storage_cleanup.rs`). |
-| | `delete_all_data` | Settings > General > "Delete all saved data": starts a separate helper process (`data_helper.rs`) and closes the app; the helper ends leftover sidecar Java processes, deletes everything in the data folder (except the running program's `runtime-*` folder) and starts the app again. Fallback if the helper cannot start: a marker file that the next start acts on (`app_shell::data_wipe`). |
-
----
-
-## 5. Code Navigation Guide ("Where is X?")
+## 4. Code Navigation Guide ("Where is X?")
 
 | Component / Task | File Location |
 |---|---|
@@ -684,7 +561,7 @@ flowchart LR
 
 ---
 
-## 6. Step-by-Step Modification Recipes ("How do I do X?")
+## 5. Step-by-Step Modification Recipes ("How do I do X?")
 
 ### Recipe 1: Adding a Slint UI callback / bridge hook
 
@@ -752,7 +629,7 @@ Required race test elements:
 
 ---
 
-## 7. Invariants, Quality Gates & Project Rules (RULES.md)
+## 6. Invariants, Quality Gates & Project Rules (RULES.md)
 
 All code must pass these quality gates before commit:
 
@@ -766,14 +643,14 @@ All code must pass these quality gates before commit:
 | **Complexity** | Clippy `cognitive_complexity` | ≤ 10 per function. |
 | **Panics / Unwraps**| Clippy restrictions | Deny `unwrap_used`, `expect_used`, `panic`, `unreachable`, `todo`. |
 | **Indexing** | Clippy `indexing_slicing` | Denied. Must use `.get()` or pattern matching. |
-| **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except localized `#[allow(unsafe_code)]` in `player_mpv` (libmpv FFI), `extension_runtime` (OS sandbox spawn), and `ui_slint` (generated Slint bindings). |
+| **Unsafe Code** | `#![forbid(unsafe_code)]` | Forbidden everywhere except localized `#[allow(unsafe_code)]` in `cloudflare_window/src/windows_presentation.rs`, `player_mpv` (libmpv FFI/GL), `extension_runtime` (OS sandbox spawn), and `ui_slint` (generated bindings / GL texture borrow). |
 | **Token Safety** | `core_model::redact_url` | Never log sensitive tokens or complete signed stream links. |
 | **License Check** | `cargo deny check` | Validates GPL-3.0 compatibility and dependency advisories. |
 | **Vulnerabilities** | `cargo audit` | Known security advisories for the locked dependencies. |
 
 ---
 
-## 8. Developer Commands & Environment Variables
+## 7. Developer Commands & Environment Variables
 
 ### Daily Developer Commands
 ```powershell

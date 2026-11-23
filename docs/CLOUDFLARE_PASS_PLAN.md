@@ -1,114 +1,48 @@
-# Cloudflare passes: keep them across restarts, share them across a site
+# Saved Cloudflare Passes
 
-Status: **implemented** (Nov 23). Parts 1 and 2 below are built; the design notes say where the code differs
-from the first plan and why. What is not verified yet is listed at the end.
+Status: **implemented & verified on Linux and Windows** (Nov 23–24).
 
-A "pass" is what passing a Cloudflare check gives: the `cf_clearance` cookie (plus the other cookies the
-check window read) and the browser identity (user agent) it was issued to.
+A "pass" is the verified `cf_clearance` cookie (plus accompanying cookies) and browser `User-Agent` obtained from `cloudstream-verify`. Passes persist across restarts and share across subdomains strictly according to the cookie's RFC 6265 `Domain`/`Path`/`Secure` attributes.
 
-## How it works now
+## Scope & Storage Map
 
-| What | Kept where | Scope |
+| State | Where | Scope |
 |---|---|---|
-| The viewer's permission (Verify) | setting `cloudflare_allowed_hosts` (`cloudflare_bridge/src/allowed_hosts.rs`) | the site and its subdomains, until removed |
-| The pass, for the app | `<data>/cloudflare_passes/<scope>.json` (`DiskPassBook`) | the hosts its `cf_clearance` cookie reaches (its own `Domain` attribute) |
-| The pass, in a plugin | the sidecar's memory (`CloudflareSolver.kt`, `clearances`, keyed by `Origin`) | one exact origin |
-| Requests through the browser window | the check window (`cloudflare_window`) | one exact origin (same-origin rule) |
+| Viewer permission (`Verify`) | Setting `cloudflare_allowed_hosts` (`allowed_hosts.rs`) | Site + subdomains, until removed |
+| Saved pass (app) | `<data>/cloudflare_passes/<scope>.json` (`DiskPassBook`) | Exact hosts reached by `cf_clearance`'s `Domain` |
+| In-memory clearance (plugin) | Sidecar `CloudflareSolver.kt` (`clearances`) | Exact `Origin` |
+| Browser-transport fetches | `cloudflare_window` (`cloudstream-verify`) | Exact `Origin` |
 
-1. **The window reads every cookie's attributes** (domain, path, Secure, HttpOnly, expiry) in both browsers
-   (`webkit_cookies.rs`, `webview2_browser.rs`, shared rules in `browser_cookies.rs`). The scope rule is the
-   browser's own (`PassCookie::applies_to`, RFC 6265 domain/path match), one copy used by window and app.
-2. **The helper reports the pass to the app** on its private stdout: `passed\t<host>\t<id>\t<json>`. The
-   result file alone could not carry it: the helper writes it and the sidecar deletes it once read, so the app
-   never saw it. The result file only gains `validUntil=<epoch ms>`.
-3. **The app keeps it** (`watch_passes.rs` → `SavedPass` → `PassBook`), only for a request it sent to the
-   helper and for the host the helper names. A pass is governed by its earliest applying, non-empty
-   `cf_clearance` with an expiry: it lives until that cookie's `Expires` (capped at 400 days, RFC 6265bis),
-   minus a 60 s margin, and reaches exactly that cookie's hosts. A session clearance is not kept (nothing says
-   how long the site honours it). Session cookies of a kept pass are handed out only in the run that saved
-   them, as a browser forgets them on restart.
-4. **The app answers from it** (`pass_policy::decide`, pure) before routing a request, when the request is an
-   ordinary challenge (not a viewer's retry, no `need=browser`, no `rejected=`), a fresh pass reaches its
-   address, and the pass's issuing site is still allowed. The answer is
-   `ok=true, userAgent, source=saved, pass=<id>, validUntil, cookie=…`; the newest such pass wins.
-5. **A refused pass is retired for good.** The sidecar names it in its next question (`rejected=<id>`); the app
-   drops it, remembers its clearance until it would have expired (so a browser profile that still holds it
-   cannot bring it back), and checks the site in the window. `reask_guard` is the safety net under that
-   protocol: one pass goes to one origin at most 4 times per 10 s.
+## How It Works
 
-### Where the code differs from the first plan, and why
+1. **Attribute capture:** Both engines read full cookie attributes (`webkit_cookies.rs` on Linux, `webview2_cookies.rs` on Windows; shared validation in `browser_cookies.rs` and `PassCookie::applies_to`).
+2. **Private hand-off:** `cloudstream-verify` sends `passed\t<host>\t<id>\t<json>` over its private stdout pipe (result files add `validUntil=<epoch ms>`). Cookie values are redacted in `CookieValue`'s `Debug`, malformed status lines log only the verb, and serde errors omit input text.
+3. **Persistence (`watch_passes.rs` -> `DiskPassBook`):** Governed by the earliest applying non-empty `cf_clearance` with `Expires` (capped at 400 days minus 60 s margin; session clearances are not saved). Accompanying session cookies are served only within the same app run.
+4. **Serving (`pass_policy::decide`):** Answers immediately (`source=saved`, `pass=<id>`, `validUntil`) for ordinary requests whose host is still allowed and covered by a fresh pass — bypassed for viewer retries, `need=browser`, or `rejected=`.
+5. **Retirement & loop guard:** When a site refuses a saved pass, the sidecar (`CloudflareExchangeFormat.kt`) sends `rejected=<id>` once per origin (never marking the origin browser-only for a refused *saved* pass; only a refused *fresh* pass does that). The app permanently retires the clearance until its expiry and re-verifies in the browser. `reask_guard` caps hand-outs at 4 per origin per 10 s.
 
-- **The sidecar needed a change** (the plan said it would not). It treated *every* refused pass as "this
-  site does not accept our connection's cookies" and made the origin browser-only for the session; a stale
-  saved pass (new IP, new browser) would have done that. Now `CloudflareExchangeFormat.kt` reads
-  `source=saved`, a refused saved pass is recorded per origin and named once by whichever request asks the app
-  next (concurrent requests share one fresh check), and only a refused *fresh* pass means browser-only. A
-  browser-only origin asks with `need=browser`, so it is never handed a cookie pass. An ended pass
-  (`validUntil`) is not sent at all.
-- **Logs:** the helper's unparsed stdout used to be logged word for word; a damaged `passed` line would have
-  logged cookie values. Status-looking lines that do not parse are now logged by their verb only, serde's
-  messages (which can quote the input) are reduced to kind and position, and `CookieValue` prints
-  `<redacted>` in every `Debug`.
-- **Two app instances:** writes to the pass folder take an exclusive lock (`.lock`, 2 s limit), so one
-  instance's rejection is never lost to the other's write.
+## Storage & Isolation
 
-## Storage and safety
+- `<data>/cloudflare_passes` lives **beside** `<data>/sidecar`, never inside it (untrusted plugin sandboxes only receive access to `<data>/sidecar`: Landlock on Linux, AppContainer `CloudStream.PluginSidecar.v1` on Windows).
+- Unix enforces `0700` dir / `0600` files; Windows inherits the user profile ACL with no AppContainer SID.
+- One versioned JSON file per scope (`domain-site.test.json`, `host-www.site.test.json`), max 64 KiB, max 256 scopes, atomic temp+rename writes. Corrupt/oversized/misnamed files are logged by name and removed.
+- **Multi-instance safety:** Writes and reads coordinate via `.lock` (2 s timeout; exclusive lock when writable to avoid Windows NTFS `DELETE_PENDING` read errors and reader-overlap writer starvation, shared lock fallback on read-only lock files).
+- **Windows sidecar guard:** `scripts/setup_sidecar.ps1` writes `.sidecar-sources.stamp` and `scripts/build_release.ps1` verifies source freshness and `CloudflareExchangeFormat.class` in `plugin-runtime.jar` via `scripts/sidecar_stamp.py` so stale sidecars cannot ship.
 
-- `<data>/cloudflare_passes` sits beside `<data>/sidecar`, never inside: the sidecar folder is the only part of
-  the data folder an untrusted plugin's sandbox may read (Landlock, AppContainer). Folder `0700`, files `0600`
-  on Unix; on Windows the folder inherits the user profile's ACL. A trusted plugin runs without the file
-  system jail and could read it, as it could read the check browser's own profile.
-- One versioned JSON file per scope (`domain-site.test.json`, `host-www.site.test.json`), written whole
-  (unique temp + rename). A file that is damaged, too large (64 KiB), of another version or misnamed is
-  removed and logged by name. At most 256 scopes (oldest passes evicted, rejection lists never).
-- "Delete all saved data" removes the whole data folder, this one included.
+## Verification & Mutation Testing
 
-## Tests
+- **Automated Rust & Python tests (Windows & Linux):**
+  - `cargo test -p cloudflare_bridge -p cloudflare_window -p extension_runtime`: unit/proptest rules, disk faults, contract suite, cross-platform `t2_saved_passes` + `t2_watch` via `fake_verify_helper`, Windows AppContainer `icacls` isolation, and multi-instance / single-scope NTFS `DELETE_PENDING` race tests.
+  - `python -m unittest discover -s scripts -p "sidecar_stamp_test.py"`: Windows sidecar freshness & JAR contract tests.
+  - `python scripts/check_verify_window.py <cloudstream-verify>`: native WebView2 (Windows) / WebKitGTK (Linux) checks including `BrowserClear` and domain/host-only/expiry/session cookies (`*.localhost`).
+  - `cargo test -p cloudflare_bridge --test t4_windows_saved_passes -- --ignored`: live Windows WebView2 end-to-end test covering first check, restart without session cookies, sibling host reuse without starting the helper, `rejected=<id>` retirement + replacement, and zero cookie leaks in logs.
+  - Kotlin sidecar (`scripts/test_sidecar.ps1`): `CloudflareSolverTest` & `CloudflareExchangeFormatTest` pass.
+- **Mutation testing:**
+  - `cloudflare_bridge` (Linux): 543 mutants, 0 new survivors in compiled code; (Windows `disk_pass_book.rs`): 68 mutants + 10-mutant re-verify — both Windows `#[cfg(not(unix))]` paths caught, `ensure_lock_file` & `is_shared_fallback_error` caught, 2 expected infinite-loop timeouts on `may_wait_longer`, 2 uncompiled `#[cfg(unix)]` twins, 1 Windows-only OS-equivalent match-guard survivor in `open_read_lock` (Win32 maps both dirs and read-only files to `PermissionDenied`, unlike POSIX `EISDIR` vs `EACCES`).
+  - `cloudflare_window` (Windows `webview2_cookies.rs`, `browser_cookies.rs`, `outbox.rs`, `verification.rs`): 83 mutants, 71 caught, 10 unviable, 2 missed (only the 1-line OS/COM wrappers `Outbox::status` and `webview2_cookies::read_cookies`, both exercised by `check_verify_window.py` & T4).
+  - Kotlin PITest (`CloudflareSolver*`, `CloudflareExchangeFormat*`): 200 mutants, 180 killed (94% test strength).
+- **Live Linux session (Nov 23):** verified domain passes (`.vcloud.my`, `.cinevood.loan`), 0.2 s relaunch reuse without window, VPN IP-change refusal + retirement + fresh re-check, `0700`/`0600` permissions, and zero leaked cookie values.
 
-Rust (`cargo test -p cloudflare_bridge -p cloudflare_window`): pure rules (cookie scope incl. proptests,
-`SavedPass`, scope rules, policy for every bypass reason, guard), the file schema, disk faults, one contract
-suite run against both pass books, the watcher glue step by step, and T2 with a scripted helper (sibling host,
-restart, host-only, refusal, browser-only, permission gone). Race tests: two pass books on one folder never
-lose a rejection (fails 4/4 with the lock removed); eight plugins asking about three hosts at once each get
-exactly one answer from exactly one source, and the guard limit holds. Kotlin (`CloudflareSolverTest`,
-`CloudflareExchangeFormatTest`): saved passes refused/accepted, bounded refusals, ended passes, `need=browser`,
-and twenty requests refused with one saved pass naming it once (failed before the per-origin record). Fuzz:
-`fuzz/fuzz_targets/cloudflare_exchange.rs` and the stable corpus stress in `tests/bdd`.
+## Optional Manual Smoke (Windows, Real Internet)
 
-### Mutation testing and coverage (Nov 23)
-
-- `cargo mutants -p cloudflare_bridge`: 543 mutants; no new survivor in the code that existed before (its 47
-  survivors are those of the baseline run); every survivor in the new code was killed by a test, except the
-  `cfg(not(unix))` twins of `create_private_dir` / `write_private`, which Linux does not compile.
-- `cloudflare_window` (`browser_cookies.rs`, `outbox.rs`, `verification.rs`): 80 mutants, 70 caught, 9
-  unviable, 1 missed: `Outbox::status`, the one-line hand-over of the real stdout to the tested
-  `send_status`.
-- PITest on `CloudflareSolver*` / `CloudflareExchangeFormat*`: 200 mutants, 180 killed, test strength 94 %.
-  The first runs reported 76 killed but never reached the solver's logic: PITest creates no mutants in
-  "private methods called only from static initializers" (its FAQ), and `intercept`, called only from the
-  interceptor lambda built in the `CloudflareSolver` object's initializer, was private, so it and everything it
-  calls were filtered. `intercept` is now `internal`. Remaining survivors: wall-clock loop boundaries
-  (`waitForResult`, `refuseIfDeclined`), the redundant pre-lock decline check, closing in-memory browser
-  responses, `challengeLocks.clear`, one same-millisecond boundary whose two paths end alike, and four inlined
-  Kotlin stdlib mutations mapped past the end of `CloudflareExchangeFormat.kt` (the FAQ: Kotlin junk needs the
-  Arcmutate plugin). Without the shared `kotlin.jvm.internal.Intrinsics` `avoidCallsTo` filter the only new
-  survivors are two removed compiler null checks, so that filter stays. Other Kotlin `object`s whose private
-  logic is reached only from initializer-built lambdas would be filtered the same way.
-- Line coverage of the new bridge files 97-100 % (`cloudflare_bridge` crate 92 %, threshold raised to 90 %).
-
-### Verified in a real session (Linux, Nov 23)
-
-First check kept domain-scoped passes (`.vcloud.my`, `.cinevood.loan`); a browser-only site
-(`ww5.m4ufree.lat`) kept none. After a relaunch, vcloud.my and cinevood.loan were answered from their saved
-passes in about 0.2 s with no check window, and the site accepted them. After switching to a VPN, both sites
-refused their saved passes: each refusal was named once, the pass retired, a fresh check made a new pass, and
-neither site became browser-only; m4ufree's pass still worked on the new IP. Folder `0700`, files `0600`, no
-cookie value in any log line.
-
-## Not verified yet
-
-- WebView2's domain field for a domain cookie (assumed to start with `.`, as in WebKit and Chromium's
-  cookie API); compiled and linted for Windows, not run there.
-- Whether real plugins hit sibling subdomains of one protected site (part 2 costs nothing extra, since the
-  scope comes from the cookie, but its benefit is unmeasured; `logs/debug/cloudflare-logs.jsonl` will show
-  `answered from a saved Cloudflare pass` with the host).
+To double-check against a live third-party Cloudflare site on Windows: enable **Settings → General → Write detailed debug logs**, pass a challenge (confirm `kept the check's Cloudflare pass` in `%LOCALAPPDATA%\CloudStreamRs\logs\debug\cloudflare-logs.jsonl` and `domain-*.json` in `cloudflare_passes`), restart to confirm `answered from a saved Cloudflare pass` with no helper start, then switch VPN/IP to confirm `refused the saved pass` -> `is retired and the site is checked again` (never sharing raw `cloudflare_passes/*.json` contents or `cookie=` lines).
