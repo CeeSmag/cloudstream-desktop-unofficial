@@ -184,9 +184,29 @@ mod tests {
     fn uninstall_removes_file_and_tolerates_missing_file() {
         let dir = temp_dir("uninstall");
         let installer = ExtensionInstaller::new(StaticFetcher(Ok(b"PK".to_vec())), dir.clone());
-        installer.install(&listing("Gone"), REPO).expect("installs");
+        let path = installer.install(&listing("Gone"), REPO).expect("installs");
+        assert!(path.exists());
         installer.uninstall("Gone").expect("removes");
+        assert!(!path.exists(), "uninstall must delete the installed file");
         installer.uninstall("Gone").expect("already gone is fine");
+
+        let plus_path = installer
+            .install(&listing("18+"), REPO)
+            .expect("installs 18+");
+        let plus_name = plus_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("utf-8 filename")
+            .to_owned();
+        assert!(plus_path.exists());
+        installer
+            .uninstall_file(&plus_name)
+            .expect("removes by file_name");
+        assert!(!plus_path.exists(), "uninstall_file must delete the file");
+        assert!(matches!(
+            installer.uninstall_file("../escape.cs3"),
+            Err(RepoError::UnsafeName(_))
+        ));
         let _ = fs::remove_dir_all(dir);
     }
 }
