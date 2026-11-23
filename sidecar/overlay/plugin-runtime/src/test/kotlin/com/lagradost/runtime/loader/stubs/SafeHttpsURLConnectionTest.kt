@@ -269,6 +269,13 @@ class SafeHttpsURLConnectionTest {
         // One more byte via either overload must fail.
         assertFailsWith<IOException> { out.write('B'.code) }
         assertFailsWith<IOException> { out.write(byteArrayOf(1), 0, 1) }
+
+        // Landing on exact maxBytes via write(ByteArray, off, len) must succeed; +1 must fail.
+        val conn2 = SafeHttpURLConnection(url("http://example.test/big2"), stubClient { okResponse(it.request()) })
+        conn2.doOutput = true
+        val out2 = conn2.outputStream
+        repeat(16) { out2.write(chunk, 0, chunk.size) }
+        assertFailsWith<IOException> { out2.write(byteArrayOf(1), 0, 1) }
     }
 
     @Test

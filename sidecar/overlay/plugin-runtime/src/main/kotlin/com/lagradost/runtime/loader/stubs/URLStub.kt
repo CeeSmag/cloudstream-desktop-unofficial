@@ -209,8 +209,10 @@ object URLStub {
     }
 
     @JvmStatic
-    fun getContent(url: URL, classes: Array<Class<*>>): Any? {
-        val stream = openConnection(url).getInputStream()
+    fun getContent(url: URL, classes: Array<Class<*>>): Any? =
+        selectContent(openConnection(url).getInputStream(), classes)
+
+    internal fun selectContent(stream: InputStream, classes: Array<Class<*>>): Any? {
         if (classes.any { it.isAssignableFrom(InputStream::class.java) }) {
             return stream
         }

@@ -261,6 +261,30 @@ class GuardedMemberVerifierTest {
     }
 
     @Test
+    fun `non-class zip entry cannot spoof pluginJarClasses to bypass foreign owner checks`() {
+        val jar = File(tempDir, "spoofed-entry.jar")
+        val cls = SyntheticClass("test/Spoof").method("run", "()V") {
+            visitTypeInsn(Opcodes.NEW, "java/lang/ProcessBuilder")
+            visitInsn(Opcodes.DUP)
+            visitInsn(Opcodes.ICONST_0)
+            visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/String")
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/ProcessBuilder", "<init>", "([Ljava/lang/String;)V", false)
+            visitInsn(Opcodes.POP)
+            visitInsn(Opcodes.RETURN)
+        }
+        java.util.zip.ZipOutputStream(jar.outputStream()).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("java/lang/ProcessBuilder"))
+            zip.write(ByteArray(0))
+            zip.closeEntry()
+            zip.putNextEntry(java.util.zip.ZipEntry("test/Spoof.class"))
+            zip.write(cls.bytes())
+            zip.closeEntry()
+        }
+        val msg = refusal(jar)
+        assertTrue("Disallowed class 'java.lang.ProcessBuilder'" in msg, msg)
+    }
+
+    @Test
     fun `disallowed field accesses and targeted calls are refused`() {
         val fieldMsg = refusal(
             single {

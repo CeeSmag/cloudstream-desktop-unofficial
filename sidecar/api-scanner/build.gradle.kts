@@ -72,6 +72,7 @@ tasks.register<JavaExec>("pitest") {
             "--targetTests", "apiscanner.*",
             "--sourceDirs", "${projectDir}/src/main/kotlin",
             "--mutableCodePaths", mutablePaths,
+            "--avoidCallsTo", "kotlin.jvm.internal.Intrinsics,kotlin.io.CloseableKt,com.lagradost.common.logging.AppLogger,java.util.logging,org.slf4j",
             "--threads", threads,
             "--timeoutConst", "6000",
             "--outputFormats", "HTML,XML",

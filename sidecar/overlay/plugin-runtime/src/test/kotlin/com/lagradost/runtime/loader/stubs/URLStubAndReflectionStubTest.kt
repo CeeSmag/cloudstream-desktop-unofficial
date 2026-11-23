@@ -49,6 +49,22 @@ class URLStubAndReflectionStubTest {
         assertFailsWith<SecurityException> { URLStub.openStream(url("http://127.0.0.1/a")) }
         assertFailsWith<SecurityException> { URLStub.getContent(url("http://127.0.0.1/a")) }
         assertFailsWith<SecurityException> { URLStub.getContent(url("http://127.0.0.1/a"), arrayOf(InputStream::class.java)) }
+
+        var closedOnMatch = false
+        val matchingStream = object : InputStream() {
+            override fun read(): Int = -1
+            override fun close() { closedOnMatch = true }
+        }
+        assertEquals(matchingStream, URLStub.selectContent(matchingStream, arrayOf(String::class.java, InputStream::class.java)))
+        assertFalse(closedOnMatch)
+
+        var closedOnMiss = false
+        val missStream = object : InputStream() {
+            override fun read(): Int = -1
+            override fun close() { closedOnMiss = true }
+        }
+        assertEquals(null, URLStub.selectContent(missStream, arrayOf(String::class.java)))
+        assertTrue(closedOnMiss)
     }
 
     @Test

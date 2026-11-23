@@ -118,6 +118,7 @@ tasks.register<JavaExec>("pitest") {
                 "${stubsProject.projectDir}/src/main/kotlin",
             ).joinToString(","),
             "--mutableCodePaths", mutablePaths,
+            "--avoidCallsTo", "kotlin.jvm.internal.Intrinsics,kotlin.io.CloseableKt,com.lagradost.common.logging.AppLogger,java.util.logging,org.slf4j",
             "--threads", threads,
             "--timeoutConst", "6000",
             "--outputFormats", "HTML,XML",
