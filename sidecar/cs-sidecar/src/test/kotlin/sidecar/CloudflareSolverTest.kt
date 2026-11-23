@@ -103,6 +103,8 @@ class CloudflareSolverTest {
     private class FakeApp(val exchange: File, val verifications: List<String>, val fetches: List<String> = emptyList()) {
         val verified = AtomicInteger()
         val fetched = AtomicInteger()
+        /** The text of every verification request, in the order they were answered. */
+        val requests = CopyOnWriteArrayList<String>()
         private val handled = mutableSetOf<String>()
         private val worker = thread(isDaemon = true) {
             while (!Thread.currentThread().isInterrupted) {
@@ -119,6 +121,7 @@ class CloudflareSolverTest {
                 else -> return
             }
             if (!handled.add(name)) return
+            if (kind.first == "request-") requests.add(runCatching { file.readText() }.getOrDefault(""))
             val counter = if (kind.first == "request-") verified else fetched
             val answers = if (kind.first == "request-") verifications else fetches
             val text = answers[minOf(counter.getAndIncrement(), answers.size - 1)]
@@ -474,5 +477,106 @@ class CloudflareSolverTest {
         assertEquals(200, get(other, host = "two.test", path = "/a").first)
         app.stop()
         assertNull(seen.get(), "one.test's cookie does not reach two.test")
+    }
+
+    private fun saved(pass: String, value: String = "stale", validUntil: Long? = null) =
+        "ok=true\nuserAgent=Agent/9\nsource=saved\npass=$pass\n" +
+            (validUntil?.let { "validUntil=$it\n" } ?: "") + "cookie=cf_clearance=$value\n"
+
+    @Test
+    fun `a saved pass the site refuses is named to the app and replaced, and the site stays reachable over this connection`() {
+        val app = FakeApp(exchange, listOf(saved("r1-7"), passed))
+        assertEquals(200 to "content", get(client()))
+        assertEquals(2, app.verified.get())
+        assertFalse(app.requests[0].contains("rejected="), app.requests[0])
+        assertTrue(app.requests[1].lines().contains("rejected=r1-7"), app.requests[1])
+        assertEquals(200, get(client()).first, "the fresh pass is kept")
+        app.stop()
+        assertEquals(2, app.verified.get())
+        assertEquals(0, app.fetched.get(), "a refused saved pass does not make the site browser-only")
+    }
+
+    @Test
+    fun `a saved pass the site accepts is used like any other`() {
+        val app = FakeApp(exchange, listOf(saved("r1-1", value = "ok")))
+        assertEquals(200, get(client()).first)
+        assertEquals(200, get(client(), path = "/other").first)
+        app.stop()
+        assertEquals(1, app.verified.get())
+    }
+
+    @Test
+    fun `refused saved passes are given up on after a bound`() {
+        val app = FakeApp(exchange, listOf(saved("r1-1"), saved("r1-2"), saved("r1-3"), saved("r1-4"), saved("r1-5")))
+        val error = assertFailsWith<IOException> { get(client()) }
+        app.stop()
+        assertTrue(error.message.orEmpty().contains("refused every saved pass"), error.message)
+        assertEquals(4, app.verified.get(), "the first answer and three re-asks")
+        assertEquals(listOf("rejected=r1-1", "rejected=r1-2", "rejected=r1-3"), app.requests.drop(1).map { text ->
+            text.lines().first { it.startsWith("rejected=") }
+        })
+    }
+
+    @Test
+    fun `a saved pass without a readable id is still reported as refused`() {
+        val app = FakeApp(exchange, listOf("ok=true\nuserAgent=A\nsource=saved\npass=../x\ncookie=cf_clearance=stale\n", passed))
+        assertEquals(200, get(client()).first)
+        app.stop()
+        assertTrue(app.requests[1].lines().contains("rejected=unnamed"), app.requests[1])
+    }
+
+    @Test
+    fun `a pass whose clearance has ended is not sent, the site is asked again`() {
+        val now = java.util.concurrent.atomic.AtomicLong(1_000_000L)
+        CloudflareSolver.clock = { now.get() }
+        val app = FakeApp(exchange, listOf("ok=true\nuserAgent=A\nvalidUntil=1001000\ncookie=cf_clearance=ok\n", passed))
+        val cookies = CopyOnWriteArrayList<String>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                val cookie = chain.request().header("Cookie").orEmpty()
+                cookies.add(cookie)
+                val accepted = cookie.contains("cf_clearance=ok")
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(if (accepted) 200 else 403).message("m")
+                    .apply { if (!accepted) header("cf-mitigated", "challenge") }
+                    .body("x".toResponseBody()).build()
+            }.build()
+        assertEquals(200, get(client).first)
+        assertEquals(200, get(client).first, "still valid: sent at once")
+        assertEquals(1, app.verified.get())
+        now.set(1_001_000L)
+        val before = cookies.size
+        assertEquals(200, get(client).first)
+        app.stop()
+        assertEquals("", cookies[before], "the ended pass is not sent")
+        assertEquals(2, app.verified.get())
+    }
+
+    @Test
+    fun `an origin served only by the browser window asks for the window, not for cookies`() {
+        val app = FakeApp(exchange, listOf(passed), listOf("ok=false\ngone=true\nreason=no window\n", browserAnswer))
+        assertEquals("from the browser", get(pickyClient()).second)
+        app.stop()
+        assertFalse(app.requests[0].contains("need="), app.requests[0])
+        assertTrue(app.requests[1].lines().contains("need=browser"), app.requests[1])
+    }
+
+    @Test
+    fun `many requests refused with one saved pass name it once and share one fresh check`() {
+        val app = FakeApp(exchange, listOf(saved("r1-9"), passed))
+        val shared = client()
+        val results = CopyOnWriteArrayList<Int>()
+        val start = CountDownLatch(1)
+        val workers = (1..20).map { n -> thread { start.await(); results.add(get(shared, path = "/p$n").first) } }
+        start.countDown()
+        workers.forEach { it.join(20_000) }
+        app.stop()
+        assertEquals(20, results.size, "every request finishes")
+        assertTrue(results.all { it == 200 }, "$results")
+        assertEquals(2, app.verified.get(), "one saved answer, one fresh check: ${app.requests}")
+        assertEquals(1, app.requests.count { it.contains("rejected=r1-9") })
+        assertEquals(0, app.fetched.get())
     }
 }

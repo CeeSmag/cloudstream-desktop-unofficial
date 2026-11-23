@@ -1,5 +1,7 @@
 package com.lagradost.runtime.loader.stubs
 
+import com.lagradost.runtime.loader.stubs.CloudflareExchangeFormat.Ask
+import com.lagradost.runtime.loader.stubs.CloudflareExchangeFormat.Source
 import okhttp3.Interceptor
 import okhttp3.HttpUrl
 import okhttp3.Request
@@ -33,21 +35,32 @@ import java.util.concurrent.ConcurrentHashMap
  * Every step is written to stderr as `[cloudflare] LEVEL message`; the app keeps those lines in the
  * main log and in `cloudflare-logs.txt`, so what happened to a request can be followed from the log.
  *
- * File format (one `key=value` per line, no JSON so that no library is needed):
- * - `request-<id>.txt` written here: `id`, `host`, `url`, `method`.
- * - `result-<id>.txt` written by the app: `ok=true|false`, `userAgent`, `reason`, `retry=true` (not the
- *   viewer's choice, so ask again next time), `transport=browser` (the browser was not challenged, so there
- *   are no cookies to send: the site is reached through the browser window) and one `cookie=name=value`
- *   per cookie.
+ * The app keeps passes from earlier checks and may answer at once with one (`source=saved`). The site can
+ * refuse a saved pass (the viewer's IP or the browser changed, or the site raised its protection): that says
+ * nothing about this connection, so the request asks again naming the pass (`rejected=`), the app retires it
+ * and checks the site in the window. Only a fresh pass from the window that is refused means the site does
+ * not accept this connection's cookies at all.
+ *
+ * File format: [CloudflareExchangeFormat].
  */
 object CloudflareSolver {
-    /** What passed the check for one origin; [browserOnly] means there are no cookies, only the browser window. */
+    /**
+     * What passed the check for one origin; [browserOnly] means there are no cookies, only the browser window.
+     * [source] says whether the app answered from a saved pass ([passId] names it), [validUntil] when its
+     * clearance ends (epoch ms; null when the app did not say).
+     */
     data class Clearance(
         val cookies: Map<String, String>,
         val userAgent: String,
         val obtainedAt: Long,
         val browserOnly: Boolean = false,
-    )
+        val source: Source = Source.BROWSER,
+        val passId: String? = null,
+        val validUntil: Long? = null,
+    ) {
+        /** True once its clearance has ended: sending it would only be challenged again. */
+        fun isExpired(now: Long): Boolean = validUntil != null && validUntil <= now
+    }
 
     /** The owner of a clearance: what Cloudflare's cookie and the browser window are valid for. */
     private data class Origin(val scheme: String, val host: String, val port: Int)
@@ -79,6 +92,9 @@ object CloudflareSolver {
 
     private const val POLL_MS = 300L
 
+    /** How many saved passes one request may find refused before it gives up (each is retired by the app). */
+    private const val MAX_SAVED_REFUSALS = 3
+
     private val clearances = ConcurrentHashMap<Origin, Clearance>()
     private val declined = ConcurrentHashMap<Origin, Declined>()
     private val challengeLocks = ConcurrentHashMap<Origin, Any>()
@@ -95,6 +111,12 @@ object CloudflareSolver {
      */
     private val retryAnswers = ConcurrentHashMap<Origin, Declined>()
 
+    /**
+     * A saved pass the site refused, per origin, until the next question to the app names it. Whichever
+     * request asks next (they may share one fresh check) reports it, once, so the app retires that pass.
+     */
+    private val refusedSaved = ConcurrentHashMap<Origin, String>()
+
     /** The interceptor to add to every HTTP client plugins use. */
     val interceptor: Interceptor = Interceptor { chain -> intercept(chain) }
 
@@ -104,8 +126,16 @@ object CloudflareSolver {
      */
     val clearanceScope: Interceptor = Interceptor { chain ->
         val request = chain.request()
-        val known = clearances[originOf(request.url)]
+        val known = liveClearance(originOf(request.url))
         chain.proceed(if (known != null && !known.browserOnly) withClearance(request, known) else request)
+    }
+
+    /** The origin's clearance, unless it has ended (then it is dropped, and the site will be asked again). */
+    private fun liveClearance(origin: Origin): Clearance? {
+        val known = clearances[origin] ?: return null
+        if (!known.isExpired(clock())) return known
+        if (clearances.remove(origin, known)) log("INFO", "the pass for ${origin.host} has ended; not sending it")
+        return null
     }
 
     /** One log line the app picks up by its `[cloudflare]` tag. */
@@ -123,10 +153,38 @@ object CloudflareSolver {
         log("INFO", "challenge from ${origin.host}: ${describe(response)} for ${challenged.method}")
         response.close()
         // A clearance obtained after this request began was not the one it carried, so it is not expired.
-        clearances[origin]?.takeIf { it.obtainedAt < startedAt }?.let { clearances.remove(origin, it) }
-        val fresh = solve(challenged, startedAt)
-        if (fresh.browserOnly) return viaBrowserOnly(challenged, dir)
-        return afterRetry(challenged, dir, chain.proceed(challenged))
+        clearances[origin]?.takeIf { it.obtainedAt < startedAt }?.let { dropRefused(origin, it) }
+        return retryWithClearance(chain, challenged, dir, solve(challenged, startedAt))
+    }
+
+    /** The site refused [clearance]: it is dropped, and if it was a saved pass the app hears which. */
+    private fun dropRefused(origin: Origin, clearance: Clearance) {
+        if (!clearances.remove(origin, clearance) || clearance.source != Source.SAVED) return
+        refusedSaved[origin] = clearance.passId ?: CloudflareExchangeFormat.UNNAMED_PASS
+        log("WARN", "${origin.host} refused the saved pass ${clearance.passId}; the app will check it again")
+    }
+
+    /**
+     * Repeats [request] with [first] (and, while the site refuses saved passes, with what the app answers
+     * instead). A refused saved pass is named to the app, which retires it and checks the site again; the
+     * re-check is asked with the time the refused request was sent, so requests refused at once share it.
+     */
+    private fun retryWithClearance(chain: Interceptor.Chain, request: Request, dir: File, first: Clearance): Response {
+        val origin = originOf(request.url)
+        var used = first
+        var refusals = 0
+        while (true) {
+            if (used.browserOnly) return viaBrowserOnly(request, dir)
+            val sentAt = clock()
+            val retried = chain.proceed(request)
+            if (used.source != Source.SAVED || !isChallenge(retried)) return afterRetry(request, dir, retried)
+            retried.close()
+            dropRefused(origin, used)
+            if (++refusals > MAX_SAVED_REFUSALS) break
+            used = solve(request, sentAt)
+        }
+        log("ERROR", "${origin.host} refused $refusals saved passes in a row; giving up on this request")
+        throw IOException("Cloudflare verification of ${origin.host} was not completed: the site refused every saved pass")
     }
 
     /** The browser was not challenged: there are no cookies to send, so the origin is served by its window. */
@@ -170,7 +228,7 @@ object CloudflareSolver {
         if (first != null && !isChallenge(first)) return first
         first?.close()
         if (first != null) log("WARN", "the browser got a Cloudflare challenge again for ${origin.host}; verifying again")
-        solve(request, clock())
+        solve(request, clock(), Ask(needsBrowser = true))
         val second = try {
             BrowserFetch.fetch(request, dir)
         } catch (gone: BrowserUnavailable) {
@@ -216,13 +274,13 @@ object CloudflareSolver {
      * the one check in flight whatever their paths; [sentAt] is when the request began, so a clearance
      * obtained since then is used instead of asking again.
      */
-    private fun solve(challenged: Request, sentAt: Long): Clearance {
+    private fun solve(challenged: Request, sentAt: Long, ask: Ask = Ask()): Clearance {
         val origin = originOf(challenged.url)
         val host = origin.host
         refuseIfDeclined(origin)
         val waitingSince = clock()
         synchronized(challengeLocks.computeIfAbsent(origin) { Any() }) {
-            clearances[origin]?.takeIf { it.obtainedAt >= sentAt }?.let {
+            liveClearance(origin)?.takeIf { it.obtainedAt >= sentAt }?.let {
                 log("INFO", "$host was verified while this request waited; using that")
                 return it
             }
@@ -233,7 +291,7 @@ object CloudflareSolver {
                 log("INFO", "$host was asked about while this request waited (${it.reason}); failing at once")
                 throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
             }
-            val answer = askApp(origin, challenged)
+            val answer = askApp(origin, challenged, ask.copy(rejectedPass = ask.rejectedPass ?: refusedSaved.remove(origin)))
             val clearance = answer.clearance
             if (clearance == null) {
                 if (!answer.remember) retryAnswers[origin] = Declined(clock(), answer.reason)
@@ -257,7 +315,7 @@ object CloudflareSolver {
     }
 
     /** Writes the request file for the exact challenged request and waits for the answer. */
-    private fun askApp(origin: Origin, challenged: Request): Answer {
+    private fun askApp(origin: Origin, challenged: Request, ask: Ask): Answer {
         val dir = exchangeDir ?: return Answer(null, "verification is off", false)
         val host = origin.host
         val url = challenged.url.newBuilder().fragment(null).build()
@@ -267,7 +325,7 @@ object CloudflareSolver {
         try {
             dir.mkdirs()
             val pending = File(dir, "request-$id.tmp")
-            pending.writeText("id=$id\nhost=$host\nurl=$url\nmethod=${challenged.method}\n")
+            pending.writeText(CloudflareExchangeFormat.requestText(id, host, url.toString(), challenged.method, ask))
             if (!pending.renameTo(request)) throw IOException("could not publish Cloudflare verification request $id")
             log("INFO", "asked the app to verify $host (request $id, answer expected within ${solveTimeoutMs / 1000}s)")
             return waitForResult(result, host)
@@ -296,32 +354,15 @@ object CloudflareSolver {
     private fun interpret(text: String, host: String, tookMs: Long): Answer {
         val clearance = parseResult(text)
         if (clearance != null) {
-            log("INFO", "the app verified $host after ${tookMs / 1000}s: cookies=${clearance.cookies.keys} userAgent=${clearance.userAgent}")
+            val from = if (clearance.source == Source.SAVED) "a saved pass (${clearance.passId})" else "the browser"
+            log("INFO", "the app verified $host after ${tookMs / 1000}s from $from: cookies=${clearance.cookies.keys} userAgent=${clearance.userAgent}")
             return Answer(clearance, "", false)
         }
-        val lines = text.lines()
-        val reason = lines.firstOrNull { it.startsWith("reason=") }?.removePrefix("reason=")?.trim()
-            ?: "the app's answer had no usable cookies"
-        // "retry=true": the viewer has not said no (the app only wants a go-ahead first), so ask again next time.
-        return Answer(null, reason, lines.none { it.trim() == "retry=true" })
+        return Answer(null, CloudflareExchangeFormat.reason(text), !CloudflareExchangeFormat.isRetry(text))
     }
 
-    /**
-     * Reads what the app wrote; null for `ok=false` or an answer without an agent. Cookies are needed
-     * unless the app says `transport=browser` (the browser was not challenged, so it has none to give).
-     */
-    fun parseResult(text: String): Clearance? {
-        val lines = text.lines().filter { it.contains("=") }
-        if (lines.none { it.trim() == "ok=true" }) return null
-        val cookies = lines.filter { it.startsWith("cookie=") }
-            .map { it.removePrefix("cookie=") }
-            .filter { it.contains("=") }
-            .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
-        val agent = lines.firstOrNull { it.startsWith("userAgent=") }?.removePrefix("userAgent=")?.trim().orEmpty()
-        val browserOnly = lines.any { it.trim() == "transport=browser" }
-        if (agent.isEmpty() || (cookies.isEmpty() && !browserOnly)) return null
-        return Clearance(if (browserOnly) emptyMap() else cookies, agent, System.currentTimeMillis(), browserOnly)
-    }
+    /** Reads what the app wrote (see [CloudflareExchangeFormat.parseClearance]), obtained now. */
+    fun parseResult(text: String): Clearance? = CloudflareExchangeFormat.parseClearance(text, clock())
 
     /** Forgets everything learned; used by tests. */
     fun reset() {
@@ -329,6 +370,7 @@ object CloudflareSolver {
         challengeLocks.clear()
         declined.clear()
         retryAnswers.clear()
+        refusedSaved.clear()
         browserOnly.clear()
         clock = { System.currentTimeMillis() }
     }
