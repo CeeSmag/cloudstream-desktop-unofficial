@@ -34,7 +34,6 @@ exclude = ["crates/ui_app", "fuzz"]
 edition = "2021"
 version = "0.5.3"
 license = "GPL-3.0-or-later"
-rust-version = "1.80"
 
 [workspace.dependencies]
 thiserror = "2"
