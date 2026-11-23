@@ -1,9 +1,11 @@
 <#
-Runs the Kotlin tests of the JVM sidecar (sidecar/cs-sidecar/src/test).
+Runs the Kotlin tests of the JVM sidecar: the cs-sidecar module (sidecar/cs-sidecar/src/test) and the
+plugin runtime with our overlay (sidecar/overlay/plugin-runtime/src/test plus the pinned reference
+tests it does not replace), which holds the plugin sandbox: bytecode verifier, call rewrites, stubs.
 
 The sidecar is built inside the CS3 desktop client's Gradle project (see setup_sidecar.ps1), so this
-copies the module's sources and build file into <Root>\repo\cs-sidecar and runs `:cs-sidecar:test`
-there. Run setup_sidecar.ps1 once first.
+applies the overlay, copies the module's sources and build file into <Root>\repo\cs-sidecar and runs
+`:plugin-runtime:test :cs-sidecar:test` there. Run setup_sidecar.ps1 once first.
 
 Usage:  powershell -File scripts\test_sidecar.ps1 [-Root C:\cs3d] [-Jdk21 <path to a JDK 21 home>]
 #>
@@ -35,7 +37,8 @@ Copy-Item -Force (Join-Path $ProjectRoot "sidecar\cs-sidecar\build.gradle.kts") 
 
 Push-Location $Repo
 try {
-    & .\gradlew.bat --no-daemon "-Dorg.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8" ":cs-sidecar:test"
+    # --continue: report the failures of both modules, not only of the first one that fails.
+    & .\gradlew.bat --no-daemon --continue "-Dorg.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8" ":plugin-runtime:test" ":cs-sidecar:test"
     if ($LASTEXITCODE -ne 0) { throw "The sidecar tests failed (exit code $LASTEXITCODE)." }
 } finally {
     Pop-Location

@@ -174,5 +174,6 @@ jobs:
       - name: Build Sidecar Bridge
         run: powershell -ExecutionPolicy Bypass -File .\scripts\setup_sidecar.ps1 -Root C:\cs3d
 
-      - name: Test Sidecar Tests
+      # Plugin runtime (sandbox verifier, call rewrites, stubs) and cs-sidecar.
+      - name: Sidecar tests (plugin-runtime + cs-sidecar)
         run: powershell -ExecutionPolicy Bypass -File .\scripts\test_sidecar.ps1 -Root C:\cs3d
