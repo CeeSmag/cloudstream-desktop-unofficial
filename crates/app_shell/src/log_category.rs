@@ -163,6 +163,24 @@ mod tests {
     }
 
     #[test]
+    fn saved_cloudflare_passes_log_to_the_cloudflare_file() {
+        for module in [
+            "cloudflare_bridge::watch_passes",
+            "cloudflare_bridge::disk_pass_book",
+            "cloudflare_bridge::verify_helper",
+            "cloudflare_window::browser_cookies",
+        ] {
+            assert_eq!(
+                LogCategory::for_target(module),
+                LogCategory::Cloudflare,
+                "{module}"
+            );
+        }
+        assert!(OWN_TARGETS.contains(&"cloudflare_bridge"));
+        assert!(OWN_TARGETS.contains(&"cloudflare_window"));
+    }
+
+    #[test]
     fn modules_are_routed_to_their_own_jsonl_file() {
         assert_eq!(LogCategory::for_target("sidecar"), LogCategory::Sidecar);
         assert_eq!(
