@@ -272,6 +272,11 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
   - Plugin runtime (`sidecar/overlay/plugin-runtime/src/test/`, run with the pinned reference tests it does not replace): sandbox member policy (`GuardedMemberPolicyTest`, `GuardedMemberVerifierTest`, `GuardedCallRewriteTest`, `stubs/IpLiteralTest`, `stubs/InetAddressStubTest` incl. `GuardedResolverTest`), `ShadowUiTransformTest`, and `SafePluginClassLoaderTest` (overlay copy: `Executors` is allowed and routed to `ExecutorsStub`). `CS_TEST_ECLIPSIA_JAR=<Eclipsia-jvm.jar>` adds a check on the real plugin.
 - **Build Script**: `scripts/setup_sidecar.ps1` clones the pinned reference client into `C:\cs3d\repo` and compiles the distribution.
 
+#### `sidecar/api-scanner` (development tool, not shipped)
+- **Location**: `sidecar/api-scanner/` (Gradle module installed next to `cs-sidecar` by `scripts/prepare_sidecar_repo.sh` / `setup_sidecar.ps1`; tests run in `test_sidecar.ps1`).
+- **Responsibility**: Static scan of `.cs3` files for Android / CloudStream API members the desktop runtime does not provide, before a viewer hits them. Each plugin is converted with the runtime's own `DexConverter`; every reference to `android/`, `androidx/`, `com/google/android/`, `dalvik/` or `com/lagradost/` classes (members named on a plugin class are followed up its superclasses) is classified against the whole sidecar classpath through `ApiResolver` (plugin-runtime overlay): `RESOLVED`, `MISSING_MEMBER` (exact JVM linkage fails: `NoSuchMethodError`/`NoSuchFieldError`, e.g. a stub method with the wrong return type), `GHOST_CLASS` (class absent, plugins get an empty ghost), `NEUTRALISED` (unresolved UI call the transformer silently replaces), `BROKEN_STUB` (members cannot be listed); plus `PluginSecurityVerifier.collectFindings` refusals after the transformer. Output `api_gaps.json` (schema `version: 1`) and `api_gaps.md`, gaps ranked by how many plugins need them. Proven on real data: with the pre-assets stubs it reports Eclipsia's `Resources.getAssets()` as a missing member.
+- **Run**: `api-scanner --out <dir> [--workers N] [--identities ids.json] <files or folders>` (normally through `tools/extension_recorder --mode scan`).
+
 #### `crates/stream_proxy`
 - **Location**: `crates/stream_proxy/`
 - **Dependencies**: `thiserror`, `tracing`, `ureq = "3"` (nothing internal; std sockets and threads for the server).
@@ -466,10 +471,11 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - `scripts/setup_sidecar.ps1`:
   - Clones `CS3-desktop-client-unofficial` at commit `2d5a86ce2e7466494a9084776dcddd3626f633dd` to `C:\cs3d\repo`.
   - Overlays `sidecar/cs-sidecar` and `sidecar/overlay`, runs `scripts/patch_extension_loader.py`, and builds the sidecar distribution with JDK 21.
+- `scripts/prepare_sidecar_repo.sh <repo>` (Linux): clones/fetches the pinned client, applies `sidecar/overlay`, runs `patch_extension_loader.py` and installs our Gradle modules (`cs-sidecar`, `api-scanner`); used by `build_release.sh` and `tools/extension_recorder`.
 - `scripts/patch_extension_loader.py` (tests: `patch_extension_loader_test.py`):
   - Patches the pinned `ExtensionLoader.kt` after the overlay is applied, where the overlay cannot: the cached-jar check follows `ShadowUiTransform.VERSION`, and `initializePlugin` gives each plugin `PluginAssets.resourcesFor(...)` (its own archive's assets). Each patch applies to exactly one place, is already applied, or stops the build.
 - `scripts/test_sidecar.ps1`:
-  - Runs the JUnit suites of the plugin runtime (with the overlay) and of `cs-sidecar` (`:plugin-runtime:test :cs-sidecar:test`, `--continue`); CI's `sidecar-check` job.
+  - Runs the JUnit suites of the plugin runtime (with the overlay), `cs-sidecar` and `api-scanner` (`:plugin-runtime:test :cs-sidecar:test :api-scanner:test`, `--continue`); CI's `sidecar-check` job.
 - `scripts/record_sidecar_replies.py`:
   - Executes the JVM sidecar with CineStream extension and saves sanitized golden JSON responses to `crates/extension_runtime/tests/fixtures/sidecar_replies/`.
 - `scripts/build_release.ps1` (Windows PC):

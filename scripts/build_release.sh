@@ -81,22 +81,7 @@ ensure_sidecar() {
     [ -f "$SIDECAR_DIST/bin/cs-sidecar" ] && return
     step "Building the extension sidecar (first time only)"
     local repo="$CACHE_DIR/sidecar-repo"
-    local commit="2d5a86ce2e7466494a9084776dcddd3626f633dd"
-    local url="https://github.com/errorcode26/CS3-desktop-client-unofficial.git"
-    if [ ! -d "$repo/.git" ]; then git clone --no-checkout "$url" "$repo"; fi
-    (
-        cd "$repo"
-        # Not into submodules: newer upstream commits point at submodule commits that are gone;
-        # the pinned one is checked out by the submodule update below.
-        git fetch --quiet --no-recurse-submodules origin "$commit"
-        git checkout --quiet "$commit"
-        git submodule update --init --depth 1
-    )
-    cp -rf "$REPO_ROOT/sidecar/overlay/"* "$repo/"
-    python3 "$REPO_ROOT/scripts/patch_extension_loader.py" "$repo"
-    rm -rf "$repo/cs-sidecar"
-    cp -rf "$REPO_ROOT/sidecar/cs-sidecar" "$repo/cs-sidecar"
-    grep -q 'include(":cs-sidecar")' "$repo/settings.gradle.kts" || printf '\ninclude(":cs-sidecar")\n' >> "$repo/settings.gradle.kts"
+    "$REPO_ROOT/scripts/prepare_sidecar_repo.sh" "$repo"
     local jdk="${JAVA_HOME:-}"
     if [ -z "$jdk" ] || [ ! -x "$jdk/bin/javac" ]; then
         for d in /usr/lib/jvm/temurin-21 /usr/lib/jvm/java-21-openjdk-amd64 /usr/lib/jvm/java-21-openjdk-arm64 /usr/lib/jvm/java-21-openjdk; do

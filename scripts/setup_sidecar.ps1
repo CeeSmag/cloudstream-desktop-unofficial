@@ -66,14 +66,20 @@ Write-Step "syncing ShadowUi JVM cache version check"
 python3 (Join-Path $ProjectRoot "scripts\patch_extension_loader.py") $Repo
 if ($LASTEXITCODE -ne 0) { throw "patch_extension_loader.py failed" }
 
-Write-Step "installing sidecar module"
-$Target = Join-Path $Repo "cs-sidecar"
-if (Test-Path $Target) { Remove-Item -Recurse -Force $Target }
-Copy-Item -Recurse (Join-Path $ProjectRoot "sidecar\cs-sidecar") $Target
+# Our Gradle modules (same list as scripts/prepare_sidecar_repo.sh). Only cs-sidecar is packaged;
+# api-scanner is a development tool.
+$Modules = @("cs-sidecar", "api-scanner")
 $Settings = Join-Path $Repo "settings.gradle.kts"
-if (-not (Select-String -Path $Settings -Pattern 'include\(":cs-sidecar"\)' -Quiet)) {
-    Add-Content $Settings "`ninclude("":cs-sidecar"")"
+foreach ($Module in $Modules) {
+    Write-Step "installing module $Module"
+    $Target = Join-Path $Repo $Module
+    if (Test-Path $Target) { Remove-Item -Recurse -Force $Target }
+    Copy-Item -Recurse (Join-Path $ProjectRoot "sidecar\$Module") $Target
+    if (-not (Select-String -Path $Settings -Pattern "include\("":$Module""\)" -Quiet)) {
+        Add-Content $Settings "`ninclude("":$Module"")"
+    }
 }
+$Target = Join-Path $Repo "cs-sidecar"
 
 $env:JAVA_HOME = Find-Jdk21
 Write-Step "building with JAVA_HOME=$env:JAVA_HOME"
