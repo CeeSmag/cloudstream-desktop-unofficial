@@ -77,9 +77,28 @@ STARTED=$(date +%s)
 
 # The Kotlin extension sidecar (a JVM program).
 SIDECAR_DIST="$CACHE_DIR/cs-sidecar-dist"
+# Records which sidecar sources the cached build was made from.
+SIDECAR_STAMP="$CACHE_DIR/cs-sidecar-dist.stamp"
+
+# A fingerprint of everything the sidecar build reads from this repository: our Gradle modules, the overlay
+# and the scripts that prepare the pinned checkout (working tree, so uncommitted edits count; Gradle's own
+# caches are left out).
+sidecar_sources_stamp() {
+    (
+        cd "$REPO_ROOT"
+        find sidecar scripts/prepare_sidecar_repo.sh scripts/patch_extension_loader.py -type f \
+            -not -path '*/.gradle/*' -not -path '*/build/*' -print0 \
+            | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1
+    )
+}
+
 ensure_sidecar() {
-    [ -f "$SIDECAR_DIST/bin/cs-sidecar" ] && return
-    step "Building the extension sidecar (first time only)"
+    local stamp
+    stamp="$(sidecar_sources_stamp)"
+    if [ -f "$SIDECAR_DIST/bin/cs-sidecar" ] && [ "$(cat "$SIDECAR_STAMP" 2>/dev/null)" = "$stamp" ]; then
+        return
+    fi
+    step "Building the extension sidecar (its sources changed since the cached build)"
     local repo="$CACHE_DIR/sidecar-repo"
     "$REPO_ROOT/scripts/prepare_sidecar_repo.sh" "$repo"
     local jdk="${JAVA_HOME:-}"
@@ -97,6 +116,7 @@ ensure_sidecar() {
     rm -rf "$SIDECAR_DIST"
     cp -rf "$repo/cs-sidecar/build/install/cs-sidecar" "$SIDECAR_DIST"
     chmod +x "$SIDECAR_DIST/bin/cs-sidecar"
+    printf '%s\n' "$stamp" > "$SIDECAR_STAMP"
 }
 
 # Temurin 21 JRE that ships inside the AppImage. Prints the folder.
