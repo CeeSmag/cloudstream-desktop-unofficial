@@ -121,7 +121,7 @@ Release artifacts (also built by `.github/workflows/release.yml` on a `v*` tag):
 | Windows | `powershell -File scripts/build_release.ps1` | installer + portable (`-Kind` for one) |
 | Linux | `bash scripts/build_release.sh` | `CloudStream-<ver>-<arch>.AppImage` for this CPU |
 
-`ui_app` (egui) and `archive/desktop_tauri` are reference-only; they are not the product shell.
+`ui_app` (egui) is reference-only; it is not the product shell.
 
 ---
 

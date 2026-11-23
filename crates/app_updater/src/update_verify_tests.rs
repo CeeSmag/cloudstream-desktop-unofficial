@@ -141,7 +141,7 @@ fn update_signing_key_built_in_file_is_a_minisign_public_key() {
 
 /// End-to-end check of `scripts/sign_release.sh` against the app's own verifier:
 /// `CS_TEST_SIGNED_RELEASE=<signed folder> [CS_TEST_RELEASE_PUBLIC_KEY=<.pub>]
-/// cargo test -p desktop_tauri -- --ignored sign_release_script`. Without the key variable the key
+/// cargo test -p app_updater -- --ignored sign_release_script`. Without the key variable the key
 /// built into the app is used, as for a real release.
 #[test]
 #[ignore = "needs a folder signed by scripts/sign_release.sh"]

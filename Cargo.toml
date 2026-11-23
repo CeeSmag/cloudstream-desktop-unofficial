@@ -25,8 +25,7 @@ members = [
     "crates/cloudflare_window",
     "tests/bdd",
 ]
-# `archive/desktop_tauri` is the former WebView shell — kept for reference, not a workspace member.
-# `crates/ui_app` (egui) is reference-only too: its font provider turns on fontconfig `dlopen`,
+# `crates/ui_app` (egui) is reference-only: its font provider turns on fontconfig `dlopen`,
 # which breaks Slint's `fontique` when both are built in one workspace run.
 # `fuzz` uses nightly libFuzzer crates and runs standalone via `cargo fuzz` / `scripts/run_fuzz_sanity.sh`.
 exclude = ["crates/ui_app", "fuzz"]

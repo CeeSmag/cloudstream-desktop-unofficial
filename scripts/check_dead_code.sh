@@ -2,7 +2,7 @@
 # Dead-code, unused-dependency, and broken-rustdoc-link gate for all workspace members.
 #
 # Scans only `[workspace].members` from the root Cargo.toml so non-workspace reference
-# directories (`archive/desktop_tauri`, `crates/ui_app`, `spikes/wasmtime_host`, `fuzz`)
+# directories (`crates/ui_app`, `spikes/wasmtime_host`, `fuzz`)
 # are excluded without duplicating allowlists.
 set -euo pipefail
 

@@ -44,7 +44,6 @@ crates/
   cloudflare_window/ # cloudstream-verify helper (tao + wry)
   ui_slint/ app_shell/ # product UI: Slint screens, and main() wiring only, no logic
   ui_app/            # egui reference shell (workspace exclude; not product)
-  archive/desktop_tauri/  # former Tauri+React shell (not a workspace member)
   portable_launcher/ # the single-file Windows portable exe
 # native Rust extractors (no JVM): planned, not started; add their crates when there is code
 ```

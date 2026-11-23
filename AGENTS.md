@@ -1,6 +1,6 @@
 # AGENTS.md — Developer & AI Agent Codebase Guide
 
-This document is the architectural index for **`cloudstream-desktop-unofficial`** (native Slint UI CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_slint` — **no WebView / Tauri chrome**. The former `desktop_tauri` tree lives under `archive/desktop_tauri/` as reference only (not a workspace member). `crates/ui_app` (egui) remains in-tree as a reference shell only. When this file and the code differ, the code wins.
+This document is the architectural index for **`cloudstream-desktop-unofficial`** (native Slint UI CloudStream Rust rewrite). Product builds ship `cloudstream` from `app_shell` + `ui_slint` — **no WebView / Tauri chrome**. `crates/ui_app` (egui) remains in-tree as a reference shell only. When this file and the code differ, the code wins.
 
 ---
 
@@ -44,7 +44,6 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Application Frontend (this fork)**: `app_shell` / `ui_slint` — native desktop shell with a retained-mode Slint GUI and embedded mpv textures. Product builds (AppImage / Windows installer / portable) ship the `cloudstream` binary from `app_shell`.
 - **Shell-agnostic playback open**: `playback_session` searches and HTTP-checks streams (`open_with` / `run_open`), waits for a full search+check (or skip / 60s total cap; 30s empty fail), then plays the **best** working stream by `link_rank`; fresh `title_cache` seeds can start at once; wired from `ui_slint`.
 - **Cloudflare without WebView**: `cloudflare_bridge` watches `<data>/sidecar/cloudflare`, and after allow-host runs `cloudstream-verify` (`cloudflare_window`) which writes the cookie/result files; the Slint confirm banner (`ui/cloudflare_banner.slint`) calls `WatchHandle::allow` / `decline`.
-- **Legacy reference**: `archive/desktop_tauri` (former Tauri + React shell) is kept for porting remaining features; it is **not** a workspace member.
 
 ---
 
@@ -258,7 +257,7 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Build System**: Gradle 8.x + Kotlin 2.1 (JVM Target 21).
 - **Compatibility Bridge**: Converts Android DEX bytecode to JVM bytecode via `dex2jar` / `plugin-runtime` and provides fake Android environment classes (`android-stubs`).
 - **Kotlin Modules (`src/main/kotlin/`)**:
-  - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (product: `cloudflare_bridge` + Slint banner; archived detail under `archive/desktop_tauri`). Tests: `CloudflareSolverTest.kt`.
+  - `plugin-runtime` overlay `stubs/CloudflareSolver.kt` + `stubs/BrowserFetch.kt`, installed on every HTTP client by `sidecar/CloudflareSetup.kt`: Cloudflare challenge detection, the file exchange with the app, fail-fast `IOException`s with the reason, and the browser-window fallback (product: `cloudflare_bridge` + Slint banner). Tests: `CloudflareSolverTest.kt`.
   - `sidecar/SidecarMain.kt`: Entry point reading stdin JSON lines and dispatching RPC messages. Exits when stdin closes (plugin threads would otherwise keep the JVM alive, holding plugin files open); on Windows the Rust transport also ends the whole `cs-sidecar.bat` -> `java.exe` process tree when it discards the sidecar.
   - `sidecar/ProviderService.kt`: Executes extension calls (`search`, `main_page`, `load`, `load_links`, `extract`).
   - Plugin assets (overlay `android-stubs` `AssetManager` / `DesktopAssetSource` / `Resources.getAssets()`, `plugin-runtime` `assets/PluginArchiveAssets.kt`): like CloudStream's PluginManager for `requiresResources`, `plugin.resources.assets` reads the `assets/` folder of the plugin's own `.cs3` (Eclipsia's scraper list and scripts). Names are checked in `AssetManager` (relative, no `.`/`..`/empty parts, no `\`); the reader lives in `com.lagradost.runtime.*` (plugins cannot reference or reflect on it), opens the archive per read (no handle kept, so uninstall works on Windows) and caps each asset at 32 MiB while inflating. Wired by `scripts/patch_extension_loader.py`. Tests: `PluginArchiveAssetsTest` (`CS_TEST_ECLIPSIA_CS3=<Eclipsia.cs3>` adds the real plugin).
@@ -409,9 +408,8 @@ This document is the architectural index for **`cloudstream-desktop-unofficial`*
 - **Responsibility**: Product UI (Home / Browse / Search / Library / Settings / Player) with Slint `.slint` layouts and Rust callbacks. Layout of the bridge, request tickets, playback watch and known Slint pitfalls: `crates/ui_slint/README.md`.
 - **Ported from the old Tauri UI** (pure rules with tests, named after the TS files they replace): the player's Sources menu (`source_menu.rs`: broken hidden, best first, kind / size / preferred-subtitle tags, 1080p / 2160p filter with size sort, "only with subtitles" filter), track menus with preferred languages first and picks by id (`track_menu.rs`), feedback pop-up and buffering text (`feedback_text.rs`), seek bar extras (`seek_bar.rs`), skip prompts from chapters plus online times from `UiServices::skips` (`skip_segments.rs`, `bridge/skip_lookup_start.rs`), spaced-out key seeks (`seek_scheduler.rs`), the opening panel (`check_text.rs`), Browse filters (`browse_filters.rs`), plugin search / filter / sort (`plugin_filter.rs`), the per-provider Home banner (`resume_hero.rs`). Slint globals `PluginList` and `BrowseFilter` hold those lists' controls. Extensions: installed plugins that are not video plugins show "Not supported" with the reason and only Remove (`posters::plugin_rows` over `InstalledStatus`); the catalog count says how many non-video plugins are hidden (`plugin_filter::catalog_count_text`). Settings: removable subtitle-language chips, a debug-logging switch (`AppExtras::debug_logs`), storage usage (`app_services::measure_storage`).
 
-#### Legacy / Reference Shells (non-workspace)
+#### Legacy / Reference Shell (non-workspace)
 - **`crates/ui_app/`**: former egui UI (excluded from workspace due to fontconfig conflict with Slint `fontique`); reference only.
-- **`archive/desktop_tauri/`**: former Tauri + React UI (not a workspace member); kept solely as porting reference. All product logic now lives in `app_shell`, `ui_slint`, `playback_session`, `app_updater`, `cloudflare_bridge`, and `cloudflare_window`.
 
 #### `crates/portable_launcher`
 - **Location**: `crates/portable_launcher/`
@@ -541,7 +539,6 @@ flowchart LR
 | **Playback failure fallback** | `crates/ui_slint/src/playback_watch.rs`, `bridge/stream_opening.rs` (`switch_source`) |
 | **Self-updater** | `crates/app_updater/`; Slint wiring `ui_slint/src/bridge/update_callbacks.rs` |
 | **egui shell (reference only)** | `crates/ui_app/` (workspace `exclude`) |
-| **Archived Tauri shell** | `archive/desktop_tauri/` (not a workspace member) |
 | **Service Construction Root** | `crates/app_shell/src/service_wiring.rs` |
 | **OS Data Folder & Logs Setup** | `crates/app_shell/src/app_paths.rs`, `logging_setup.rs`, `log_category.rs`, `debug_logs.rs` |
 | **Sidecar Process Transport** | `crates/extension_runtime/src/sidecar_process_transport.rs` |
