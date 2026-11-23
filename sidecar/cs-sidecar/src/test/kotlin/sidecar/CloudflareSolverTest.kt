@@ -579,4 +579,45 @@ class CloudflareSolverTest {
         assertEquals(1, app.requests.count { it.contains("rejected=r1-9") })
         assertEquals(0, app.fetched.get())
     }
+
+    @Test
+    fun `log lines carry the tag and level the app filters on`() {
+        val captured = java.io.ByteArrayOutputStream()
+        val original = System.err
+        System.setErr(java.io.PrintStream(captured, true))
+        try {
+            CloudflareSolver.log("WARN", "a message")
+        } finally {
+            System.setErr(original)
+        }
+        assertEquals("[cloudflare] WARN a message", captured.toString().trim())
+    }
+
+    @Test
+    fun `reset forgets a refused saved pass that was never named`() {
+        val app = FakeApp(exchange, listOf(saved("r1-1"), saved("r1-2"), saved("r1-3"), saved("r1-4")))
+        assertFailsWith<IOException> { get(client()) }
+        app.stop()
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val fresh = FakeApp(exchange, listOf(passed))
+        assertEquals(200, get(client()).first)
+        fresh.stop()
+        assertFalse(fresh.requests.single().contains("rejected="), fresh.requests.single())
+    }
+
+    @Test
+    fun `reset forgets a go-ahead answer, even for a clock that went back`() {
+        val first = FakeApp(exchange, listOf("ok=false\nreason=old answer\nretry=true\n"))
+        assertFailsWith<IOException> { get(client()) }
+        first.stop()
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        CloudflareSolver.clock = { 1_000L }
+        val second = FakeApp(exchange, listOf(passed))
+        assertEquals(200, get(client()).first, "not refused with the answer from before the reset")
+        second.stop()
+        assertEquals(1, second.verified.get())
+    }
 }
+
