@@ -1,68 +1,72 @@
-# CloudStream Extension Response Recorder
+# CloudStream extension recorder
 
-Windows audit tool: crawls MegaRepo (or another seed `repo.json`) via `cs-sidecar`, discovers linked repositories, downloads `.cs3` plugins, and test-loads them across concurrent sidecar workers. Records RPC replies and JVM stderr for parity / stub gaps.
+Finds what the desktop runtime lacks for the **video plugins** people use, before a viewer hits it.
+Linux and Windows.
 
-**Requires:** Python 3, JDK 21, and a built `cs-sidecar` install (`bin/cs-sidecar.bat`). Auto-detects `CS_SIDECAR_HOME` / `CS_SIDECAR_JAVA_HOME` (or `JAVA_HOME`), else `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`.
+1. **Crawl** (`catalog.py`): downloads the seed repository's aggregator (MegaProvider), lets it announce
+   its repositories in a sidecar, and reads every plugin list.
+2. **Filter** (`content_filter.py`): keeps video plugins only, with the app's own rule
+   (`crates/content_policy`, through its `plugin-content-policy` command; nothing is reimplemented
+   here). Games, music, audio, audiobooks, podcasts and tools are left out and listed in
+   `replies/excluded_plugins.json` with the reason.
+3. **Scan** (`api_scan.py`, default) or **load** (`load_test.py`):
+   - `--mode scan` downloads the video plugins and runs the static API gap scanner
+     (`sidecar/api-scanner`): every reference to an Android or CloudStream class is checked against
+     the runtime's classes, whether or not that code would run in a crawl. Report:
+     `replies/api_gaps.md` (ranked: what to implement first) and `replies/api_gaps.json`.
+   - `--mode load` loads each plugin in sidecar workers and records the replies (load-time errors only):
+     `replies/summary.md`, `replies/results.json`, `replies/details/`.
 
-## Features
+## Requirements
 
-- **Parallel workers** — default 4 concurrent JVM sidecars (`-Workers`); up to whatever the host can run.
-- **Parallel repo indexing** — up to 16 threads crawl discovered repository manifests.
-- **Trusted mode by default** — skips strict bytecode verify so plugins using `HttpURLConnection` / threads load like Android verified installs; use `-Untrusted` for the verifier.
-- **URL cleanup** — encodes spaces/symbols in plugin download URLs.
-- **Incremental `results.json`** — rewritten as each plugin finishes.
-- **Verbose failure dumps** — traces, Python stacks, RPC context, and JVM stderr under `logs/error-logs/`.
+- Python 3.10+, JDK 21, `cargo` (builds the content-policy command on first use).
+- A built `cs-sidecar` (found in `CS_SIDECAR_HOME`, `target/bundle-cache/cs-sidecar-dist`, the sidecar
+  checkout, or `C:\cs3d\repo\cs-sidecar\build\install\cs-sidecar`).
+- For scan mode, a built `api-scanner`: `--build-scanner` builds it on Linux
+  (`scripts/prepare_sidecar_repo.sh`, then `:api-scanner:installDist`); on Windows run
+  `scripts\setup_sidecar.ps1`, then `gradlew :api-scanner:installDist` in `C:\cs3d\repo`. Or point
+  `--scanner-home` / `CS_API_SCANNER_HOME` at one.
 
 ## Usage
 
-From this directory:
-
-```powershell
-.\record_extensions.cmd
-.\record_extensions.cmd -Workers 8
-.\record_extensions.cmd -MaxPlugins 10
+```sh
+python3 recorder.py                         # scan every video plugin (needs a built api-scanner)
+python3 recorder.py --build-scanner         # Linux: build the scanner first
+python3 recorder.py --mode load --workers 8 # load-time audit in 8 sidecars
+python3 recorder.py --max-plugins 20        # only the first 20 video plugins
 ```
 
-From anywhere:
+Windows: `.\record_extensions.cmd [-Mode scan|load] [-Workers 8] [-MaxPlugins 20]`.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<repo>\tools\extension_recorder\record_extensions.ps1"
-```
-
-Or call Python directly:
-
-```powershell
-python recorder.py --repo-url <url> --workers 4 --timeout 45
-```
-
-### Parameters (`record_extensions.ps1` → `recorder.py`)
-
-| PowerShell | Python | Default |
+| Option | Default | |
 |---|---|---|
-| `-RepoUrl` | `--repo-url` | MegaRepo `repo.json` |
-| `-Workers` | `--workers` | `4` |
-| `-MaxPlugins` | `--max-plugins` | `0` (all) |
-| `-TimeoutSec` | `--timeout` | `45` (per plugin load) |
-| `-SidecarHome` | `--sidecar-home` | auto-detect |
-| `-Jdk21` | `--jdk21` | auto-detect |
-| `-SkipDownload` | `--skip-download` | reuse `cache/*.cs3` |
-| `-Untrusted` | `--untrusted` | trusted off (enable verifier) |
+| `--mode` | `scan` | `scan` (static report) or `load` (load every plugin) |
+| `--repo-url` | MegaRepo `repo.json` | seed repository |
+| `--workers` | `4` | sidecars (load) or scanner threads (scan) |
+| `--max-plugins` | `0` (all) | cap after filtering |
+| `--timeout` | `45` | load mode: seconds per plugin load |
+| `--untrusted` | off | load mode: load untrusted (bytecode verifier on) |
+| `--sidecar-home`, `--scanner-home`, `--jdk21` | auto | explicit locations |
+| `--build-scanner` | off | Linux: build api-scanner first |
 
-## Output (`tools/extension_recorder/`)
+## Output
 
-- `replies/discovered_repositories.json` — repos from the aggregator’s `take_added_repositories`
-- `replies/all_plugins_catalog.json` — unique plugins across those repos
-- `replies/results.json` — full audit rows (updated incrementally)
-- `replies/summary.json` / `summary.md` — counts, error types, missing-class leaderboard
-- `replies/details/<internalName>_<version>.json` — per-plugin reply
-- `cache/` — downloaded `.cs3` files and per-worker sidecar data dirs
-- `logs/error-logs/`
-  - `latest_errors.log` — rolling error dump for this run
-  - `recorder_trace_<timestamp>.log` — communication / step trace
-  - `recorder_errors_<timestamp>.log` — same errors as `latest_errors`
-  - `plugin_failures/<name>_v<version>.log` — one dump per failing plugin
+Everything below is ignored by git (`.gitignore`).
 
-## Helpers
+- `replies/discovered_repositories.json`, `replies/all_plugins_catalog.json`: what the crawl found
+- `replies/excluded_plugins.json`: plugins left out, with the reason ("not a video plugin (it declares Others)")
+- `replies/api_gaps.md` / `api_gaps.json` (scan): gaps by status (missing members, missing classes,
+  neutralised UI calls, broken stubs) and plugins that would not load untrusted
+- `replies/summary.md`, `results.json`, `details/` (load)
+- `cache/`: downloaded plugins (`plugins/<name>_<version>.cs3`) and sidecar workspaces (each a data
+  folder laid out like the app's: `sidecar/` and `extensions/`, the only place the sidecar loads from)
+- `logs/error-logs/`: trace, errors, one dump per failing plugin
 
-- `analyze_failures.py` — from repo root, groups `replies/results.json` by error type (read-only).
-- `verify_fixes.py` — ad-hoc Windows recheck of a hard-coded plugin list; edit paths before use.
+## Modules and tests
+
+`recorder.py` (entry point), `catalog.py`, `content_filter.py`, `api_scan.py`, `load_test.py`,
+`sidecar_process.py` (one sidecar over JSON lines), `sidecar_env.py` (JDK / sidecar / scanner
+discovery), `http_fetch.py`, `tool_log.py`; `analyze_failures.py` groups a load run's errors.
+
+Tests: `python3 -m unittest discover -s tools/extension_recorder -p "*_test.py"` (CI runs them; no
+network; the contract test runs the real content-policy command when cargo is present).

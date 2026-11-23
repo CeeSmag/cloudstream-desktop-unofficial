@@ -1,11 +1,15 @@
 <#
 .SYNOPSIS
-    CloudStream Extension Response Recorder (High-Performance Parallel Edition)
+    CloudStream extension recorder: what the desktop runtime lacks for video plugins.
 
 .DESCRIPTION
-    Automates the ingestion of a repository (e.g. MegaRepo), discovers all added repositories
-    via cs-sidecar, downloads and test-loads every discovered extension across multiple concurrent
-    workers in parallel, and records all replies and stderr logs into the script directory.
+    Discovers every repository of a seed repository (e.g. MegaRepo) via cs-sidecar, keeps the video
+    plugins only (the app's content rule), then either scans them statically for Android /
+    CloudStream API gaps (-Mode scan, default: replies\api_gaps.md) or loads each one in sidecar
+    workers (-Mode load: replies\summary.md). Excluded plugins: replies\excluded_plugins.json.
+
+.PARAMETER Mode
+    scan (default): static API gap report. load: load every plugin in sidecar workers.
 
 .PARAMETER RepoUrl
     The URL of the repository to record. Defaults to MegaRepo.
@@ -19,6 +23,10 @@
 .PARAMETER SidecarHome
     Path to the installed cs-sidecar directory. Auto-detected if omitted.
 
+.PARAMETER ScannerHome
+    Path to the installed api-scanner directory (scan mode). Auto-detected if omitted
+    (scripts\setup_sidecar.ps1, then gradlew :api-scanner:installDist in C:\cs3d\repo).
+
 .PARAMETER Jdk21
     Path to the JDK 21 installation home directory. Auto-detected if omitted.
 
@@ -31,21 +39,23 @@
 
 .EXAMPLE
     .\record_extensions.cmd
-    # Runs the full multi-threaded audit (4 parallel workers, trusted mode)
+    # Static API gap scan of every video plugin
 
 .EXAMPLE
-    .\record_extensions.cmd -Workers 8
-    # Blazing-fast 8-worker parallel scan
+    .\record_extensions.cmd -Mode load -Workers 8
+    # Load every video plugin in 8 parallel sidecars
 #>
 [CmdletBinding()]
 param(
+    [ValidateSet("scan", "load")]
+    [string]$Mode = "scan",
     [string]$RepoUrl = "https://raw.githubusercontent.com/self-similarity/MegaRepo/builds/repo.json",
     [int]$MaxPlugins = 0,
     [int]$Workers = 4,
     [string]$SidecarHome = "",
+    [string]$ScannerHome = "",
     [string]$Jdk21 = "",
     [int]$TimeoutSec = 45,
-    [switch]$SkipDownload,
     [switch]$Untrusted
 )
 
@@ -70,6 +80,7 @@ if (-not (Test-Path $RecorderPy)) {
 
 $Arguments = @(
     $RecorderPy,
+    "--mode", $Mode,
     "--repo-url", $RepoUrl,
     "--timeout", $TimeoutSec,
     "--workers", $Workers
@@ -81,11 +92,11 @@ if ($MaxPlugins -gt 0) {
 if ($SidecarHome) {
     $Arguments += @("--sidecar-home", $SidecarHome)
 }
+if ($ScannerHome) {
+    $Arguments += @("--scanner-home", $ScannerHome)
+}
 if ($Jdk21) {
     $Arguments += @("--jdk21", $Jdk21)
-}
-if ($SkipDownload) {
-    $Arguments += "--skip-download"
 }
 if ($Untrusted) {
     $Arguments += "--untrusted"

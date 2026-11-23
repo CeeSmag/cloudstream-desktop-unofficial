@@ -1,0 +1,5 @@
+# Outputs of a run: downloaded plugins, sidecar data, reports and logs.
+cache/
+replies/
+logs/
+__pycache__/

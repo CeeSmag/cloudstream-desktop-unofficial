@@ -134,6 +134,10 @@ jobs:
       - name: Test QA & rule scripts
         run: python3 -m unittest discover -s scripts -p "*_test.py"
 
+      # The extension recorder's modules; its contract test builds the app's content-policy command.
+      - name: Test the extension recorder
+        run: python3 -m unittest discover -s tools/extension_recorder -p "*_test.py"
+
       - name: Rust files within 600 lines (RULES.md section 4)
         run: python3 scripts/check_file_lengths.py
 
