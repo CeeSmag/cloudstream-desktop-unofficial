@@ -86,4 +86,21 @@ class CloudflareExchangeFormatTest {
         assertTrue(CloudflareExchangeFormat.isRetry("ok=false\nretry=true\n"))
         assertFalse(CloudflareExchangeFormat.isRetry("ok=false\nretry=false\n"))
     }
+
+    @Test
+    fun `a redirect answer parses HTTP redirect statuses and preserves query parameters`() {
+        for (code in listOf(301, 302, 303, 307, 308)) {
+            val redirect = CloudflareExchangeFormat.parseRedirect(
+                "ok=true\ntransport=redirect\nstatus=$code\nlocation=https://cinevood.garden/search?s=odyssey&page=2\n",
+            )
+            assertEquals(CloudflareExchangeFormat.Redirect(code, "https://cinevood.garden/search?s=odyssey&page=2"), redirect)
+        }
+        assertNull(CloudflareExchangeFormat.parseClearance("ok=true\ntransport=redirect\nstatus=301\nlocation=https://cinevood.garden/\n", 0L))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=false\ntransport=redirect\nstatus=301\nlocation=https://cinevood.garden/\n"))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=true\ntransport=browser\nstatus=301\nlocation=https://cinevood.garden/\n"))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=true\ntransport=redirect\nstatus=304\nlocation=https://cinevood.garden/\n"))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=true\ntransport=redirect\nstatus=200\nlocation=https://cinevood.garden/\n"))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=true\ntransport=redirect\nstatus=301\nlocation=file:///etc/passwd\n"))
+        assertNull(CloudflareExchangeFormat.parseRedirect("ok=true\ntransport=redirect\nstatus=301\n"))
+    }
 }

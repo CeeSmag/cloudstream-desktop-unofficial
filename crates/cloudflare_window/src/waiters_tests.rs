@@ -59,6 +59,19 @@ fn retiring_a_waiter_or_the_last_request_says_which() {
     );
 }
 
+#[test]
+fn split_same_url_answers_only_matching_urls_and_defers_other_paths() {
+    let mut check = Waiters::new(request("owner", "https://site.test/a?x=1"));
+    check.join(request("same", "https://site.test/a?x=1"));
+    check.join(request("other-path", "https://site.test/b"));
+    check.join(request("other-query", "https://site.test/a?x=2"));
+    let (matched, deferred) = check.split_same_url();
+    let matched_ids: Vec<_> = matched.into_iter().map(|r| r.id).collect();
+    let deferred_ids: Vec<_> = deferred.into_iter().map(|r| r.id).collect();
+    assert_eq!(matched_ids, ["owner", "same"]);
+    assert_eq!(deferred_ids, ["other-path", "other-query"]);
+}
+
 enum Op {
     Join(u64),
     Retire(u64),

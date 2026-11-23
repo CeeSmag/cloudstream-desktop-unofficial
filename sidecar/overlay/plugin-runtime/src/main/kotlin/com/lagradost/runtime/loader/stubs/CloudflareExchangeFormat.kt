@@ -10,13 +10,17 @@ package com.lagradost.runtime.loader.stubs
  * pass would not help).
  *
  * Result (`result-<id>.txt`, written by the app): `ok=true|false`, `userAgent`, `reason`, `retry=true`,
- * `transport=browser`, one `cookie=name=value` per cookie, and optionally `source=saved` with `pass=<id>`
- * (answered from a pass the app kept from an earlier check) and `validUntil=<epoch ms>` (when the pass's
- * clearance ends).
+ * `transport=browser` (window serves fetches), `transport=redirect` with `status` and `location`
+ * (unchallenged cross-origin redirect), one `cookie=name=value` per cookie, and optionally `source=saved`
+ * with `pass=<id>` (answered from a pass the app kept from an earlier check) and `validUntil=<epoch ms>`
+ * (when the pass's clearance ends).
  */
 object CloudflareExchangeFormat {
     /** Where a clearance came from. */
     enum class Source { BROWSER, SAVED }
+
+    /** A cross-origin HTTP redirect observed when the browser was not challenged. */
+    data class Redirect(val status: Int, val location: String)
 
     /** Why a verification is asked for. */
     data class Ask(val rejectedPass: String? = null, val needsBrowser: Boolean = false)
@@ -25,6 +29,7 @@ object CloudflareExchangeFormat {
     const val UNNAMED_PASS = "unnamed"
 
     private val SAFE_ID = Regex("[A-Za-z0-9-]{1,64}")
+    private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     /** True when [id] can be written to and read from the exchange (the app checks the same rule). */
     fun isSafeId(id: String): Boolean = SAFE_ID.matches(id)
@@ -63,6 +68,21 @@ object CloudflareExchangeFormat {
             passId = value(lines, "pass")?.takeIf { saved && isSafeId(it) },
             validUntil = value(lines, "validUntil")?.toLongOrNull(),
         )
+    }
+
+    /**
+     * Reads a cross-origin redirect answer (`ok=true`, `transport=redirect`, `status`, `location`);
+     * null for anything else or a non-HTTP(S) destination.
+     */
+    fun parseRedirect(text: String): Redirect? {
+        val lines = text.lines().filter { it.contains("=") }
+        if (lines.none { it.trim() == "ok=true" } || lines.none { it.trim() == "transport=redirect" }) return null
+        val status = value(lines, "status")?.toIntOrNull()?.takeIf { it in REDIRECT_CODES } ?: return null
+        val location = value(lines, "location")?.takeIf {
+            it.isNotEmpty() && !it.contains('\r') && !it.contains('\n') &&
+                (it.startsWith("https://") || it.startsWith("http://"))
+        } ?: return null
+        return Redirect(status, location)
     }
 
     /** The app's reason for not verifying, or a default. */

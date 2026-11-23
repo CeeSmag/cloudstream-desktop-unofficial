@@ -49,6 +49,8 @@ pub(crate) struct SiteWindow {
     last_used: Instant,
     /// Moved to the site's small page (`context_slimming.rs`) to free the heavy page's memory.
     slimmed: bool,
+    /// Same-origin waiters whose URL differed from the owner when a URL-specific redirect finished.
+    deferred: Vec<VerifyRequest>,
 }
 
 pub(crate) struct WindowParts<'a> {
@@ -83,6 +85,7 @@ impl SiteWindow {
             fetches,
             last_used: Instant::now(),
             slimmed: false,
+            deferred: Vec::new(),
         })
     }
 
@@ -189,20 +192,32 @@ impl SiteWindow {
         let Phase::Checking(check) = &mut self.phase else {
             return;
         };
-        match check.response(document, &response, cookies) {
+        let decision = check.response(document, &response, cookies);
+        self.apply_decision(decision, leaves_origin || response.attachment, out);
+    }
+
+    fn apply_decision(&mut self, decision: Decision, close_after: bool, out: &Outbox) {
+        match decision {
             Decision::Passed(cookies) => {
                 let outcome = Outcome::Passed {
                     user_agent: self.agent.clone(),
                     cookies,
                 };
                 self.complete(outcome, out);
-                if leaves_origin || response.attachment {
+                if close_after {
                     self.phase = Phase::Finished;
                 }
             }
             Decision::BrowserClear => {
                 let user_agent = self.agent.clone();
                 self.complete(Outcome::BrowserClear { user_agent }, out);
+            }
+            Decision::Redirect { status, location } => {
+                let outcome = Outcome::Redirect {
+                    status,
+                    location: location.into(),
+                };
+                self.complete_redirect(outcome, out);
             }
             Decision::Unconfirmed => self.fail_pending(UNCONFIRMED, out),
             Decision::Wait => self.reveal(),
@@ -324,20 +339,40 @@ impl SiteWindow {
         matches!(self.phase, Phase::Loading | Phase::Checking(_))
     }
 
-    fn complete(&mut self, outcome: Outcome, out: &Outbox) {
-        self.phase = Phase::Finished;
+    pub(crate) fn take_deferred(&mut self) -> Vec<VerifyRequest> {
+        std::mem::take(&mut self.deferred)
+    }
+
+    fn hide_window(&mut self) {
         self.requested = false;
         self.foreground = false;
         #[cfg(windows)]
         crate::windows_presentation::hide(&self.window);
         #[cfg(not(windows))]
         self.window.set_visible(false);
+    }
+
+    fn complete(&mut self, outcome: Outcome, out: &Outbox) {
+        self.phase = Phase::Finished;
+        self.hide_window();
         for (index, request) in self.waiters.take_all().into_iter().enumerate() {
             let status = out.deliver(&request, &outcome);
             if index == 0 && matches!(status, HelperStatus::Passed { .. }) {
                 self.phase = Phase::Passed;
                 self.touch();
             }
+            tracing::debug!(id = %request.id, host = %request.host, ?status, "verification finished");
+            out.status(&status);
+        }
+    }
+
+    fn complete_redirect(&mut self, outcome: Outcome, out: &Outbox) {
+        self.phase = Phase::Finished;
+        self.hide_window();
+        let (matched, deferred) = self.waiters.split_same_url();
+        self.deferred = deferred;
+        for request in matched {
+            let status = out.deliver(&request, &outcome);
             tracing::debug!(id = %request.id, host = %request.host, ?status, "verification finished");
             out.status(&status);
         }

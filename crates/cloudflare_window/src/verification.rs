@@ -94,6 +94,13 @@ pub(crate) enum Decision {
     /// The browser was never challenged: only the sidecar's own connection is. There is nothing to hand
     /// over, so the sidecar must make this origin's requests through the browser document.
     BrowserClear,
+    /// The browser was never challenged and the target origin redirected this request to another origin
+    /// (for example a permanent domain move). The browser aborts the off-origin load and returns the
+    /// redirect so the sidecar's guarded HTTP client can validate and follow it.
+    Redirect {
+        status: u16,
+        location: Url,
+    },
     Unconfirmed,
 }
 
@@ -158,6 +165,9 @@ impl Verification {
         if self.is_browser_clear(response) {
             return Decision::BrowserClear;
         }
+        if let Some((status, location)) = self.browser_redirect(response) {
+            return Decision::Redirect { status, location };
+        }
         self.unsettled(response)
     }
 
@@ -171,6 +181,26 @@ impl Verification {
         } else {
             Decision::Wait
         }
+    }
+
+    /// The browser went straight through (no challenge was ever shown to it) and the approved origin
+    /// answered with an HTTP redirect to another HTTP(S) origin. A redirect after a challenge without a
+    /// fresh clearance cookie is *never* this: it stays unconfirmed.
+    fn browser_redirect(&self, response: &MainResponse) -> Option<(u16, Url)> {
+        if self.encountered_challenge
+            || response.challenge
+            || response.attachment
+            || !matches!(response.status, 301 | 302 | 303 | 307 | 308)
+            || response.url.origin() != self.target.origin()
+        {
+            return None;
+        }
+        let location = response.redirect.as_ref()?;
+        let valid_target = matches!(location.scheme(), "http" | "https")
+            && location.username().is_empty()
+            && location.password().is_none()
+            && location.origin() != self.target.origin();
+        valid_target.then(|| (response.status, location.clone()))
     }
 
     /// The browser went straight through (no challenge was ever shown to it) and landed on a same-origin

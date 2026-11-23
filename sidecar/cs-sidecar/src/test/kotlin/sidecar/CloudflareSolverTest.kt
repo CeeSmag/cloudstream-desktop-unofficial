@@ -2,7 +2,9 @@ package sidecar
 
 import com.lagradost.runtime.loader.stubs.BrowserFetch
 import com.lagradost.runtime.loader.stubs.CloudflareSolver
+import com.lagradost.runtime.loader.stubs.URLStub
 import com.sun.net.httpserver.HttpServer
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -874,6 +876,180 @@ class CloudflareSolverTest {
         app.stop()
         assertEquals(2, app.verified.get())
         assertTrue(app.requests[1].lines().contains("rejected=r1-1"), app.requests[1])
+    }
+
+    // --- Unchallenged cross-origin redirects (e.g. a domain move behind Cloudflare). ---
+
+    private fun redirectAnswer(status: Int, location: String) =
+        "ok=true\ntransport=redirect\nstatus=$status\nlocation=$location\n"
+
+    @Test
+    fun `an unchallenged cross-origin redirect is followed without leaking sensitive headers`() {
+        val observed = AtomicReference<Request?>()
+        val bodies = CopyOnWriteArrayList<TrackedBody>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                val ok = req.url.host == "cinevood.garden"
+                if (ok) observed.set(req)
+                val body = TrackedBody(if (ok) "moved-page" else "Just a moment...").also { bodies.add(it) }
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1)
+                    .code(if (ok) 200 else 403).message("m").header("server", "cloudflare")
+                    .apply { if (!ok) header("cf-mitigated", "challenge") }
+                    .body(body).build()
+            }.build()
+        val app = FakeApp(exchange, listOf(redirectAnswer(301, "https://cinevood.garden/search?s=odyssey")))
+        val request = Request.Builder().url("https://cinevood.loan/search?s=odyssey")
+            .header("Authorization", "Bearer secret")
+            .header("Cookie", "session=secret")
+            .header("Proxy-Authorization", "Basic secret")
+            .header("Accept", "text/html")
+            .build()
+        val log = lines {
+            client.newCall(request).execute().use { reply ->
+                assertEquals(200, reply.code)
+                assertEquals("moved-page", reply.body.string())
+                assertEquals("https://cinevood.garden/search?s=odyssey", reply.request.url.toString())
+            }
+        }
+        app.stop()
+        assertEquals(1, app.verified.get())
+        assertTrue(bodies.all { it.closed }, "every intermediate body is closed")
+        val forwarded = observed.get()!!
+        assertNull(forwarded.header("Authorization"))
+        assertNull(forwarded.header("Cookie"))
+        assertNull(forwarded.header("Proxy-Authorization"))
+        assertEquals("text/html", forwarded.header("Accept"))
+        assertTrue(
+            "[cloudflare] INFO cinevood.loan was not challenged in the browser and redirected (301) to cinevood.garden; following the redirect" in log,
+            "$log",
+        )
+    }
+
+    @Test
+    fun `a redirect target that also challenges is verified under its own origin`() {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                val accepted = req.url.host == "cinevood.garden" && req.header("Cookie").orEmpty().contains("cf_clearance=ok")
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1)
+                    .code(if (accepted) 200 else 403).message("m").header("server", "cloudflare")
+                    .apply { if (!accepted) header("cf-mitigated", "challenge") }
+                    .body((if (accepted) "garden-content" else "Just a moment...").toResponseBody()).build()
+            }.build()
+        val app = FakeApp(exchange, listOf(redirectAnswer(301, "https://cinevood.garden/home"), passed))
+        assertEquals(200 to "garden-content", get(client, host = "cinevood.loan", path = "/home"))
+        app.stop()
+        assertEquals(2, app.verified.get())
+        assertTrue(app.requests[0].lines().contains("host=cinevood.loan"), app.requests[0])
+        assertTrue(app.requests[1].lines().contains("host=cinevood.garden"), app.requests[1])
+    }
+
+    @Test
+    fun `concurrent requests to different paths of a redirecting origin each follow their own path`() {
+        val handled = mutableSetOf<String>()
+        val worker = thread(isDaemon = true) {
+            while (!Thread.currentThread().isInterrupted) {
+                exchange.listFiles()?.forEach { file ->
+                    if (file.name.startsWith("request-") && file.name.endsWith(".txt") && handled.add(file.name)) {
+                        val url = file.readLines().first { it.startsWith("url=") }.removePrefix("url=").trim()
+                        val moved = url.replace("https://old.test", "https://new.test")
+                        File(exchange, file.name.replaceFirst("request-", "result-")).writeText(redirectAnswer(301, moved))
+                    }
+                }
+                Thread.sleep(15)
+            }
+        }
+        val client = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor(CloudflareSolver.clearanceScope)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                val ok = req.url.host == "new.test"
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1)
+                    .code(if (ok) 200 else 403).message("m")
+                    .apply { if (!ok) header("cf-mitigated", "challenge") }
+                    .body((if (ok) req.url.encodedPath else "challenge").toResponseBody()).build()
+            }.build()
+        val start = CountDownLatch(1)
+        val mismatches = CopyOnWriteArrayList<String>()
+        try {
+            val threads = (1..8).map { n ->
+                thread {
+                    start.await()
+                    val expected = "/movie-$n"
+                    val (code, body) = get(client, host = "old.test", path = expected)
+                    if (code != 200 || body != expected) mismatches.add("$expected -> $code:$body")
+                }
+            }
+            start.countDown()
+            threads.forEach { it.join(20_000) }
+        } finally {
+            worker.interrupt()
+        }
+        assertTrue(mismatches.isEmpty(), "every path must reach its own redirected page: $mismatches")
+    }
+
+    @Test
+    fun `redirect loops, excessive redirect hops, and credentialed redirect targets fail cleanly`() {
+        val loopApp = FakeApp(exchange, listOf(redirectAnswer(301, "https://loop.test/api")))
+        val loopErr = assertFailsWith<IOException> { get(pickyClient(), host = "loop.test", path = "/api") }
+        loopApp.stop()
+        assertTrue(loopErr.message.orEmpty().contains("redirect loop"), loopErr.message)
+
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val chainApp = FakeApp(
+            exchange,
+            (1..7).map { n -> redirectAnswer(302, "https://hop$n.test/p") },
+        )
+        val hopErr = assertFailsWith<IOException> { get(pickyClient(), host = "hop0.test", path = "/p") }
+        chainApp.stop()
+        assertTrue(hopErr.message.orEmpty().contains("too many redirects"), hopErr.message)
+
+        CloudflareSolver.reset()
+        CloudflareSolver.exchangeDir = exchange
+        val credApp = FakeApp(exchange, listOf(redirectAnswer(301, "https://user:pass@other.test/p")))
+        val credErr = assertFailsWith<IOException> { get(pickyClient(), host = "cred.test", path = "/p") }
+        credApp.stop()
+        assertTrue(credErr.message.orEmpty().contains("invalid redirect"), credErr.message)
+    }
+
+    @Test
+    fun `a verified redirect to a local address is blocked by URLStub buildSafeOkHttpClient`() {
+        val app = FakeApp(exchange, listOf(redirectAnswer(301, "http://127.0.0.1:9/secret")))
+        val builder = OkHttpClient.Builder()
+            .addInterceptor(CloudflareSolver.interceptor)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                if (req.url.host == "redirect-ssrf.invalid") {
+                    Response.Builder().request(req).protocol(Protocol.HTTP_1_1)
+                        .code(403).message("m").header("cf-mitigated", "challenge")
+                        .body("Just a moment...".toResponseBody()).build()
+                } else {
+                    chain.proceed(req)
+                }
+            }
+        val safeClient = URLStub.buildSafeOkHttpClient(builder)
+        val error = assertFailsWith<SecurityException> {
+            safeClient.newCall(Request.Builder().url("https://redirect-ssrf.invalid/start").build()).execute()
+        }
+        app.stop()
+        assertTrue(error.message.orEmpty().contains("blocked"), error.message)
+    }
+
+    @Test
+    fun `redirectRequest enforces HTTP redirect method rules`() {
+        val post = Request.Builder().url("https://a.test/x").post("body".toRequestBody()).build()
+        val downgraded = CloudflareSolver.redirectRequest(post, "https://b.test/y".toHttpUrl(), 302)
+        assertEquals("GET", downgraded.method)
+        assertNull(downgraded.body)
+        val preserved = CloudflareSolver.redirectRequest(post, "https://b.test/y".toHttpUrl(), 307)
+        assertEquals("POST", preserved.method)
     }
 }
 

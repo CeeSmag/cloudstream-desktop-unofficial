@@ -319,3 +319,127 @@ fn matches_target_needs_the_same_page_and_its_query_but_ignores_challenge_tokens
         &Url::parse("https://source.test/p").unwrap()
     ));
 }
+
+#[test]
+fn an_unchallenged_cross_origin_http_redirect_returns_its_status_and_location() {
+    let target = Url::parse(TARGET).unwrap();
+    for (status, dest) in [
+        (301, "https://cinevood.garden/watch/title?ticket=one"),
+        (302, "http://moved.test/watch"),
+        (303, "https://moved.test/see-other"),
+        (307, "https://moved.test/temp"),
+        (308, "https://moved.test/perm"),
+    ] {
+        let mut check = Verification::new(target.clone(), Vec::new());
+        let id = DocumentId(1);
+        check.start(id);
+        let mut reply = response(TARGET, status, false);
+        reply.redirect = Some(Url::parse(dest).unwrap());
+        assert_eq!(
+            check.response(id, &reply, Vec::new()),
+            Decision::Redirect {
+                status,
+                location: Url::parse(dest).unwrap(),
+            },
+            "status {status} -> {dest}"
+        );
+    }
+}
+
+#[test]
+fn an_unchallenged_cross_origin_redirect_works_after_a_same_origin_hop() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let id = DocumentId(1);
+    check.start(id);
+    let mut first = response(TARGET, 302, false);
+    first.redirect = Some(Url::parse("https://source.test/canonical").unwrap());
+    assert_eq!(check.response(id, &first, Vec::new()), Decision::Wait);
+    let mut second = response("https://source.test/canonical", 301, false);
+    let dest = Url::parse("https://moved.test/canonical").unwrap();
+    second.redirect = Some(dest.clone());
+    assert_eq!(
+        check.response(id, &second, Vec::new()),
+        Decision::Redirect {
+            status: 301,
+            location: dest,
+        }
+    );
+}
+
+#[test]
+fn an_unchallenged_redirect_holding_a_clearance_cookie_still_passes_the_cookie() {
+    let mut check = Verification::new(Url::parse(TARGET).unwrap(), Vec::new());
+    let id = DocumentId(1);
+    check.start(id);
+    let mut reply = response(TARGET, 301, false);
+    reply.redirect = Some(Url::parse("https://moved.test/").unwrap());
+    assert_eq!(
+        check.response(id, &reply, clearance("held")),
+        Decision::Passed(clearance("held"))
+    );
+}
+
+#[test]
+fn redirect_refuses_non_redirect_codes_and_unsafe_targets() {
+    let target = Url::parse(TARGET).unwrap();
+    let check_reply = |status: u16, dest: &str| {
+        let mut check = Verification::new(target.clone(), Vec::new());
+        let id = DocumentId(1);
+        check.start(id);
+        let mut reply = response(TARGET, status, false);
+        reply.redirect = Some(Url::parse(dest).unwrap());
+        check.response(id, &reply, Vec::new())
+    };
+    for status in [300, 304] {
+        assert_eq!(
+            check_reply(status, "https://moved.test/"),
+            Decision::Unconfirmed,
+            "status {status} is not an HTTP redirect"
+        );
+    }
+    for unsafe_dest in [
+        "file:///etc/passwd",
+        "ftp://moved.test/file",
+        "https://user@moved.test/",
+        "https://:secret@moved.test/",
+    ] {
+        assert_eq!(
+            check_reply(301, unsafe_dest),
+            Decision::Unconfirmed,
+            "unsafe destination {unsafe_dest}"
+        );
+    }
+}
+
+#[test]
+fn redirect_refuses_downloads_challenges_and_post_challenge_hops_without_a_fresh_cookie() {
+    let target = Url::parse(TARGET).unwrap();
+    let with_dest = |status: u16| {
+        let mut reply = response(TARGET, status, false);
+        reply.redirect = Some(Url::parse("https://moved.test/").unwrap());
+        reply
+    };
+    let mut download = with_dest(301);
+    download.attachment = true;
+    let mut check = Verification::new(target.clone(), Vec::new());
+    check.start(DocumentId(1));
+    assert_eq!(
+        check.response(DocumentId(1), &download, Vec::new()),
+        Decision::Unconfirmed
+    );
+    let mut challenged = with_dest(302);
+    challenged.challenge = true;
+    challenged.html = false;
+    assert_eq!(
+        check.response(DocumentId(1), &challenged, Vec::new()),
+        Decision::Unconfirmed
+    );
+    let mut after_challenge = Verification::new(target, Vec::new());
+    after_challenge.start(DocumentId(1));
+    after_challenge.response(DocumentId(1), &response(TARGET, 403, true), Vec::new());
+    assert_eq!(
+        after_challenge.response(DocumentId(1), &with_dest(301), Vec::new()),
+        Decision::Unconfirmed,
+        "a redirect after a challenge without a fresh cookie proves nothing"
+    );
+}

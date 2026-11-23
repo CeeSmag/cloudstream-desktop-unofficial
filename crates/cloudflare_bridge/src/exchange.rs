@@ -71,6 +71,15 @@ pub enum Outcome {
         /// The `User-Agent` of the browser that was let through.
         user_agent: String,
     },
+    /// The browser was not challenged and the origin itself redirected this request to another origin
+    /// (for example a domain move). No cookies are kept and no window stays open; the sidecar follows
+    /// `location` through its own guarded HTTP client (`transport=redirect` in the result file).
+    Redirect {
+        /// HTTP redirect status code (`301`, `302`, `303`, `307`, or `308`).
+        status: u16,
+        /// The absolute `http`/`https` destination from the origin's `Location` header.
+        location: String,
+    },
     /// Nothing was passed (window closed, time ran out, window could not open).
     Declined(String),
     /// Not asked for yet: the viewer has not said this site may open a window. The sidecar fails the
@@ -116,6 +125,10 @@ pub fn format_result(outcome: &Outcome) -> String {
         Outcome::BrowserClear { user_agent } => format!(
             "ok=true\nuserAgent={}\ntransport=browser\n",
             user_agent.replace('\n', " ")
+        ),
+        Outcome::Redirect { status, location } => format!(
+            "ok=true\ntransport=redirect\nstatus={status}\nlocation={}\n",
+            location.replace(['\r', '\n'], "")
         ),
         Outcome::Passed {
             user_agent,
@@ -334,6 +347,18 @@ mod tests {
             user_agent: "Agent/1".into(),
         });
         assert_eq!(text, "ok=true\nuserAgent=Agent/1\ntransport=browser\n");
+    }
+
+    #[test]
+    fn a_redirect_answer_carries_its_status_and_location_without_newlines() {
+        let text = format_result(&Outcome::Redirect {
+            status: 301,
+            location: "https://cinevood.garden/?s=odyssey&p=1\r\nignored=1".into(),
+        });
+        assert_eq!(
+            text,
+            "ok=true\ntransport=redirect\nstatus=301\nlocation=https://cinevood.garden/?s=odyssey&p=1ignored=1\n"
+        );
     }
 
     #[test]

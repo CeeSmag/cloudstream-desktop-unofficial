@@ -2,8 +2,9 @@ package com.lagradost.runtime.loader.stubs
 
 import com.lagradost.runtime.loader.stubs.CloudflareExchangeFormat.Ask
 import com.lagradost.runtime.loader.stubs.CloudflareExchangeFormat.Source
-import okhttp3.Interceptor
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 import java.io.File
@@ -67,8 +68,20 @@ object CloudflareSolver {
 
     private fun originOf(url: HttpUrl) = Origin(url.scheme, url.host, url.port)
 
+    /** What one browser verification produced: an origin-wide clearance or a per-request redirect. */
+    private sealed class Solved {
+        data class Cleared(val clearance: Clearance) : Solved()
+        data class Redirected(val status: Int, val location: HttpUrl) : Solved()
+    }
+
+    /** Either a final HTTP response or a verified redirect to follow on the next hop. */
+    private sealed class RequestOutcome {
+        data class Done(val response: Response) : RequestOutcome()
+        data class Redirect(val redirect: Solved.Redirected) : RequestOutcome()
+    }
+
     /** The app's answer to a verification request. */
-    private data class Answer(val clearance: Clearance?, val reason: String, val remember: Boolean)
+    private data class Answer(val solved: Solved?, val reason: String, val remember: Boolean)
 
     /** Folder shared with the app; null (the default) turns the whole feature off. */
     @Volatile
@@ -94,6 +107,11 @@ object CloudflareSolver {
 
     /** How many saved passes one request may find refused before it gives up (each is retired by the app). */
     private const val MAX_SAVED_REFUSALS = 3
+
+    /** Maximum cross-origin redirects followed during Cloudflare verification for one request. */
+    private const val MAX_REDIRECTS = 5
+
+    private val PRESERVE_METHOD_REDIRECTS = setOf(307, 308)
 
     private val clearances = ConcurrentHashMap<Origin, Clearance>()
     private val declined = ConcurrentHashMap<Origin, Declined>()
@@ -147,19 +165,68 @@ object CloudflareSolver {
      * initializer. Private, it and everything it calls (the whole solver) were never mutation-tested.
      */
     internal fun intercept(chain: Interceptor.Chain): Response {
-        val original = chain.request()
-        val dir = exchangeDir
-        if (dir != null && originOf(original.url) in browserOnly) return viaBrowser(original, dir)
-        val startedAt = clock()
-        val response = chain.proceed(original)
-        if (dir == null || !isChallenge(response)) return response
-        val challenged = response.request
-        val origin = originOf(challenged.url)
-        log("INFO", "challenge from ${origin.host}: ${describe(response)} for ${challenged.method}")
-        response.close()
-        // A clearance obtained after this request began was not the one it carried, so it is not expired.
-        clearances[origin]?.takeIf { it.obtainedAt < startedAt }?.let { dropRefused(origin, it) }
-        return retryWithClearance(chain, challenged, dir, solve(challenged, startedAt))
+        var current = chain.request()
+        var redirects = 0
+        while (true) {
+            val dir = exchangeDir
+            if (dir != null && originOf(current.url) in browserOnly) {
+                when (val outcome = viaBrowser(current, dir)) {
+                    is RequestOutcome.Done -> return outcome.response
+                    is RequestOutcome.Redirect -> {
+                        current = nextRedirect(current, outcome.redirect, ++redirects)
+                        continue
+                    }
+                }
+            }
+            val startedAt = clock()
+            val response = chain.proceed(current)
+            if (dir == null || !isChallenge(response)) return response
+            val challenged = response.request
+            val origin = originOf(challenged.url)
+            log("INFO", "challenge from ${origin.host}: ${describe(response)} for ${challenged.method}")
+            response.close()
+            // A clearance obtained after this request began was not the one it carried, so it is not expired.
+            clearances[origin]?.takeIf { it.obtainedAt < startedAt }?.let { dropRefused(origin, it) }
+            when (val solved = solve(challenged, startedAt)) {
+                is Solved.Cleared -> when (val retried = retryWithClearance(chain, challenged, dir, solved.clearance)) {
+                    is RequestOutcome.Done -> return retried.response
+                    is RequestOutcome.Redirect -> current = nextRedirect(challenged, retried.redirect, ++redirects)
+                }
+                is Solved.Redirected -> current = nextRedirect(challenged, solved, ++redirects)
+            }
+        }
+    }
+
+    /** Builds the next request for a verified cross-origin redirect, enforcing hop limits and stripping credentials. */
+    private fun nextRedirect(from: Request, redirect: Solved.Redirected, count: Int): Request {
+        val host = originOf(from.url).host
+        if (count > MAX_REDIRECTS) {
+            log("WARN", "$host redirected too many times during Cloudflare verification ($count)")
+            throw IOException("Cloudflare verification of $host was not completed: too many redirects")
+        }
+        if (redirect.location == from.url) {
+            log("WARN", "$host redirected back to the same URL during Cloudflare verification")
+            throw IOException("Cloudflare verification of $host was not completed: redirect loop")
+        }
+        return redirectRequest(from, redirect.location, redirect.status)
+    }
+
+    /** Rewrites [from] for [location] under HTTP redirect rules, never carrying sensitive headers across origins. */
+    fun redirectRequest(from: Request, location: HttpUrl, status: Int): Request {
+        val builder = from.newBuilder().url(location)
+        if (originOf(location) != originOf(from.url)) {
+            builder.removeHeader("Authorization")
+                .removeHeader("Cookie")
+                .removeHeader("Proxy-Authorization")
+                .removeHeader("Host")
+        }
+        if (status !in PRESERVE_METHOD_REDIRECTS && from.method != "GET" && from.method != "HEAD") {
+            builder.method("GET", null)
+                .removeHeader("Transfer-Encoding")
+                .removeHeader("Content-Length")
+                .removeHeader("Content-Type")
+        }
+        return builder.build()
     }
 
     /** The site refused [clearance]: it is dropped, and if it was a saved pass the app hears which. */
@@ -174,7 +241,7 @@ object CloudflareSolver {
      * instead). A refused saved pass is named to the app, which retires it and checks the site again; the
      * re-check is asked with the time the refused request was sent, so requests refused at once share it.
      */
-    private fun retryWithClearance(chain: Interceptor.Chain, request: Request, dir: File, first: Clearance): Response {
+    private fun retryWithClearance(chain: Interceptor.Chain, request: Request, dir: File, first: Clearance): RequestOutcome {
         val origin = originOf(request.url)
         var used = first
         var refusals = 0
@@ -186,7 +253,10 @@ object CloudflareSolver {
             retried.close()
             dropRefused(origin, used)
             if (++refusals > MAX_SAVED_REFUSALS) break
-            used = solve(request, sentAt)
+            when (val next = solve(request, sentAt)) {
+                is Solved.Cleared -> used = next.clearance
+                is Solved.Redirected -> return RequestOutcome.Redirect(next)
+            }
         }
         log("ERROR", "${origin.host} refused $refusals saved passes in a row; giving up on this request")
         throw IOException("Cloudflare verification of ${origin.host} was not completed: the site refused every saved pass")
@@ -207,7 +277,7 @@ object CloudflareSolver {
         }
 
     /** The browser was not challenged: there are no cookies to send, so the origin is served by its window. */
-    private fun viaBrowserOnly(request: Request, dir: File): Response {
+    private fun viaBrowserOnly(request: Request, dir: File): RequestOutcome {
         val origin = originOf(request.url)
         log("INFO", "${origin.host} does not challenge the browser, only this connection; its requests are made by the browser window")
         browserOnly.add(origin)
@@ -215,11 +285,11 @@ object CloudflareSolver {
     }
 
     /** The retried request: a good answer is the goal; a challenge again means the cookies alone are not accepted. */
-    private fun afterRetry(request: Request, dir: File, retried: Response): Response {
+    private fun afterRetry(request: Request, dir: File, retried: Response): RequestOutcome {
         val origin = originOf(request.url)
         if (!isChallenge(retried)) {
             log("INFO", "retried request to ${origin.host} with the verification cookies: ${describe(retried)}; the site accepted them")
-            return retried
+            return RequestOutcome.Done(retried)
         }
         retried.close()
         clearances.remove(origin)
@@ -236,7 +306,7 @@ object CloudflareSolver {
      * Makes [request] in the origin's browser window; verifies again once if the window is gone or its pass
      * has expired. If a fresh verification still leaves no way in, the origin is declined for a while.
      */
-    private fun viaBrowser(request: Request, dir: File): Response {
+    private fun viaBrowser(request: Request, dir: File): RequestOutcome {
         val origin = originOf(request.url)
         val first = try {
             BrowserFetch.fetch(request, dir)
@@ -244,16 +314,22 @@ object CloudflareSolver {
             log("WARN", "the browser window for ${origin.host} is gone (${gone.message}); verifying again")
             null
         }
-        if (first != null && !isChallenge(first)) return first
+        if (first != null && !isChallenge(first)) return RequestOutcome.Done(first)
         first?.close()
         if (first != null) log("WARN", "the browser got a Cloudflare challenge again for ${origin.host}; verifying again")
-        solve(request, clock(), Ask(needsBrowser = true))
+        when (val solved = solve(request, clock(), Ask(needsBrowser = true))) {
+            is Solved.Redirected -> {
+                browserOnly.remove(origin)
+                return RequestOutcome.Redirect(solved)
+            }
+            is Solved.Cleared -> Unit
+        }
         val second = try {
             BrowserFetch.fetch(request, dir)
         } catch (gone: BrowserUnavailable) {
             throw unreachable(origin, "no browser window can make its requests (${gone.message})")
         }
-        if (!isChallenge(second)) return second
+        if (!isChallenge(second)) return RequestOutcome.Done(second)
         second.close()
         throw unreachable(origin, "Cloudflare still showed its check even in the browser window")
     }
@@ -293,7 +369,7 @@ object CloudflareSolver {
      * the one check in flight whatever their paths; [sentAt] is when the request began, so a clearance
      * obtained since then is used instead of asking again.
      */
-    private fun solve(challenged: Request, sentAt: Long, ask: Ask = Ask()): Clearance {
+    private fun solve(challenged: Request, sentAt: Long, ask: Ask = Ask()): Solved {
         val origin = originOf(challenged.url)
         val host = origin.host
         refuseIfDeclined(origin)
@@ -301,7 +377,7 @@ object CloudflareSolver {
         synchronized(challengeLocks.computeIfAbsent(origin) { Any() }) {
             liveClearance(origin)?.takeIf { it.obtainedAt >= sentAt }?.let {
                 log("INFO", "$host was verified while this request waited; using that")
-                return it
+                return Solved.Cleared(it)
             }
             refuseIfDeclined(origin)
             // Strictly later: a request that starts in the same millisecond as the answer came after it
@@ -311,15 +387,19 @@ object CloudflareSolver {
                 throw IOException("Cloudflare verification of $host was not completed: ${it.reason}")
             }
             val answer = askApp(origin, challenged, ask.copy(rejectedPass = ask.rejectedPass ?: refusedSaved.remove(origin)))
-            val clearance = answer.clearance
-            if (clearance == null) {
-                if (!answer.remember) retryAnswers[origin] = Declined(clock(), answer.reason)
-                if (answer.remember) declined[origin] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
-                log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
-                throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
+            return when (val solved = answer.solved) {
+                is Solved.Cleared -> {
+                    clearances[origin] = solved.clearance
+                    solved
+                }
+                is Solved.Redirected -> solved
+                null -> {
+                    if (!answer.remember) retryAnswers[origin] = Declined(clock(), answer.reason)
+                    if (answer.remember) declined[origin] = Declined(System.currentTimeMillis() + declineMemoryMs, answer.reason)
+                    log("WARN", "verification of $host not done: ${answer.reason}" + (if (answer.remember) "; not asking again for ${declineMemoryMs / 1000}s" else ""))
+                    throw IOException("Cloudflare verification of $host was not completed: ${answer.reason}")
+                }
             }
-            clearances[origin] = clearance
-            return clearance
         }
     }
 
@@ -375,7 +455,15 @@ object CloudflareSolver {
         if (clearance != null) {
             val from = if (clearance.source == Source.SAVED) "a saved pass (${clearance.passId})" else "the browser"
             log("INFO", "the app verified $host after ${tookMs / 1000}s from $from: cookies=${clearance.cookies.keys} userAgent=${clearance.userAgent}")
-            return Answer(clearance, "", false)
+            return Answer(Solved.Cleared(clearance), "", false)
+        }
+        val redirect = CloudflareExchangeFormat.parseRedirect(text)
+        if (redirect != null) {
+            val target = redirect.location.toHttpUrlOrNull()
+                ?.takeIf { (it.scheme == "http" || it.scheme == "https") && it.username.isEmpty() && it.password.isEmpty() }
+                ?: return Answer(null, "the browser received an invalid redirect", true)
+            log("INFO", "$host was not challenged in the browser and redirected (${redirect.status}) to ${target.host}; following the redirect")
+            return Answer(Solved.Redirected(redirect.status, target), "", false)
         }
         return Answer(null, CloudflareExchangeFormat.reason(text), !CloudflareExchangeFormat.isRetry(text))
     }

@@ -78,6 +78,23 @@ impl Waiters {
         all.append(&mut self.others);
         all
     }
+
+    /// Splits requests for a URL-specific redirect: the owner and any waiter asking for the exact same
+    /// URL receive the redirect; waiters for other paths on the same origin are returned separately so
+    /// each can be checked against its own URL.
+    pub(crate) fn split_same_url(&mut self) -> (Vec<VerifyRequest>, Vec<VerifyRequest>) {
+        let target_url = self.owner.url.clone();
+        let mut matched = vec![self.owner.clone()];
+        let mut deferred = Vec::new();
+        for waiter in std::mem::take(&mut self.others) {
+            if waiter.url == target_url {
+                matched.push(waiter);
+            } else {
+                deferred.push(waiter);
+            }
+        }
+        (matched, deferred)
+    }
 }
 
 #[cfg(test)]

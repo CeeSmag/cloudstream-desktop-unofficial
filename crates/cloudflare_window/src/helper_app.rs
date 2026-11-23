@@ -104,10 +104,15 @@ impl HelperState {
             HelperEvent::Command(command) => self.command(command, target),
             HelperEvent::Fetch(request) => self.fetch(&request),
             HelperEvent::Browser { id } => {
+                let mut deferred = Vec::new();
                 if let Some(site) = self.sites.get_mut(&id) {
                     site.drain_browser(&self.outbox);
+                    deferred = site.take_deferred();
                 }
                 self.retain_context(&id);
+                for request in deferred {
+                    self.open_or_join(request, target, false);
+                }
             }
             HelperEvent::Polled { window, id, raw } => {
                 if let Some(site) = self.sites.get_mut(&window) {
@@ -172,6 +177,15 @@ impl HelperState {
             );
             return;
         }
+        self.open_or_join(request, target, present);
+    }
+
+    fn open_or_join(
+        &mut self,
+        request: VerifyRequest,
+        target: &EventLoopWindowTarget<HelperEvent>,
+        present: bool,
+    ) {
         if let Some(site) = self.sites.values_mut().find(|site| site.joins(&request)) {
             site.join(request.clone());
             if present {

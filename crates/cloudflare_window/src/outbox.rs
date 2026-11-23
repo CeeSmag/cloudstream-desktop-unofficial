@@ -50,11 +50,13 @@ impl Outbox {
                     cookies: cookies.clone(),
                 }),
             },
-            (Outcome::BrowserClear { .. }, Ok(())) => HelperStatus::Passed {
-                host,
-                id,
-                issued: None,
-            },
+            (Outcome::BrowserClear { .. } | Outcome::Redirect { .. }, Ok(())) => {
+                HelperStatus::Passed {
+                    host,
+                    id,
+                    issued: None,
+                }
+            }
         }
     }
 
@@ -164,6 +166,28 @@ mod tests {
             },
         );
         assert!(matches!(status, HelperStatus::Passed { issued: None, .. }));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_redirect_check_has_no_pass_to_keep_and_writes_its_location() {
+        let dir = folder("redirect");
+        let out = Outbox {
+            exchange: dir.clone(),
+        };
+        let status = out.deliver(
+            &request(false),
+            &Outcome::Redirect {
+                status: 301,
+                location: "https://moved.test/path".into(),
+            },
+        );
+        assert!(matches!(status, HelperStatus::Passed { issued: None, .. }));
+        let answer = std::fs::read_to_string(dir.join("result-r1.txt")).expect("answer");
+        assert_eq!(
+            answer,
+            "ok=true\ntransport=redirect\nstatus=301\nlocation=https://moved.test/path\n"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
