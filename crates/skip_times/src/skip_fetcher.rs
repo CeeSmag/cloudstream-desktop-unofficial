@@ -82,3 +82,7 @@ impl SkipFetcher for UreqSkipFetcher {
         Ok(body)
     }
 }
+
+#[cfg(test)]
+#[path = "skip_fetcher_tests.rs"]
+mod tests;

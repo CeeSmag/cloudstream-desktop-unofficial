@@ -289,3 +289,113 @@ fn leaving_stops_the_downloads_and_ends_every_thread() {
 
 #[path = "subtitle_prefetch_race_tests.rs"]
 mod race;
+
+/// A fetcher that holds every download until the test opens it, and says when one is held.
+#[derive(Default)]
+struct Gate {
+    state: Mutex<(bool, usize)>,
+    changed: std::sync::Condvar,
+}
+
+impl Gate {
+    fn open(&self) {
+        self.state.lock().expect("lock").0 = true;
+        self.changed.notify_all();
+    }
+
+    /// Waits until `count` downloads are being held.
+    fn wait_held(&self, count: usize) {
+        let guard = self.state.lock().expect("lock");
+        let (_guard, wait) = self
+            .changed
+            .wait_timeout_while(guard, LIMIT, |(_, held)| *held < count)
+            .expect("lock");
+        assert!(!wait.timed_out(), "no download started");
+    }
+}
+
+impl SubtitleFetcher for Gate {
+    fn fetch(&self, url: &str, _: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
+        let mut state = self.state.lock().expect("lock");
+        state.1 += 1;
+        self.changed.notify_all();
+        let _state = self
+            .changed
+            .wait_while(state, |(open, _)| !*open)
+            .expect("lock");
+        Ok(format!("WEBVTT\n\n00:01.000 --> 00:02.000\n{url}\n").into_bytes())
+    }
+}
+
+/// Starts downloads over `loader` with one worker and every file wanted.
+fn start_over(loader: &Arc<SubtitleLoader>) -> (SubtitlePrefetch, Vec<JoinHandle<()>>) {
+    let config = PrefetchConfig {
+        workers: 1,
+        rank_of: Arc::new(rank),
+    };
+    SubtitlePrefetch::start(
+        Arc::clone(loader),
+        &config,
+        Arc::new(|_| {}),
+        Arc::new(|| true),
+    )
+}
+
+fn loader_over(scratch: &Scratch, fetcher: Arc<dyn SubtitleFetcher>) -> Arc<SubtitleLoader> {
+    let cache = Arc::new(SubtitleCache::new(
+        scratch.0.clone(),
+        Duration::from_secs(3600),
+    ));
+    Arc::new(SubtitleLoader::new(cache, fetcher, LoadOptions::default()))
+}
+
+#[test]
+fn the_summary_counts_a_download_in_progress_as_in_flight() {
+    let scratch = Scratch::new();
+    let gate = Arc::new(Gate::default());
+    let as_fetcher: Arc<dyn SubtitleFetcher> = gate.clone();
+    let (prefetch, handles) = start_over(&loader_over(&scratch, as_fetcher));
+    prefetch.submit(vec![
+        track("Arabic", "https://s.test/ar"),
+        track("English", "https://s.test/en"),
+    ]);
+    gate.wait_held(1);
+
+    let during = prefetch.summary();
+    gate.open();
+    prefetch.finish();
+    join(handles);
+
+    assert_eq!(
+        (during.in_flight, during.queued),
+        (1, 1),
+        "one worker, one held"
+    );
+    let after = prefetch.summary();
+    assert_eq!((after.in_flight, after.queued, after.ready), (0, 0, 2));
+}
+
+#[test]
+fn files_already_on_disk_are_counted_as_from_the_cache() {
+    let scratch = Scratch::new();
+    let loader = loader_over(&scratch, Arc::new(Behavior::instant()));
+    let tracks = vec![
+        track("Arabic", "https://s.test/ar"),
+        track("English", "https://s.test/en"),
+    ];
+    let (first, handles) = start_over(&loader);
+    first.submit(tracks.clone());
+    first.finish();
+    join(handles);
+    assert_eq!((first.summary().ready, first.summary().from_cache), (2, 0));
+
+    // The same video opened again: both files are on disk now.
+    let (second, handles) = start_over(&loader);
+    second.submit(tracks);
+    second.finish();
+    join(handles);
+    assert_eq!(
+        (second.summary().ready, second.summary().from_cache),
+        (2, 2)
+    );
+}

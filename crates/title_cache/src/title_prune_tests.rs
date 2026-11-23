@@ -129,3 +129,43 @@ fn a_file_dated_by_a_clock_far_in_the_future_is_removed() {
     time.set(time.now() - 400 * 24 * 3600);
     assert_eq!(cache.prune().expired, 1);
 }
+
+#[test]
+fn the_report_counts_the_titles_a_lower_limit_evicts() {
+    let scratch = Scratch::new();
+    let time = Time::new();
+    let roomy = scratch.cache(limited(10), &time);
+    for n in 0..5 {
+        roomy.save(&format!("t{n}"), &many("a", 1)).expect("saved");
+        time.advance(Duration::from_secs(5));
+    }
+    // The same folder read with a lower limit (the setting was lowered): three must go.
+    let report = scratch.cache(limited(2), &time).prune();
+    assert_eq!((report.evicted, report.kept), (3, 2));
+    assert_eq!(scratch.files().len(), 2);
+}
+
+/// A file the app cannot read (permissions, a lock) may be fine again later: prune leaves it.
+#[cfg(unix)]
+#[test]
+fn a_saved_file_that_cannot_be_read_is_left_alone() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let scratch = Scratch::new();
+    let time = Time::new();
+    let cache = scratch.cache(CacheLimits::default(), &time);
+    cache.save("locked", &many("a", 1)).expect("saved");
+    let path = cache.path_of("locked");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).expect("chmod");
+    assert!(
+        fs::read(&path).is_err(),
+        "precondition: a mode-000 file must be unreadable (run the tests as a normal user, not root)"
+    );
+
+    let report = cache.prune();
+
+    let still_there = path.exists();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("restore");
+    assert!(still_there, "an unreadable file is not deleted");
+    assert_eq!((report.corrupt, report.kept), (0, 0));
+}

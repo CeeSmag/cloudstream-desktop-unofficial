@@ -148,3 +148,37 @@ fn a_damaged_line_in_a_list_is_skipped() {
     fs::write(&list, text).expect("damaged");
     assert_eq!(cache.cached_for_title("t").len(), 1);
 }
+
+#[test]
+fn a_listed_file_that_became_empty_is_left_out() {
+    let scratch = Scratch::new();
+    let cache = scratch.cache(WEEK);
+    let arabic = ready(&cache, "https://s.test/ar.srt", "Arabic");
+    let english = ready(&cache, "https://s.test/en.srt", "English");
+    cache.remember_for_title("t", &arabic).expect("remembered");
+    cache.remember_for_title("t", &english).expect("remembered");
+    fs::write(&arabic.path, b"").expect("emptied");
+    let found = cache.cached_for_title("t");
+    let languages: Vec<&str> = found.iter().map(|s| s.language.as_str()).collect();
+    assert_eq!(languages, ["English"], "an empty file is no subtitle");
+}
+
+#[test]
+fn a_listed_file_past_its_time_is_left_out_while_the_list_is_fresh() {
+    let scratch = Scratch::new();
+    let ttl = Duration::from_secs(3600);
+    let cache = scratch.cache(ttl);
+    let arabic = ready(&cache, "https://s.test/ar.srt", "Arabic");
+    let english = ready(&cache, "https://s.test/en.srt", "English");
+    cache.remember_for_title("t", &arabic).expect("remembered");
+    cache.remember_for_title("t", &english).expect("remembered");
+    let old = SystemTime::now() - 2 * ttl;
+    fs::File::options()
+        .write(true)
+        .open(&arabic.path)
+        .and_then(|file| file.set_modified(old))
+        .expect("aged");
+    let found = cache.cached_for_title("t");
+    let languages: Vec<&str> = found.iter().map(|s| s.language.as_str()).collect();
+    assert_eq!(languages, ["English"], "an expired file is not handed out");
+}

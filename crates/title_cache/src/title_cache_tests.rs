@@ -246,3 +246,16 @@ fn forgetting_removes_the_file_and_says_whether_there_was_one() {
     assert_eq!(cache.load(KEY), Lookup::Miss(Miss::NotSaved));
     assert!(scratch.files().is_empty());
 }
+
+#[test]
+fn a_file_that_cannot_be_removed_is_an_error_not_a_title_that_was_never_saved() {
+    let (_scratch, _time, cache) = rig();
+    // A folder where the title's file belongs: removing it fails, and not with "not found".
+    let blocker = cache.path_of(KEY);
+    fs::create_dir_all(&blocker).expect("blocking folder");
+    assert!(
+        cache.forget(KEY).is_err(),
+        "a failed removal must not read as 'there was nothing to forget'"
+    );
+    assert!(blocker.is_dir());
+}

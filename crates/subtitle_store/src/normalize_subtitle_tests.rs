@@ -138,3 +138,54 @@ fn nothing_and_web_pages_are_refused() {
         Err(NormalizeError::WebPage)
     );
 }
+
+/// A real subtitle of `bytes` or a little more: the same cue over and over.
+fn long_srt(bytes: usize) -> String {
+    let mut text = String::new();
+    let mut n = 1;
+    while text.len() < bytes {
+        text.push_str(&format!("{n}\n00:00:01,000 --> 00:00:02,000\nline {n}\n\n"));
+        n += 1;
+    }
+    text
+}
+
+/// One zip entry whose sizes follow the data in a descriptor (bit 3 of the flags), as zips
+/// written by streaming tools are; `signed` puts the optional descriptor signature first.
+fn zip_entry_with_descriptor(name: &str, data: &[u8], signed: bool) -> Vec<u8> {
+    let body = deflate(data);
+    let mut entry = vec![0x50, 0x4B, 0x03, 0x04, 20, 0, 0x08, 0, 8, 0];
+    entry.extend([0; 16]); // time, date, crc and both sizes: all in the descriptor
+    entry.extend(u16::try_from(name.len()).expect("short").to_le_bytes());
+    entry.extend([0, 0]);
+    entry.extend(name.as_bytes());
+    entry.extend(&body);
+    if signed {
+        entry.extend([0x50, 0x4B, 0x07, 0x08]);
+    }
+    entry.extend([0; 4]); // crc
+    entry.extend(u32::try_from(body.len()).expect("small").to_le_bytes());
+    entry.extend(u32::try_from(data.len()).expect("small").to_le_bytes());
+    entry
+}
+
+#[test]
+fn entries_whose_sizes_follow_in_a_descriptor_are_stepped_over_with_or_without_its_signature() {
+    for signed in [true, false] {
+        let mut zip = zip_entry_with_descriptor("readme.txt", b"hello there", signed);
+        zip.extend(zip_entry_with_descriptor(
+            "movie.srt",
+            SRT.as_bytes(),
+            signed,
+        ));
+        assert_eq!(normalized(&zip).text, SRT, "signed descriptor: {signed}");
+    }
+}
+
+#[test]
+fn a_large_real_subtitle_is_unpacked_whole_from_gzip_and_zip() {
+    let text = long_srt(3 * 1024 * 1024);
+    assert_eq!(normalized(&gzip(text.as_bytes())).text, text);
+    let zip = zip_entry("movie.srt", text.as_bytes(), true);
+    assert_eq!(normalized(&zip).text, text);
+}

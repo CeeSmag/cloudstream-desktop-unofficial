@@ -115,3 +115,22 @@ fn a_playlist_whose_pieces_are_huge_stops_at_the_size_cap() {
         "it still holds many pieces"
     );
 }
+
+#[test]
+fn a_long_playlist_of_a_few_megabytes_is_joined_whole() {
+    // A two-hour film in 10 s pieces of about 6 KiB each: far below the cap, nothing may be cut.
+    let cue = format!("00:01.000 --> 00:02.000\n{}", "y".repeat(6 * 1024));
+    let piece = format!("WEBVTT\n\n{cue}\n");
+    let pieces = 720;
+    let playlist: String = (0..pieces)
+        .map(|n| format!("#EXTINF:10,\nseg{n}.vtt\n"))
+        .collect();
+    let playlist = format!("#EXTM3U\n{playlist}#EXT-X-ENDLIST\n");
+    let joined =
+        flatten_playlist(&playlist, "https://h.test/p/list.m3u8", &Endless(piece)).expect("cues");
+    assert_eq!(
+        joined.matches("-->").count(),
+        pieces,
+        "every piece is in the file"
+    );
+}

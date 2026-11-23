@@ -125,4 +125,54 @@ mod tests {
         assert!(!status(404).is_transient() && !status(403).is_transient());
         assert!(!FetchError::TooLarge.is_transient());
     }
+
+    /// Answers one request on a local socket with a body of `length` bytes.
+    fn serve_once(length: usize) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}/sub.vtt", listener.local_addr().expect("address"));
+        let worker = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("a request");
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|read| read > 2) {
+                line.clear();
+            }
+            let head =
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
+            let stream = reader.get_mut();
+            // The reader may hang up once it has read past the limit; that is not a failure here.
+            let _ = stream
+                .write_all(head.as_bytes())
+                .and_then(|()| stream.write_all(&vec![b'a'; length]));
+        });
+        (url, worker)
+    }
+
+    fn fetch_sized(length: usize) -> Result<Vec<u8>, FetchError> {
+        let (url, worker) = serve_once(length);
+        let result = UreqSubtitleFetcher::default().fetch(&url, &[]);
+        worker.join().expect("server thread");
+        result
+    }
+
+    fn limit() -> usize {
+        usize::try_from(MAX_BYTES).expect("fits")
+    }
+
+    #[test]
+    fn a_large_real_subtitle_comes_back_whole() {
+        let body = fetch_sized(2 * 1024 * 1024).expect("downloads");
+        assert_eq!(body.len(), 2 * 1024 * 1024);
+    }
+
+    #[test]
+    fn a_file_of_exactly_the_limit_is_accepted() {
+        assert_eq!(fetch_sized(limit()).map(|body| body.len()), Ok(limit()));
+    }
+
+    #[test]
+    fn a_file_one_byte_over_the_limit_is_refused() {
+        assert_eq!(fetch_sized(limit() + 1), Err(FetchError::TooLarge));
+    }
 }

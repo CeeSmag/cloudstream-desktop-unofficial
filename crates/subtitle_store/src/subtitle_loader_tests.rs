@@ -230,3 +230,36 @@ fn a_subtitle_playlist_is_saved_as_one_webvtt_file() {
         .expect("file")
         .contains("hi"));
 }
+
+#[test]
+fn each_new_try_waits_longer_than_the_one_before() {
+    let scratch = Scratch::new();
+    let slow = FetchError::Network {
+        reason: "timed out".to_owned(),
+    };
+    let fetcher = Arc::new(ScriptedFetcher::answering(
+        URL,
+        vec![Err(slow.clone()), Err(slow), Ok(VTT.to_vec())],
+    ));
+    let backoff = Duration::from_millis(100);
+    let cache = Arc::new(SubtitleCache::new(
+        scratch.0.clone(),
+        Duration::from_secs(3600),
+    ));
+    let loader = SubtitleLoader::new(
+        cache,
+        fetcher,
+        LoadOptions {
+            attempts: 3,
+            backoff,
+        },
+    );
+    let started = std::time::Instant::now();
+    loader.load(&track(URL), &always).expect("third try works");
+    // One wait after the first try, two after the second: a host is given time to recover.
+    assert!(
+        started.elapsed() >= backoff * 3,
+        "waited only {:?}",
+        started.elapsed()
+    );
+}

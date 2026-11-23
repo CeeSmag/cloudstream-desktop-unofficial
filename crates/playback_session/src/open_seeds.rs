@@ -111,3 +111,7 @@ fn check_stale_seeds(state: &mut OpenState, checker: &StreamChecker, hooks: &Ope
         }
     }
 }
+
+#[cfg(test)]
+#[path = "open_seeds_tests.rs"]
+mod tests;
