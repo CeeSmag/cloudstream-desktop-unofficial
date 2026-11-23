@@ -69,13 +69,26 @@ object PluginSecurityVerifier {
             return
         }
 
-        val scan = ZipFile(jarFile).use { zip -> scanJar(zip, pluginInternalName) }
-        val violations = scan.violations.distinct()
-        if (violations.isNotEmpty()) {
-            throw SecurityException(describe(violations))
+        val findings = collectFindings(jarFile, pluginInternalName)
+        if (findings.violations.isNotEmpty()) {
+            throw SecurityException(describe(findings.violations))
         }
-        scan.permissionNeeded?.let { throw it }
+        findings.permissionNeeded?.let { throw it }
         verifiedJarSignatures[cacheKey] = lastMod
+    }
+
+    /** Everything the scan finds in an untrusted JAR, without throwing. */
+    class Findings(
+        /** Distinct violations in the order found; any one keeps the plugin from loading. */
+        val violations: List<String>,
+        /** The first permission it needs, asked for only when [violations] is empty. */
+        val permissionNeeded: RequiresPermissionException?,
+    )
+
+    /** Scans [jarFile] as [verifyJar] does (no cache, no exception) for tools that report. */
+    fun collectFindings(jarFile: File, pluginInternalName: String): Findings {
+        val scan = ZipFile(jarFile).use { zip -> scanJar(zip, pluginInternalName) }
+        return Findings(scan.violations.distinct(), scan.permissionNeeded)
     }
 
     /** One line per violation, then "(and N more)" past [MAX_REPORTED_VIOLATIONS]. */

@@ -63,15 +63,6 @@ object PluginBytecodeTransformer {
                                 ): MethodVisitor {
                                     val mv = super.visitMethod(access, fixMethodName(name), descriptor, signature, exceptions)
                                     return object : MethodVisitor(Opcodes.ASM9, mv) {
-                                        private fun isUIClass(owner: String): Boolean {
-                                            return owner.startsWith("android/widget/") ||
-                                                owner.startsWith("android/view/") ||
-                                                owner.startsWith("android/graphics/") ||
-                                                owner.startsWith("android/app/") ||
-                                                owner.startsWith("android/text/") ||
-                                                owner.startsWith("androidx/")
-                                        }
-
                                         private fun pushDefault(type: Type) {
                                             when (type.sort) {
                                                 Type.VOID -> {}
@@ -98,7 +89,7 @@ object PluginBytecodeTransformer {
                                             descriptor: String,
                                             isInterface: Boolean,
                                         ) {
-                                            if (methodName != "<init>" && isUIClass(owner) && methodName != "getSharedPreferences" && !memberResolves(effectiveLoader, owner, methodName, descriptor, wantMethod = true)) {
+                                            if (ApiResolver.isNeutralisedCall(effectiveLoader, owner, methodName, descriptor)) {
                                                 val argTypes = Type.getArgumentTypes(descriptor)
                                                 val retType = Type.getReturnType(descriptor)
 
@@ -335,7 +326,7 @@ object PluginBytecodeTransformer {
                                         }
 
                                         override fun visitFieldInsn(opcode: Int, owner: String, name: String, descriptor: String) {
-                                            if (isUIClass(owner) && !memberResolves(effectiveLoader, owner, name, descriptor, wantMethod = false)) {
+                                            if (ApiResolver.isNeutralisedField(effectiveLoader, owner, name, descriptor)) {
                                                 val type = Type.getType(descriptor)
                                                 when (opcode) {
                                                     Opcodes.GETSTATIC -> {
@@ -401,117 +392,6 @@ object PluginBytecodeTransformer {
             "getOrNull_impl" -> "getOrNull-impl"
             "exceptionOrNull_impl" -> "exceptionOrNull-impl"
             else -> name
-        }
-    }
-
-    private val resolveCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
-
-    private fun memberResolves(
-        loader: ClassLoader,
-        owner: String,
-        name: String,
-        descriptor: String,
-        wantMethod: Boolean,
-    ): Boolean {
-        val cacheKey = "$owner#$name#$descriptor#$wantMethod"
-        return resolveCache.computeIfAbsent(cacheKey) {
-            try {
-                val jvmClassName = owner.replace('/', '.')
-                val clazz = Class.forName(jvmClassName, false, loader)
-                if (wantMethod) {
-                    if (name == "<init>") {
-                        findConstructor(clazz, descriptor, loader)
-                    } else {
-                        findMethodInHierarchy(clazz, name, descriptor, loader)
-                    }
-                } else {
-                    findFieldInHierarchy(clazz, name)
-                }
-            } catch (_: Throwable) {
-                false
-            }
-        }
-    }
-
-    private fun findMethodInHierarchy(clazz: Class<*>, name: String, descriptor: String, loader: ClassLoader): Boolean {
-        for (m in clazz.methods) {
-            if (m.name == name && isMethodMatch(m, descriptor, loader)) return true
-        }
-        var curr: Class<*>? = clazz
-        while (curr != null && curr != Any::class.java) {
-            for (m in curr.declaredMethods) {
-                if (m.name == name && isMethodMatch(m, descriptor, loader)) return true
-            }
-            curr = curr.superclass
-        }
-        return false
-    }
-
-    private fun isMethodMatch(m: java.lang.reflect.Method, descriptor: String, loader: ClassLoader): Boolean {
-        if (Type.getMethodDescriptor(m) == descriptor) return true
-        val expectedArgs = Type.getArgumentTypes(descriptor)
-        val actualParams = m.parameterTypes
-        if (expectedArgs.size != actualParams.size) return false
-        for (i in expectedArgs.indices) {
-            val expectedClass = asmTypeToClass(expectedArgs[i], loader) ?: return false
-            if (!actualParams[i].isAssignableFrom(expectedClass)) return false
-        }
-        return true
-    }
-
-    private fun findConstructor(clazz: Class<*>, descriptor: String, loader: ClassLoader): Boolean {
-        for (c in clazz.declaredConstructors) {
-            if (Type.getConstructorDescriptor(c) == descriptor) return true
-            val expectedArgs = Type.getArgumentTypes(descriptor)
-            val actualParams = c.parameterTypes
-            if (expectedArgs.size == actualParams.size) {
-                val allMatch = expectedArgs.indices.all { i ->
-                    val expectedClass = asmTypeToClass(expectedArgs[i], loader)
-                    expectedClass != null && actualParams[i].isAssignableFrom(expectedClass)
-                }
-                if (allMatch) return true
-            }
-        }
-        return false
-    }
-
-    private fun findFieldInHierarchy(clazz: Class<*>, name: String): Boolean {
-        for (f in clazz.fields) {
-            if (f.name == name) return true
-        }
-        var curr: Class<*>? = clazz
-        while (curr != null && curr != Any::class.java) {
-            for (f in curr.declaredFields) {
-                if (f.name == name) return true
-            }
-            curr = curr.superclass
-        }
-        return false
-    }
-
-    private fun asmTypeToClass(type: Type, loader: ClassLoader): Class<*>? {
-        return when (type.sort) {
-            Type.VOID -> java.lang.Void.TYPE
-            Type.BOOLEAN -> java.lang.Boolean.TYPE
-            Type.CHAR -> java.lang.Character.TYPE
-            Type.BYTE -> java.lang.Byte.TYPE
-            Type.SHORT -> java.lang.Short.TYPE
-            Type.INT -> java.lang.Integer.TYPE
-            Type.FLOAT -> java.lang.Float.TYPE
-            Type.LONG -> java.lang.Long.TYPE
-            Type.DOUBLE -> java.lang.Double.TYPE
-            Type.ARRAY -> {
-                val elemClass = asmTypeToClass(type.elementType, loader) ?: return null
-                java.lang.reflect.Array.newInstance(elemClass, 0)::class.java
-            }
-            Type.OBJECT -> {
-                try {
-                    Class.forName(type.className, false, loader)
-                } catch (_: Throwable) {
-                    null
-                }
-            }
-            else -> null
         }
     }
 }
