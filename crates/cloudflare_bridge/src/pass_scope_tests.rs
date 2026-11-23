@@ -178,3 +178,30 @@ fn scopes_over_cap_evicts_the_oldest_passes_and_never_a_rejection_list() {
     assert_eq!(scopes_over_cap(&scopes, 0), ["old", "mid", "new"]);
     assert!(scopes_over_cap::<&str>(&[("guard", None)], 0).is_empty());
 }
+
+#[test]
+fn a_different_pass_obtained_at_the_same_moment_replaces_the_kept_one() {
+    let mut entry = scope();
+    entry.save(pass("p1", "a"), now());
+    assert_eq!(
+        entry.save(pass("p2", "b"), now()),
+        SaveOutcome::Saved {
+            replaced: Some(id("p1"))
+        },
+        "only a strictly later pass is protected"
+    );
+}
+
+#[test]
+fn a_rejection_ends_exactly_when_its_clearance_would_have() {
+    let mut entry = scope();
+    entry.save(Spec::new("p1", "a").lasts(600).build(), now());
+    assert!(entry.reject(&id("p1")));
+    let just_before = Spec::new("p2", "a").obtained(later(599)).build();
+    assert_eq!(entry.save(just_before, later(599)), SaveOutcome::Rejected);
+    let at_the_end = Spec::new("p3", "a").obtained(later(600)).build();
+    assert_eq!(
+        entry.save(at_the_end, later(600)),
+        SaveOutcome::Saved { replaced: None }
+    );
+}

@@ -174,7 +174,7 @@ impl DiskPassBook {
                 .and_then(|meta| meta.modified())
                 .ok()
                 .and_then(|modified| modified.elapsed().ok());
-            if is_temp && age.is_some_and(|age| age > STALE_TEMP_AGE) {
+            if is_temp && age.is_some_and(is_stale_temp_age) {
                 let _ = fs::remove_file(&path); // best effort: tried again at the next prune
             }
         }
@@ -255,7 +255,7 @@ fn acquire(lock: &File, path: &Path) -> Result<(), PassStoreError> {
     loop {
         match lock.try_lock() {
             Ok(()) => return Ok(()),
-            Err(TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
+            Err(TryLockError::WouldBlock) if may_wait_longer(started.elapsed()) => {
                 std::thread::sleep(LOCK_RETRY);
             }
             Err(TryLockError::WouldBlock) => {
@@ -273,6 +273,16 @@ fn acquire(lock: &File, path: &Path) -> Result<(), PassStoreError> {
             }
         }
     }
+}
+
+/// True when a temporary file this old was left by a writer that stopped (a live writer renames at once).
+fn is_stale_temp_age(age: Duration) -> bool {
+    age > STALE_TEMP_AGE
+}
+
+/// True while a change that has waited `waited` for the lock may keep waiting.
+fn may_wait_longer(waited: Duration) -> bool {
+    waited < LOCK_WAIT
 }
 
 /// The file's text, or None when it is larger than [`MAX_PASS_FILE_BYTES`].

@@ -27,5 +27,11 @@ Routes Cloudflare verification between the Kotlin sidecar, Slint banner, and nat
 
 - `WatchHandle::set_helper_windows` sets how many verified browser windows the helper keeps; `VerifyHelper`
   passes it as `--max-windows <n>` when it starts the helper.
+- **Saved passes** (`WatchConfig::passes`, `SavedPasses::on_disk(<data>/cloudflare_passes)`): the helper reports
+  each pass on its stdout (`passed\t…\t<json>`); the watcher keeps it (`SavedPass`, governed by its earliest
+  applying `cf_clearance`: its `Expires` and its `Domain`) in a `PassBook` (`DiskPassBook`: one JSON file per
+  cookie scope, outside every plugin sandbox, locked writes). A later request is answered at once
+  (`source=saved`, `pass=<id>`) when `pass_policy` allows it; `rejected=<id>` retires a refused pass for good;
+  `reask_guard` stops a loop. Cookie values never reach a log or a `Debug` (`CookieValue`).
 
-Run `cargo test -p cloudflare_bridge` for exchange, protocol, prompt-owner and watcher tests.
+Run `cargo test -p cloudflare_bridge` for exchange, protocol, prompt-owner, watcher and saved-pass tests.

@@ -359,3 +359,38 @@ fn no_cookie_value_reaches_the_log() {
     assert!(logs.contains("is retired"), "{logs}");
     assert!(!logs.contains(SECRET), "{logs}");
 }
+
+fn desk_over(book: MemoryPassBook, clock: &Arc<FixedClock>) -> PassDesk {
+    PassDesk::new(SavedPasses {
+        book: Box::new(book),
+        clock: Box::new(Arc::clone(clock)),
+        run: run(),
+    })
+}
+
+#[test]
+fn opening_the_desk_prunes_what_ended_and_says_so() {
+    let clock = Arc::new(FixedClock::at(now() + Duration::from_secs(3_600)));
+    let book = MemoryPassBook::default();
+    book.save(crate::pass_fixtures::pass("p1", "a"), now())
+        .expect("save");
+    let (desk, logs) = captured(|| desk_over(book, &clock));
+    assert!(logs.contains("pruned saved Cloudflare passes"), "{logs}");
+    let again = desk.passes.book.prune(desk.now()).expect("prune");
+    assert_eq!(
+        again,
+        crate::PruneReport::default(),
+        "nothing was left to prune"
+    );
+}
+
+#[test]
+fn opening_the_desk_over_nothing_to_prune_logs_nothing() {
+    let clock = Arc::new(FixedClock::at(now()));
+    let book = MemoryPassBook::default();
+    book.save(crate::pass_fixtures::pass("p1", "a"), now())
+        .expect("save");
+    let (desk, logs) = captured(|| desk_over(book, &clock));
+    assert!(!logs.contains("pruned"), "{logs}");
+    assert_eq!(desk.passes.book.live_passes(desk.now()).len(), 1);
+}

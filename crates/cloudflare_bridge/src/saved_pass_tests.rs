@@ -37,6 +37,20 @@ fn a_pass_lives_as_long_as_its_earliest_applying_clearance() {
 }
 
 #[test]
+fn the_lifetime_cap_is_400_days_and_a_shorter_pass_keeps_its_own_end() {
+    assert_eq!(MAX_PASS_LIFETIME, Duration::from_secs(400 * 86_400));
+    let days = |count: u64| count * 86_400;
+    let made = SavedPass::new(parts(vec![cookie(
+        "cf_clearance",
+        "v",
+        ".site.test",
+        at(days(399)),
+    )]))
+    .expect("kept");
+    assert_eq!(made.valid_until(), later(days(399)));
+}
+
+#[test]
 fn a_pass_never_outlives_the_cookie_lifetime_cap() {
     let ten_years = 10 * 365 * 24 * 60 * 60;
     let made = SavedPass::new(parts(vec![cookie(

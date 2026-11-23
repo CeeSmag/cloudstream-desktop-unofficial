@@ -263,3 +263,104 @@ fn run_instance(book: &DiskPassBook, side: usize) -> Vec<(String, String)> {
     }
     rejected
 }
+
+/// A valid scope file of exactly `len` bytes: the padding sits inside the JSON, before its last byte, so
+/// any truncation breaks it.
+fn padded_scope_file(len: usize) -> String {
+    let text = encode_scope(&{
+        let mut entry = ScopeEntry::empty(pass("p1", "a").scope().clone());
+        entry.save(pass("p1", "a"), now());
+        entry
+    });
+    let (body, last) = text.split_at(text.len() - 1);
+    format!("{body}{}{last}", " ".repeat(len - text.len()))
+}
+
+#[test]
+fn the_file_size_limit_is_64_kib_and_a_file_of_exactly_that_size_reads_whole() {
+    assert_eq!(MAX_PASS_FILE_BYTES, 65_536);
+    let made = book("exact_limit");
+    let limit = usize::try_from(MAX_PASS_FILE_BYTES).expect("fits");
+    fs::write(scope_path(&made), padded_scope_file(limit)).expect("write");
+    assert_eq!(made.live_passes(now()).len(), 1, "not cut short");
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn a_file_one_byte_over_the_limit_is_refused_for_its_size() {
+    let made = book("over_limit");
+    let limit = usize::try_from(MAX_PASS_FILE_BYTES).expect("fits");
+    fs::write(scope_path(&made), padded_scope_file(limit + 1)).expect("write");
+    let (found, logs) = captured(|| made.live_passes(now()));
+    assert!(found.is_empty());
+    assert!(logs.contains("larger than a pass file can be"), "{logs}");
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn a_scope_file_that_cannot_be_read_is_logged_and_kept_and_a_missing_one_is_quiet() {
+    let made = book("unreadable_entry");
+    fs::create_dir_all(scope_path(&made)).expect("a folder where the file should be");
+    let (found, logs) = captured(|| made.read_scope(&scope_path(&made)));
+    assert!(found.is_none());
+    assert!(
+        logs.contains("cannot read a saved Cloudflare pass"),
+        "{logs}"
+    );
+    assert!(
+        scope_path(&made).exists(),
+        "an I/O error is not damage: nothing is removed"
+    );
+    let missing = made.dir().join("domain-gone.test.json");
+    let (found, logs) = captured(|| made.read_scope(&missing));
+    assert!(found.is_none());
+    assert!(
+        logs.is_empty(),
+        "a file another instance just removed is not worth a warning: {logs}"
+    );
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn removing_an_absent_file_is_fine_and_a_folder_in_its_place_is_an_error() {
+    let made = book("remove");
+    assert!(remove_if_present(&made.dir().join("absent.json")).is_ok());
+    let folder_in_place = made.dir().join("dir.json");
+    fs::create_dir_all(folder_in_place.join("inner")).expect("folder");
+    let error = remove_if_present(&folder_in_place).expect_err("not a file");
+    assert!(matches!(
+        error,
+        PassStoreError::Io {
+            operation: "remove a saved pass",
+            ..
+        }
+    ));
+    let _ = fs::remove_dir_all(made.dir());
+}
+
+#[test]
+fn opening_creates_missing_parent_folders() {
+    let root = folder("nested_open");
+    let nested = root.join("a").join("b");
+    let made = DiskPassBook::open(&nested).expect("book");
+    assert!(nested.is_dir());
+    made.save(pass("p1", "a"), now()).expect("save");
+    assert_eq!(made.live_passes(now()).len(), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_temporary_file_is_stale_only_after_a_full_minute() {
+    assert!(!is_stale_temp_age(
+        STALE_TEMP_AGE - Duration::from_millis(1)
+    ));
+    assert!(!is_stale_temp_age(STALE_TEMP_AGE));
+    assert!(is_stale_temp_age(STALE_TEMP_AGE + Duration::from_millis(1)));
+}
+
+#[test]
+fn a_change_waits_for_the_lock_up_to_its_limit_and_not_beyond() {
+    assert!(may_wait_longer(Duration::ZERO));
+    assert!(may_wait_longer(LOCK_WAIT - Duration::from_millis(1)));
+    assert!(!may_wait_longer(LOCK_WAIT));
+}

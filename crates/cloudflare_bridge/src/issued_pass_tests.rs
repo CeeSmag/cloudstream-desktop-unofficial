@@ -57,11 +57,9 @@ fn decode_refuses_a_payload_over_the_limit_before_reading_it() {
         decode_pass(&big),
         Err(PassWireError::TooLarge { bytes }) if bytes == MAX_PASS_PAYLOAD_BYTES + 1
     ));
-    let at_limit = format!(
-        "{{\"user_agent\":\"a\",\"cookies\":[]}}{}",
-        " ".repeat(MAX_PASS_PAYLOAD_BYTES - 32)
-    );
-    assert!(at_limit.len() <= MAX_PASS_PAYLOAD_BYTES);
+    let core = "{\"user_agent\":\"a\",\"cookies\":[]}";
+    let at_limit = format!("{core}{}", " ".repeat(MAX_PASS_PAYLOAD_BYTES - core.len()));
+    assert_eq!(at_limit.len(), MAX_PASS_PAYLOAD_BYTES);
     assert!(decode_pass(&at_limit).is_ok());
 }
 
