@@ -44,6 +44,11 @@ pub(crate) enum UiEvent {
         message: String,
         watch_repositories: bool,
     },
+    /// A plugin was refused for security reasons; open the structured security warning modal.
+    ExtensionSecurityBlocked {
+        hit: Option<Box<app_services::PluginHit>>,
+        block: Box<app_services::SecurityBlock>,
+    },
     ExtensionsLoaded(Box<ExtensionsCatalog>),
     /// Repositories discovered asynchronously by an aggregator plugin (such as Mega).
     RepositoriesDiscovered {

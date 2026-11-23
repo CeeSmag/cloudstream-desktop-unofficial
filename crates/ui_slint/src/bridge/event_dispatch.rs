@@ -10,7 +10,7 @@ use super::catalog_events::{
 };
 use super::details_loading::show_details_failed;
 use super::extension_catalog::{load_extensions_catalog, show_catalog};
-use super::extension_changes::show_change_done;
+use super::extension_changes::{show_change_done, show_security_blocked};
 use super::home_expanded::show_home_section_page;
 use super::player_timeline::show_online_parts;
 use super::repository_discovery::show_discovered_repositories;
@@ -79,6 +79,9 @@ fn apply_player_or_system_event(ctx: &BridgeContext, ui: &CloudStream, event: Ui
             message,
             watch_repositories,
         } => show_change_done(ctx, ui, message, watch_repositories),
+        UiEvent::ExtensionSecurityBlocked { hit, block } => {
+            show_security_blocked(ctx, ui, hit.map(|h| *h), *block);
+        }
         UiEvent::ExtensionsLoaded(catalog) => show_catalog(ctx, ui, *catalog),
         UiEvent::RepositoriesDiscovered {
             added,

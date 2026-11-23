@@ -23,6 +23,17 @@ pub enum GatewayError {
         /// Human-readable detail.
         message: String,
     },
+    /// The plugin was refused by the runtime security policy.
+    #[error("plugin blocked by security policy: {message}")]
+    SecurityBlocked {
+        /// True when the refusal came from the untrusted sandbox verifier and can be bypassed
+        /// by explicitly trusting the plugin; false for hard runtime denials.
+        bypassable: bool,
+        /// Individual violation strings reported by the runtime (empty when unavailable).
+        violations: Vec<String>,
+        /// Raw summary message from the runtime.
+        message: String,
+    },
     /// The reply did not have the expected shape.
     #[error("cannot decode reply of '{method}': {reason}")]
     Decode {
@@ -58,6 +69,19 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "extension reported NotImplementedError: nope"
+        );
+    }
+
+    #[test]
+    fn security_blocked_message_includes_detail() {
+        let error = GatewayError::SecurityBlocked {
+            bypassable: true,
+            violations: vec!["Disallowed class 'java.lang.ClassLoader'".into()],
+            message: "Disallowed class 'java.lang.ClassLoader'".into(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "plugin blocked by security policy: Disallowed class 'java.lang.ClassLoader'"
         );
     }
 }

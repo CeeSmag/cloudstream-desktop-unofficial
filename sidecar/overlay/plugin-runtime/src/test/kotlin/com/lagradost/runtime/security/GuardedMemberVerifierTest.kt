@@ -32,8 +32,11 @@ class GuardedMemberVerifierTest {
 
     private fun verify(jar: File) = PluginSecurityVerifier.verifyJar(jar, "test-plugin", isTrusted = false)
 
-    private fun refusal(jar: File): String =
-        assertFailsWith<SecurityException> { verify(jar) }.message.orEmpty()
+    private fun refusal(jar: File): String {
+        val ex = assertFailsWith<PluginSecurityBlockedException> { verify(jar) }
+        assertTrue(ex.violations.isNotEmpty(), "PluginSecurityBlockedException must carry violations")
+        return ex.message.orEmpty()
+    }
 
     @Test
     fun `allowed members pass`() {

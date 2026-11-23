@@ -16,6 +16,7 @@ use super::focus_screens::FocusScreen;
 use super::home_expanded::ExpandedShelfState;
 use super::home_loading::HomeShelf;
 use super::player_timeline::Timeline;
+use super::security_dialog::PendingTrustAction;
 use super::subtitle_delivery::SubtitleDeliveryHandle;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
@@ -95,6 +96,8 @@ pub(crate) struct Session {
     pub(crate) focus: std::collections::HashMap<FocusScreen, FocusGrid>,
     /// Background watcher collecting repositories added by aggregator plugins.
     pub(crate) repository_discovery: RepositoryDiscovery,
+    /// Pending trust action awaiting confirmation in the SecurityDialog modal.
+    pub(crate) pending_trust: Option<PendingTrustAction>,
 }
 
 /// Which title the details page shows.

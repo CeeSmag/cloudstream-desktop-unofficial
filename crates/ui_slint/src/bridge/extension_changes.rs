@@ -1,6 +1,6 @@
 //! Plugin and repository changes, run off the UI thread with a busy line.
 
-use app_services::UiServices;
+use app_services::{PluginHit, SecurityBlock, ServiceError, UiServices};
 use core_model::InstalledExtension;
 
 use crate::background_work::spawn_work;
@@ -13,10 +13,20 @@ use super::extension_catalog::{
 };
 use super::home_loading::load_home;
 use super::repository_discovery::watch_discovered_repositories;
+use super::security_dialog::open_security_blocked;
 
-type ExtensionChange = Box<dyn FnOnce(&UiServices) -> Result<String, String> + Send>;
+enum ChangeOutcome {
+    Done(String),
+    Failed(String),
+    SecurityBlocked {
+        hit: Option<Box<PluginHit>>,
+        block: Box<SecurityBlock>,
+    },
+}
 
-/// Installs the catalog plugin named `key`.
+type ExtensionChange = Box<dyn FnOnce(&UiServices) -> ChangeOutcome + Send>;
+
+/// Installs the catalog plugin named `key` sandboxed (`trusted = false`).
 pub(crate) fn install_plugin(ctx: &BridgeContext, key: &str) {
     let found = ctx
         .session
@@ -34,15 +44,56 @@ pub(crate) fn install_plugin(ctx: &BridgeContext, key: &str) {
         &busy,
         true,
         Box::new(move |services| {
-            let providers = services
+            match services
                 .extensions
                 .install(&hit.plugin, &hit.repository_url)
-                .map_err(|error| format!("{} could not be installed: {error}", hit.plugin.name))?;
-            Ok(format!(
-                "Installed {} ({} providers)",
-                hit.plugin.name,
-                providers.len()
-            ))
+            {
+                Ok(providers) => ChangeOutcome::Done(format!(
+                    "Installed {} ({} providers)",
+                    hit.plugin.name,
+                    providers.len()
+                )),
+                Err(ServiceError::SecurityBlocked(block)) => ChangeOutcome::SecurityBlocked {
+                    hit: Some(Box::new(hit)),
+                    block,
+                },
+                Err(error) => ChangeOutcome::Failed(format!(
+                    "{} could not be installed: {error}",
+                    hit.plugin.name
+                )),
+            }
+        }),
+    );
+}
+
+/// Installs `hit` explicitly trusted after the user confirms the security warning modal.
+pub(crate) fn install_plugin_trusted(ctx: &BridgeContext, hit: PluginHit) {
+    let busy = format!(
+        "Installing {} as trusted… (this can take a minute)",
+        hit.plugin.name
+    );
+    run_change(
+        ctx,
+        &busy,
+        true,
+        Box::new(move |services| {
+            match services
+                .extensions
+                .install_trusted(&hit.plugin, &hit.repository_url)
+            {
+                Ok(providers) => ChangeOutcome::Done(format!(
+                    "Installed {} as trusted ({} providers)",
+                    hit.plugin.name,
+                    providers.len()
+                )),
+                Err(ServiceError::SecurityBlocked(block)) => {
+                    ChangeOutcome::SecurityBlocked { hit: None, block }
+                }
+                Err(error) => ChangeOutcome::Failed(format!(
+                    "{} could not be installed: {error}",
+                    hit.plugin.name
+                )),
+            }
         }),
     );
 }
@@ -55,12 +106,9 @@ pub(crate) fn add_repository(ctx: &BridgeContext, url: String) {
         ctx,
         "Adding the repository…",
         false,
-        Box::new(move |services| {
-            let entry = services
-                .repositories
-                .add(&url)
-                .map_err(|error| format!("Repository failed: {error}"))?;
-            Ok(format!("Added repository {}", entry.name))
+        Box::new(move |services| match services.repositories.add(&url) {
+            Ok(entry) => ChangeOutcome::Done(format!("Added repository {}", entry.name)),
+            Err(error) => ChangeOutcome::Failed(format!("Repository failed: {error}")),
         }),
     );
 }
@@ -70,17 +118,14 @@ pub(crate) fn remove_repository(ctx: &BridgeContext, url: String) {
         ctx,
         "Removing the repository…",
         false,
-        Box::new(move |services| {
-            services
-                .repositories
-                .remove(&url)
-                .map_err(|error| error.to_string())?;
-            Ok("Repository removed".to_owned())
+        Box::new(move |services| match services.repositories.remove(&url) {
+            Ok(()) => ChangeOutcome::Done("Repository removed".to_owned()),
+            Err(error) => ChangeOutcome::Failed(error.to_string()),
         }),
     );
 }
 
-pub(crate) fn set_trusted(ctx: &BridgeContext, file: String, trusted: bool) {
+pub(crate) fn apply_set_trusted(ctx: &BridgeContext, file: String, trusted: bool) {
     let busy = if trusted {
         "Trusting the plugin (reloading it)…"
     } else {
@@ -91,13 +136,20 @@ pub(crate) fn set_trusted(ctx: &BridgeContext, file: String, trusted: bool) {
         busy,
         true,
         Box::new(move |services| {
-            let extension = installed_by_file(services, &file)?;
-            services
-                .extensions
-                .set_trusted(&extension, trusted)
-                .map_err(|error| error.to_string())?;
-            let mode = if trusted { "trusted" } else { "sandboxed" };
-            Ok(format!("{} is {mode} now", extension.internal_name))
+            let extension = match installed_by_file(services, &file) {
+                Ok(ext) => ext,
+                Err(error) => return ChangeOutcome::Failed(error),
+            };
+            match services.extensions.set_trusted(&extension, trusted) {
+                Ok(()) => {
+                    let mode = if trusted { "trusted" } else { "sandboxed" };
+                    ChangeOutcome::Done(format!("{} is {mode} now", extension.internal_name))
+                }
+                Err(ServiceError::SecurityBlocked(block)) => {
+                    ChangeOutcome::SecurityBlocked { hit: None, block }
+                }
+                Err(error) => ChangeOutcome::Failed(error.to_string()),
+            }
         }),
     );
 }
@@ -108,35 +160,61 @@ pub(crate) fn uninstall(ctx: &BridgeContext, file: String) {
         "Removing the plugin…",
         false,
         Box::new(move |services| {
-            let extension = installed_by_file(services, &file)?;
-            services
-                .extensions
-                .uninstall(&extension)
-                .map_err(|error| error.to_string())?;
-            Ok(format!("Removed {}", extension.internal_name))
+            let extension = match installed_by_file(services, &file) {
+                Ok(ext) => ext,
+                Err(error) => return ChangeOutcome::Failed(error),
+            };
+            match services.extensions.uninstall(&extension) {
+                Ok(()) => ChangeOutcome::Done(format!("Removed {}", extension.internal_name)),
+                Err(error) => ChangeOutcome::Failed(error.to_string()),
+            }
         }),
     );
 }
 
-/// Runs `change` in the background with `busy` on screen; [`show_change_done`] follows.
+/// Runs `change` in the background with `busy` on screen; [`show_change_done`] or
+/// [`show_security_blocked`] follows.
 fn run_change(ctx: &BridgeContext, busy: &str, watch_on_success: bool, change: ExtensionChange) {
     if let Some(ui) = ctx.window() {
         ui.set_extensions_busy(busy.into());
     }
     let services = ctx.owned_services();
     let sender = ctx.sender();
-    spawn_work("extension-change", move || {
-        let outcome = change(&services);
-        let watch_repositories = watch_on_success && outcome.is_ok();
-        let message = outcome.unwrap_or_else(|error| {
-            tracing::warn!(%error, "an extension change failed");
-            error
-        });
-        sender.send(UiEvent::ExtensionChanged {
+    spawn_work("extension-change", move || match change(&services) {
+        ChangeOutcome::Done(message) => sender.send(UiEvent::ExtensionChanged {
             message,
-            watch_repositories,
-        });
+            watch_repositories: watch_on_success,
+        }),
+        ChangeOutcome::Failed(error) => {
+            tracing::warn!(%error, "an extension change failed");
+            sender.send(UiEvent::ExtensionChanged {
+                message: error,
+                watch_repositories: false,
+            });
+        }
+        ChangeOutcome::SecurityBlocked { hit, block } => {
+            tracing::warn!(
+                plugin = %block.plugin,
+                can_trust = block.can_trust,
+                summary = %block.short_summary(),
+                "plugin blocked by security policy"
+            );
+            sender.send(UiEvent::ExtensionSecurityBlocked { hit, block });
+        }
     });
+}
+
+/// Shows the structured security warning modal after a security refusal.
+pub(crate) fn show_security_blocked(
+    ctx: &BridgeContext,
+    ui: &CloudStream,
+    hit: Option<PluginHit>,
+    block: SecurityBlock,
+) {
+    ui.set_extensions_busy("".into());
+    refresh_plugins(ctx, ui);
+    refresh_providers(ctx, ui);
+    open_security_blocked(ctx, ui, hit, block);
 }
 
 /// After a change: its message, then every list that depends on the plugins.

@@ -3,7 +3,11 @@ package sidecar
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.lagradost.runtime.loader.PluginSecurityDeniedException
 import com.lagradost.runtime.loader.stubs.URLStub
+import com.lagradost.runtime.security.PluginSecurityBlockedException
+import com.lagradost.runtime.security.PluginSecurityVerifier
+import com.lagradost.runtime.security.RequiresPermissionException
 import java.io.PrintStream
 import kotlin.system.exitProcess
 
@@ -49,8 +53,24 @@ private fun handleLine(service: ProviderService, line: String): Map<String, Any?
         mapOf("id" to id, "result" to result)
     } catch (failure: Throwable) {
         SidecarLog.error("request id=$id method=$method failed after ${elapsedMillis(startedAt)} ms: $failure", failure)
-        mapOf("id" to id, "error" to mapOf("type" to failure.javaClass.simpleName, "message" to failure.message))
+        mapOf("id" to id, "error" to encodeError(failure))
     }
+}
+
+/** Shapes an exception for the JSON-RPC error envelope, attaching structured security violations when present. */
+internal fun encodeError(failure: Throwable): Map<String, Any?> {
+    val base = LinkedHashMap<String, Any?>()
+    base["type"] = failure.javaClass.simpleName
+    base["message"] = failure.message
+    when (failure) {
+        is PluginSecurityBlockedException ->
+            base["violations"] = failure.violations.take(PluginSecurityVerifier.MAX_REPORTED_VIOLATIONS)
+        is RequiresPermissionException ->
+            base["violations"] = listOfNotNull(failure.message)
+        is PluginSecurityDeniedException ->
+            base["violations"] = listOf("Disallowed class '${failure.blockedClass}'")
+    }
+    return base
 }
 
 private fun dispatch(service: ProviderService, method: String, params: JsonNode): Any? = when (method) {

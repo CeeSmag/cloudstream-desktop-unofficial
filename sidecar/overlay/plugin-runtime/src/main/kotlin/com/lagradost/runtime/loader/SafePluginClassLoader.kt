@@ -31,9 +31,12 @@ class SafePluginClassLoader(parent: ClassLoader, private val isTrusted: Boolean 
             }
         }
 
-        // If the unwhitelisted class is a System/JDK/Host class, block it with SecurityException
+        // If the unwhitelisted class is a System/JDK/Host class, block it with a hard denial.
         if (com.lagradost.runtime.security.PluginSecurityPolicy.isSystemOrHostPackage(name)) {
-            throw SecurityException("Plugin Security: Access to class '$name' is blocked by Default Deny policy.")
+            throw PluginSecurityDeniedException(
+                name,
+                "Plugin Security: Access to class '$name' is blocked by Default Deny policy.",
+            )
         }
 
         // Otherwise it is an unlisted 3rd party or plugin-internal class:
@@ -162,3 +165,12 @@ class SafePluginClassLoader(parent: ClassLoader, private val isTrusted: Boolean 
         return clazz
     }
 }
+
+/**
+ * Thrown by [SafePluginClassLoader] when a plugin attempts to load a hard-denied JDK/host class
+ * at runtime (non-bypassable even for trusted plugins).
+ */
+class PluginSecurityDeniedException(
+    val blockedClass: String,
+    message: String,
+) : SecurityException(message)

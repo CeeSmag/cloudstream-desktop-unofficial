@@ -13,7 +13,8 @@ use slint::{
 use ui_slint::{
     AvailablePlugin, BrowseFilter, CastItem, CloudStream, DetailsMeta, EpisodeItem, FilterChip,
     HomeExpanded, PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList,
-    RepositoryItem, SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
+    RepositoryItem, SecurityDialog, SeekMark, SeekPreview, ShelfSection, SourceItem,
+    SourceMenuInfo, TrackChoice,
 };
 
 const WIDTH: u32 = 1280;
@@ -672,6 +673,41 @@ fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     ui.set_settings_page_index(0);
     ui.set_show_wipe_confirm(true);
     assert_non_blank(&render_frame(window, "10_wipe_dialog"), "wipe_dialog");
+    ui.set_show_wipe_confirm(false);
+    verify_security_dialog_overlay(ui, window);
+}
+
+fn verify_security_dialog_overlay(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    let dialog = ui.global::<SecurityDialog>();
+    dialog.set_plugin_name("StreamCenter".into());
+    dialog.set_headline("Blocked for security".into());
+    dialog.set_summary("This plugin uses restricted system features and was not installed.".into());
+    dialog.set_reasons(strings(&[
+        "Dynamic class loading — can load unverified code and bypass runtime checks.",
+        "Local network & raw sockets — can scan your local network or open direct connections.",
+    ]));
+    dialog.set_warning_text(
+        "Security warning: Trusting skips bytecode checks and disables the OS filesystem sandbox."
+            .into(),
+    );
+    dialog.set_technical_details(
+        "Disallowed class 'java.lang.ClassLoader'\nDisallowed class 'java.net.NetworkInterface'"
+            .into(),
+    );
+    dialog.set_can_trust(true);
+    dialog.set_confirm_label("Trust & Install anyway".into());
+    dialog.set_cancel_label("Keep blocked".into());
+    dialog.set_open(true);
+    assert_non_blank(
+        &render_frame(window, "11_security_dialog"),
+        "security_dialog",
+    );
+    dialog.set_show_details(true);
+    assert_non_blank(
+        &render_frame(window, "11b_security_dialog_details"),
+        "security_dialog_details",
+    );
+    dialog.set_open(false);
 }
 
 #[test]

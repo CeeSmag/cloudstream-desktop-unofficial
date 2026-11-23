@@ -30,6 +30,7 @@ mod regenerable_cleanup;
 mod repository_service;
 mod request_router;
 mod routed_player;
+mod security_block;
 mod service_error;
 mod settings_service;
 mod storage_cap_setting;
@@ -74,6 +75,7 @@ pub use regenerable_cleanup::{clean_regenerable, CleanupReport, REGENERABLE_FOLD
 pub use repository_service::RepositoryService;
 pub use request_router::RequestRouter;
 pub use routed_player::RoutedPlayer;
+pub use security_block::{classify_violations, SecurityBlock, SecurityConcern, SecurityRefusal};
 pub use service_error::ServiceError;
 pub use settings_service::SettingsService;
 pub use storage_cleanup::{

@@ -11,11 +11,12 @@ use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
 use super::extension_catalog::load_extensions_catalog;
 use super::extension_changes::{
-    add_repository, install_plugin, remove_repository, set_trusted, uninstall,
+    add_repository, apply_set_trusted, install_plugin, remove_repository, uninstall,
 };
 use super::home_expanded::close_expanded_shelf;
 use super::home_loading::load_home;
 use super::preference_callbacks::saved;
+use super::security_dialog::open_trust_confirm;
 
 /// The Extensions page's index in the Settings side bar.
 const EXTENSIONS_PAGE: i32 = 2;
@@ -30,7 +31,7 @@ pub(crate) fn wire_extension_settings(ctx: &BridgeContext, ui: &CloudStream) {
         }
     });
     let c = ctx.clone();
-    ui.on_set_trusted(move |file, trusted| set_trusted(&c, file.to_string(), trusted));
+    ui.on_set_trusted(move |file, trusted| request_set_trusted(&c, file.to_string(), trusted));
     let c = ctx.clone();
     ui.on_uninstall_plugin(move |file| uninstall(&c, file.to_string()));
     let c = ctx.clone();
@@ -39,6 +40,24 @@ pub(crate) fn wire_extension_settings(ctx: &BridgeContext, ui: &CloudStream) {
     ui.on_remove_repo(move |url| remove_repository(&c, url.to_string()));
     let c = ctx.clone();
     ui.on_install_plugin(move |key| install_plugin(&c, &key));
+}
+
+fn request_set_trusted(ctx: &BridgeContext, file: String, trusted: bool) {
+    if !trusted {
+        apply_set_trusted(ctx, file, false);
+        return;
+    }
+    let Some(ui) = ctx.window() else {
+        return;
+    };
+    let name = ctx
+        .services
+        .extensions
+        .installed()
+        .ok()
+        .and_then(|list| list.into_iter().find(|ext| ext.file_name == file))
+        .map_or_else(|| file.clone(), |ext| ext.internal_name);
+    open_trust_confirm(ctx, &ui, file, name);
 }
 
 fn set_provider(ctx: &BridgeContext, name: SharedString) {

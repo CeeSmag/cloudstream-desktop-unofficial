@@ -12,7 +12,7 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, ModelRc, PhysicalSize, PlatformError, SharedString, VecModel};
 use ui_slint::{
     AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, PluginItem, PosterItem, RepoDetail,
-    RepoList, RepositoryItem, ShelfSection, SourceItem, TrackChoice,
+    RepoList, RepositoryItem, SecurityDialog, ShelfSection, SourceItem, TrackChoice,
 };
 
 struct HeadlessPlatform {
@@ -309,6 +309,43 @@ fn verify_performance_card(ui: &CloudStream) {
     assert_eq!(*resets.borrow(), 1);
 }
 
+fn verify_security_dialog(ui: &CloudStream) {
+    let dialog = ui.global::<SecurityDialog>();
+    assert!(!dialog.get_open());
+    dialog.set_plugin_name("StreamCenter".into());
+    dialog.set_headline("Blocked for security".into());
+    dialog.set_summary("This plugin uses restricted system features.".into());
+    dialog.set_reasons(strings(&[
+        "Dynamic class loading — can load unverified code.",
+        "Local network & raw sockets — can scan your local network.",
+    ]));
+    dialog.set_warning_text("Only trust plugins from authors you know and trust.".into());
+    dialog.set_technical_details("Disallowed class 'java.lang.ClassLoader'".into());
+    dialog.set_show_details(false);
+    dialog.set_can_trust(true);
+    dialog.set_confirm_label("Trust & Install anyway".into());
+    dialog.set_cancel_label("Keep blocked".into());
+    dialog.set_open(true);
+    assert!(dialog.get_open());
+    assert_eq!(dialog.get_reasons().row_count(), 2);
+
+    dialog.set_show_details(true);
+    assert!(dialog.get_show_details());
+
+    let confirmed = Rc::new(RefCell::new(0usize));
+    let confirm_ref = Rc::clone(&confirmed);
+    dialog.on_confirm(move || *confirm_ref.borrow_mut() += 1);
+    dialog.invoke_confirm();
+    assert_eq!(*confirmed.borrow(), 1);
+
+    let cancelled = Rc::new(RefCell::new(0usize));
+    let cancel_ref = Rc::clone(&cancelled);
+    dialog.on_cancel(move || *cancel_ref.borrow_mut() += 1);
+    dialog.invoke_cancel();
+    assert_eq!(*cancelled.borrow(), 1);
+    dialog.set_open(false);
+}
+
 #[test]
 fn headless_ui_bindings_callbacks_and_navigation_flows() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -326,4 +363,5 @@ fn headless_ui_bindings_callbacks_and_navigation_flows() {
     verify_updates_flow(&ui);
     verify_performance_card(&ui);
     verify_helper_and_video_rows(&ui);
+    verify_security_dialog(&ui);
 }

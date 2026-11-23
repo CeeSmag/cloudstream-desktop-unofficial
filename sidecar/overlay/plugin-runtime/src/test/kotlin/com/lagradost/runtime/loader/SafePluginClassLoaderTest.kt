@@ -73,9 +73,10 @@ class SafePluginClassLoaderTest {
         )
 
         for (className in blockedClasses) {
-            assertFailsWith<SecurityException>("Expected $className to be blocked") {
+            val ex = assertFailsWith<PluginSecurityDeniedException>("Expected $className to be blocked") {
                 classLoader.loadClass(className)
             }
+            assertEquals(className, ex.blockedClass)
         }
 
         // Native library loading must return null

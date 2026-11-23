@@ -44,6 +44,7 @@ mod poster_hydrate;
 mod preference_callbacks;
 mod repo_list;
 mod repository_discovery;
+mod security_dialog;
 mod session;
 mod skip_lookup_start;
 mod source_persist;

@@ -14,6 +14,8 @@ pub(crate) struct RemoteFailure {
     kind: String,
     #[serde(default)]
     message: Option<String>,
+    #[serde(default)]
+    violations: Vec<String>,
 }
 
 /// One reply line, before it is matched to a request.
@@ -38,12 +40,31 @@ impl ReplyEnvelope {
     /// Converts the reply into the call's result value or a typed error.
     pub(crate) fn into_value(self) -> Result<Value, GatewayError> {
         match self.error {
-            Some(failure) => Err(GatewayError::Remote {
-                kind: failure.kind,
-                message: failure.message.unwrap_or_default(),
-            }),
+            Some(failure) => Err(decode_failure(failure)),
             None => Ok(self.result.unwrap_or(Value::Null)),
         }
+    }
+}
+
+fn decode_failure(failure: RemoteFailure) -> GatewayError {
+    let message = failure.message.unwrap_or_default();
+    match failure.kind.as_str() {
+        "PluginSecurityBlockedException" | "RequiresPermissionException" => {
+            GatewayError::SecurityBlocked {
+                bypassable: true,
+                violations: failure.violations,
+                message,
+            }
+        }
+        "PluginSecurityDeniedException" => GatewayError::SecurityBlocked {
+            bypassable: false,
+            violations: failure.violations,
+            message,
+        },
+        _ => GatewayError::Remote {
+            kind: failure.kind,
+            message,
+        },
     }
 }
 
@@ -129,5 +150,62 @@ mod tests {
             parse_reply("[main] INFO something"),
             Err(GatewayError::Transport(_))
         ));
+    }
+
+    #[test]
+    fn parse_reply_decodes_typed_security_errors() {
+        let verifier = parse_reply(
+            r#"{"id":4,"error":{"type":"PluginSecurityBlockedException","message":"blocked","violations":["Disallowed class 'java.lang.ClassLoader'"]}}"#,
+        )
+        .expect("valid reply");
+        assert_eq!(
+            verifier.into_value(),
+            Err(GatewayError::SecurityBlocked {
+                bypassable: true,
+                violations: vec!["Disallowed class 'java.lang.ClassLoader'".to_owned()],
+                message: "blocked".to_owned(),
+            })
+        );
+
+        let perm = parse_reply(
+            r#"{"id":5,"error":{"type":"RequiresPermissionException","message":"raw socket","violations":["raw socket"]}}"#,
+        )
+        .expect("valid reply");
+        assert!(matches!(
+            perm.into_value(),
+            Err(GatewayError::SecurityBlocked {
+                bypassable: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_reply_distinguishes_hard_denial_and_path_jail_security_exception() {
+        let hard = parse_reply(
+            r#"{"id":6,"error":{"type":"PluginSecurityDeniedException","message":"denied","violations":["Disallowed class 'java.lang.ProcessBuilder'"]}}"#,
+        )
+        .expect("valid reply");
+        assert_eq!(
+            hard.into_value(),
+            Err(GatewayError::SecurityBlocked {
+                bypassable: false,
+                violations: vec!["Disallowed class 'java.lang.ProcessBuilder'".to_owned()],
+                message: "denied".to_owned(),
+            })
+        );
+
+        // ExtensionPathJail throws plain SecurityException: must NOT become SecurityBlocked.
+        let jail = parse_reply(
+            r#"{"id":7,"error":{"type":"SecurityException","message":"cloudstream.data.dir is not set"}}"#,
+        )
+        .expect("valid reply");
+        assert_eq!(
+            jail.into_value(),
+            Err(GatewayError::Remote {
+                kind: "SecurityException".to_owned(),
+                message: "cloudstream.data.dir is not set".to_owned(),
+            })
+        );
     }
 }

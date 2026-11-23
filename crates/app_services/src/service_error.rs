@@ -3,6 +3,8 @@ use extension_repo::RepoError;
 use player_api::PlayerError;
 use storage::StorageError;
 
+use crate::security_block::SecurityBlock;
+
 /// Why a use case failed. `Display` is written for people; details are logged where they occur.
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
@@ -29,4 +31,7 @@ pub enum ServiceError {
         /// Why ("not a video plugin (it declares Others)").
         reason: String,
     },
+    /// The plugin was refused by the security sandbox or hard classloader policy.
+    #[error("{} was blocked for security reasons ({})", .0.plugin, .0.short_summary())]
+    SecurityBlocked(Box<SecurityBlock>),
 }

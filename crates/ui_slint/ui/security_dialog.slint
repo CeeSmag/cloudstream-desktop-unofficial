@@ -1,0 +1,214 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvButton } from "controls.slint";
+
+/// Shared state for the plugin security warning & trust-bypass modal.
+export global SecurityDialog {
+    in-out property <bool> open: false;
+    in-out property <string> plugin-name: "";
+    in-out property <string> headline: "";
+    in-out property <string> summary: "";
+    in-out property <[string]> reasons: [];
+    in-out property <string> warning-text: "";
+    in-out property <string> technical-details: "";
+    in-out property <bool> show-details: false;
+    in-out property <bool> can-trust: false;
+    in-out property <string> confirm-label: "";
+    in-out property <string> cancel-label: "Keep blocked";
+    callback confirm();
+    callback cancel();
+}
+
+/// Modal overlay explaining why a plugin was blocked (or warning before trusting it).
+export component SecurityDialogOverlay inherits Rectangle {
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: Theme.overlay-scrim;
+
+    TouchArea { }
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: min(560px, root.width - 48px);
+                background: Theme.panel-glass;
+                border-radius: Theme.radius-lg;
+                border-width: 1px;
+                border-color: SecurityDialog.can-trust ? #f5b94266 : Theme.danger-border;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #000000c8;
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    // Header row: warning badge + headline + plugin name
+                    HorizontalLayout {
+                        spacing: 14px;
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 12px;
+                            background: SecurityDialog.can-trust ? Theme.warn-soft : Theme.danger-soft;
+                            border-width: 1px;
+                            border-color: SecurityDialog.can-trust ? #f5b94266 : Theme.danger-border;
+                            TvIcon {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                commands: SecurityDialog.can-trust ? Icons.alert : Icons.shield;
+                                size: 22px;
+                                color: SecurityDialog.can-trust ? Theme.warn : Theme.danger;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text {
+                                text: SecurityDialog.headline;
+                                color: Theme.text;
+                                font-size: 18px;
+                                font-weight: 700;
+                                overflow: elide;
+                            }
+                            if SecurityDialog.plugin-name != "": Text {
+                                text: SecurityDialog.plugin-name;
+                                color: SecurityDialog.can-trust ? Theme.warn : Theme.danger;
+                                font-size: 13px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // Plain-language explanation
+                    if SecurityDialog.summary != "": Text {
+                        text: SecurityDialog.summary;
+                        color: Theme.text-secondary;
+                        font-size: 13.5px;
+                        wrap: word-wrap;
+                    }
+
+                    // Categorized plain-English risk reasons
+                    if SecurityDialog.reasons.length > 0: Rectangle {
+                        border-radius: Theme.radius-sm;
+                        background: #ffffff08;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            for reason in SecurityDialog.reasons: HorizontalLayout {
+                                spacing: 10px;
+                                cross-axis-alignment: start;
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    Rectangle {
+                                        width: 6px;
+                                        height: 6px;
+                                        border-radius: 3px;
+                                        background: SecurityDialog.can-trust ? Theme.warn : Theme.danger;
+                                    }
+                                }
+                                Text {
+                                    text: reason;
+                                    color: Theme.text;
+                                    font-size: 13px;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+                    }
+
+                    // Explicit security warning callout when trust bypass is available
+                    if SecurityDialog.warning-text != "": Rectangle {
+                        border-radius: Theme.radius-sm;
+                        background: Theme.danger-soft;
+                        border-width: 1px;
+                        border-color: Theme.danger-border;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 10px;
+                            cross-axis-alignment: start;
+                            VerticalLayout {
+                                padding-top: 2px;
+                                TvIcon {
+                                    commands: Icons.alert;
+                                    size: 16px;
+                                    color: Theme.danger;
+                                }
+                            }
+                            Text {
+                                text: SecurityDialog.warning-text;
+                                color: Theme.text;
+                                font-size: 12.5px;
+                                wrap: word-wrap;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+
+                    // Collapsible raw technical details for power users
+                    if SecurityDialog.technical-details != "": VerticalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            alignment: start;
+                            TvButton {
+                                text: SecurityDialog.show-details ? "Hide technical details" : "Show technical details";
+                                kind: "ghost";
+                                compact: true;
+                                clicked => {
+                                    SecurityDialog.show-details = !SecurityDialog.show-details;
+                                }
+                            }
+                        }
+                        if SecurityDialog.show-details: Rectangle {
+                            height: 128px;
+                            border-radius: Theme.radius-sm;
+                            background: Theme.input-bg;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            ScrollView {
+                                width: 100%;
+                                height: 100%;
+                                VerticalLayout {
+                                    padding: 10px;
+                                    Text {
+                                        text: SecurityDialog.technical-details;
+                                        color: Theme.muted;
+                                        font-size: 11.5px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Footer actions
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+                        padding-top: 4px;
+                        TvButton {
+                            text: SecurityDialog.cancel-label;
+                            kind: "secondary";
+                            clicked => { SecurityDialog.cancel(); }
+                        }
+                        if SecurityDialog.can-trust: TvButton {
+                            text: SecurityDialog.confirm-label;
+                            icon: Icons.shield;
+                            kind: "danger";
+                            clicked => { SecurityDialog.confirm(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

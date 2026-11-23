@@ -5,13 +5,14 @@ use std::time::{Duration, Instant};
 
 use content_policy::{ContentPolicy, Verdict};
 use core_model::{DiscoveredRepository, InstalledExtension, PluginListing, ProviderInfo};
-use extension_api::ProviderGateway;
+use extension_api::{GatewayError, ProviderGateway};
 use extension_repo::{plugin_path_in, ExtensionInstaller, HttpFetcher};
 use storage::InstalledExtensionStore;
 
 use crate::clock::Clock;
 use crate::content_support::{judge_by_providers, judge_installed, judge_listing, listing_label};
 use crate::extension_load_report::{ExtensionLoadReport, LoadProgress};
+use crate::security_block::{SecurityBlock, SecurityRefusal};
 use crate::ServiceError;
 
 /// Installs, removes and loads extension files. Only video plugins ([`ContentPolicy`]) are
@@ -68,13 +69,36 @@ impl ExtensionService {
         Ok(self.installed.list()?)
     }
 
-    /// Downloads a plugin, records it and loads it into the runtime. A plugin that is not a video
-    /// plugin is refused before anything is downloaded.
+    /// Downloads a plugin, records it and loads it sandboxed (`trusted = false`).
+    ///
+    /// A plugin that is not a video plugin is refused before anything is downloaded. If the
+    /// security sandbox refuses the plugin, the downloaded file and database entry are rolled back
+    /// cleanly and [`ServiceError::SecurityBlocked`] is returned.
     #[tracing::instrument(level = "debug", skip_all, fields(repository_url = ?repository_url), err)]
     pub fn install(
         &self,
         listing: &PluginListing,
         repository_url: &str,
+    ) -> Result<Vec<ProviderInfo>, ServiceError> {
+        self.install_with_trust(listing, repository_url, false)
+    }
+
+    /// Installs and loads a plugin as explicitly **trusted** after the user acknowledges the
+    /// security warning. Still enforces [`ContentPolicy`] and path-jail invariants.
+    #[tracing::instrument(level = "debug", skip_all, fields(repository_url = ?repository_url), err)]
+    pub fn install_trusted(
+        &self,
+        listing: &PluginListing,
+        repository_url: &str,
+    ) -> Result<Vec<ProviderInfo>, ServiceError> {
+        self.install_with_trust(listing, repository_url, true)
+    }
+
+    fn install_with_trust(
+        &self,
+        listing: &PluginListing,
+        repository_url: &str,
+        trusted: bool,
     ) -> Result<Vec<ProviderInfo>, ServiceError> {
         let verdict = judge_listing(&self.policy, repository_url, listing);
         if let Verdict::NotVideo(refusal) = &verdict {
@@ -90,7 +114,7 @@ impl ExtensionService {
             internal_name: listing.internal_name.clone(),
             repository_url: Some(repository_url.to_owned()),
             version: listing.version,
-            trusted: false,
+            trusted,
             icon_url: listing
                 .icon_url
                 .clone()
@@ -99,7 +123,27 @@ impl ExtensionService {
             declared_types: Some(listing.tv_types.clone()),
         };
         self.installed.upsert(&record)?;
-        self.load_judged(&path, record.trusted, &verdict)
+        let display = listing_label(listing);
+        match self.load_judged(&path, record.trusted, &verdict) {
+            Ok(providers) => Ok(providers),
+            Err(error) => {
+                let mapped = map_security_error(error, display, &record.file_name, trusted);
+                if matches!(mapped, ServiceError::SecurityBlocked(_)) {
+                    self.rollback_install(&record.file_name);
+                }
+                Err(mapped)
+            }
+        }
+    }
+
+    fn rollback_install(&self, file_name: &str) {
+        if let Err(error) = self.installer.uninstall_file(file_name) {
+            tracing::warn!(%file_name, %error, "could not remove security-refused plugin file");
+        }
+        if let Err(error) = self.installed.remove(file_name) {
+            tracing::warn!(%file_name, %error, "could not remove security-refused plugin record");
+        }
+        self.unregister(file_name);
     }
 
     /// Unloads the extension in the runtime, deletes the file and the record, and stops offering
@@ -224,9 +268,19 @@ impl ExtensionService {
             );
         }
         self.unregister(&updated.file_name);
+        let outcome = self.reload_after_trust(&updated, &path, verdict);
+        outcome.map_err(|error| self.revert_trust_if_blocked(extension, trusted, error))
+    }
+
+    fn reload_after_trust(
+        &self,
+        updated: &InstalledExtension,
+        path: &Path,
+        verdict: Option<Verdict>,
+    ) -> Result<(), ServiceError> {
         match verdict {
-            Some(verdict) => self.load_judged(&path, trusted, &verdict).map(drop),
-            None => match self.load_unjudged(&updated, &path) {
+            Some(verdict) => self.load_judged(path, updated.trusted, &verdict).map(drop),
+            None => match self.load_unjudged(updated, path) {
                 LoadOutcome::Loaded(_) => Ok(()),
                 LoadOutcome::Failed(error) => Err(error),
                 LoadOutcome::NotVideo(reason) => Err(ServiceError::NotVideo {
@@ -235,6 +289,30 @@ impl ExtensionService {
                 }),
             },
         }
+    }
+
+    fn revert_trust_if_blocked(
+        &self,
+        previous: &InstalledExtension,
+        attempted_trust: bool,
+        error: ServiceError,
+    ) -> ServiceError {
+        let mapped = map_security_error(
+            error,
+            &previous.internal_name,
+            &previous.file_name,
+            attempted_trust,
+        );
+        if matches!(mapped, ServiceError::SecurityBlocked(_)) {
+            if let Err(revert_err) = self.installed.upsert(previous) {
+                tracing::warn!(
+                    extension = %previous.file_name,
+                    %revert_err,
+                    "could not revert trust state after security refusal"
+                );
+            }
+        }
+        mapped
     }
 
     /// Loads every installed extension; one failing extension never blocks the others.
@@ -291,10 +369,8 @@ impl ExtensionService {
         match outcome {
             LoadOutcome::Loaded(mut providers) => report.providers.append(&mut providers),
             LoadOutcome::Failed(error) => {
-                tracing::warn!(extension = %extension.file_name, %error, "extension failed to load");
-                report
-                    .failures
-                    .push((extension.file_name, error.to_string()));
+                let reason = format_startup_failure(&extension, error);
+                report.failures.push((extension.file_name, reason));
             }
             LoadOutcome::NotVideo(reason) => {
                 tracing::info!(extension = %extension.file_name, %reason, "extension not loaded");
@@ -412,6 +488,48 @@ enum LoadOutcome {
 impl From<Result<Vec<ProviderInfo>, ServiceError>> for LoadOutcome {
     fn from(result: Result<Vec<ProviderInfo>, ServiceError>) -> Self {
         result.map_or_else(Self::Failed, Self::Loaded)
+    }
+}
+
+fn format_startup_failure(extension: &InstalledExtension, error: ServiceError) -> String {
+    let mapped = map_security_error(
+        error,
+        &extension.internal_name,
+        &extension.file_name,
+        extension.trusted,
+    );
+    tracing::warn!(extension = %extension.file_name, error = %mapped, "extension failed to load");
+    match mapped {
+        ServiceError::SecurityBlocked(block) => format!(
+            "{} was blocked for security reasons. Open Settings → Extensions to trust or remove it.",
+            block.plugin
+        ),
+        other => other.to_string(),
+    }
+}
+
+fn map_security_error(
+    error: ServiceError,
+    plugin: &str,
+    file_name: &str,
+    trusted: bool,
+) -> ServiceError {
+    match error {
+        ServiceError::Gateway(GatewayError::SecurityBlocked {
+            bypassable,
+            violations,
+            message,
+        }) => ServiceError::SecurityBlocked(Box::new(SecurityBlock::from_refusal(
+            plugin.to_owned(),
+            file_name.to_owned(),
+            trusted,
+            SecurityRefusal {
+                bypassable,
+                violations,
+                message,
+            },
+        ))),
+        other => other,
     }
 }
 

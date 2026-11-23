@@ -4,7 +4,7 @@ use slint::{ComponentHandle, Model};
 
 use crate::episode_groups::MAX_SEASON_TABS;
 use crate::focus_grid::{Direction, FocusGrid, FocusPoint, NAV_ROW};
-use crate::{CloudStream, HomeExpanded, RepoDetail};
+use crate::{CloudStream, HomeExpanded, RepoDetail, SecurityDialog};
 
 use super::bridge_context::BridgeContext;
 use super::focus_screens::{
@@ -25,6 +25,13 @@ pub(crate) fn wire_navigation(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn handle_key(ctx: &BridgeContext, ui: &CloudStream, key: &str) {
+    let security_dialog = ui.global::<SecurityDialog>();
+    if security_dialog.get_open() {
+        if key == "back" {
+            security_dialog.invoke_cancel();
+        }
+        return;
+    }
     let Some(screen) = current_screen(ui) else {
         return;
     };

@@ -295,3 +295,122 @@ fn reloading_one_extension_keeps_every_other_extensions_providers() {
     );
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn security_blocked_install_rolls_back_file_and_record_and_returns_can_trust() {
+    let (service, gateway, dir) = setup("sec_rollback");
+    gateway.load_errors.lock().expect("lock").insert(
+        ("StreamCenter".into(), false),
+        GatewayError::SecurityBlocked {
+            bypassable: true,
+            violations: vec![
+                "Disallowed class 'java.lang.ClassLoader' referenced in a.b()".into(),
+                "Disallowed class 'java.net.NetworkInterface' referenced in c.d()".into(),
+            ],
+            message: "blocked".into(),
+        },
+    );
+
+    let err = service
+        .install(&listing("StreamCenter"), REPO)
+        .expect_err("untrusted install must be blocked");
+    let ServiceError::SecurityBlocked(block) = err else {
+        panic!("expected SecurityBlocked, got {err:?}");
+    };
+    assert_eq!(block.plugin, "StreamCenter");
+    assert!(block.can_trust);
+    assert_eq!(block.concerns.len(), 2);
+    assert!(
+        service.installed().expect("list").is_empty(),
+        "blocked plugin must not remain in DB"
+    );
+    assert!(
+        !dir.join("StreamCenter.cs3").exists(),
+        "blocked plugin file must be removed on rollback"
+    );
+
+    // Explicit trusted install succeeds and records trusted = true.
+    let providers = service
+        .install_trusted(&listing("StreamCenter"), REPO)
+        .expect("trusted install succeeds");
+    assert_eq!(providers[0].name, "StreamCenter");
+    let installed = service.installed().expect("list");
+    assert_eq!(installed.len(), 1);
+    assert!(installed[0].trusted);
+    assert!(dir.join("StreamCenter.cs3").exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn install_trusted_still_refuses_non_video_plugins_and_rolls_back_hard_denials() {
+    let (service, gateway, dir) = setup("sec_hard_deny");
+    let mut manga = listing("MangaApp");
+    manga.tv_types = vec!["Manga".into()];
+    assert!(matches!(
+        service.install_trusted(&manga, REPO),
+        Err(ServiceError::NotVideo { .. })
+    ));
+
+    gateway.load_errors.lock().expect("lock").insert(
+        ("Hostile".into(), true),
+        GatewayError::SecurityBlocked {
+            bypassable: false,
+            violations: vec!["Disallowed class 'java.lang.ProcessBuilder'".into()],
+            message: "denied".into(),
+        },
+    );
+    let err = service
+        .install_trusted(&listing("Hostile"), REPO)
+        .expect_err("hard denial must fail even when trusted");
+    let ServiceError::SecurityBlocked(block) = err else {
+        panic!("expected SecurityBlocked, got {err:?}");
+    };
+    assert!(!block.can_trust);
+    assert!(service.installed().expect("list").is_empty());
+    assert!(!dir.join("Hostile.cs3").exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn set_trusted_reverts_db_when_reload_is_security_blocked_and_startup_summarizes() {
+    let (service, gateway, dir) = setup("sec_set_trusted");
+    service.install(&listing("Safe"), REPO).expect("installs");
+    let record = service.installed().expect("list").remove(0);
+
+    gateway.load_errors.lock().expect("lock").insert(
+        ("Safe".into(), true),
+        GatewayError::SecurityBlocked {
+            bypassable: false,
+            violations: vec!["Disallowed class 'java.lang.ProcessBuilder'".into()],
+            message: "denied".into(),
+        },
+    );
+    let err = service
+        .set_trusted(&record, true)
+        .expect_err("hard denial fails trust");
+    assert!(matches!(err, ServiceError::SecurityBlocked(b) if !b.can_trust));
+    assert!(
+        !service.installed().expect("list")[0].trusted,
+        "DB trusted flag must revert when reload is refused"
+    );
+
+    // Startup report summarizes a security-blocked installed plugin cleanly in one line.
+    gateway.load_errors.lock().expect("lock").insert(
+        ("Safe".into(), false),
+        GatewayError::SecurityBlocked {
+            bypassable: true,
+            violations: vec!["Disallowed class 'java.lang.ClassLoader'".into()],
+            message: "raw long dump".into(),
+        },
+    );
+    let report = service.load_installed().expect("report");
+    assert_eq!(report.failures.len(), 1);
+    assert!(
+        report.failures[0]
+            .1
+            .contains("was blocked for security reasons. Open Settings → Extensions"),
+        "unexpected startup failure text: {}",
+        report.failures[0].1
+    );
+    let _ = fs::remove_dir_all(dir);
+}

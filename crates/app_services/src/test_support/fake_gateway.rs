@@ -38,6 +38,8 @@ pub(crate) struct FakeGateway {
     /// Providers (name, types) a plugin file registers, by file stem; otherwise one provider named
     /// after the file with no types.
     pub(crate) providers_by_file: Mutex<HashMap<String, Vec<ScriptedProvider>>>,
+    /// Scripted load failures keyed by `(file_stem, trusted)`.
+    pub(crate) load_errors: Mutex<HashMap<(String, bool), GatewayError>>,
     /// Runs inside `unload_extension`, before it returns (to look at the service mid-call).
     pub(crate) on_unload: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
@@ -76,6 +78,13 @@ impl FakeGateway {
             .push((provider.to_owned(), Ok(page)));
         gateway
     }
+    fn scripted_load_error(&self, name: &str, trusted: bool) -> Option<GatewayError> {
+        self.load_errors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(name.to_owned(), trusted))
+            .cloned()
+    }
 }
 
 impl ProviderGateway for FakeGateway {
@@ -92,6 +101,9 @@ impl ProviderGateway for FakeGateway {
             .file_stem()
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_default();
+        if let Some(err) = self.scripted_load_error(&name, trusted) {
+            return Err(err);
+        }
         if name.starts_with("Broken") {
             return Err(GatewayError::Remote {
                 kind: "ClassNotFoundException".into(),

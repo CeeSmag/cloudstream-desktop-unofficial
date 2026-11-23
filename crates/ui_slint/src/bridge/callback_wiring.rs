@@ -20,6 +20,7 @@ use super::player_track_callbacks::wire_player_tracks;
 use super::plugin_list::wire_plugin_list;
 use super::preference_callbacks::wire_preferences;
 use super::repo_list::wire_repo_list;
+use super::security_dialog::wire_security_dialog;
 use super::source_picker::wire_source_picker;
 use super::storage_settings_callbacks::wire_storage_settings;
 use super::update_callbacks::wire_updates;
@@ -41,6 +42,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_storage_settings(ctx, ui);
     wire_performance_settings(ctx, ui);
     wire_extension_settings(ctx, ui);
+    wire_security_dialog(ctx, ui);
     wire_repo_list(ctx, ui);
     wire_plugin_list(ctx, ui);
     wire_updates(ctx, ui);

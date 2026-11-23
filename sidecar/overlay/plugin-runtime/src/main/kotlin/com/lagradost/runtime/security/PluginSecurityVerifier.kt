@@ -71,7 +71,7 @@ object PluginSecurityVerifier {
 
         val findings = collectFindings(jarFile, pluginInternalName)
         if (findings.violations.isNotEmpty()) {
-            throw SecurityException(describe(findings.violations))
+            throw PluginSecurityBlockedException(findings.violations, describe(findings.violations))
         }
         findings.permissionNeeded?.let { throw it }
         verifiedJarSignatures[cacheKey] = lastMod
@@ -276,5 +276,15 @@ object PluginSecurityVerifier {
 
     private fun dotted(internalName: String) = internalName.replace('/', '.')
 }
+
+/**
+ * Thrown by [PluginSecurityVerifier] when an untrusted plugin references disallowed classes or
+ * members. Subclasses [SecurityException] and carries the distinct violation list so callers can
+ * present a structured, human-readable summary.
+ */
+class PluginSecurityBlockedException(
+    val violations: List<String>,
+    message: String,
+) : SecurityException(message)
 
 class RequiresPermissionException(val permissionName: String, message: String) : SecurityException(message)
