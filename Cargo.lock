@@ -1193,6 +1193,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "content_policy"
+version = "0.5.3"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

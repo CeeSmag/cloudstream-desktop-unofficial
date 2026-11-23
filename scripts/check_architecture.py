@@ -38,6 +38,7 @@ LEAF_CRATES = {
     "title_cache",
     "poster_artwork",
     "memory_budget",
+    "content_policy",
     "app_updater",
     "cloudflare_bridge",
     "cloudflare_window",
