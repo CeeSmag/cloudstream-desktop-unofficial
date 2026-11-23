@@ -1,0 +1,1 @@
+failed	www.site.test	r1	window closed

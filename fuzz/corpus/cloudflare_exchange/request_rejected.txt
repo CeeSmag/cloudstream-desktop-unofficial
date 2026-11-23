@@ -1,0 +1,6 @@
+id=a1b2
+host=www.site.test
+url=https://www.site.test/
+method=GET
+rejected=r18b-3a-1
+need=browser

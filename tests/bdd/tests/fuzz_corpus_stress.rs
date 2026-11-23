@@ -1,4 +1,4 @@
-//! Deterministic corpus replay and mutation stress test for all 4 untrusted-input parsers.
+//! Deterministic corpus replay and mutation stress test for all untrusted-input parsers.
 //!
 //! Runs on stable Rust under `cargo test` and `scripts/run_fuzz_sanity.sh` so nightly QA
 //! exercises all fuzz corpora even without a nightly `cargo-fuzz` toolchain.
@@ -95,4 +95,45 @@ fn fuzz_corpus_repo_manifest_never_panics() {
             let _ = serde_json::from_slice::<Vec<PluginListing>>(&mutated);
         }
     }
+}
+
+#[test]
+fn fuzz_corpus_cloudflare_exchange_never_panics() {
+    for seed in read_corpus("cloudflare_exchange") {
+        for i in 0..400u64 {
+            let mutated = mutate_bytes(&seed, i);
+            let text = String::from_utf8_lossy(&mutated);
+            let _ = cloudflare_bridge::parse_request(&text);
+            let _ = cloudflare_bridge::classify_status_line(&text);
+            let _ = cloudflare_bridge::decode_pass(&text);
+        }
+    }
+}
+
+/// A damaged saved-pass file is refused (and removed) without a panic, whatever the damage.
+#[test]
+fn fuzz_corpus_cloudflare_pass_file_never_panics() {
+    use cloudflare_bridge::DiskPassBook;
+    let dir = std::env::temp_dir().join(format!("cs_fuzz_pass_file_{}", std::process::id()));
+    let book = DiskPassBook::open(&dir).expect("pass folder");
+    let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(4_102_441_000);
+    for seed in read_corpus("cloudflare_pass_file") {
+        let read = write_and_read(&book, &seed, now).expect("write the seed");
+        assert_eq!(read, 1, "the seed itself is a valid pass file");
+        for i in 0..300u64 {
+            write_and_read(&book, &mutate_bytes(&seed, i), now).expect("write a mutation");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Puts `bytes` where the scope file of `.site.test` lives and counts the passes the book reads back.
+fn write_and_read(
+    book: &cloudflare_bridge::DiskPassBook,
+    bytes: &[u8],
+    now: std::time::SystemTime,
+) -> std::io::Result<usize> {
+    use cloudflare_bridge::PassBook;
+    std::fs::write(book.dir().join("domain-site.test.json"), bytes)?;
+    Ok(book.live_passes(now).len())
 }

@@ -8,6 +8,7 @@ publish = false
 
 [dev-dependencies]
 app_services = { path = "../../crates/app_services" }
+cloudflare_bridge = { path = "../../crates/cloudflare_bridge" }
 core_model = { path = "../../crates/core_model" }
 cucumber = "0.23"
 extension_api = { path = "../../crates/extension_api" }

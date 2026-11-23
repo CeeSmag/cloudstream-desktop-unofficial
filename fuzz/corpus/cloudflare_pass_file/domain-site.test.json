@@ -1,0 +1,1 @@
+{"version":1,"scope":".site.test","pass":{"id":"r1-1","issued_for":"https://www.site.test/watch","user_agent":"Agent/1","cookies":[{"name":"cf_clearance","value":"v","domain":".site.test","path":"/","secure":true,"http_only":true,"expires_ms":4102444800000}],"obtained_ms":4102440000000,"run":"r1"},"rejected":[{"value":"old","until_ms":4102444800000}]}

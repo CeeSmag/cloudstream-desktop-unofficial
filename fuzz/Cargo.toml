@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 app_services = { path = "../crates/app_services" }
+cloudflare_bridge = { path = "../crates/cloudflare_bridge" }
 core_model = { path = "../crates/core_model" }
 extension_repo = { path = "../crates/extension_repo" }
 libfuzzer-sys = "0.4"
@@ -33,4 +34,9 @@ doc = false
 [[bin]]
 name = "repo_manifest"
 path = "fuzz_targets/repo_manifest.rs"
+doc = false
+
+[[bin]]
+name = "cloudflare_exchange"
+path = "fuzz_targets/cloudflare_exchange.rs"
 doc = false

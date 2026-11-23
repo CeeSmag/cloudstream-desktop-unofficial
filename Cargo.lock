@@ -593,6 +593,7 @@ name = "bdd_tests"
 version = "0.5.3"
 dependencies = [
  "app_services",
+ "cloudflare_bridge",
  "core_model",
  "cucumber",
  "extension_api",

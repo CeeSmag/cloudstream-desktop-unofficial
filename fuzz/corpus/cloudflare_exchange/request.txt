@@ -1,0 +1,4 @@
+id=a1b2
+host=www.site.test
+url=https://www.site.test/watch?x=1
+method=GET

@@ -15,7 +15,7 @@ cargo test -p bdd_tests --test fuzz_corpus_stress
 
 if command -v cargo-fuzz >/dev/null 2>&1 && rustup toolchain list | grep -q '^nightly'; then
     echo "==> Running time-boxed libFuzzer targets (${SECONDS_PER_TARGET}s each)"
-    for target in subtitle_normalize m3u8_rewrite sidecar_rpc_reply repo_manifest; do
+    for target in subtitle_normalize m3u8_rewrite sidecar_rpc_reply repo_manifest cloudflare_exchange; do
         cargo +nightly fuzz run "${target}" --fuzz-dir fuzz -- -max_total_time="${SECONDS_PER_TARGET}"
     done
 else
