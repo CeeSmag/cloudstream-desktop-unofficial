@@ -11,11 +11,12 @@ import { BrowsePage, SearchPage, LibraryPage } from "browse.slint";
 import { SettingsPage } from "settings.slint";
 import { DetailsOverlay } from "details.slint";
 import { PlayerOverlay } from "player.slint";
-import { CloudflareBanner } from "cloudflare_banner.slint";
+import { CloudflareBanner, CloudflareBannerPhase, CloudflareBannerState } from "cloudflare_banner.slint";
 import { SecurityDialog, SecurityDialogOverlay } from "security_dialog.slint";
 import { TopBar } from "top_bar.slint";
 import { Toast } from "toast.slint";
 
+export { CloudflareBannerPhase, CloudflareBannerState } from "cloudflare_banner.slint";
 export { SecurityDialog } from "security_dialog.slint";
 export { PluginList } from "extensions_plugins.slint";
 export { RepoList, RepoDetail } from "extensions_repos.slint";
@@ -124,15 +125,7 @@ export component CloudStream inherits Window {
     in-out property <string> sources-status: "";
     in-out property <bool> subtitles-loading: false;
     in-out property <string> subtitles-status: "";
-    // Cloudflare banner: 0 hidden, 1 needs permission, 2 verifying, 3 verified, 4 failed.
-    in-out property <int> cf-state: 0;
     in-out property <bool> show-wipe-confirm: false;
-    in-out property <string> cf-request-id;
-    in-out property <string> cf-host: "";
-    in-out property <string> cf-message: "";
-    in-out property <bool> cf-can-retry;
-    // How many more sites wait behind the check the banner shows.
-    in-out property <int> cf-more: 0;
     in-out property <int> settings-page-index: 0;
     in-out property <bool> debug-indicator-hovered: false;
     in-out property <int> diagnostics-focus-request: 0;
@@ -271,8 +264,6 @@ export component CloudStream inherits Window {
     in-out property <float> storage-fraction: 0;
     in-out property <bool> storage-over: false;
     in-out property <[string]> storage-rows: [];
-    callback cf-verify();
-    callback cf-dismiss();
     callback dismiss-notice();
     callback resume-hero();
     callback remove-continue(int);
@@ -398,15 +389,7 @@ export component CloudStream inherits Window {
                 }
             }
 
-            if cf-state != 0: CloudflareBanner {
-                state: root.cf-state;
-                host: root.cf-host;
-                message: root.cf-message;
-                can-retry: root.cf-can-retry;
-                more: root.cf-more;
-                verify => { cf-verify(); }
-                dismiss => { cf-dismiss(); }
-            }
+            if CloudflareBannerState.phase != CloudflareBannerPhase.hidden: CloudflareBanner { }
 
             if details-title != "": DetailsOverlay {
                 vertical-stretch: 1;

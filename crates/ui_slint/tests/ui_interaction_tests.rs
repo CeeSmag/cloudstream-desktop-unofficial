@@ -11,8 +11,9 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, ModelRc, PhysicalSize, PlatformError, SharedString, VecModel};
 use ui_slint::{
-    AvailablePlugin, BrowseFilter, CloudStream, EpisodeItem, PluginItem, PosterItem, RepoDetail,
-    RepoList, RepositoryItem, SecurityDialog, ShelfSection, SourceItem, TrackChoice,
+    AvailablePlugin, BrowseFilter, CloudStream, CloudflareBannerPhase, CloudflareBannerState,
+    EpisodeItem, PluginItem, PosterItem, RepoDetail, RepoList, RepositoryItem, SecurityDialog,
+    ShelfSection, SourceItem, TrackChoice,
 };
 
 struct HeadlessPlatform {
@@ -143,16 +144,23 @@ fn verify_tracks_and_cloudflare(ui: &CloudStream) {
     ui.invoke_select_subtitle_track(2);
     assert_eq!(*picked_sub.borrow(), 2);
 
-    ui.set_cf_host("challenge.example".into());
-    ui.set_cf_state(1);
+    let banner = ui.global::<CloudflareBannerState>();
+    banner.set_host("challenge.example".into());
+    banner.set_phase(CloudflareBannerPhase::NeedsPermission);
+    banner.set_waiting_count(2);
+    banner.set_can_cycle(true);
     let cf_actions = Rc::new(RefCell::new(Vec::<&'static str>::new()));
     let allow_ref = Rc::clone(&cf_actions);
-    ui.on_cf_verify(move || allow_ref.borrow_mut().push("verify"));
+    banner.on_verify(move || allow_ref.borrow_mut().push("verify"));
     let decline_ref = Rc::clone(&cf_actions);
-    ui.on_cf_dismiss(move || decline_ref.borrow_mut().push("dismiss"));
-    ui.invoke_cf_verify();
-    ui.invoke_cf_dismiss();
-    assert_eq!(*cf_actions.borrow(), vec!["verify", "dismiss"]);
+    banner.on_dismiss(move || decline_ref.borrow_mut().push("dismiss"));
+    let cycle_ref = Rc::clone(&cf_actions);
+    banner.on_next_waiting(move || cycle_ref.borrow_mut().push("next"));
+    banner.invoke_verify();
+    banner.invoke_next_waiting();
+    banner.invoke_dismiss();
+    assert_eq!(*cf_actions.borrow(), vec!["verify", "next", "dismiss"]);
+    banner.set_phase(CloudflareBannerPhase::Hidden);
 }
 
 fn verify_extensions_and_shelves(ui: &CloudStream) {

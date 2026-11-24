@@ -15,7 +15,10 @@ use slint::{
     ComponentHandle, LogicalSize, ModelRc, PhysicalSize, PlatformError, Rgb8Pixel, SharedString,
     VecModel, Window, WindowSize,
 };
-use ui_slint::{CloudStream, HomeExpanded, PosterItem, RepoDetail, ShelfSection};
+use ui_slint::{
+    CloudStream, CloudflareBannerPhase, CloudflareBannerState, HomeExpanded, PosterItem,
+    RepoDetail, ShelfSection,
+};
 
 const MAXIMIZED_WIDTH: u32 = 1920;
 const MAXIMIZED_HEIGHT: u32 = 1080;
@@ -213,12 +216,24 @@ fn check_details_and_player_states(ui: &CloudStream, adapter: &RecordingWindowAd
 }
 
 fn check_banner_and_toast_states(ui: &CloudStream, adapter: &RecordingWindowAdapter) {
-    ui.set_cf_host("example.invalid".into());
-    for state in 1..=4 {
-        ui.set_cf_state(state);
-        assert_unbounded_window(adapter, "cloudflare_banner");
+    let banner = ui.global::<CloudflareBannerState>();
+    banner.set_host("example.invalid".into());
+    banner.set_waiting_count(2);
+    for can_cycle in [false, true] {
+        banner.set_can_cycle(can_cycle);
+        for phase in [
+            CloudflareBannerPhase::NeedsPermission,
+            CloudflareBannerPhase::Verifying,
+            CloudflareBannerPhase::Verified,
+            CloudflareBannerPhase::Failed,
+        ] {
+            banner.set_phase(phase);
+            assert_unbounded_window(adapter, "cloudflare_banner");
+        }
     }
-    ui.set_cf_state(0);
+    banner.set_phase(CloudflareBannerPhase::Hidden);
+    banner.set_waiting_count(0);
+    banner.set_can_cycle(false);
 
     ui.set_notice("Saved to Library".into());
     assert_unbounded_window(adapter, "toast_notice");

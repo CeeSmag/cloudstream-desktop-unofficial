@@ -3,20 +3,41 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvButton } from "controls.slint";
 
-/// A site's Cloudflare check, shown under the top bar without blocking the app.
-/// `state`: 1 needs permission, 2 verifying, 3 verified, 4 failed.
-export component CloudflareBanner inherits Rectangle {
-    in property <int> state;
-    in property <string> host;
-    in property <string> message;
-    in property <bool> can-retry;
-    /// How many more sites wait for their turn behind this one.
-    in property <int> more;
+/// Display phase of the Cloudflare verification banner.
+export enum CloudflareBannerPhase {
+    hidden,
+    needs-permission,
+    verifying,
+    verified,
+    failed,
+}
+
+/// Shared state & callbacks for the Cloudflare verification banner.
+/// Owned exclusively by Rust's `PromptQueue` (one-way projection into Slint).
+export global CloudflareBannerState {
+    in-out property <CloudflareBannerPhase> phase: CloudflareBannerPhase.hidden;
+    in-out property <string> host: "";
+    in-out property <string> message: "";
+    in-out property <bool> can-retry: false;
+    /// How many more sites wait for their turn behind the displayed check.
+    in-out property <int> waiting-count: 0;
+    /// True when clicking `+N more` can rotate to another active check of the same priority.
+    in-out property <bool> can-cycle: false;
     callback verify();
     callback dismiss();
+    callback next-waiting();
+}
+
+/// A site's Cloudflare check, shown under the top bar without blocking the app.
+export component CloudflareBanner inherits Rectangle {
+    property <CloudflareBannerPhase> phase: CloudflareBannerState.phase;
+    property <bool> is-permission: root.phase == CloudflareBannerPhase.needs-permission;
+    property <bool> is-verifying: root.phase == CloudflareBannerPhase.verifying;
+    property <bool> is-verified: root.phase == CloudflareBannerPhase.verified;
+    property <bool> is-failed: root.phase == CloudflareBannerPhase.failed;
 
     height: 54px;
-    background: root.state == 3 ? #122922 : (root.state == 4 ? #2e161d : #151d30);
+    background: root.is-verified ? #122922 : (root.is-failed ? #2e161d : #151d30);
     accessible-role: AccessibleRole.text;
     accessible-label: text.text;
 
@@ -26,22 +47,22 @@ export component CloudflareBanner inherits Rectangle {
         spacing: 12px;
         cross-axis-alignment: center;
 
-        if root.state == 2: Spinner {
+        if root.is-verifying: Spinner {
             width: 18px;
             height: 18px;
             indeterminate: true;
         }
-        if root.state != 2: TvIcon {
-            commands: root.state == 3 ? Icons.check : (root.state == 4 ? Icons.alert : Icons.shield);
+        if !root.is-verifying: TvIcon {
+            commands: root.is-verified ? Icons.check : (root.is-failed ? Icons.alert : Icons.shield);
             size: 18px;
-            color: root.state == 3 ? Theme.ok : (root.state == 4 ? Theme.danger : Theme.accent-hi);
+            color: root.is-verified ? Theme.ok : (root.is-failed ? Theme.danger : Theme.accent-hi);
         }
 
         text := Text {
-            text: root.state == 1 ? root.host + " needs a quick “verify you are human” check before it can be used."
-                : root.state == 2 ? "Checking " + root.host + ". Open verification if the site needs your input."
-                : root.state == 3 ? root.host + " is verified."
-                : root.host + " could not be verified: " + root.message;
+            text: root.is-permission ? CloudflareBannerState.host + " needs a quick “verify you are human” check before it can be used."
+                : root.is-verifying ? "Checking " + CloudflareBannerState.host + ". Open verification if the site needs your input."
+                : root.is-verified ? CloudflareBannerState.host + " is verified."
+                : CloudflareBannerState.host + " could not be verified: " + CloudflareBannerState.message;
             color: Theme.text;
             font-size: 13.5px;
             font-weight: 500;
@@ -50,25 +71,31 @@ export component CloudflareBanner inherits Rectangle {
             horizontal-stretch: 1;
         }
 
-        if root.more > 0: Text {
-            text: "+" + root.more + " more";
+        if CloudflareBannerState.waiting-count > 0 && CloudflareBannerState.can-cycle: TvButton {
+            text: "+" + CloudflareBannerState.waiting-count + " more";
+            kind: "ghost";
+            compact: true;
+            clicked => { CloudflareBannerState.next-waiting(); }
+        }
+        if CloudflareBannerState.waiting-count > 0 && !CloudflareBannerState.can-cycle: Text {
+            text: "+" + CloudflareBannerState.waiting-count + " more";
             color: Theme.text;
             opacity: 0.65;
             font-size: 12.5px;
             vertical-alignment: center;
         }
 
-        if root.state == 1 || root.state == 2 || (root.state == 4 && root.can-retry): TvButton {
-            text: root.state == 1 ? "Verify" : (root.state == 2 ? "Open verification" : "Try again");
+        if root.is-permission || root.is-verifying || (root.is-failed && CloudflareBannerState.can-retry): TvButton {
+            text: root.is-permission ? "Verify" : (root.is-verifying ? "Open verification" : "Try again");
             kind: "primary";
             compact: true;
-            clicked => { root.verify(); }
+            clicked => { CloudflareBannerState.verify(); }
         }
         TvButton {
-            text: root.state == 1 ? "Not now" : "Dismiss";
+            text: root.is-permission ? "Not now" : "Dismiss";
             kind: "ghost";
             compact: true;
-            clicked => { root.dismiss(); }
+            clicked => { CloudflareBannerState.dismiss(); }
         }
     }
 
@@ -76,6 +103,6 @@ export component CloudflareBanner inherits Rectangle {
         y: parent.height - 1px;
         height: 1px;
         width: 100%;
-        background: root.state == 3 ? #3ecf8e44 : (root.state == 4 ? Theme.danger-border : Theme.border);
+        background: root.is-verified ? #3ecf8e44 : (root.is-failed ? Theme.danger-border : Theme.border);
     }
 }

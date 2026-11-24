@@ -11,10 +11,10 @@ use slint::{
     Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel,
 };
 use ui_slint::{
-    AvailablePlugin, BrowseFilter, CastItem, CloudStream, DetailsMeta, EpisodeItem, FilterChip,
-    HomeExpanded, PaginationItem, PluginItem, PluginList, PosterItem, RepoDetail, RepoList,
-    RepositoryItem, SecurityDialog, SeekMark, SeekPreview, ShelfSection, SourceItem,
-    SourceMenuInfo, TrackChoice,
+    AvailablePlugin, BrowseFilter, CastItem, CloudStream, CloudflareBannerPhase,
+    CloudflareBannerState, DetailsMeta, EpisodeItem, FilterChip, HomeExpanded, PaginationItem,
+    PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem, SecurityDialog,
+    SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
 };
 
 const WIDTH: u32 = 1280;
@@ -675,6 +675,28 @@ fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     assert_non_blank(&render_frame(window, "10_wipe_dialog"), "wipe_dialog");
     ui.set_show_wipe_confirm(false);
     verify_security_dialog_overlay(ui, window);
+    verify_cloudflare_banner_states(ui, window);
+}
+
+fn verify_cloudflare_banner_states(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    let banner = ui.global::<CloudflareBannerState>();
+    banner.set_host("vcloud.my".into());
+    banner.set_message("window closed".into());
+    banner.set_can_retry(true);
+    banner.set_waiting_count(2);
+    banner.set_can_cycle(true);
+    for (phase, name) in [
+        (CloudflareBannerPhase::NeedsPermission, "12a_cf_permission"),
+        (CloudflareBannerPhase::Verifying, "12b_cf_verifying"),
+        (CloudflareBannerPhase::Verified, "12c_cf_verified"),
+        (CloudflareBannerPhase::Failed, "12d_cf_failed"),
+    ] {
+        banner.set_phase(phase);
+        assert_non_blank(&render_frame(window, name), name);
+    }
+    banner.set_phase(CloudflareBannerPhase::Hidden);
+    banner.set_waiting_count(0);
+    banner.set_can_cycle(false);
 }
 
 fn verify_security_dialog_overlay(ui: &CloudStream, window: &MinimalSoftwareWindow) {

@@ -103,7 +103,15 @@ impl SiteWindow {
     pub(crate) fn show(&mut self, activate: bool) {
         if self.is_pending() {
             self.requested = true;
-            self.foreground |= activate;
+            #[cfg(windows)]
+            {
+                self.foreground |= activate;
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = activate;
+                self.foreground = true;
+            }
             self.reveal();
         }
     }
@@ -131,6 +139,8 @@ impl SiteWindow {
         if std::mem::take(&mut self.foreground) {
             #[cfg(windows)]
             crate::windows_presentation::activate(&self.window);
+            #[cfg(not(windows))]
+            self.window.set_focus();
         }
     }
 

@@ -24,7 +24,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs`, `performance_text.rs` | remote / keyboard navigation, Home banner, Settings "Performance & memory" texts |
 | `startup_progress.rs`, `discovery_progress.rs` | the start-up screen's text/bar and background repo-discovery progress |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
-| `bridge/cloudflare_*.rs` | the Cloudflare banner: `cloudflare_prompts` keeps one check on screen and the others queued ("+N more"); viewer actions and outcomes are routed by the displayed request ID |
+| `cloudflare_prompts.rs`, `bridge/cloudflare_*.rs` | the Cloudflare banner: `PromptQueue` is a pure typed state machine (`NeedsPermission` > `Failed` > `Verifying` > `Verified`, deterministic expiry, same-tier cycling) projected one-way into `CloudflareBannerState` + `CloudflareBannerPhase` |
 | `bridge/extension_*.rs`, `bridge/repo_list.rs`, `bridge/plugin_list.rs`, `repository_discovery.rs` | repositories tab, repo drill-down, aggregator repo discovery, plugins catalog, trust & removal |
 | `text_sanitize.rs`, `windows_fonts.rs`, `ui/icon.png` | folds mathematical Unicode text, registers Windows fallback fonts, embeds window/taskbar icon |
 

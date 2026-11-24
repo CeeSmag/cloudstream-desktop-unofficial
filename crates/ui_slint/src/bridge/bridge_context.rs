@@ -6,11 +6,11 @@ use std::rc::Rc;
 use app_services::UiServices;
 
 use crate::background_work::{EventPump, UiSender};
+use crate::cloudflare_prompts::PromptQueue;
 use crate::request_tickets::{RequestKind, Ticket};
 use crate::CloudStream;
 
 use super::app_extras::AppExtras;
-use super::cloudflare_prompts::PromptQueue;
 use super::gl_video::GlVideoState;
 use super::image_store::SharedImageStore;
 use super::session::Session;

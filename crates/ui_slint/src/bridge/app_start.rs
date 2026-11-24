@@ -8,6 +8,7 @@ use app_services::UiServices;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::background_work::{spawn_work, EventPump};
+use crate::cloudflare_prompts::PromptQueue;
 use crate::posters::{empty_episodes, empty_posters, empty_shelves};
 use crate::ui_events::UiEvent;
 use crate::CloudStream;
@@ -16,7 +17,6 @@ use super::app_extras::AppExtras;
 use super::bridge_context::BridgeContext;
 use super::callback_wiring::wire_callbacks;
 use super::cloudflare_drain::drain_cloudflare;
-use super::cloudflare_prompts::PromptQueue;
 use super::cursor_sync::sync_cursor;
 use super::debug_logging::apply_saved_debug_logging;
 use super::event_dispatch::drain_events;

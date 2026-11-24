@@ -10,6 +10,7 @@ mod bridge;
 mod browse_filters;
 mod check_text;
 mod click_sorter;
+mod cloudflare_prompts;
 mod cursor_policy;
 mod discovery_progress;
 mod episode_groups;
