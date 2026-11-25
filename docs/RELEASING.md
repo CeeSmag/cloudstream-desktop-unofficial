@@ -89,7 +89,9 @@ Windows, the extension sidecar and a Java 21 runtime, so the app runs on a clean
 
 - **`cloudstream-verify`**: Cloudflare challenge helper (`cloudflare_window`). On Windows it uses
   WebView2: the loader `WebView2Loader.dll` ships beside it (see below); the Microsoft Edge WebView2
-  Runtime it starts is not shipped (preinstalled on Windows 11 and most Windows 10 PCs). On Linux it
+  Runtime it starts is not shipped (preinstalled on Windows 11 and most Windows 10 PCs). When it is
+  missing, the app says so after Home on every launch and offers to install it with Microsoft's own
+  setup (`crates/webview_runtime`). On Linux it
   needs the system's WebKitGTK 4.1 (not bundled in the AppImage); without it, challenge sites show that
   they could not be verified.
 - **`WebView2Loader.dll`** (x64, ~160 KB) comes from Microsoft's `Microsoft.Web.WebView2` NuGet package
