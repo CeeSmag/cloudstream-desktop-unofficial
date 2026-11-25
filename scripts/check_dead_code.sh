@@ -10,8 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# Windows Python prints CRLF; a kept `\r` turns every member into an invalid path for cargo machete.
 mapfile -t MEMBERS < <(
-    python3 - <<'EOF'
+    python3 - <<'EOF' | tr -d '\r'
 import tomllib
 with open("Cargo.toml", "rb") as fh:
     ws = tomllib.load(fh)
