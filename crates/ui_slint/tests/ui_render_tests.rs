@@ -733,6 +733,27 @@ fn verify_security_dialog_overlay(ui: &CloudStream, window: &MinimalSoftwareWind
     dialog.set_open(false);
 }
 
+/// Everything that changes between `before` and `after` must lie inside a centred card of
+/// `card_width` (the window is 1280 wide): a button pushed out of the card fails this.
+fn assert_drawn_inside_card(before: &[Rgb8Pixel], after: &[Rgb8Pixel], card_width: u32) {
+    let left = (WIDTH - card_width) / 2;
+    let right = left + card_width;
+    let changed: Vec<u32> = before
+        .iter()
+        .zip(after)
+        .enumerate()
+        .filter(|(_, (a, b))| a != b)
+        .map(|(index, _)| index as u32 % WIDTH)
+        .collect();
+    assert!(!changed.is_empty(), "the button must draw something");
+    let min = changed.iter().copied().min().unwrap_or(0);
+    let max = changed.iter().copied().max().unwrap_or(WIDTH);
+    assert!(
+        min >= left && max < right,
+        "drawn at x {min}..={max}, outside the card at {left}..{right}"
+    );
+}
+
 /// The WebView2 dialog in its three looks (offer, running setup, done): each one draws on top of
 /// the page, and each differs from the others.
 fn verify_webview_dialog_states(ui: &CloudStream, window: &MinimalSoftwareWindow) {
@@ -747,6 +768,10 @@ fn verify_webview_dialog_states(ui: &CloudStream, window: &MinimalSoftwareWindow
     let offer = render_frame(window, "11c_webview_offer");
     assert_non_blank(&offer, "webview_offer");
     assert_ne!(offer, page, "the dialog must draw over the page");
+    dialog.set_primary_label("".into());
+    let without_primary = render_frame(window, "11c_webview_offer_no_primary");
+    assert_drawn_inside_card(&without_primary, &offer, 560);
+    dialog.set_primary_label("Install WebView2".into());
 
     dialog.set_title("Installing WebView2".into());
     dialog.set_primary_label("".into());

@@ -42,7 +42,7 @@ export component WebViewDialogOverlay inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Rectangle {
-                width: min(520px, root.width - 48px);
+                width: min(560px, root.width - 48px);
                 background: Theme.panel-glass;
                 border-radius: Theme.radius-lg;
                 border-width: 1px;
@@ -92,17 +92,23 @@ export component WebViewDialogOverlay inherits Rectangle {
                         indeterminate: WebViewDialog.indeterminate;
                     }
 
-                    HorizontalLayout {
-                        spacing: 10px;
-                        padding-top: 4px;
-                        if WebViewDialog.show-download-link: TvButton {
+                    // The link has its own row: beside both buttons it pushed the main button out of
+                    // the card.
+                    if WebViewDialog.show-download-link: HorizontalLayout {
+                        alignment: start;
+                        TvButton {
                             text: "Microsoft's download page";
                             icon: Icons.link;
                             kind: "ghost";
                             compact: true;
                             clicked => { WebViewDialog.open-download-page(); }
                         }
-                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        padding-top: 4px;
+                        alignment: end;
                         TvButton {
                             text: WebViewDialog.close-label;
                             kind: "secondary";
