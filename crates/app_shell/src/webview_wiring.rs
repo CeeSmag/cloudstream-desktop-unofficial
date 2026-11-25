@@ -1,6 +1,8 @@
 //! Microsoft Edge WebView2 for the Cloudflare window: the registry probe and Microsoft's setup on
 //! Windows, nothing elsewhere. `CS_WEBVIEW2_PROBE=missing|unsupported|installed` pretends a status
-//! so the dialog can be tried on a PC that already has the runtime.
+//! for the launch check, so the dialog can be tried on a PC that already has the runtime. The check
+//! after an install always reads the real registry: pretending there made every test install end
+//! in "still not installed".
 
 use std::path::Path;
 use std::sync::Arc;
@@ -28,7 +30,7 @@ fn choose_probe(pretend: Option<&str>) -> Arc<dyn RuntimeProbe> {
 pub fn build_webview(data_dir: &Path) -> WebViewParts {
     let pretend = std::env::var(PRETEND_VARIABLE).ok();
     let probe = choose_probe(pretend.as_deref());
-    let installer = platform_installer(Arc::clone(&probe), data_dir.to_path_buf());
+    let installer = platform_installer(platform_probe(), data_dir.to_path_buf());
     WebViewParts { probe, installer }
 }
 

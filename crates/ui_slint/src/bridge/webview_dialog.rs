@@ -106,6 +106,15 @@ fn refresh_status(board: &StatusBoard, probe: &dyn RuntimeProbe, sender: &UiSend
     }
 }
 
+/// Writes a status found elsewhere (the installer's last registry read) as the newest one.
+fn record_status(board: &StatusBoard, status: RuntimeStatus, sender: &UiSender) {
+    let ticket = board.begin_probe();
+    tracing::info!(?status, "Microsoft Edge WebView2 runtime after the install");
+    if board.finish_probe(ticket, status) {
+        sender.send(UiEvent::WebView(WebViewEvent::StatusChanged));
+    }
+}
+
 /// Home is on screen: the launch prompt may open now. It opens on every launch that finds the
 /// runtime missing; closing it is not remembered.
 pub(crate) fn on_home_arrived(ctx: &BridgeContext, ui: &CloudStream) {
@@ -308,7 +317,11 @@ impl InstallJob {
         if let Err(error) = &result {
             tracing::warn!(%error, "Microsoft Edge WebView2 was not installed");
         }
-        refresh_status(&self.board, &*self.probe, sender);
+        match &result {
+            // The installer has just read the registry; its answer is the newest status.
+            Ok(status) => record_status(&self.board, status.clone(), sender),
+            Err(_) => refresh_status(&self.board, &*self.probe, sender),
+        }
         // The gate opens before the UI hears the end, so "Try again" pressed on the failure
         // message always finds it open.
         drop(self.run);

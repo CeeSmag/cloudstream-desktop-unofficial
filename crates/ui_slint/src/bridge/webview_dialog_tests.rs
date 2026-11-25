@@ -49,6 +49,39 @@ fn installer(data: PathBuf) -> RuntimeInstaller {
     RuntimeInstaller::new(parts, data)
 }
 
+/// A download, signature and setup that all work, on a PC where the runtime then is installed.
+struct WorkingSetup;
+
+impl SetupFetcher for WorkingSetup {
+    fn fetch(
+        &self,
+        request: FetchRequest<'_>,
+        _: &mut dyn FnMut(u64, u64),
+    ) -> Result<(), SetupError> {
+        std::fs::write(request.dest, b"MZ").map_err(|e| SetupError::disk("write", request.dest, &e))
+    }
+}
+
+impl SignatureVerifier for WorkingSetup {
+    fn describe(&self, _: &Path) -> Result<String, SetupError> {
+        Ok("Valid|CN=Microsoft Corporation, O=Microsoft Corporation".into())
+    }
+}
+
+impl SetupRunner for WorkingSetup {
+    fn run(&self, _: &Path) -> Result<i32, SetupError> {
+        // What the real setup answered on a PC that already had the runtime machine-wide.
+        Ok(-2_147_219_416)
+    }
+}
+
+fn installed() -> RuntimeFacts {
+    RuntimeFacts::Windows {
+        major: Some(10),
+        versions: vec!["158.0.4370.33".into()],
+    }
+}
+
 /// Waits (without sleeping) for the install's last phase.
 fn final_phase(pump: &EventPump) -> InstallPhase {
     loop {
@@ -95,5 +128,36 @@ fn race_try_again_right_after_a_failure_always_finds_the_gate_open() {
         worker.join().unwrap();
     }
     assert_eq!(board.current(), Some(RuntimeStatus::Missing));
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// The launch probe pretends "missing" (CS_WEBVIEW2_PROBE), the installer reads the real
+/// registry: after a successful install the status must be the installer's answer, not another
+/// read through the pretending probe (which ended every test install in "still not installed").
+#[test]
+fn a_successful_install_records_the_installers_own_registry_read() {
+    let data = std::env::temp_dir().join(format!("cs_wv2_bridge_ok_{}", std::process::id()));
+    let parts = InstallerParts {
+        fetcher: Arc::new(WorkingSetup),
+        verifier: Arc::new(WorkingSetup),
+        runner: Arc::new(WorkingSetup),
+        probe: Arc::new(FixedProbe(installed())),
+    };
+    let board = Arc::new(StatusBoard::new());
+    let pump = EventPump::new();
+    let gate = InstallGate::new();
+    let job = InstallJob {
+        installer: RuntimeInstaller::new(parts, data.clone()),
+        probe: missing(),
+        board: Arc::clone(&board),
+        cancel: CancelFlag::new(),
+        run: gate.try_enter().unwrap(),
+    };
+    job.run(&pump.sender());
+    let expected = RuntimeStatus::Installed {
+        version: "158.0.4370.33".into(),
+    };
+    assert_eq!(final_phase(&pump), InstallPhase::Done(expected.clone()));
+    assert_eq!(board.current(), Some(expected));
     let _ = std::fs::remove_dir_all(&data);
 }
