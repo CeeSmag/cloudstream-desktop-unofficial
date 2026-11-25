@@ -11,8 +11,9 @@ tracing.workspace = true
 ureq = "3"
 
 [target.'cfg(windows)'.dependencies]
-# Registry reads through a safe API (the `kernel` feature); already pinned for the Cloudflare crates.
-winsafe = { version = "=0.0.19", features = ["kernel"] }
+# Microsoft's safe registry API (windows-rs). winsafe 0.0.19 cannot read the runtime's `pv`: EdgeUpdate
+# writes it without a terminating NUL, which winsafe's RegGetValue/RegQueryValueEx refuse.
+windows-registry = "=0.6.1"
 
 [lints]
 workspace = true

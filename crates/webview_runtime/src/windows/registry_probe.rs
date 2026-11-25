@@ -1,8 +1,7 @@
 //! The registry values Microsoft documents for finding the WebView2 runtime, and the Windows
-//! version. Thin glue over winsafe's safe registry API; the rules are in `runtime_status`.
+//! version. Thin glue over `windows-registry`; the rules are in `runtime_status`.
 
-use winsafe::prelude::*;
-use winsafe::{RegistryValue, HKEY};
+use windows_registry::{Key, CURRENT_USER, LOCAL_MACHINE};
 
 use crate::{RuntimeFacts, RuntimeProbe};
 
@@ -19,52 +18,46 @@ impl RuntimeProbe for RegistryProbe {
         let machine_wow = format!(r"SOFTWARE\WOW6432Node\{CLIENT_KEY}");
         let native = format!(r"SOFTWARE\{CLIENT_KEY}");
         let versions = [
-            text_value(&HKEY::LOCAL_MACHINE, &machine_wow, "pv"),
-            text_value(&HKEY::LOCAL_MACHINE, &native, "pv"),
-            text_value(&HKEY::CURRENT_USER, &native, "pv"),
+            text_value(LOCAL_MACHINE, &machine_wow, "pv"),
+            text_value(LOCAL_MACHINE, &native, "pv"),
+            text_value(CURRENT_USER, &native, "pv"),
         ]
         .into_iter()
         .flatten()
         .collect();
-        let facts = RuntimeFacts::Windows {
-            major: number_value(
-                &HKEY::LOCAL_MACHINE,
-                CURRENT_VERSION_KEY,
-                "CurrentMajorVersionNumber",
-            ),
-            versions,
-        };
+        let major = LOCAL_MACHINE
+            .open(CURRENT_VERSION_KEY)
+            .and_then(|key| key.get_u32("CurrentMajorVersionNumber"))
+            .ok();
+        let facts = RuntimeFacts::Windows { major, versions };
         tracing::debug!(?facts, "read the WebView2 runtime registry values");
         facts
     }
 }
 
-fn text_value(root: &HKEY, key: &str, name: &str) -> Option<String> {
-    match root.RegGetValue(Some(key), Some(name)) {
-        Ok(RegistryValue::Sz(text) | RegistryValue::ExpandSz(text)) => Some(text),
-        _ => None,
-    }
-}
-
-fn number_value(root: &HKEY, key: &str, name: &str) -> Option<u32> {
-    match root.RegGetValue(Some(key), Some(name)) {
-        Ok(RegistryValue::Dword(number)) => Some(number),
-        _ => None,
-    }
+fn text_value(root: &Key, key: &str, name: &str) -> Option<String> {
+    root.open(key).and_then(|key| key.get_string(name)).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{judge, RuntimeStatus};
 
-    /// T4: this PC (Windows 10 or newer) reports its real major version.
+    /// T4: this PC (Windows 10 or newer, with the runtime that Windows 11 carries and the
+    /// Cloudflare window uses) reports its real version and an installed runtime.
     #[test]
     #[ignore = "reads this PC's registry"]
-    fn t4_this_pc_reports_windows_10_or_newer() {
-        let RuntimeFacts::Windows { major, versions } = RegistryProbe.facts() else {
+    fn t4_this_pc_reports_windows_10_and_its_runtime() {
+        let facts = RegistryProbe.facts();
+        let RuntimeFacts::Windows { major, versions } = &facts else {
             panic!("a Windows build must read Windows facts");
         };
         assert!(major.is_some_and(|major| major >= 10), "{major:?}");
-        tracing::info!(?versions, "runtime versions on this PC");
+        assert!(!versions.is_empty(), "no `pv` value was read: {facts:?}");
+        assert!(
+            matches!(judge(&facts), RuntimeStatus::Installed { .. }),
+            "{facts:?}"
+        );
     }
 }
