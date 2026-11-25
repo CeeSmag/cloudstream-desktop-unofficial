@@ -23,8 +23,9 @@ pub enum SetupError {
     /// The viewer stopped the install before the setup ran.
     #[error("the WebView2 install was cancelled")]
     Cancelled,
-    /// The setup ran and reported a failure.
-    #[error("the WebView2 setup stopped with code {0}")]
+    /// The setup ran and reported a failure. The code is shown in hex (`0x80040828`), the way
+    /// Microsoft lists the setup's codes.
+    #[error("the WebView2 setup stopped with code {0:#010X}")]
     InstallerFailed(i32),
     /// The setup did not finish in time.
     #[error("the WebView2 setup did not finish in time")]
@@ -70,6 +71,18 @@ mod tests {
     }
 
     #[test]
+    fn setup_codes_read_like_microsofts_list() {
+        assert_eq!(
+            SetupError::InstallerFailed(-2_147_219_416).to_string(),
+            "the WebView2 setup stopped with code 0x80040828"
+        );
+        assert_eq!(
+            SetupError::InstallerFailed(1602).to_string(),
+            "the WebView2 setup stopped with code 0x00000642"
+        );
+    }
+
+    #[test]
     fn every_reason_reads_as_a_sentence() {
         let all = [
             SetupError::Download("timed out".into()),
@@ -89,6 +102,6 @@ mod tests {
         assert!(texts.iter().any(|text| text.ends_with("than 7 bytes")));
         assert!(texts.iter().any(|text| text.contains("example.org")));
         assert!(texts.iter().any(|text| text.contains("(NotSigned)")));
-        assert!(texts.iter().any(|text| text.ends_with("code 3")));
+        assert!(texts.iter().any(|text| text.ends_with("code 0x00000003")));
     }
 }

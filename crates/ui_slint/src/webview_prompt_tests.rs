@@ -100,7 +100,7 @@ fn a_failure_explains_itself_and_offers_both_ways_out() {
     assert_eq!(view.title, "WebView2 was not installed");
     assert_eq!(
         view.message,
-        "The WebView2 setup stopped with code 5. You can try again, or install it yourself from \
+        "The WebView2 setup stopped with code 0x00000005. You can try again, or install it yourself from \
          Microsoft's website."
     );
     assert_eq!(view.primary, Some("Try again"));
