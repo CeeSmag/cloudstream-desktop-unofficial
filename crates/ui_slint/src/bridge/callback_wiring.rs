@@ -1,5 +1,6 @@
 //! Connects every Slint callback to its handler.
 
+use crate::home_scroll::wire_home_scroll;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -29,6 +30,7 @@ use super::update_callbacks::wire_updates;
 pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_home(ctx, ui);
     wire_home_expanded(ctx, ui);
+    wire_home_scroll(ui);
     wire_library_actions(ctx, ui);
     wire_catalog(ctx, ui);
     wire_browse_filters(ctx, ui);

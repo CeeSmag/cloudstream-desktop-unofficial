@@ -2,6 +2,7 @@
 
 use slint::Model;
 
+use crate::home_scroll::{is_home_on_screen, is_home_top_request, reset_home_scroll};
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -46,13 +47,21 @@ fn select_tab(ctx: &BridgeContext, tab: i32) {
     let Some(ui) = ctx.window() else {
         return;
     };
-    tracing::debug!(from = ui.get_tab(), to = tab, "ui tab selected");
+    let home_on_screen = is_home_on_screen(ui.get_tab(), !ui.get_details_title().is_empty());
+    tracing::debug!(
+        from = ui.get_tab(),
+        to = tab,
+        home_on_screen,
+        "ui tab selected"
+    );
     if !ui.get_details_title().is_empty() {
         close_details(ctx);
     }
     ui.set_tab(tab);
-    if tab == 0 {
+    if is_home_top_request(home_on_screen, tab) {
+        // Coming back to Home from elsewhere keeps its place; Home pressed on Home starts over.
         close_expanded_shelf(ctx);
+        reset_home_scroll(&ui);
     }
     if tab == BROWSE_TAB {
         load_browse_if_empty(ctx);

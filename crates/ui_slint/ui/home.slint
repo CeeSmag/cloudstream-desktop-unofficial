@@ -26,6 +26,19 @@ export global HomeExpanded {
     callback next-page();
 }
 
+/// Where Home was when the viewer left it. Home is rebuilt every time it is shown again (title
+/// page, another tab), so its scroll positions live here and are put back when it is created.
+export global HomeScroll {
+    /// Home's vertical scroll (`content-y`, 0 or negative) as last seen.
+    in-out property <length> page-y: 0px;
+    /// Each Home row's sideways scroll (`content-x`): 0 = Continue watching, 1 + s = shelf s.
+    in property <[length]> row-x: [];
+    /// Bumped by the app to bring an on-screen Home back to its top and its rows to their start.
+    in property <int> top-request: 0;
+    /// A Home row was scrolled sideways: its key (as in `row-x`) and its `content-x`.
+    callback row-scrolled(int, length);
+}
+
 /// Clean shelf heading with an accent pip (used by Continue watching).
 component ShelfHeader inherits HorizontalLayout {
     in property <string> title;
@@ -234,12 +247,31 @@ export component HomePage inherits ScrollView {
         }
     }
 
+    /// False until the saved position is back, so restoring it jumps instead of animating.
+    property <bool> restore-done: false;
+    property <int> top-request: HomeScroll.top-request;
+
+    init => {
+        self.content-y = HomeScroll.page-y;
+        root.restore-done = true;
+    }
+
+    changed content-y => {
+        if root.restore-done {
+            HomeScroll.page-y = self.content-y;
+        }
+    }
+
+    changed top-request => {
+        root.content-y = 0px;
+    }
+
     changed focus-row => {
         if root.focus-row < 0 || root.focus-row == root.hero-row {
             root.content-y = 0px;
         }
     }
-    animate content-y { duration: 220ms; easing: ease-out; }
+    animate content-y { duration: root.restore-done ? 220ms : 0ms; easing: ease-out; }
 
     VerticalLayout {
         padding: Theme.page-pad;
@@ -282,6 +314,9 @@ export component HomePage inherits ScrollView {
             PosterRow {
                 items: root.continue-items;
                 remove-text: "Remove from Continue watching";
+                start-x: HomeScroll.row-x[0];
+                reset-request: HomeScroll.top-request;
+                scrolled-to(x) => { HomeScroll.row-scrolled(0, x); }
                 focused-index: root.focus-in(root.continue-row);
                 focus-arrived(y, h) => { root.reveal(y, h); }
                 open-at(i) => { root.open-continue(i); }
@@ -370,6 +405,9 @@ export component HomePage inherits ScrollView {
 
                 if HomeExpanded.shelf-index != s: PosterRow {
                     items: shelf.items;
+                    start-x: HomeScroll.row-x[s + 1];
+                    reset-request: HomeScroll.top-request;
+                    scrolled-to(x) => { HomeScroll.row-scrolled(s + 1, x); }
                     focused-index: root.focus-in(root.shelf-row-base + s);
                     focus-arrived(y, h) => { root.reveal(y, h); }
                     open-at(i) => { root.open-shelf(s, i); }

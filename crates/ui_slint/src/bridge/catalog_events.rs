@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::episode_groups::{chunk_for_key, initial_season, season_episodes, season_labels};
 use crate::focus_grid::FocusPoint;
+use crate::home_scroll::reset_home_scroll;
 use crate::pagination::pagination_model;
 use crate::posters::{
     posters_from_bookmarks, posters_from_browse, posters_from_continue, posters_from_search,
@@ -135,6 +136,8 @@ pub(crate) fn show_continue_watching(ctx: &BridgeContext, ui: &CloudStream) {
 
 pub(crate) fn show_home(ctx: &BridgeContext, ui: &CloudStream, sections: &[HomeShelf]) {
     close_expanded_shelf(ctx);
+    // New shelves: an old position would point somewhere else in them.
+    reset_home_scroll(ui);
     ctx.session.borrow_mut().home_shelves = sections.to_vec();
     ui.set_home_loading(false);
     mark_home_arrived(ctx, ui);

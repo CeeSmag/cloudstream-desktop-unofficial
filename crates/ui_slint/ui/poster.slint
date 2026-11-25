@@ -146,8 +146,31 @@ export component PosterRow inherits Flickable {
     callback remove-at(int);
     /// The row got the focus; its position in the window, to scroll it into view.
     callback focus-arrived(length, length);
+    /// Where the row starts scrolled to (`content-x`), so a rebuilt row is where it was left.
+    in property <length> start-x: 0px;
+    /// Bumped to bring the row back to its first poster.
+    in property <int> reset-request: 0;
+    /// The row moved sideways (its new `content-x`).
+    callback scrolled-to(length);
+    /// False until `start-x` is applied, so the restore jumps instead of animating.
+    property <bool> start-applied: false;
 
     height: 294px;
+
+    init => {
+        self.content-x = root.start-x;
+        root.start-applied = true;
+    }
+
+    changed content-x => {
+        if root.start-applied {
+            root.scrolled-to(self.content-x);
+        }
+    }
+
+    changed reset-request => {
+        self.content-x = 0px;
+    }
 
     changed focused-index => {
         if self.focused-index >= 0 {
@@ -158,7 +181,7 @@ export component PosterRow inherits Flickable {
             root.focus-arrived(self.absolute-position.y, self.height);
         }
     }
-    animate content-x { duration: 180ms; easing: ease-out; }
+    animate content-x { duration: root.start-applied ? 180ms : 0ms; easing: ease-out; }
 
     HorizontalLayout {
         padding: 10px;

@@ -21,6 +21,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
 | `browse_filters.rs`, `pagination.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters/pagination, plugin & repository search/sort |
 | `episode_groups.rs`, `posters.rs`, `shelf_pager.rs`, `bridge/home_expanded.rs` | Episode grouping, poster models, Home shelf memory rule (a collapsed row builds 10 posters; the expanded grid shows pages of 20 over `ShelfPager`) |
+| `home_scroll.rs` | Home keeps its place: Home is rebuilt each time it shows, so its vertical and per-row sideways scroll live in the `HomeScroll` global and come back; only Home pressed on Home, or new shelves, go to the top (`tests/home_scroll_render_tests.rs`) |
 | `focus_grid.rs`, `bridge/focus_*.rs`, `resume_hero.rs`, `performance_text.rs` | remote / keyboard navigation, Home banner, Settings "Performance & memory" texts |
 | `startup_progress.rs`, `discovery_progress.rs` | the start-up screen's text/bar and background repo-discovery progress |
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |

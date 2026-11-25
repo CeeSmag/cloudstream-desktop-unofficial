@@ -16,6 +16,7 @@ mod discovery_progress;
 mod episode_groups;
 mod feedback_text;
 mod focus_grid;
+pub mod home_scroll;
 mod pagination;
 mod performance_text;
 mod playback_watch;
