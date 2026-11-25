@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod fetch_script;
+pub mod runtime_errors;
 
 /// A script's string answer: WebView2 hands it JSON-encoded (`"text"`), WebKitGTK plain (`text`).
 pub fn script_text(raw: &str) -> String {

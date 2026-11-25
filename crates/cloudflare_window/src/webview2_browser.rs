@@ -8,6 +8,7 @@ mod protocol;
 use std::cell::{Cell, RefCell};
 use std::rc::Weak;
 
+use cloudflare_window::runtime_errors::missing_runtime_reason;
 use tao::platform::windows::WindowExtWindows;
 use windows_webview::{EnvironmentOptions, WebViewHost};
 
@@ -68,12 +69,17 @@ impl BrowserView {
                         slot.replace(Some(host));
                         observer.initialize();
                     }
-                    Err(error) => {
-                        receiver.unavailable("interactive verification is unavailable", error)
-                    }
+                    Err(error) => receiver.unavailable(
+                        missing_runtime_reason(error.code().0)
+                            .unwrap_or("interactive verification is unavailable"),
+                        error,
+                    ),
                 }
             })
-            .map_err(|error| format!("cannot create the WebView2 browser: {error}"))?;
+            .map_err(|error| match missing_runtime_reason(error.code().0) {
+                Some(reason) => reason.to_owned(),
+                None => format!("cannot create the WebView2 browser: {error}"),
+            })?;
         Ok(Self { slot, source })
     }
 
