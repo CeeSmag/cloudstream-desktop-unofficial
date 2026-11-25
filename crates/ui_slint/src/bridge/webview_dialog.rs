@@ -129,6 +129,7 @@ fn maybe_prompt_at_home(ctx: &BridgeContext, ui: &CloudStream) {
     }
     if let Some(status) = status {
         ctx.session.borrow_mut().webview.shown_at_home = true;
+        tracing::info!(?status, "showing the WebView2 prompt after Home");
         show(ctx, ui, DialogState::Offer(status));
     }
 }
@@ -144,6 +145,10 @@ pub(crate) fn on_cloudflare_failed(ctx: &BridgeContext, ui: &CloudStream) {
     };
     state.shown_for_cloudflare = true;
     drop(session);
+    tracing::info!(
+        ?status,
+        "a Cloudflare check failed for want of WebView2; showing the prompt"
+    );
     show(ctx, ui, DialogState::Offer(status));
 }
 
@@ -273,6 +278,7 @@ fn start_install(ctx: &BridgeContext, ui: &CloudStream) {
             run,
         }
     };
+    tracing::info!("installing Microsoft Edge WebView2");
     show(
         ctx,
         ui,
