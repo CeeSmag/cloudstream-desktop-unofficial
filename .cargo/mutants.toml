@@ -19,6 +19,8 @@ exclude_globs = [
     "crates/extension_runtime/src/sidecar_job_object.rs",
     "crates/extension_runtime/src/sidecar_linux_*.rs",
     "crates/extension_runtime/src/bin/fake_sidecar.rs",
+    # Registry reads, PowerShell signature read and setup process for WebView2 (T4-tested)
+    "crates/webview_runtime/src/windows/*.rs",
     # Native WebView / OS windowing / binary entrypoints
     "crates/cloudflare_window/src/main.rs",
     "crates/cloudflare_window/src/browser_view.rs",

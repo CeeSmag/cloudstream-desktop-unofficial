@@ -6,7 +6,9 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+thiserror.workspace = true
 tracing.workspace = true
+ureq = "3"
 
 [target.'cfg(windows)'.dependencies]
 # Registry reads through a safe API (the `kernel` feature); already pinned for the Cloudflare crates.

@@ -7674,7 +7674,9 @@ dependencies = [
 name = "webview_runtime"
 version = "0.5.5"
 dependencies = [
+ "thiserror 2.0.21",
  "tracing",
+ "ureq",
  "winsafe",
 ]
 
