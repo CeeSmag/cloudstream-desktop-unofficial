@@ -11,7 +11,7 @@
 #
 # Needs: the Rust MSVC toolchain, NSIS (makensis; for -Kind installer|all), and the extension
 # sidecar built once with scripts\setup_sidecar.ps1. Every package carries what the app needs to
-# run on a clean PC: libmpv, vulkan-1.dll, the sidecar and a Java runtime (downloaded once into
+# run on a clean PC: libmpv, vulkan-1.dll, WebView2Loader.dll, the sidecar and a Java runtime (downloaded once into
 # target\bundle-cache). Results land in .\dist.
 param(
     [ValidateSet('all', 'installer', 'portable')][string]$Kind = 'all',
@@ -21,6 +21,9 @@ param(
     # vulkan-1.dll (the Vulkan loader) that libmpv imports; PCs without a GPU driver lack it and libmpv
     # then fails to load. Default: scripts\vendor\vulkan\x64\vulkan-1.dll (kept in the repo).
     [string]$VulkanDll = '',
+    # WebView2Loader.dll that cloudstream-verify.exe loads; when absent it is taken from the pinned
+    # Microsoft.Web.WebView2 NuGet package (checked against $webView2Sha256 below).
+    [string]$WebView2Loader = '',
     [string]$OutDir = ''
 )
 
@@ -37,6 +40,9 @@ if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
 }
 $version = $Matches[1]
 $triple = 'x86_64-pc-windows-msvc'
+# The NuGet package that carries WebView2Loader.dll. To move to a newer one, see docs/RELEASING.md.
+$webView2Version = '1.0.3800.47'
+$webView2Sha256 = '56C9F26BDD07916A2D1949FB58A5C7E434DFA1173577DCA879206050C4E718DB'
 
 $started = Get-Date
 $logDir = Join-Path $repoRoot 'target\bundle-logs'
@@ -168,10 +174,45 @@ function Get-VulkanLoader {
     $vendored = Join-Path $PSScriptRoot 'vendor\vulkan\x64\vulkan-1.dll'
     $found = @($VulkanDll, $vendored) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
     if (-not $found) { throw "vulkan-1.dll not found. Expected $vendored (see scripts\vendor\vulkan\README.md) or pass -VulkanDll." }
-    $bytes = [IO.File]::ReadAllBytes($found)
-    $machine = '{0:X4}' -f [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4)
-    if ($machine -ne '8664') { throw "$found is built for CPU type $machine, but the x64 build needs 8664." }
+    Assert-X64Pe $found
     return $found
+}
+
+# Stops the build when a DLL is built for another CPU type than x64.
+function Assert-X64Pe([string]$file) {
+    $bytes = [IO.File]::ReadAllBytes($file)
+    $machine = '{0:X4}' -f [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4)
+    if ($machine -ne '8664') { throw "$file is built for CPU type $machine, but the x64 build needs 8664." }
+}
+
+# The WebView2 loader cloudstream-verify.exe loads at run time (CreateCoreWebView2Environment). Windows
+# does not carry it, only the WebView2 runtime it starts, so it ships beside the program.
+function Get-WebView2Loader {
+    if ($WebView2Loader) {
+        if (-not (Test-Path $WebView2Loader)) { throw "-WebView2Loader $WebView2Loader does not exist." }
+        Assert-X64Pe $WebView2Loader
+        return $WebView2Loader
+    }
+    $file = Join-Path $cache "webview2loader-x64\$webView2Version\WebView2Loader.dll"
+    if (-not (Test-Path $file)) {
+        $package = Join-Path $cache "microsoft.web.webview2.$webView2Version.nupkg"
+        Get-Download "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$webView2Version" $package
+        $hash = (Get-FileHash $package -Algorithm SHA256).Hash
+        if ($hash -ne $webView2Sha256) {
+            Remove-Item $package -Force
+            throw "Microsoft.Web.WebView2 $webView2Version has SHA256 $hash, expected $webView2Sha256 (the download was removed)."
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($package)
+        try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'build/native/x64/WebView2Loader.dll' } | Select-Object -First 1
+            if (-not $entry) { throw "build/native/x64/WebView2Loader.dll is not in $package." }
+            New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $file, $true)
+        } finally { $zip.Dispose() }
+    }
+    Assert-X64Pe $file
+    return $file
 }
 
 function Assert-InPayload([string]$archive, [string]$name) {
@@ -181,14 +222,16 @@ function Assert-InPayload([string]$archive, [string]$name) {
     }
 }
 
-# Lays out what ships beside the program: cloudstream.exe, libmpv-2.dll, vulkan-1.dll, sidecar\, jre\.
+# Lays out what ships beside the program: cloudstream.exe, libmpv-2.dll, vulkan-1.dll,
+# WebView2Loader.dll, sidecar\, jre\.
 function New-Stage {
-    Write-Step 'Collecting libmpv, vulkan-1.dll, the sidecar and Java'
+    Write-Step 'Collecting libmpv, vulkan-1.dll, WebView2Loader.dll, the sidecar and Java'
     $stage = Join-Path $stageRoot 'x64'
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force $stage | Out-Null
     Copy-Item (Get-LibMpv) (Join-Path $stage 'libmpv-2.dll')
     Copy-Item (Get-VulkanLoader) (Join-Path $stage 'vulkan-1.dll')
+    Copy-Item (Get-WebView2Loader) (Join-Path $stage 'WebView2Loader.dll')
     Copy-Item $SidecarHome (Join-Path $stage 'sidecar') -Recurse
     Repair-SidecarScript (Join-Path $stage 'sidecar\bin\cs-sidecar.bat')
     Copy-Item (Get-Jre) (Join-Path $stage 'jre') -Recurse
@@ -199,7 +242,8 @@ function Build-App {
     Write-Step "Building cloudstream ($triple)"
     Invoke-Native 'Adding the Rust target' 'rustup' @('target', 'add', $triple)
     Invoke-Native 'Compiling app_shell' 'cargo' @('build', '--release', '--target', $triple, '-p', 'app_shell')
-    # The Cloudflare verification window (WebView2, part of Windows 10/11).
+    # The Cloudflare verification window. It loads WebView2Loader.dll (shipped beside it) and the
+    # Microsoft Edge WebView2 Runtime (preinstalled on Windows 11 and most Windows 10 PCs; not shipped).
     Invoke-Native 'Compiling cloudstream-verify' 'cargo' @('build', '--release', '--target', $triple, '-p', 'cloudflare_window')
 }
 
@@ -211,7 +255,7 @@ function New-InstallPayload([string]$stage) {
     if (-not (Test-Path $exe)) { throw "cloudstream.exe missing at $exe" }
     Copy-Item $exe (Join-Path $payload 'cloudstream.exe')
     Copy-Item (Join-Path $repoRoot "target\$triple\release\cloudstream-verify.exe") (Join-Path $payload 'cloudstream-verify.exe')
-    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payload }
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'WebView2Loader.dll') { Copy-Item (Join-Path $stage $name) $payload }
     foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payload -Recurse }
     if (Test-Path (Join-Path $iconDir 'icon.ico')) {
         Copy-Item (Join-Path $iconDir 'icon.ico') (Join-Path $payload 'icon.ico')
@@ -234,7 +278,7 @@ function Copy-Installer([string]$stage) {
     Write-Step 'Packaging the NSIS installer'
     $makensis = Find-Makensis
     $payload = New-InstallPayload $stage
-    foreach ($name in 'cloudstream.exe', 'cloudstream-verify.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'sidecar', 'jre') {
+    foreach ($name in 'cloudstream.exe', 'cloudstream-verify.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'WebView2Loader.dll', 'sidecar', 'jre') {
         if (-not (Test-Path (Join-Path $payload $name))) { throw "$name is not in the installer payload." }
     }
     $dest = Join-Path $OutDir "CloudStream_${version}_x64-setup.exe"
@@ -261,7 +305,7 @@ function New-Portable([string]$stage) {
     New-Item -ItemType Directory -Force $payloadFolder | Out-Null
     Copy-Item $exe (Join-Path $payloadFolder 'cloudstream.exe')
     Copy-Item (Join-Path $repoRoot "target\$triple\release\cloudstream-verify.exe") (Join-Path $payloadFolder 'cloudstream-verify.exe')
-    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll') { Copy-Item (Join-Path $stage $name) $payloadFolder }
+    foreach ($name in 'libmpv-2.dll', 'vulkan-1.dll', 'WebView2Loader.dll') { Copy-Item (Join-Path $stage $name) $payloadFolder }
     foreach ($name in 'sidecar', 'jre') { Copy-Item (Join-Path $stage $name) $payloadFolder -Recurse }
 
     $archive = Join-Path $stageRoot 'payload-x64.tar.gz'
@@ -269,6 +313,7 @@ function New-Portable([string]$stage) {
     Invoke-Native 'Archiving the payload' 'tar' @('-czf', $archive, '-C', $payloadFolder, '.')
 
     Assert-InPayload $archive 'vulkan-1.dll'
+    Assert-InPayload $archive 'WebView2Loader.dll'
     Assert-InPayload $archive 'cloudstream.exe'
     Assert-InPayload $archive 'cloudstream-verify.exe'
     $env:CS_PAYLOAD_ARCHIVE = $archive

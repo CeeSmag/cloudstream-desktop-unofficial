@@ -84,12 +84,26 @@ For CI-style failure when unsigned: `scripts/sign_release.sh --require-signature
 
 ## What every package carries
 
-`cloudstream` (and `cloudstream-verify`), `libmpv` (DLL or `.so`), `vulkan-1.dll` on Windows, the extension
-sidecar and a Java 21 runtime, so the app runs on a clean PC.
+`cloudstream` (and `cloudstream-verify`), `libmpv` (DLL or `.so`), `vulkan-1.dll` and `WebView2Loader.dll` on
+Windows, the extension sidecar and a Java 21 runtime, so the app runs on a clean PC.
 
 - **`cloudstream-verify`**: Cloudflare challenge helper (`cloudflare_window`). On Windows it uses
-  WebView2 (shipped with the OS). On Linux it needs the system's WebKitGTK 4.1 (not bundled in the
-  AppImage); without it, challenge sites show that they could not be verified.
+  WebView2: the loader `WebView2Loader.dll` ships beside it (see below); the Microsoft Edge WebView2
+  Runtime it starts is not shipped (preinstalled on Windows 11 and most Windows 10 PCs). On Linux it
+  needs the system's WebKitGTK 4.1 (not bundled in the AppImage); without it, challenge sites show that
+  they could not be verified.
+- **`WebView2Loader.dll`** (x64, ~160 KB) comes from Microsoft's `Microsoft.Web.WebView2` NuGet package
+  (`build/native/x64/WebView2Loader.dll`). Windows does not carry it, so without it the Cloudflare window
+  fails with "webview2loader.dll was not found" (a dev PC may hide this when another program, such as
+  PowerToys, puts a copy on `PATH`). `scripts/build_release.ps1` downloads the package once into
+  `target\bundle-cache`, stops if its SHA-256 is not the pinned one or the DLL is not x64, and checks the
+  DLL is in the installer payload and the portable payload. `-WebView2Loader <path>` uses another copy.
+  To move to a newer package: pick the version on nuget.org, download
+  `https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/<version>`, compare its SHA-512 with the
+  `packageHash` of that version's catalog entry (`https://api.nuget.org/v3/registration5-semver1/microsoft.web.webview2/<version>.json`
+  → `catalogEntry`), then put `(Get-FileHash <file>).Hash` and the version into `$webView2Sha256` and
+  `$webView2Version` at the top of the script. The loader keeps working with newer runtimes, so a bump is
+  only needed for a loader fix.
 - **`vulkan-1.dll`** comes from `scripts/vendor/vulkan/x64/` (built from Khronos' open-source loader; see the README
   there). libmpv imports it and PCs without a GPU driver have none, so without it the player fails to load.
   The Windows script stops if it is missing or is not an x64 file, and it checks that the file is staged for the
