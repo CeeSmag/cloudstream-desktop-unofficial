@@ -3,6 +3,7 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { TvBadge, TvButton, TvProgressBar, TvSegmented, TvSelect, TvSwitch } from "controls.slint";
 import { Card, MutedLabel, SectionTitle, SettingDivider, SettingRow } from "widgets.slint";
+import { WebViewDialog } from "webview_dialog.slint";
 
 /// Settings > General: video cache, disk storage, plugin workers, diagnostics, updates & wipe.
 export component SettingsGeneralPage inherits VerticalLayout {
@@ -304,6 +305,18 @@ export component SettingsGeneralPage inherits VerticalLayout {
                     icon: Icons.folder;
                     kind: "secondary";
                     clicked => { root.open-logs(); }
+                }
+            }
+            if WebViewDialog.row-visible: SettingDivider { }
+            if WebViewDialog.row-visible: SettingRow {
+                label: "Cloudflare checks (Microsoft Edge WebView2)";
+                description: WebViewDialog.row-text;
+                if WebViewDialog.row-can-install: TvButton {
+                    text: "Install WebView2";
+                    icon: Icons.download;
+                    kind: "tonal";
+                    compact: true;
+                    clicked => { WebViewDialog.show(); }
                 }
             }
         }

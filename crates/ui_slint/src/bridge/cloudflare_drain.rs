@@ -81,10 +81,18 @@ pub(crate) fn drain_cloudflare(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn take_pending_events(ctx: &BridgeContext) -> Vec<cloudflare_bridge::CloudflareEvent> {
-    let extras = ctx.extras.borrow();
-    extras
+    let events: Vec<_> = ctx
+        .extras
+        .borrow()
         .cloudflare
         .as_ref()
         .map(|watch| watch.events.try_iter().collect())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let failed = events
+        .iter()
+        .any(|event| matches!(event, cloudflare_bridge::CloudflareEvent::Failed { .. }));
+    if let (true, Some(ui)) = (failed, ctx.window()) {
+        super::webview_dialog::on_cloudflare_failed(ctx, &ui);
+    }
+    events
 }

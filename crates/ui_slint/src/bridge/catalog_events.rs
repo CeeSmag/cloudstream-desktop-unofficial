@@ -150,6 +150,7 @@ fn mark_home_arrived(ctx: &BridgeContext, ui: &CloudStream) {
     if let Some(cleanup) = ctx.extras.borrow().cleanup.as_ref() {
         cleanup.notify_home_ready();
     }
+    super::webview_dialog::on_home_arrived(ctx, ui);
 }
 
 pub(crate) fn show_search(ctx: &BridgeContext, ui: &CloudStream, summary: &SearchSummary) {

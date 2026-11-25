@@ -43,6 +43,7 @@ slint = { version = "1.19", default-features = false, features = [
     "unstable-fontique-012",
 ] }
 tracing.workspace = true
+webview_runtime = { path = "../webview_runtime" }
 
 [build-dependencies]
 slint-build = "1.19"

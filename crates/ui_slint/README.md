@@ -27,10 +27,12 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `bridge/poster_hydrate.rs` | artwork through `poster_artwork` (single rows updated, stale rows skipped) |
 | `cloudflare_prompts.rs`, `bridge/cloudflare_*.rs` | the Cloudflare banner: `PromptQueue` is a pure typed state machine (`NeedsPermission` > `Failed` > `Verifying` > `Verified`, deterministic expiry, same-tier cycling) projected one-way into `CloudflareBannerState` + `CloudflareBannerPhase` |
 | `bridge/extension_*.rs`, `bridge/repo_list.rs`, `bridge/plugin_list.rs`, `repository_discovery.rs` | repositories tab, repo drill-down, aggregator repo discovery, plugins catalog, trust & removal |
+| `webview_prompt.rs`, `bridge/webview_dialog.rs`, `ui/webview_dialog.slint` | Microsoft Edge WebView2 (Windows): read at every launch in the background; after Home, a missing runtime opens the `WebViewDialog` modal (Install / Not now; closing is not remembered, the next launch asks again), the install's progress, the Settings > General row, and the dialog when a Cloudflare check fails for want of it. Texts and the "open by itself" rule are pure (`webview_prompt.rs`); the status comes through `webview_runtime::StatusBoard`, the install through `InstallGate` |
 | `text_sanitize.rs`, `windows_fonts.rs`, `ui/icon.png` | folds mathematical Unicode text, registers Windows fallback fonts, embeds window/taskbar icon |
 
 Navigation: the whole window is one `FocusScope`; keys a widget does not use bubble to it and go to
 `focus_navigation` (Home, grids, title page; Settings hands Down to its side menu, Tab to controls).
+An open modal (`SecurityDialog`, `WebViewDialog`) takes every key first; "back" closes it.
 Grid column counts and the top bar's narrow/wide layout come from Rust (`follow_window_width`):
 reading a size in Slint to choose a layout makes a binding loop.
 

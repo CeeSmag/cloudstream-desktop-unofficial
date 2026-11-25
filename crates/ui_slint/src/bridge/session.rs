@@ -18,6 +18,7 @@ use super::home_loading::HomeShelf;
 use super::player_timeline::Timeline;
 use super::security_dialog::PendingTrustAction;
 use super::subtitle_delivery::SubtitleDeliveryHandle;
+use super::webview_dialog::WebViewSession;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::EpisodeRow;
 
@@ -98,6 +99,8 @@ pub(crate) struct Session {
     pub(crate) repository_discovery: RepositoryDiscovery,
     /// Pending trust action awaiting confirmation in the SecurityDialog modal.
     pub(crate) pending_trust: Option<PendingTrustAction>,
+    /// The WebView2 dialog and the runtime status behind it.
+    pub(crate) webview: WebViewSession,
 }
 
 /// Which title the details page shows.

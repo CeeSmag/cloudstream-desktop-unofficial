@@ -1,0 +1,123 @@
+import { Theme } from "theme.slint";
+import { Icons, TvIcon } from "icons.slint";
+import { TvButton, TvProgressBar } from "controls.slint";
+
+/// The Microsoft Edge WebView2 dialog (Cloudflare checks open in WebView2) and its Settings row.
+/// Every text comes from Rust (`webview_prompt.rs`); this file only lays them out.
+export global WebViewDialog {
+    in-out property <bool> open: false;
+    in-out property <string> title: "";
+    in-out property <string> message: "";
+    /// The main button's text; empty hides it.
+    in-out property <string> primary-label: "";
+    in-out property <string> close-label: "Close";
+    in-out property <bool> can-close: true;
+    in-out property <bool> show-progress: false;
+    in-out property <float> progress: 0;
+    in-out property <bool> indeterminate: false;
+    in-out property <bool> show-download-link: false;
+    /// Settings > General row: hidden where WebView2 plays no part.
+    in-out property <bool> row-visible: false;
+    in-out property <string> row-text: "";
+    in-out property <bool> row-can-install: false;
+    callback primary();
+    callback close();
+    callback open-download-page();
+    /// Settings > General > Install WebView2.
+    callback show();
+}
+
+/// The modal dialog itself.
+export component WebViewDialogOverlay inherits Rectangle {
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: Theme.overlay-scrim;
+
+    TouchArea { }
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: min(520px, root.width - 48px);
+                background: Theme.panel-glass;
+                border-radius: Theme.radius-lg;
+                border-width: 1px;
+                border-color: Theme.border;
+                drop-shadow-blur: 32px;
+                drop-shadow-color: #000000c8;
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    HorizontalLayout {
+                        spacing: 14px;
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 12px;
+                            background: Theme.accent-soft;
+                            TvIcon {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                commands: Icons.globe;
+                                size: 22px;
+                                color: Theme.accent;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: WebViewDialog.title;
+                            color: Theme.text;
+                            font-size: 18px;
+                            font-weight: 700;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    Text {
+                        text: WebViewDialog.message;
+                        color: Theme.text-secondary;
+                        font-size: 13.5px;
+                        wrap: word-wrap;
+                    }
+
+                    if WebViewDialog.show-progress: TvProgressBar {
+                        progress: WebViewDialog.progress;
+                        indeterminate: WebViewDialog.indeterminate;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        padding-top: 4px;
+                        if WebViewDialog.show-download-link: TvButton {
+                            text: "Microsoft's download page";
+                            icon: Icons.link;
+                            kind: "ghost";
+                            compact: true;
+                            clicked => { WebViewDialog.open-download-page(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        TvButton {
+                            text: WebViewDialog.close-label;
+                            kind: "secondary";
+                            enabled: WebViewDialog.can-close;
+                            clicked => { WebViewDialog.close(); }
+                        }
+                        if WebViewDialog.primary-label != "": TvButton {
+                            text: WebViewDialog.primary-label;
+                            icon: Icons.download;
+                            kind: "primary";
+                            clicked => { WebViewDialog.primary(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

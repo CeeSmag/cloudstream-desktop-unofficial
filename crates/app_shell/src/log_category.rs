@@ -27,6 +27,7 @@ pub(crate) const OWN_TARGETS: &[&str] = &[
     "subtitle_store",
     "title_cache",
     "ui_slint",
+    "webview_runtime",
 ];
 
 /// A part of the app with its own structured JSON Lines debug log file.
@@ -56,6 +57,9 @@ const ROUTES: &[(&str, LogCategory)] = &[
     ("extension_runtime::cloudflare", LogCategory::Cloudflare),
     ("cloudflare_", LogCategory::Cloudflare),
     ("ui_slint::bridge::cloudflare", LogCategory::Cloudflare),
+    // The Cloudflare window runs in WebView2: finding and installing it belongs to the checks.
+    ("webview_runtime", LogCategory::Cloudflare),
+    ("ui_slint::bridge::webview", LogCategory::Cloudflare),
     ("player_", LogCategory::Player),
     ("app_services::playback", LogCategory::Player),
     ("subtitle_store", LogCategory::Player),
@@ -153,6 +157,14 @@ mod tests {
         );
         assert_eq!(
             LogCategory::for_target("ui_slint::bridge::cloudflare_callbacks"),
+            LogCategory::Cloudflare
+        );
+        assert_eq!(
+            LogCategory::for_target("webview_runtime::runtime_installer"),
+            LogCategory::Cloudflare
+        );
+        assert_eq!(
+            LogCategory::for_target("ui_slint::bridge::webview_dialog"),
             LogCategory::Cloudflare
         );
         assert_eq!(

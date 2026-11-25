@@ -57,6 +57,8 @@ pub(crate) enum UiEvent {
     },
     /// Discovered repositories have settled; reload the full plugin catalog once.
     ReloadExtensionsCatalog,
+    /// The WebView2 runtime status changed, or its install moved on.
+    WebView(crate::bridge::WebViewEvent),
 }
 
 impl UiEvent {

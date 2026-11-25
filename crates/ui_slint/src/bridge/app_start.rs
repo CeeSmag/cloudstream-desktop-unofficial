@@ -53,6 +53,7 @@ pub fn run_desktop_app_with(services: UiServices, extras: AppExtras) -> Result<(
     wire_callbacks(&ctx, &ui);
     apply_saved_debug_logging(&ctx, &ui);
     start_extensions(&ctx);
+    super::webview_dialog::start_webview_probe(&ctx);
     let timer = slint::Timer::default();
     let tick_ctx = ctx.clone();
     timer.start(slint::TimerMode::Repeated, UI_TICK, move || {

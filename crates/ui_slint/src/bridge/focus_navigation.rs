@@ -25,6 +25,9 @@ pub(crate) fn wire_navigation(ctx: &BridgeContext, ui: &CloudStream) {
 }
 
 fn handle_key(ctx: &BridgeContext, ui: &CloudStream, key: &str) {
+    if super::webview_dialog::dialog_takes_key(ctx, ui, key) {
+        return;
+    }
     let security_dialog = ui.global::<SecurityDialog>();
     if security_dialog.get_open() {
         if key == "back" {

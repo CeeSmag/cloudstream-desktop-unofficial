@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use app_services::CleanupHandle;
 
+use super::webview_dialog::WebViewParts;
+
 /// Asks for "delete all saved data" at the next start (built by the shell, which runs the wipe).
 pub type WipeRequest = Box<dyn Fn() -> std::io::Result<()>>;
 
@@ -23,4 +25,6 @@ pub struct AppExtras {
     pub debug_logs: Option<DebugLogSwitch>,
     /// Coordinated post-Home, hourly, and manual storage cleanup scheduler.
     pub cleanup: Option<CleanupHandle>,
+    /// Microsoft Edge WebView2 (Windows): the launch check and the install dialog.
+    pub webview: Option<WebViewParts>,
 }

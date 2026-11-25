@@ -7,9 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use app_shell::{
-    build_services, request_wipe, spawn_wipe_helper, start_cloudflare_watch, start_logging,
-    start_storage_cleanup, validate_wipe_target, wipe_if_requested, AppPaths, RetryPlan,
-    ServiceOptions,
+    build_services, build_webview, request_wipe, spawn_wipe_helper, start_cloudflare_watch,
+    start_logging, start_storage_cleanup, validate_wipe_target, wipe_if_requested, AppPaths,
+    RetryPlan, ServiceOptions,
 };
 use ui_slint::{run_desktop_app_with, AppExtras, WipeRequest};
 
@@ -34,6 +34,7 @@ fn main() -> anyhow::Result<()> {
         )),
         debug_logs: Some(Box::new(move |enabled| debug_logs.set_enabled(enabled))),
         cleanup: Some(cleanup.handle()),
+        webview: Some(build_webview(paths.data_dir())),
     };
     let result = run_desktop_app_with(services, extras)
         .map_err(|error| anyhow::anyhow!("window failed: {error}"));

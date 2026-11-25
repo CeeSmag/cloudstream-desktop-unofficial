@@ -25,6 +25,7 @@ use super::security_dialog::wire_security_dialog;
 use super::source_picker::wire_source_picker;
 use super::storage_settings_callbacks::wire_storage_settings;
 use super::update_callbacks::wire_updates;
+use super::webview_dialog::wire_webview_dialog;
 
 /// Wires every callback of the window.
 pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
@@ -45,6 +46,7 @@ pub(crate) fn wire_callbacks(ctx: &BridgeContext, ui: &CloudStream) {
     wire_performance_settings(ctx, ui);
     wire_extension_settings(ctx, ui);
     wire_security_dialog(ctx, ui);
+    wire_webview_dialog(ctx, ui);
     wire_repo_list(ctx, ui);
     wire_plugin_list(ctx, ui);
     wire_updates(ctx, ui);

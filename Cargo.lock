@@ -317,6 +317,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ui_slint",
+ "webview_runtime",
  "winresource",
 ]
 
@@ -7080,6 +7081,7 @@ dependencies = [
  "subtitle_store",
  "title_cache",
  "tracing",
+ "webview_runtime",
 ]
 
 [[package]]

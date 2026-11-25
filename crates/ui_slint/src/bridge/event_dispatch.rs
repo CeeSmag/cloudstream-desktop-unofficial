@@ -18,6 +18,7 @@ use super::storage_usage_view::show_storage_usage;
 use super::stream_events::{
     on_open_finished, on_subtitle_ready, show_open_progress, show_open_update, start_ready_stream,
 };
+use super::webview_dialog::show_webview_event;
 
 /// Shows everything the workers finished since the last tick.
 pub(crate) fn drain_events(ctx: &BridgeContext, ui: &CloudStream) {
@@ -48,6 +49,7 @@ fn apply_event(ctx: &BridgeContext, ui: &CloudStream, event: UiEvent) {
         UiEvent::BrowseLoaded(_, result) => show_browse(ctx, ui, result),
         UiEvent::BrowseMatched(_, matched) => show_browse_match(ctx, matched),
         UiEvent::DetailsLoaded(_, page) => show_details(ctx, ui, *page),
+        UiEvent::WebView(event) => show_webview_event(ctx, ui, event),
         UiEvent::DetailsFailed(_, error) => {
             show_details_failed(ctx, &format!("The title could not be loaded: {error}"));
         }

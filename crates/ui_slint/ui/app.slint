@@ -13,11 +13,13 @@ import { DetailsOverlay } from "details.slint";
 import { PlayerOverlay } from "player.slint";
 import { CloudflareBanner, CloudflareBannerPhase, CloudflareBannerState } from "cloudflare_banner.slint";
 import { SecurityDialog, SecurityDialogOverlay } from "security_dialog.slint";
+import { WebViewDialog, WebViewDialogOverlay } from "webview_dialog.slint";
 import { TopBar } from "top_bar.slint";
 import { Toast } from "toast.slint";
 
 export { CloudflareBannerPhase, CloudflareBannerState } from "cloudflare_banner.slint";
 export { SecurityDialog } from "security_dialog.slint";
+export { WebViewDialog } from "webview_dialog.slint";
 export { PluginList } from "extensions_plugins.slint";
 export { RepoList, RepoDetail } from "extensions_repos.slint";
 export { HomeExpanded, HomeScroll } from "home.slint";
@@ -726,6 +728,7 @@ export component CloudStream inherits Window {
         }
 
         if SecurityDialog.open: SecurityDialogOverlay { }
+        if WebViewDialog.open: WebViewDialogOverlay { }
 
         if !starting && !player-open && root.debug-logging && root.debug-indicator-hovered: Rectangle {
             x: max(16px, root.width - self.width - Theme.page-pad);

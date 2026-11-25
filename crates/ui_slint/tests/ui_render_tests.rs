@@ -14,7 +14,7 @@ use ui_slint::{
     AvailablePlugin, BrowseFilter, CastItem, CloudStream, CloudflareBannerPhase,
     CloudflareBannerState, DetailsMeta, EpisodeItem, FilterChip, HomeExpanded, PaginationItem,
     PluginItem, PluginList, PosterItem, RepoDetail, RepoList, RepositoryItem, SecurityDialog,
-    SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice,
+    SeekMark, SeekPreview, ShelfSection, SourceItem, SourceMenuInfo, TrackChoice, WebViewDialog,
 };
 
 const WIDTH: u32 = 1280;
@@ -675,6 +675,7 @@ fn verify_overlays(ui: &CloudStream, window: &MinimalSoftwareWindow) {
     assert_non_blank(&render_frame(window, "10_wipe_dialog"), "wipe_dialog");
     ui.set_show_wipe_confirm(false);
     verify_security_dialog_overlay(ui, window);
+    verify_webview_dialog_states(ui, window);
     verify_cloudflare_banner_states(ui, window);
 }
 
@@ -730,6 +731,41 @@ fn verify_security_dialog_overlay(ui: &CloudStream, window: &MinimalSoftwareWind
         "security_dialog_details",
     );
     dialog.set_open(false);
+}
+
+/// The WebView2 dialog in its three looks (offer, running setup, done): each one draws on top of
+/// the page, and each differs from the others.
+fn verify_webview_dialog_states(ui: &CloudStream, window: &MinimalSoftwareWindow) {
+    let page = render_frame(window, "11c_before_webview_dialog");
+    let dialog = ui.global::<WebViewDialog>();
+    dialog.set_title("WebView2 is needed for Cloudflare checks".into());
+    dialog.set_message("CloudStream opens that check in Microsoft Edge WebView2.".into());
+    dialog.set_primary_label("Install WebView2".into());
+    dialog.set_close_label("Not now".into());
+    dialog.set_show_download_link(true);
+    dialog.set_open(true);
+    let offer = render_frame(window, "11c_webview_offer");
+    assert_non_blank(&offer, "webview_offer");
+    assert_ne!(offer, page, "the dialog must draw over the page");
+
+    dialog.set_title("Installing WebView2".into());
+    dialog.set_primary_label("".into());
+    dialog.set_close_label("Close".into());
+    dialog.set_can_close(false);
+    dialog.set_show_download_link(false);
+    dialog.set_show_progress(true);
+    dialog.set_indeterminate(true);
+    let running = render_frame(window, "11d_webview_installing");
+    assert_ne!(running, offer, "the running setup must look different");
+
+    dialog.set_title("WebView2 is ready".into());
+    dialog.set_close_label("Done".into());
+    dialog.set_can_close(true);
+    dialog.set_show_progress(false);
+    let done = render_frame(window, "11e_webview_done");
+    assert_ne!(done, running, "the finished install must look different");
+    dialog.set_open(false);
+    assert_eq!(render_frame(window, "11f_after_webview_dialog"), page);
 }
 
 #[test]
