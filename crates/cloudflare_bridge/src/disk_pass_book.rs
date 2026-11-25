@@ -4,7 +4,8 @@
 //! untrusted plugin's sandbox may read (Landlock on Linux, AppContainer on Windows). Every write is a whole
 //! file renamed into place, so a reader (another app instance, or this one after a crash) sees an old file or
 //! a new one, never half of one. Changes take an exclusive lock on `.lock` (with a time limit), so two app
-//! instances cannot lose each other's rejections. A file that cannot be read back is logged by name and
+//! instances cannot lose each other's rejections. Books of one process first queue for the folder in
+//! [`FolderGate`] (first come, first served), so the time limit only ever runs out over another instance. A file that cannot be read back is logged by name and
 //! removed: a saved pass is only ever an optimisation, the check window is always the fallback.
 
 use std::collections::hash_map::RandomState;
@@ -13,8 +14,10 @@ use std::hash::BuildHasher;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::folder_gate::FolderGate;
 use crate::pass_book::{PassBook, PassStoreError, PruneReport, MAX_PASSES};
 use crate::pass_file::{decode_scope, encode_scope, scope_file_name};
 use crate::pass_ids::PassId;
@@ -24,7 +27,8 @@ use crate::saved_pass::SavedPass;
 /// A scope file larger than this is not read (a real one is a few kilobytes).
 pub const MAX_PASS_FILE_BYTES: u64 = 64 * 1024;
 
-/// How long a change waits for another instance to release the lock.
+/// How long a change waits for another app instance to release the lock (books of this process queue in
+/// [`FolderGate`] instead, without a limit).
 const LOCK_WAIT: Duration = Duration::from_secs(2);
 
 /// How often a waiting change tries the lock again.
@@ -43,6 +47,8 @@ pub struct DiskPassBook {
     /// Random per book, so two books (two app instances, or two in one process) never pick one name.
     writer: u64,
     temp_names: AtomicU64,
+    /// Shared by every book on this folder in this process.
+    gate: Arc<FolderGate>,
 }
 
 impl DiskPassBook {
@@ -61,10 +67,11 @@ impl DiskPassBook {
         })?;
         ensure_lock_file(&dir)?;
         Ok(Self {
-            dir,
             cap,
             writer: RandomState::new().hash_one(std::process::id()),
             temp_names: AtomicU64::new(0),
+            gate: FolderGate::for_folder(&dir),
+            dir,
         })
     }
 
@@ -147,6 +154,7 @@ impl DiskPassBook {
         &self,
         change: impl FnOnce() -> Result<T, PassStoreError>,
     ) -> Result<T, PassStoreError> {
+        let _turn = self.gate.enter();
         let path = self.dir.join(LOCK_FILE);
         let lock = OpenOptions::new()
             .create(true)
@@ -170,6 +178,7 @@ impl DiskPassBook {
     /// exclusive lock when `.lock` is writable so continuous readers cannot overlap and starve a
     /// waiting writer, and falls back to a shared lock on a read-only folder (where no writer runs).
     fn read_locked<T: Default>(&self, read: impl FnOnce() -> T) -> T {
+        let _turn = self.gate.enter();
         let path = self.dir.join(LOCK_FILE);
         let (lock, mode) = match open_read_lock(&path) {
             ReadLockOpen::Locked(file, mode) => (file, mode),

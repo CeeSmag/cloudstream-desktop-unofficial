@@ -26,7 +26,7 @@ A "pass" is the verified `cf_clearance` cookie (plus accompanying cookies) and b
 - `<data>/cloudflare_passes` lives **beside** `<data>/sidecar`, never inside it (untrusted plugin sandboxes only receive access to `<data>/sidecar`: Landlock on Linux, AppContainer `CloudStream.PluginSidecar.v1` on Windows).
 - Unix enforces `0700` dir / `0600` files; Windows inherits the user profile ACL with no AppContainer SID.
 - One versioned JSON file per scope (`domain-site.test.json`, `host-www.site.test.json`), max 64 KiB, max 256 scopes, atomic temp+rename writes. Corrupt/oversized/misnamed files are logged by name and removed.
-- **Multi-instance safety:** Writes and reads coordinate via `.lock` (2 s timeout; exclusive lock when writable to avoid Windows NTFS `DELETE_PENDING` read errors and reader-overlap writer starvation, shared lock fallback on read-only lock files).
+- **Multi-instance safety:** Writes and reads coordinate via `.lock` (2 s timeout; exclusive lock when writable to avoid Windows NTFS `DELETE_PENDING` read errors and reader-overlap writer starvation, shared lock fallback on read-only lock files). The file lock is polled (no timed wait in safe Rust), which is unfair, so books in one process first queue per folder in `FolderGate` (ticket order, no time limit); the 2 s limit then only applies while another app instance holds the lock.
 - **Windows sidecar guard:** `scripts/setup_sidecar.ps1` writes `.sidecar-sources.stamp` and `scripts/build_release.ps1` verifies source freshness and `CloudflareExchangeFormat.class` in `plugin-runtime.jar` via `scripts/sidecar_stamp.py` so stale sidecars cannot ship.
 
 ## Verification & Mutation Testing

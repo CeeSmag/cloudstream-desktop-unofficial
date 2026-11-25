@@ -13,6 +13,7 @@ mod cookie_value;
 mod disk_pass_book;
 mod exchange;
 mod fetch_exchange;
+mod folder_gate;
 mod helper_idle;
 mod helper_protocol;
 mod issued_pass;

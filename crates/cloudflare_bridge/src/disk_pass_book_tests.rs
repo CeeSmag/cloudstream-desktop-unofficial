@@ -557,6 +557,19 @@ fn single_scope_concurrent_readers_and_writers_never_log_read_errors_or_lose_rej
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Books of one process (the race test above opens six) queue together, so none of them can be starved
+/// into the cross-instance lock timeout by the others.
+#[test]
+fn books_opened_on_one_folder_queue_for_it_together() {
+    let first = book("shared_gate");
+    let second = DiskPassBook::open(first.dir()).expect("second book");
+    let elsewhere = book("other_gate");
+    assert!(std::sync::Arc::ptr_eq(&first.gate, &second.gate));
+    assert!(!std::sync::Arc::ptr_eq(&first.gate, &elsewhere.gate));
+    let _ = fs::remove_dir_all(first.dir());
+    let _ = fs::remove_dir_all(elsewhere.dir());
+}
+
 #[test]
 fn write_private_writes_exact_bytes_and_refuses_to_overwrite_existing_file() {
     let dir = folder("write_private");
