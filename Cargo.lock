@@ -7671,6 +7671,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "webview_runtime"
+version = "0.5.5"
+dependencies = [
+ "tracing",
+ "winsafe",
+]
+
+[[package]]
 name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

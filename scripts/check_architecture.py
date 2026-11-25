@@ -43,6 +43,7 @@ LEAF_CRATES = {
     "cloudflare_bridge",
     "cloudflare_window",
     "portable_launcher",
+    "webview_runtime",
 }
 
 

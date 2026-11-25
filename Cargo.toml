@@ -23,6 +23,7 @@ members = [
     "crates/portable_launcher",
     "crates/cloudflare_bridge",
     "crates/cloudflare_window",
+    "crates/webview_runtime",
     "tests/bdd",
 ]
 # `crates/ui_app` (egui) is reference-only: its font provider turns on fontconfig `dlopen`,

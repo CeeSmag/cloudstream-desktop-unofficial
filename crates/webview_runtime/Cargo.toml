@@ -1,0 +1,16 @@
+[package]
+name = "webview_runtime"
+description = "Finds the Microsoft Edge WebView2 Runtime and installs it with Microsoft's own setup."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Registry reads through a safe API (the `kernel` feature); already pinned for the Cloudflare crates.
+winsafe = { version = "=0.0.19", features = ["kernel"] }
+
+[lints]
+workspace = true
