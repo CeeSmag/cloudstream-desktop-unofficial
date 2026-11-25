@@ -16,6 +16,7 @@ fn loopback(url: &str) -> bool {
 /// Answers by path; every answer closes the connection.
 fn respond(stream: &mut TcpStream, path: &str) -> std::io::Result<()> {
     let big = vec![b'x'; 300 * 1024];
+    let exact = vec![b'y'; usize::try_from(LIMIT).unwrap()];
     let (head, body): (String, &[u8]) = match path {
         "/setup" => (format!("200 OK\r\nContent-Length: {}", SETUP.len()), SETUP),
         "/hop" => (
@@ -36,6 +37,7 @@ fn respond(stream: &mut TcpStream, path: &str) -> std::io::Result<()> {
         ),
         "/nowhere" => ("302 Found\r\nContent-Length: 0".into(), b""),
         "/declared-big" => (format!("200 OK\r\nContent-Length: {}", LIMIT + 1), b""),
+        "/exact" => (format!("200 OK\r\nContent-Length: {LIMIT}"), &exact),
         "/big" | "/slow-big" => ("200 OK".into(), &big),
         _ => ("404 Not Found\r\nContent-Length: 0".into(), b""),
     };
@@ -180,6 +182,45 @@ fn a_setup_growing_too_large_is_stopped_while_reading() {
     assert_eq!(got.result, Err(SetupError::TooLarge { limit: LIMIT }));
     assert!(got.progress.iter().all(|(done, _)| *done <= LIMIT));
     got.assert_nothing_written();
+}
+
+#[test]
+fn a_setup_exactly_at_the_cap_is_accepted() {
+    let got = download("exact", "/exact", &CancelFlag::new());
+    assert_eq!(got.result, Ok(()));
+    assert_eq!(std::fs::metadata(&got.dest).unwrap().len(), LIMIT);
+}
+
+/// The copy itself, from memory: chunks are 64 KiB, a body exactly at the limit passes and one
+/// byte more does not.
+#[test]
+fn the_copy_reads_in_64_kib_chunks_up_to_the_limit() {
+    let dir = std::env::temp_dir().join(format!("cs_wv2_copy_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let dest = dir.join("copy.part");
+    let cancel = CancelFlag::new();
+    let body = vec![7_u8; 200 * 1024];
+    let size = body.len() as u64;
+    let copy = Copy {
+        limit: size,
+        total: 0,
+        cancel: &cancel,
+    };
+    let mut reports = Vec::new();
+    let result = copy.run(&mut body.as_slice(), &dest, &mut |done, _| {
+        reports.push(done)
+    });
+    assert_eq!(result, Ok(()));
+    assert_eq!(reports.first(), Some(&(64 * 1024)));
+    assert_eq!(reports.last(), Some(&size));
+    let over = Copy {
+        limit: size - 1,
+        total: 0,
+        cancel: &cancel,
+    };
+    let result = over.run(&mut body.as_slice(), &dest, &mut |_, _| {});
+    assert_eq!(result, Err(SetupError::TooLarge { limit: size - 1 }));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

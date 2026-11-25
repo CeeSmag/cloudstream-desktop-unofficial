@@ -193,5 +193,8 @@ mod tests {
         assert!(throttle.admit(&downloading(100, 100)));
         // 100 % shown, then a restart with unknown size at 0 MiB must still be sent.
         assert!(throttle.admit(&downloading(0, 0)));
+        // ... and so must 900 MiB of unknown size after 100 %: the two counts never meet.
+        assert!(throttle.admit(&downloading(100, 100)));
+        assert!(throttle.admit(&downloading(900 * MIB, 0)));
     }
 }

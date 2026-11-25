@@ -1,8 +1,10 @@
 //! T2 and race tests for [`RuntimeInstaller`], with fake download, signature, setup and registry.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Barrier, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use super::*;
 use crate::RuntimeFacts;
@@ -27,7 +29,8 @@ fn installed() -> RuntimeFacts {
 #[derive(Default)]
 struct FakeFetcher {
     fail: Option<SetupError>,
-    pause: Option<Arc<Barrier>>,
+    /// Tells the test the download is half-way, then waits for it to let the download finish.
+    pause: Option<(Sender<()>, Arc<Barrier>)>,
     calls: AtomicUsize,
 }
 
@@ -42,9 +45,9 @@ impl SetupFetcher for FakeFetcher {
             return Err(error.clone());
         }
         progress(4, 8);
-        if let Some(pause) = &self.pause {
-            pause.wait(); // the test may now raise the cancel flag
-            pause.wait(); // ... and has
+        if let Some((halfway, resume)) = &self.pause {
+            let _ = halfway.send(());
+            resume.wait();
         }
         std::fs::write(request.dest, b"MZsetup")
             .map_err(|e| SetupError::disk("write", request.dest, &e))?;
@@ -274,9 +277,10 @@ fn a_cancel_once_the_setup_runs_is_too_late_and_ignored() {
 #[test]
 fn race_a_cancel_during_the_download_keeps_the_setup_from_running() {
     for round in 0..100 {
-        let pause = Arc::new(Barrier::new(2));
+        let (halfway, reached) = mpsc::channel();
+        let resume = Arc::new(Barrier::new(2));
         let fetcher = FakeFetcher {
-            pause: Some(Arc::clone(&pause)),
+            pause: Some((halfway, Arc::clone(&resume))),
             ..FakeFetcher::default()
         };
         let rig = Rig::new(&format!("race{round}"), fetcher, MICROSOFT, (0, true));
@@ -286,9 +290,12 @@ fn race_a_cancel_during_the_download_keeps_the_setup_from_running() {
             let cancel = cancel.clone();
             thread::spawn(move || installer.install(&cancel, &mut |_| {}))
         };
-        pause.wait();
+        // A download that never starts must fail the test, not hang it.
+        reached
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the download never started");
         cancel.cancel();
-        pause.wait();
+        resume.wait();
         assert_eq!(
             worker.join().unwrap(),
             Err(SetupError::Cancelled),

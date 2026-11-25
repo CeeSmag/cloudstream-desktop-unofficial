@@ -65,3 +65,14 @@ pub fn platform_installer(
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn there_is_an_installer_on_windows_only() {
+        let installer = platform_installer(platform_probe(), std::env::temp_dir());
+        assert_eq!(installer.is_some(), cfg!(windows));
+    }
+}

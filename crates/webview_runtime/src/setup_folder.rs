@@ -63,7 +63,12 @@ fn is_stale(entry: &std::fs::DirEntry, now: SystemTime) -> bool {
         .and_then(|metadata| metadata.modified())
         .ok()
         .and_then(|modified| now.duration_since(modified).ok())
-        .is_some_and(|age| age > STALE_AFTER)
+        .is_some_and(is_old)
+}
+
+/// Whether an attempt of this age is a left-over.
+fn is_old(age: Duration) -> bool {
+    age > STALE_AFTER
 }
 
 fn remove_stale(root: &Path, now: SystemTime) {
@@ -119,6 +124,13 @@ mod tests {
         assert!(newest.path().is_dir());
         drop((recent, newest));
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn attempts_are_old_only_after_a_full_hour() {
+        assert!(!is_old(Duration::ZERO));
+        assert!(!is_old(STALE_AFTER));
+        assert!(is_old(STALE_AFTER + Duration::from_nanos(1)));
     }
 
     #[test]

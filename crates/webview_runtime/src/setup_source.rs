@@ -109,6 +109,9 @@ mod tests {
         );
         assert_eq!(host_of("http://127.0.0.1:8080"), Some("127.0.0.1".into()));
         assert_eq!(host_of("https://user@host/"), None);
+        // An IPv6 host without a port: its last ':' starts no port.
+        assert_eq!(host_of("http://[::1]/setup"), Some("[::1]".into()));
+        assert_eq!(host_of("http://[::1]:8080/setup"), Some("[::1]".into()));
         assert_eq!(host_of("not an address"), None);
     }
 
