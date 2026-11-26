@@ -72,9 +72,9 @@ fn a_bigger_pc_keeps_the_helper_open_longer() {
 }
 
 #[test]
-fn every_tier_starts_on_the_software_video_path_until_the_gpu_path_is_verified_more_widely() {
+fn every_tier_starts_on_the_gpu_video_path_with_automatic_software_fallback() {
     for tier in TIERS {
-        assert_eq!(preset(tier).video_renderer, VideoRenderer::Cpu, "{tier:?}");
+        assert_eq!(preset(tier).video_renderer, VideoRenderer::Gpu, "{tier:?}");
     }
 }
 

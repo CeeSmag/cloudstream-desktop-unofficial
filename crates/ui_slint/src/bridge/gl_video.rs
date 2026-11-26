@@ -109,7 +109,7 @@ impl Notifier {
             return;
         };
         let state = &self.state;
-        if !state.is_attached() && !attach(state, &self.services, get_proc_address) {
+        if !state.is_attached() && !attach(state, &self.services, &self.weak, get_proc_address) {
             return;
         }
         if !ui.get_player_open() {
@@ -132,6 +132,7 @@ impl Notifier {
 fn attach(
     state: &GlVideoState,
     services: &UiServices,
+    weak: &slint::Weak<CloudStream>,
     get_proc_address: &dyn Fn(&std::ffi::CStr) -> *const c_void,
 ) -> bool {
     if state.failed.get() {
@@ -149,11 +150,25 @@ fn attach(
     };
     match target.attach(&loader) {
         Ok(()) => {
+            // Wake Slint on every new mpv frame instead of waiting for the 16 ms polling timer,
+            // avoiding 60 fps cadence drops and unnecessary wakeups on 24 fps streams.
+            let weak = weak.clone();
+            target.set_frame_wake(Box::new(move || {
+                let weak = weak.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = weak.upgrade() {
+                        if ui.get_player_open() {
+                            ui.window().request_redraw();
+                        }
+                    }
+                });
+            }));
             *state.target.borrow_mut() = Some(target);
             true
         }
         Err(error) => {
-            tracing::error!(%error, "zero-copy video could not attach to the OpenGL context");
+            tracing::error!(%error, "zero-copy video could not attach to the OpenGL context; using software fallback");
+            services.gl_video.store(false, Ordering::SeqCst);
             state.failed.set(true);
             false
         }

@@ -59,46 +59,100 @@ impl RenderApi {
     }
 }
 
-/// Wakes the render thread when mpv has a new frame.
+type WakeCallback = Arc<dyn Fn() + Send + Sync>;
+
+#[derive(Default)]
+struct SignalState {
+    pending: bool,
+    on_frame: Option<WakeCallback>,
+}
+
+/// Wakes the render thread (or UI redraw callback) when mpv has a new frame.
 #[derive(Default)]
 pub(crate) struct FrameSignal {
-    pending: Mutex<bool>,
+    state: Mutex<SignalState>,
     wake: Condvar,
 }
 
 impl FrameSignal {
-    /// Marks a frame as pending and wakes the waiter.
+    /// Registers a callback invoked on the `false -> true` pending edge (coalesced so rapid mpv
+    /// notifications never flood the UI event loop). Fires once right away if a frame is already
+    /// pending.
+    pub(crate) fn set_wake(&self, callback: Box<dyn Fn() + Send + Sync>) {
+        let callback: WakeCallback = Arc::from(callback);
+        let fire_now = {
+            let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+            state.on_frame = Some(Arc::clone(&callback));
+            state.pending
+        };
+        if fire_now {
+            callback();
+        }
+    }
+
+    /// Drops any registered wake callback (for example when the GL context tears down).
+    pub(crate) fn clear_wake(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .on_frame = None;
+    }
+
+    /// Marks a frame as pending and wakes any waiter or edge-triggered UI callback.
     pub(crate) fn notify(&self) {
-        *self.pending.lock().unwrap_or_else(PoisonError::into_inner) = true;
-        self.wake.notify_one();
+        let callback = {
+            let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+            let was_pending = state.pending;
+            state.pending = true;
+            self.wake.notify_one();
+            if was_pending {
+                None
+            } else {
+                state.on_frame.clone()
+            }
+        };
+        if let Some(callback) = callback {
+            callback();
+        }
     }
 
     /// Whether a frame is waiting, without taking the notification.
     pub(crate) fn is_pending(&self) -> bool {
-        *self.pending.lock().unwrap_or_else(PoisonError::into_inner)
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pending
     }
 
     /// Forgets a waiting notification (the frame it announced is being drawn).
     pub(crate) fn clear(&self) {
-        *self.pending.lock().unwrap_or_else(PoisonError::into_inner) = false;
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pending = false;
     }
 
     /// Waits up to `timeout` for a notification; true when one arrived.
     pub(crate) fn wait(&self, timeout: Duration) -> bool {
-        let guard = self.pending.lock().unwrap_or_else(PoisonError::into_inner);
+        let guard = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let (mut guard, _) = self
             .wake
-            .wait_timeout_while(guard, timeout, |pending| !*pending)
+            .wait_timeout_while(guard, timeout, |state| !state.pending)
             .unwrap_or_else(PoisonError::into_inner);
-        std::mem::take(&mut *guard)
+        std::mem::take(&mut guard.pending)
     }
 }
 
-/// A software render context bound to one mpv instance.
+/// A render context (software or OpenGL) bound to one mpv instance.
 pub(crate) struct MpvRenderContext {
     handle: Arc<MpvHandle>,
     raw: *mut c_void,
     signal: *const FrameSignal,
+    /// Open DRM render node kept alive for libva zero-copy interop on Linux. Rust executes
+    /// `Drop::drop` (which frees `raw` first) before dropping struct fields, so this fd stays open
+    /// for the entire lifetime of `raw` and closes cleanly afterwards.
+    #[cfg(target_os = "linux")]
+    _drm_render_node: Option<std::fs::File>,
 }
 
 // SAFETY: libmpv documents the render context as usable from one thread at a time; the app moves
@@ -145,11 +199,22 @@ impl MpvRenderContext {
                 reason: handle.describe(code),
             });
         }
-        Ok(Self::adopt(handle, raw, signal))
+        Ok(Self::adopt(
+            handle,
+            raw,
+            signal,
+            #[cfg(target_os = "linux")]
+            None,
+        ))
     }
 
     /// Takes over a freshly created render context `raw` and registers the frame callback.
-    fn adopt(handle: Arc<MpvHandle>, raw: *mut c_void, signal: Arc<FrameSignal>) -> Self {
+    fn adopt(
+        handle: Arc<MpvHandle>,
+        raw: *mut c_void,
+        signal: Arc<FrameSignal>,
+        #[cfg(target_os = "linux")] drm_render_node: Option<std::fs::File>,
+    ) -> Self {
         let signal = Arc::into_raw(signal);
         if let Some(api) = handle.api().render_api() {
             // SAFETY: `raw` is a live render context; `signal` stays valid until `Drop` reclaims it.
@@ -159,6 +224,8 @@ impl MpvRenderContext {
             handle,
             raw,
             signal,
+            #[cfg(target_os = "linux")]
+            _drm_render_node: drm_render_node,
         }
     }
 
@@ -257,5 +324,86 @@ impl Drop for MpvRenderContext {
         }
         // SAFETY: `signal` came from `Arc::into_raw` in `create` and is reclaimed exactly once.
         drop(unsafe { Arc::from_raw(self.signal) });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[test]
+    fn frame_signal_coalesces_wakes_until_cleared_and_stops_after_clear_wake() {
+        let signal = FrameSignal::default();
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&wakes);
+        signal.set_wake(Box::new(move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        signal.notify();
+        signal.notify();
+        assert_eq!(wakes.load(Ordering::SeqCst), 1, "coalesced while pending");
+        assert!(signal.is_pending());
+
+        signal.clear();
+        signal.notify();
+        assert_eq!(wakes.load(Ordering::SeqCst), 2, "re-armed after clear");
+
+        signal.clear();
+        signal.clear_wake();
+        signal.notify();
+        assert_eq!(wakes.load(Ordering::SeqCst), 2, "silent after clear_wake");
+    }
+
+    #[test]
+    fn set_wake_fires_immediately_when_a_frame_is_already_pending() {
+        let signal = FrameSignal::default();
+        signal.notify();
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&wakes);
+        signal.set_wake(Box::new(move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        }));
+        assert_eq!(wakes.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn stress_frame_signal_notify_never_deadlocks_when_callback_inspects_signal() {
+        let signal = Arc::new(FrameSignal::default());
+        let observed = Arc::new(AtomicUsize::new(0));
+        {
+            let sig = Arc::clone(&signal);
+            let obs = Arc::clone(&observed);
+            signal.set_wake(Box::new(move || {
+                // Re-entering `is_pending` from inside the wake callback proves `notify` dropped
+                // its mutex before invoking the callback.
+                if sig.is_pending() {
+                    obs.fetch_add(1, Ordering::Relaxed);
+                }
+            }));
+        }
+        let notifier = {
+            let sig = Arc::clone(&signal);
+            std::thread::spawn(move || {
+                for _ in 0..2_000 {
+                    sig.notify();
+                    std::thread::yield_now();
+                }
+            })
+        };
+        let clearer = {
+            let sig = Arc::clone(&signal);
+            std::thread::spawn(move || {
+                for _ in 0..2_000 {
+                    sig.clear();
+                    std::thread::yield_now();
+                }
+            })
+        };
+        assert!(notifier.join().is_ok());
+        assert!(clearer.join().is_ok());
+        assert!(observed.load(Ordering::Relaxed) >= 1);
     }
 }

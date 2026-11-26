@@ -1,8 +1,8 @@
 //! Where the video player draws its pictures.
 
-/// The software path renders each picture into memory and the window copies it; the GPU path draws
-/// into a texture of the window's OpenGL context and shows it as it is (no copy). The GPU path was
-/// verified on Linux/Wayland only, so every profile starts on the software path.
+/// The GPU path draws into a texture of the window's OpenGL context and shows it as it is (no
+/// copy), falling back automatically to the software path when the window has no OpenGL context or
+/// attaching fails. Every profile starts on GPU so 4K playback stays smooth on low-end PCs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoRenderer {
     /// Pictures rendered into memory (works everywhere).

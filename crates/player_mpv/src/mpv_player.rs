@@ -9,15 +9,18 @@ use player_api::{
 };
 
 use crate::event_worker::EventWorker;
-use crate::frame_renderer::{start_embedding, wants_embedding, FrameRenderer, FrameShared};
+use crate::frame_renderer::{
+    start_embedding, start_embedding_into, wants_embedding, FrameRenderer, FrameShared,
+    INITIAL_SURFACE,
+};
 use crate::loadfile_log::log_loadfile;
 use crate::mpv_api::{MpvApi, MpvHandle};
 use crate::mpv_gl_output::GlOutput;
 use crate::mpv_log::log_level;
 use crate::mpv_option_format::apply_request_options;
 use crate::pending_subtitles::{clear_for_stop, queue_for_new_stream, PendingSubtitles};
-use crate::player_configuration::configure;
 pub use crate::player_configuration::PlayerOptions;
+use crate::player_configuration::{apply_optional_options, configure, EMBEDDED_SW_OPTIONS};
 use crate::preferred_audio::{alang_value, AudioPreference};
 use crate::preferred_subtitles::SubtitlePreference;
 use crate::status_tracker::StatusTracker;
@@ -41,7 +44,7 @@ pub struct MpvPlayer {
     /// Zero-copy output into the app's GL context, when the options asked for it.
     gl: Option<Arc<GlOutput>>,
     // Dropped before `handle` (declaration order) so the render context never outlives mpv.
-    _renderer: Option<FrameRenderer>,
+    _renderer: Arc<Mutex<Option<FrameRenderer>>>,
     handle: Arc<MpvHandle>,
 }
 
@@ -69,21 +72,26 @@ impl MpvPlayer {
         // Verbose mpv event logs only with CS_MPV_LOG; the app debug switch does not flip this.
         handle.set_log_level(log_level(std::env::var_os("CS_MPV_LOG").is_some()));
         let use_gl = embedded && options.gl_output;
-        let (renderer, frames) = if embedded && !use_gl {
-            start_embedding(&handle)
+        let outputs = if use_gl {
+            start_gl_with_fallback(&handle)
+        } else if embedded {
+            let (renderer, frames) = start_embedding(&handle);
+            EmbeddedOutputs {
+                renderer: Arc::new(Mutex::new(renderer)),
+                frames,
+                gl: None,
+            }
         } else {
-            (None, None)
+            EmbeddedOutputs {
+                renderer: Arc::new(Mutex::new(None)),
+                frames: None,
+                gl: None,
+            }
         };
-        let gl = use_gl.then(|| Arc::new(GlOutput::new(Arc::clone(&handle))));
-        Self::assemble(handle, renderer, frames, gl)
+        Self::assemble(handle, outputs)
     }
 
-    fn assemble(
-        handle: Arc<MpvHandle>,
-        renderer: Option<FrameRenderer>,
-        frames: Option<Arc<FrameShared>>,
-        gl: Option<Arc<GlOutput>>,
-    ) -> Result<Self, PlayerError> {
+    fn assemble(handle: Arc<MpvHandle>, outputs: EmbeddedOutputs) -> Result<Self, PlayerError> {
         let tracker = Arc::new(StatusTracker::default());
         let pending_subtitles = Arc::new(Mutex::new(PendingSubtitles::default()));
         let subtitle_activity = Arc::new(SubtitleActivity::default());
@@ -111,11 +119,43 @@ impl MpvPlayer {
             audio_preference,
             subtitle_preference,
             event_thread: Some(event_thread),
-            frames,
-            gl,
-            _renderer: renderer,
+            frames: outputs.frames,
+            gl: outputs.gl,
+            _renderer: outputs.renderer,
             handle,
         })
+    }
+}
+
+/// Embedded video output handles assembled when `MpvPlayer` starts.
+struct EmbeddedOutputs {
+    renderer: Arc<Mutex<Option<FrameRenderer>>>,
+    frames: Option<Arc<FrameShared>>,
+    gl: Option<Arc<GlOutput>>,
+}
+
+/// Prepares OpenGL zero-copy output paired with a dormant software fallback that starts
+/// automatically if attaching to the window's GL context fails on an older GPU/driver.
+fn start_gl_with_fallback(handle: &Arc<MpvHandle>) -> EmbeddedOutputs {
+    let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
+    let renderer = Arc::new(Mutex::new(None));
+    let fallback_handle = Arc::clone(handle);
+    let fallback_shared = Arc::clone(&shared);
+    let fallback_renderer = Arc::clone(&renderer);
+    let gl = Arc::new(GlOutput::new(
+        Arc::clone(handle),
+        Box::new(move || {
+            apply_optional_options(&fallback_handle, EMBEDDED_SW_OPTIONS);
+            let started = start_embedding_into(&fallback_handle, Arc::clone(&fallback_shared));
+            *fallback_renderer
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = started;
+        }),
+    ));
+    EmbeddedOutputs {
+        renderer,
+        frames: Some(shared),
+        gl: Some(gl),
     }
 }
 
@@ -280,12 +320,15 @@ impl VideoPlayer for MpvPlayer {
     }
 
     fn latest_frame(&self, last_seen_serial: u64) -> Option<Arc<VideoFrame>> {
+        if self.gl.as_ref().is_some_and(|gl| !gl.has_failed()) {
+            return None;
+        }
         self.frames.as_ref()?.latest(last_seen_serial)
     }
 
     fn gl_target(&self) -> Option<Arc<dyn GlVideoTarget>> {
-        let target: Arc<dyn GlVideoTarget> =
-            Arc::clone(self.gl.as_ref()?) as Arc<dyn GlVideoTarget>;
+        let gl = self.gl.as_ref().filter(|gl| !gl.has_failed())?;
+        let target: Arc<dyn GlVideoTarget> = Arc::clone(gl) as Arc<dyn GlVideoTarget>;
         Some(target)
     }
 }
@@ -298,6 +341,13 @@ impl Drop for MpvPlayer {
                 tracing::warn!("mpv event thread panicked");
             }
         }
-        // `renderer` (declared before `handle`) is dropped next and joins its thread.
+        // Stop any software render thread before `handle` drops, even if an `Arc<GlOutput>` clone
+        // still exists briefly on another thread.
+        drop(
+            self._renderer
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take(),
+        );
     }
 }

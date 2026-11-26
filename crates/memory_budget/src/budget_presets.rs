@@ -13,7 +13,7 @@ pub(crate) fn preset(tier: MemoryTier) -> MemoryBudget {
             storage_limit_gb: 2,
             helper_idle: HelperIdle::After(2),
             helper_windows: HelperWindows::new(2),
-            video_renderer: VideoRenderer::Cpu,
+            video_renderer: VideoRenderer::Gpu,
         },
         MemoryTier::Balanced => MemoryBudget {
             resident_plugins: ResidentPlugins::Limit(2),
@@ -22,7 +22,7 @@ pub(crate) fn preset(tier: MemoryTier) -> MemoryBudget {
             storage_limit_gb: 2,
             helper_idle: HelperIdle::After(5),
             helper_windows: HelperWindows::new(4),
-            video_renderer: VideoRenderer::Cpu,
+            video_renderer: VideoRenderer::Gpu,
         },
         MemoryTier::HighEnd => MemoryBudget {
             resident_plugins: ResidentPlugins::Limit(4),
@@ -31,7 +31,7 @@ pub(crate) fn preset(tier: MemoryTier) -> MemoryBudget {
             storage_limit_gb: 2,
             helper_idle: HelperIdle::Never,
             helper_windows: HelperWindows::new(8),
-            video_renderer: VideoRenderer::Cpu,
+            video_renderer: VideoRenderer::Gpu,
         },
     }
 }

@@ -78,16 +78,16 @@ fn the_helper_idle_time_follows_the_profile_unless_the_viewer_chose_one() {
 }
 
 #[test]
-fn the_video_renderer_is_software_until_the_viewer_chooses_gpu() {
+fn the_video_renderer_is_gpu_until_the_viewer_chooses_software() {
     let none = MemoryBudget::resolve(MemoryTier::HighEnd, &BudgetOverrides::default());
-    assert_eq!(none.video_renderer, VideoRenderer::Cpu);
+    assert_eq!(none.video_renderer, VideoRenderer::Gpu);
     let chosen = BudgetOverrides {
-        video_renderer: Some(VideoRenderer::Gpu),
+        video_renderer: Some(VideoRenderer::Cpu),
         ..BudgetOverrides::default()
     };
     assert_eq!(
         MemoryBudget::resolve(MemoryTier::LowEnd, &chosen).video_renderer,
-        VideoRenderer::Gpu
+        VideoRenderer::Cpu
     );
 }
 

@@ -50,6 +50,29 @@ const WINDOW_OPTIONS: &[(&str, &str)] = &[
     ("force-window", "yes"),
 ];
 
+/// Fast GPU-shader preset for embedded OpenGL output (`gl_output = true`): replaces mpv's
+/// multi-tap 4K downscaling and HDR peak-detection shaders with bilinear scaling so weak integrated
+/// GPUs (Intel UHD/HD, older AMD APUs on Windows and Linux) render 4K frames in a few milliseconds.
+pub(crate) const EMBEDDED_GL_OPTIONS: &[(&str, &str)] = &[("profile", "fast")];
+
+/// Fast CPU scaler options for the embedded software fallback (`gl_output = false`): disables
+/// `zimg`'s multi-threaded floating-point HDR/Lanczos path and uses `libswscale` fast-bilinear,
+/// cutting 4K CPU usage by ~3-4x on both Windows and Linux when OpenGL is unavailable.
+pub(crate) const EMBEDDED_SW_OPTIONS: &[(&str, &str)] = &[
+    ("sws-allow-zimg", "no"),
+    ("sws-fast", "yes"),
+    ("sws-scaler", "fast-bilinear"),
+];
+
+/// Applies best-effort mpv options that may vary across libmpv builds (logged at debug if absent).
+pub(crate) fn apply_optional_options(handle: &MpvHandle, options: &[(&str, &str)]) {
+    for (name, value) in options {
+        if let Err(error) = handle.set_option(name, value) {
+            tracing::debug!(option = name, value, %error, "libmpv did not accept optional setting");
+        }
+    }
+}
+
 /// Applies the options; `embedded` says the render API will be used (no mpv window).
 pub(crate) fn configure(
     handle: &MpvHandle,
@@ -75,13 +98,14 @@ pub(crate) fn configure(
             handle.set_option(name, value)?;
         }
     } else if embedded {
-        // `vo=libmpv` renders into memory through the render API (no mpv window); `sw-fast`
-        // trades a little quality for speed on the CPU renderer. `auto-safe` avoids the extra
-        // copy surface that `auto-copy-safe` (from COMMON) keeps for zero-copy paths.
+        // `vo=libmpv` renders through the render API (OpenGL texture or CPU memory). `auto-safe`
+        // prefers zero-copy hardware decoding when available and falls back to `-copy` / software.
         handle.set_option("vo", "libmpv")?;
         handle.set_option("hwdec", "auto-safe")?;
-        if let Err(error) = handle.set_option("sw-fast", "yes") {
-            tracing::debug!(%error, "this libmpv has no sw-fast option");
+        if options.gl_output {
+            apply_optional_options(handle, EMBEDDED_GL_OPTIONS);
+        } else {
+            apply_optional_options(handle, EMBEDDED_SW_OPTIONS);
         }
     } else {
         // A real mpv window; without `force-window` it opens only when a file starts playing.
@@ -169,5 +193,30 @@ mod tests {
         assert_eq!(value("demuxer-readahead-secs"), Some("30"));
         assert_eq!(value("demuxer-max-bytes"), Some("64MiB"));
         assert_eq!(value("demuxer-max-back-bytes"), Some("16MiB"));
+    }
+
+    #[test]
+    fn embedded_software_uses_fast_libswscale_and_never_the_invalid_sw_fast_option() {
+        let value = |name: &str| {
+            EMBEDDED_SW_OPTIONS
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("sw-fast"), None, "sw-fast is not a libmpv option");
+        assert_eq!(value("sws-allow-zimg"), Some("no"));
+        assert_eq!(value("sws-fast"), Some("yes"));
+        assert_eq!(value("sws-scaler"), Some("fast-bilinear"));
+    }
+
+    #[test]
+    fn embedded_gl_enables_mpvs_fast_shader_profile_for_low_end_gpus() {
+        let value = |name: &str| {
+            EMBEDDED_GL_OPTIONS
+                .iter()
+                .find(|(option, _)| *option == name)
+                .map(|(_, value)| *value)
+        };
+        assert_eq!(value("profile"), Some("fast"));
     }
 }

@@ -54,7 +54,7 @@ pub fn build_services(paths: &AppPaths, options: &ServiceOptions) -> Result<UiSe
     );
     let settings =
         SettingsService::new(SettingsStore::new(Arc::clone(&database))).with_system(system);
-    let setting = settings.video_renderer().unwrap_or(VideoRenderer::Cpu);
+    let setting = settings.video_renderer().unwrap_or(VideoRenderer::Gpu);
     let gl_video = Arc::new(AtomicBool::new(wants_gpu_video(
         std::env::var("CS_VIDEO_RENDERER").ok().as_deref(),
         setting,

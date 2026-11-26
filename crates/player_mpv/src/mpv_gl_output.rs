@@ -6,6 +6,7 @@
 #![allow(unsafe_code)]
 
 use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use glow::HasContext;
@@ -40,15 +41,28 @@ pub(crate) struct GlOutput {
     handle: Arc<MpvHandle>,
     signal: Arc<FrameSignal>,
     attached: Mutex<Option<Attached>>,
+    /// True once `attach` failed; the player has fallen back to software rendering.
+    failed: AtomicBool,
+    on_attach_failed: Box<dyn Fn() + Send + Sync>,
 }
 
 impl GlOutput {
-    pub(crate) fn new(handle: Arc<MpvHandle>) -> Self {
+    pub(crate) fn new(
+        handle: Arc<MpvHandle>,
+        on_attach_failed: Box<dyn Fn() + Send + Sync>,
+    ) -> Self {
         Self {
             handle,
             signal: Arc::new(FrameSignal::default()),
             attached: Mutex::new(None),
+            failed: AtomicBool::new(false),
+            on_attach_failed,
         }
+    }
+
+    /// True once attaching to the window's OpenGL context failed and software fallback took over.
+    pub(crate) fn has_failed(&self) -> bool {
+        self.failed.load(Ordering::Acquire)
     }
 }
 
@@ -209,19 +223,66 @@ impl GlOutput {
     }
 }
 
+/// Creates mpv's OpenGL render context and `glow::Context`, rejecting null loaders cleanly so
+/// `glow` never panics on `glGetString`.
+fn setup_gl_context(
+    handle: &Arc<MpvHandle>,
+    signal: &Arc<FrameSignal>,
+    loader: GlLoader<'_>,
+) -> Result<(MpvRenderContext, glow::Context), PlayerError> {
+    if loader("glGetString").is_null() {
+        return Err(gl_error(
+            "gl loader",
+            "OpenGL loader did not provide glGetString".into(),
+        ));
+    }
+    let context = MpvRenderContext::create_gl(Arc::clone(handle), Arc::clone(signal), loader)?;
+    // SAFETY: `loader("glGetString")` is non-null and the GL context is current on this thread
+    // (the trait's contract), so `glow` resolves real entry points.
+    let gl = unsafe { glow::Context::from_loader_function(|name| loader(name)) };
+    Ok((context, gl))
+}
+
+/// Draws into `framebuffer` while preserving the caller's `FRAMEBUFFER_BINDING` (required by
+/// Slint's renderer on both Windows WGL and Linux EGL).
+fn draw_preserving_fbo(
+    attached: &Attached,
+    framebuffer: u32,
+    width: u32,
+    height: u32,
+) -> Result<(), PlayerError> {
+    // SAFETY: the GL context is current (trait contract); read the caller's FBO binding.
+    let previous = unsafe { attached.gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) };
+    let drawn = attached.context.render_gl(framebuffer, width, height);
+    let restore = u32::try_from(previous)
+        .ok()
+        .and_then(NonZeroU32::new)
+        .map(glow::NativeFramebuffer);
+    // SAFETY: the GL context is current (trait contract); restores the prior FBO binding.
+    unsafe { attached.gl.bind_framebuffer(glow::FRAMEBUFFER, restore) };
+    drawn
+}
+
 impl GlVideoTarget for GlOutput {
     fn attach(&self, loader: GlLoader<'_>) -> Result<(), PlayerError> {
         let mut attached = self.lock();
         if attached.is_some() {
             return Ok(());
         }
-        // SAFETY: the loader returns real GL function pointers of the current context.
-        let gl = unsafe { glow::Context::from_loader_function(|name| loader(name)) };
-        let context = MpvRenderContext::create_gl(
-            Arc::clone(&self.handle),
-            Arc::clone(&self.signal),
-            loader,
-        )?;
+        let (context, gl) = match setup_gl_context(&self.handle, &self.signal, loader) {
+            Ok(pair) => pair,
+            Err(error) => {
+                drop(attached);
+                if !self.failed.swap(true, Ordering::AcqRel) {
+                    tracing::warn!(
+                        %error,
+                        "OpenGL zero-copy video could not attach; switching to software fallback"
+                    );
+                    (self.on_attach_failed)();
+                }
+                return Err(error);
+            }
+        };
         tracing::info!("mpv now draws into the app's OpenGL context (zero-copy video)");
         *attached = Some(Attached {
             context,
@@ -236,21 +297,26 @@ impl GlVideoTarget for GlOutput {
         self.signal.is_pending()
     }
 
+    fn set_frame_wake(&self, wake: Box<dyn Fn() + Send + Sync>) {
+        self.signal.set_wake(wake);
+    }
+
     fn render(&self, width: u32, height: u32) -> Result<Option<GlPicture>, PlayerError> {
         let mut guard = self.lock();
         let Some(attached) = guard.as_mut() else {
             return Ok(None);
         };
         let resized = Self::ready_target(attached, width, height)?;
-        let new_frame = attached.context.has_new_frame();
+        // Clear pending *before* `has_new_frame()` so an `on_update` arriving during render
+        // re-arms the signal instead of being erased.
         self.signal.clear();
+        let new_frame = attached.context.has_new_frame();
         let Some(target) = attached.target.as_ref() else {
             return Ok(None);
         };
         let fresh = new_frame || (resized && attached.drawn);
         if new_frame || resized {
-            let framebuffer = target.framebuffer.0.get();
-            attached.context.render_gl(framebuffer, width, height)?;
+            draw_preserving_fbo(attached, target.framebuffer.0.get(), width, height)?;
             attached.drawn = true;
         }
         if !attached.drawn {
@@ -265,6 +331,7 @@ impl GlVideoTarget for GlOutput {
     }
 
     fn detach(&self) {
+        self.signal.clear_wake();
         if let Some(attached) = self.lock().take() {
             if let Some(target) = &attached.target {
                 delete_target(&attached.gl, target);

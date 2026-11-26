@@ -8,7 +8,8 @@ pub(crate) const VIDEO_RENDERER_KEY: &str = "video_renderer";
 
 impl SettingsService {
     /// Where the player draws its pictures: what the viewer chose, else the profile's value (the
-    /// software path). Read when the first video starts, so a change applies after a restart.
+    /// GPU path, with automatic software fallback). Read when the first video starts, so a change
+    /// applies after a restart.
     pub fn video_renderer(&self) -> Result<VideoRenderer, ServiceError> {
         Ok(self.performance_budget()?.video_renderer)
     }

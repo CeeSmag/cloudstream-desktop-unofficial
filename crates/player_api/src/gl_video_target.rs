@@ -36,6 +36,13 @@ pub trait GlVideoTarget: Send + Sync {
     /// app asks it between frames to decide whether to request a redraw.
     fn frame_pending(&self) -> bool;
 
+    /// Registers a callback invoked from mpv's thread whenever a new picture becomes ready to draw
+    /// (coalesced while one is already pending). The callback must be fast and must not call back
+    /// into the player.
+    fn set_frame_wake(&self, wake: Box<dyn Fn() + Send + Sync>) {
+        let _ = wake;
+    }
+
     /// Draws the newest picture at `width` x `height`; `None` while there is none yet.
     fn render(&self, width: u32, height: u32) -> Result<Option<GlPicture>, PlayerError>;
 

@@ -183,7 +183,7 @@ fn run(context: &MpvRenderContext, signal: &FrameSignal, shared: &FrameShared, s
 }
 
 /// Size used for the first frames, before the UI reports its real picture area.
-const INITIAL_SURFACE: (u32, u32) = (1280, 720);
+pub(crate) const INITIAL_SURFACE: (u32, u32) = (1280, 720);
 
 /// Whether frames are rendered into memory for the app window rather than in mpv's own window.
 pub(crate) fn wants_embedding(
@@ -205,21 +205,31 @@ pub(crate) fn wants_embedding(
 pub(crate) fn start_embedding(
     handle: &Arc<crate::mpv_api::MpvHandle>,
 ) -> (Option<FrameRenderer>, Option<Arc<FrameShared>>) {
+    let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
+    match start_embedding_into(handle, Arc::clone(&shared)) {
+        Some(renderer) => (Some(renderer), Some(shared)),
+        None => (None, None),
+    }
+}
+
+/// Starts software frame rendering into an existing `shared` slot (used both at start-up and when
+/// an OpenGL render context fails to attach at runtime). Falls back to mpv's own window on failure.
+#[tracing::instrument(level = "debug", skip_all)]
+pub(crate) fn start_embedding_into(
+    handle: &Arc<crate::mpv_api::MpvHandle>,
+    shared: Arc<FrameShared>,
+) -> Option<FrameRenderer> {
     let signal = Arc::new(FrameSignal::default());
-    let started =
-        MpvRenderContext::create(Arc::clone(handle), Arc::clone(&signal)).and_then(|context| {
-            let shared = Arc::new(FrameShared::new(INITIAL_SURFACE.0, INITIAL_SURFACE.1));
-            FrameRenderer::start(context, signal, Arc::clone(&shared))
-                .map(|renderer| (renderer, shared))
-        });
+    let started = MpvRenderContext::create(Arc::clone(handle), Arc::clone(&signal))
+        .and_then(|context| FrameRenderer::start(context, signal, shared));
     match started {
-        Ok((renderer, shared)) => (Some(renderer), Some(shared)),
+        Ok(renderer) => Some(renderer),
         Err(error) => {
             tracing::warn!(%error, "embedded rendering failed; using mpv's own window");
             if let Err(error) = handle.set_property("vo", "gpu") {
                 tracing::warn!(%error, "could not switch to a window");
             }
-            (None, None)
+            None
         }
     }
 }
