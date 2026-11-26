@@ -16,7 +16,7 @@
 
 use std::time::{Duration, Instant};
 
-use player_api::{PlaybackRequest, PlaybackState, VideoPlayer};
+use player_api::{PlaybackRequest, VideoPlayer};
 use player_mpv::{locate_libmpv, MpvPlayer, PlayerOptions};
 
 const FRAME_TICK: Duration = Duration::from_millis(16);
@@ -137,7 +137,9 @@ fn software_fallback_plays_4k_without_pegging_the_cpu() {
     assert!(
         matches!(
             player.status().state,
-            PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Ended
+            player_api::PlaybackState::Playing
+                | player_api::PlaybackState::Paused
+                | player_api::PlaybackState::Ended
         ),
         "unexpected state"
     );

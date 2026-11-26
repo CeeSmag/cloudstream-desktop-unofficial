@@ -115,13 +115,13 @@ jobs:
   project-rules:
     name: Project Rules (lengths, arch, unsafe, machete, shellcheck)
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+        run: command -v shellcheck >/dev/null || (sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck)
 
       - name: Install cargo-machete
         uses: taiki-e/install-action@v2
