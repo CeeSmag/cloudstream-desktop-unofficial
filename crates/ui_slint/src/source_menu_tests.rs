@@ -86,16 +86,25 @@ fn source_menu_keeps_video_above_larger_audio_only_stream() {
     audio.url = "https://cdn.example.com/track.mp3".into();
     let links = vec![
         (audio, working(Some(50_000_000), &[])),
-        (link("video", 720), working(None, &[])),
+        (
+            link("video-unknown-q", 0),
+            working(Some(3_000_000_000), &[]),
+        ),
+        (link("video-1080", 1080), working(Some(1_000_000_000), &[])),
+        (link("video-unsized", 720), working(None, &[])),
     ];
     let list = SourceList {
         links: &links,
         subtitles: &[],
-        selected: 1,
+        selected: 2,
         preferred: &[],
     };
     let menu = source_menu(&list, &SourceFilter::default());
-    assert_eq!(indexes(&menu), [1, 0]);
+    assert_eq!(
+        indexes(&menu),
+        [1, 2, 3, 0],
+        "unknown-quality video sorts by file size with other video streams, above audio-only"
+    );
 }
 
 #[test]

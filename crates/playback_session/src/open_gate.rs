@@ -13,15 +13,23 @@ fn size_of(health: Option<&LinkHealth>) -> Option<u64> {
     }
 }
 
+/// Priority key for probing an unchecked stream (newtype avoids tuple mutation explosion).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CheckPriorityKey(bool, bool, i32, Reverse<usize>);
+
+/// Comparison key for a working stream (newtype avoids tuple mutation explosion).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct WorkingScore(bool, bool, Option<u64>, i32, Reverse<usize>);
+
 /// Priority for probing an unchecked stream: video first, preferred resolution first, then higher
 /// `link_rank`, with earlier index breaking ties.
 pub(crate) fn check_priority_key(
     link: &PlayableLink,
     index: usize,
     preferred: PreferredResolution,
-) -> (bool, bool, i32, Reverse<usize>) {
+) -> CheckPriorityKey {
     let rank = link_rank(link);
-    (
+    CheckPriorityKey(
         rank >= 0,
         preferred.matches_quality(link.quality),
         rank,
@@ -36,9 +44,9 @@ fn working_score(
     health: Option<&LinkHealth>,
     index: usize,
     preferred: PreferredResolution,
-) -> (bool, bool, Option<u64>, i32, Reverse<usize>) {
+) -> WorkingScore {
     let rank = link_rank(link);
-    (
+    WorkingScore(
         rank >= 0,
         preferred.matches_quality(link.quality),
         size_of(health),
@@ -57,17 +65,15 @@ pub(crate) fn best_after_working(
     let Some(current) = best else {
         return index;
     };
-    let candidate = links
-        .get(index)
-        .map(|(link, health)| working_score(link, health.as_ref(), index, preferred));
-    let incumbent = links
-        .get(current)
-        .map(|(link, health)| working_score(link, health.as_ref(), current, preferred));
-    if candidate > incumbent {
-        index
-    } else {
-        current
-    }
+    let score = |slot: usize| {
+        links
+            .get(slot)
+            .map(|(link, health)| working_score(link, health.as_ref(), slot, preferred))
+    };
+    [current, index]
+        .into_iter()
+        .max_by_key(|&slot| score(slot))
+        .unwrap_or(current)
 }
 
 /// Flags that decide whether playback may start.
@@ -123,6 +129,8 @@ mod tests {
     fn check_priority_key_prefers_matching_resolution_then_rank_then_index() {
         let hd = link(1080, "https://a/1080.mp4");
         let uhd = link(2160, "https://a/2160.mp4");
+        let audio = link(1080, "https://a/audio.mp3");
+        let unknown_video = link(0, "https://a/video.mp4");
         assert!(
             check_priority_key(&uhd, 1, PreferredResolution::Any)
                 > check_priority_key(&hd, 0, PreferredResolution::Any)
@@ -134,6 +142,11 @@ mod tests {
         assert!(
             check_priority_key(&hd, 0, PreferredResolution::Hd)
                 > check_priority_key(&hd, 2, PreferredResolution::Hd)
+        );
+        assert!(
+            check_priority_key(&unknown_video, 1, PreferredResolution::Hd)
+                > check_priority_key(&audio, 0, PreferredResolution::Hd),
+            "even a non-preferred video stream must be probed before an audio-only stream"
         );
     }
 

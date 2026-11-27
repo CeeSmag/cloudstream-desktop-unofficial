@@ -6,7 +6,8 @@
 //! with subtitles in chosen preferred languages.
 
 use app_services::{
-    full_label, link_rank, stream_kind, LinkHealth, PreferredResolution, HD_MAX_QUALITY,
+    full_label, is_audio_only_url, link_rank, stream_kind, LinkHealth, PreferredResolution,
+    HD_MAX_QUALITY,
 };
 use core_model::{PlayableLink, SubtitleTrack};
 use player_api::Language;
@@ -176,7 +177,12 @@ pub(crate) fn source_menu(list: &SourceList<'_>, filter: &SourceFilter) -> Sourc
         .collect();
     // Always sort largest file first (unknown sizes last), keeping video above audio-only;
     // stable sort preserves offered()'s best-first (link_rank, index) tie-breaker.
-    kept.sort_by_key(|c| (link_rank(c.link) < 0, std::cmp::Reverse(size_of(c.health))));
+    kept.sort_by_key(|c| {
+        (
+            is_audio_only_url(&c.link.url),
+            std::cmp::Reverse(size_of(c.health)),
+        )
+    });
     SourceMenu {
         rows: kept.iter().map(|c| row(c, list)).collect(),
         total: candidates.len(),
