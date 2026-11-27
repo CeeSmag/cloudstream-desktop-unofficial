@@ -33,7 +33,7 @@ exclude = ["crates/ui_app", "fuzz"]
 
 [workspace.package]
 edition = "2021"
-version = "0.5.7"
+version = "0.5.8"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
