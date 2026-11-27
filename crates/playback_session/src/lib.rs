@@ -1,9 +1,10 @@
 //! Finds and checks streams without a WebView shell.
 //!
 //! Searches provider links, probes candidates with [`app_services::StreamChecker`], waits for a
-//! full search and check (or skip / time cap), then plays the **best** working stream by
-//! [`app_services::link_rank`]. Fresh TitleCache seeds can still start at once; stale seeds get a
-//! short probe window first.
+//! full search and check (or skip / time cap), then plays the **best** working stream (largest file
+//! matching the viewer's preferred resolution, with `link_rank` as tie-breaker). Fresh TitleCache
+//! seeds matching the preferred resolution can still start at once; stale seeds get a short probe
+//! window first.
 #![forbid(unsafe_code)]
 
 mod check_pool;

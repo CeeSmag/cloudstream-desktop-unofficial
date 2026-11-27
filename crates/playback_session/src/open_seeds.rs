@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use app_services::{LinkHealth, StreamChecker};
+use app_services::{LinkHealth, PreferredResolution, StreamChecker};
 use core_model::PlayableLink;
 use title_cache::{Freshness, Lookup};
 
@@ -41,7 +41,7 @@ pub(crate) fn plant_saved(
     checker: &StreamChecker,
     hooks: &OpenHooks<'_>,
 ) {
-    let Some((freshness, seeds)) = saved_seeds(open_cache) else {
+    let Some((freshness, seeds)) = saved_seeds(open_cache, state.preferred_resolution) else {
         return;
     };
     tracing::info!(
@@ -63,7 +63,10 @@ pub(crate) fn plant_saved(
     }
 }
 
-fn saved_seeds(open_cache: &OpenCache) -> Option<(Freshness, Vec<PlayableLink>)> {
+fn saved_seeds(
+    open_cache: &OpenCache,
+    preferred: PreferredResolution,
+) -> Option<(Freshness, Vec<PlayableLink>)> {
     let Lookup::Hit(hit) = open_cache.cache.load(&open_cache.title_key) else {
         return None;
     };
@@ -71,21 +74,24 @@ fn saved_seeds(open_cache: &OpenCache) -> Option<(Freshness, Vec<PlayableLink>)>
         Freshness::Fresh => TRUSTED_RECHECK,
         Freshness::Stale => STALE_TEST_FIRST,
     };
-    let seeds: Vec<PlayableLink> = hit
+    let mut usable: Vec<PlayableLink> = hit
         .title
         .playing_order()
         .into_iter()
         .filter(|cached| cached.health != title_cache::LinkHealth::Broken)
-        .take(take)
         .map(|cached| cached.link.clone())
         .collect();
-    (!seeds.is_empty()).then_some((hit.freshness, seeds))
+    // Stable: cached links matching the preferred resolution come first, keeping playing_order inside each group.
+    usable.sort_by_key(|link| !preferred.matches_quality(link.quality));
+    usable.truncate(take);
+    (!usable.is_empty()).then_some((hit.freshness, usable))
 }
 
 fn check_trusted_seed(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
     let Some((link, slot)) = state.ordered.first_mut() else {
         return;
     };
+    let matches_preferred = state.preferred_resolution.matches_quality(link.quality);
     let health = checker.check(link);
     let is_ok = health.is_working();
     *slot = Some(health);
@@ -94,7 +100,9 @@ fn check_trusted_seed(state: &mut OpenState, checker: &StreamChecker, hooks: &Op
     if is_ok {
         state.working = 1;
         state.play_index = Some(0);
-        state.announce_ready(hooks);
+        if matches_preferred {
+            state.announce_ready(hooks);
+        }
     }
 }
 
@@ -105,7 +113,11 @@ fn check_stale_seeds(state: &mut OpenState, checker: &StreamChecker, hooks: &Ope
             break;
         }
         check_one(state, checker, hooks);
-        if state.play_index.is_some() {
+        let ready_matches = state
+            .play_index
+            .and_then(|idx| state.ordered.get(idx))
+            .is_some_and(|(link, _)| state.preferred_resolution.matches_quality(link.quality));
+        if ready_matches {
             state.announce_ready(hooks);
             break;
         }

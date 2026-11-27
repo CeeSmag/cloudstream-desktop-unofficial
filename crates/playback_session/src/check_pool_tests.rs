@@ -564,11 +564,93 @@ fn pick_best_unclaimed_checks_highest_rank_first_with_earlier_tiebreak() {
         (link(720, "https://r/720.mp4"), None),
     ];
     let claimed = vec![false; 4];
-    assert_eq!(pick_best_unclaimed(&ordered, &claimed), Some(1));
     assert_eq!(
-        pick_best_unclaimed(&ordered, &[false, true, false, false]),
+        pick_best_unclaimed(&ordered, &claimed, PreferredResolution::Any),
+        Some(1)
+    );
+    assert_eq!(
+        pick_best_unclaimed(
+            &ordered,
+            &[false, true, false, false],
+            PreferredResolution::Any
+        ),
         Some(2)
     );
+}
+
+#[test]
+fn pick_best_unclaimed_prioritizes_preferred_resolution_before_higher_rank() {
+    let ordered = vec![
+        (link(2160, "https://r/2160.mp4"), None),
+        (link(1080, "https://r/1080.mp4"), None),
+        (link(720, "https://r/720.mp4"), None),
+    ];
+    let claimed = vec![false; 3];
+    assert_eq!(
+        pick_best_unclaimed(&ordered, &claimed, PreferredResolution::Hd),
+        Some(1),
+        "1080p stream should be probed before 2160p when Hd is preferred"
+    );
+    assert_eq!(
+        pick_best_unclaimed(&ordered, &claimed, PreferredResolution::Uhd),
+        Some(0),
+        "2160p stream should be probed first when Uhd is preferred"
+    );
+}
+
+struct SizedProbe;
+
+impl HttpProbe for SizedProbe {
+    fn probe(&self, url: &str, _: &[(String, String)]) -> Result<ProbeResponse, RepoError> {
+        let size = url
+            .rsplit('/')
+            .next()
+            .and_then(|name| name.strip_suffix(".mp4"))
+            .and_then(|digits| digits.parse::<u64>().ok());
+        if size.is_some_and(|bytes| bytes % 3 == 0) {
+            std::thread::yield_now();
+        }
+        Ok(ProbeResponse {
+            status: 200,
+            content_type: "video/mp4".into(),
+            head: vec![0; 8],
+            total_bytes: size,
+        })
+    }
+}
+
+#[test]
+fn concurrent_pool_deterministically_picks_largest_working_in_preferred_resolution() {
+    let checker = StreamChecker::new(Arc::new(SizedProbe));
+    for _ in 0..40 {
+        let links = vec![
+            link(2160, "https://size.test/9000.mp4"),
+            link(1080, "https://size.test/1200.mp4"),
+            link(720, "https://size.test/4500.mp4"),
+            link(1080, "https://size.test/3000.mp4"),
+            link(2160, "https://size.test/6000.mp4"),
+        ];
+        let search =
+            ScriptedGateway::search(vec![ScriptedBatch::ok(Duration::ZERO, links, vec![], true)]);
+        let (skip, cancel) = (AtomicBool::new(false), AtomicBool::new(false));
+        let hooks = OpenHooks {
+            on_progress: &|_| {},
+            on_update: &|_| {},
+            on_ready: &|_| {},
+            skip: &skip,
+            cancel: &cancel,
+        };
+        let gate = CheckGate::default();
+        let config = PoolConfig::standard(&checker, &hooks, &gate);
+        let opened = run_search_pool(
+            search,
+            OpenState::with_preferred(PreferredResolution::Hd),
+            &config,
+        )
+        .expect("pool succeeds");
+        let chosen = opened.play_index.expect("chosen");
+        assert_eq!(opened.links[chosen].0.url, "https://size.test/4500.mp4");
+    }
 }
 
 fn zero_progress() -> OpenProgress {

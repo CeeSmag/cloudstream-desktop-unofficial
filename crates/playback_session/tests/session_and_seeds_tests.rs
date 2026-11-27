@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use app_services::StreamResolver;
+use app_services::{PreferredResolution, StreamResolver};
 use core_model::{
     HomePage, LinkSearchCursor, LinkSearchUpdate, LoadDetails, MainPageEntry, PlayableLink,
     PlayableLinks, ProviderInfo, SearchPage, SubtitleTrack,
@@ -235,6 +235,7 @@ fn run_open_falls_back_from_broken_high_quality_to_working_stream() {
         data: "ep1",
         media_key: "ep1",
         cache: None,
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {
             updates.fetch_add(1, Ordering::SeqCst);
@@ -314,6 +315,7 @@ fn run_open_uses_fresh_and_stale_title_cache_seeds() {
         data: "movie1",
         media_key: "movie1",
         cache: Some(&cache),
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {
@@ -333,6 +335,7 @@ fn run_open_uses_fresh_and_stale_title_cache_seeds() {
         data: "movie1",
         media_key: "movie1",
         cache: Some(&cache),
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},
@@ -433,6 +436,7 @@ fn check_and_pick_and_cancelled_open_behave_cleanly() {
         data: "ep3",
         media_key: "ep3",
         cache: None,
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},
@@ -545,6 +549,7 @@ fn fresh_and_stale_seeds_play_without_live_links_and_skip_broken_seeds() {
         data: "seed_only",
         media_key: "seed_only",
         cache: Some(&cache),
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},
@@ -563,6 +568,7 @@ fn fresh_and_stale_seeds_play_without_live_links_and_skip_broken_seeds() {
         data: "seed_only",
         media_key: "seed_only",
         cache: Some(&cache),
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},
@@ -634,6 +640,7 @@ fn run_open_deduplicates_identical_subtitle_urls() {
         data: "sub_dedup",
         media_key: "sub_dedup",
         cache: None,
+        preferred_resolution: PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},

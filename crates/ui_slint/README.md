@@ -16,7 +16,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `bridge/event_dispatch.rs` + `*_events.rs` | show background results; answers of replaced requests are dropped |
 | `request_tickets.rs` | a ticket per request kind (home, search, browse, details, open, skips) |
 | `playback_watch.rs` | next source on failure (max 3), next episode on end |
-| `source_menu.rs`, `track_menu.rs` | player Sources (filters, sizes, subtitle tags) and track menus |
+| `source_menu.rs`, `track_menu.rs` | player Sources (always sorted by file size, single-select resolution filter, subtitle tags) and track menus |
 | `skip_segments.rs`, `seek_bar.rs`, `seek_scheduler.rs` | skip parts and prompt, seek bar extras, key seeks |
 | `feedback_text.rs`, `check_text.rs` | player pop-ups, buffering text, the opening panel |
 | `browse_filters.rs`, `pagination.rs`, `plugin_filter.rs`, `repository_filter.rs` | Browse filters/pagination, plugin & repository search/sort |

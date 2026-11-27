@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use app_services::{full_label, PlaybackItem, StreamSelection, UiServices};
+use app_services::{full_label, PlaybackItem, PreferredResolution, StreamSelection, UiServices};
 use playback_session::{
     run_open, title_key, CheckedOpen, LiveSources, OpenControl, OpenProgress, OpenRequest,
 };
@@ -30,6 +30,7 @@ pub(crate) struct OpenJob {
     pub(crate) data: String,
     pub(crate) control: OpenControl,
     pub(crate) live: LiveSources,
+    pub(crate) preferred_resolution: PreferredResolution,
 }
 
 /// Starts finding streams for `item` (`data` is the provider's episode or movie payload);
@@ -43,24 +44,8 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
     };
     apply_watching_cache(ctx, playback);
     claim_title_caches(ctx, &item);
-    let (control, live, ticket) = {
-        let mut session = ctx.session.borrow_mut();
-        // The video opened before stops searching and checking; its answers are dropped.
-        session.control.cancel_open();
-        let ticket = session.tickets.issue(RequestKind::Open);
-        session.control = OpenControl::default();
-        session.live = LiveSources::new();
-        session.target = Some(item.clone());
-        session.episode_data.clone_from(&data);
-        session.links.clear();
-        session.selected = 0;
-        session.watch.reset();
-        session.source_filter = SourceFilter::default();
-        session.reset_for_new_open();
-        let delivery = start_subtitle_delivery(ctx, &item, ticket, HashSet::new());
-        session.subtitle_delivery = Some(delivery);
-        (session.control.clone(), session.live.clone(), ticket)
-    };
+    let preferred_resolution = read_preferred_resolution(ctx);
+    let (control, live, ticket) = prepare_open_session(ctx, &item, &data, preferred_resolution);
     if let Some(ui) = ctx.window() {
         clear_video_frame(ctx, &ui);
         show_opening_started(&ui, shown_title);
@@ -72,9 +57,34 @@ pub(crate) fn begin_open(ctx: &BridgeContext, item: PlaybackItem, data: String, 
         data,
         control,
         live,
+        preferred_resolution,
     };
     let sender = ctx.sender();
     spawn_work("open-streams", move || run_open_job(&job, &sender));
+}
+
+fn prepare_open_session(
+    ctx: &BridgeContext,
+    item: &PlaybackItem,
+    data: &str,
+    preferred_resolution: PreferredResolution,
+) -> (OpenControl, LiveSources, Ticket) {
+    let mut session = ctx.session.borrow_mut();
+    // The video opened before stops searching and checking; its answers are dropped.
+    session.control.cancel_open();
+    let ticket = session.tickets.issue(RequestKind::Open);
+    session.control = OpenControl::default();
+    session.live = LiveSources::new();
+    session.target = Some(item.clone());
+    session.episode_data = data.to_owned();
+    session.links.clear();
+    session.selected = 0;
+    session.watch.reset();
+    session.source_filter = SourceFilter::for_preferred(preferred_resolution);
+    session.reset_for_new_open();
+    let delivery = start_subtitle_delivery(ctx, item, ticket, HashSet::new());
+    session.subtitle_delivery = Some(delivery);
+    (session.control.clone(), session.live.clone(), ticket)
 }
 
 /// Drops other titles' source/subtitle files; remembers the keep token for leave-save.
@@ -145,6 +155,7 @@ fn run_open_job(job: &OpenJob, sender: &UiSender) {
         data: &job.data,
         media_key: &job.item.media_key,
         cache: Some(&job.services.title_cache),
+        preferred_resolution: job.preferred_resolution,
         on_progress: &on_progress,
         on_update: &on_update,
         on_ready: &on_ready,
@@ -190,8 +201,19 @@ pub(crate) fn build_refresh_job(
         data: session.episode_data.clone(),
         control,
         live: session.live.clone(),
+        preferred_resolution: read_preferred_resolution(ctx),
     };
     (job, playing_link)
+}
+
+fn read_preferred_resolution(ctx: &BridgeContext) -> PreferredResolution {
+    ctx.services
+        .settings
+        .preferred_resolution()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "could not read preferred resolution; using default");
+            PreferredResolution::default()
+        })
 }
 
 fn empty_item(provider: &str) -> PlaybackItem {

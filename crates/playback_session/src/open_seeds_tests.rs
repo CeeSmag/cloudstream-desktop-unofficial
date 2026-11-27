@@ -200,3 +200,45 @@ fn a_stale_list_where_nothing_works_hands_over_at_once_not_after_the_probe_windo
     assert_eq!((state.checked, state.next_to_check), (2, 2));
     assert_eq!(state.play_index, None);
 }
+
+#[test]
+fn fresh_cache_reorders_preferred_resolution_first_and_starts_matching_seed() {
+    let seeds = [
+        link(2160, "https://x/uhd.mp4"),
+        link(1080, "https://x/hd.mp4"),
+    ];
+    let seeded = cache_with("fresh_pref_hd", &seeds, 0);
+    let mut state = OpenState::with_preferred(app_services::PreferredResolution::Hd);
+    let ready = plant(
+        &mut state,
+        &seeded.open_cache,
+        &checker(&["https://x/uhd.mp4", "https://x/hd.mp4"]),
+    );
+    assert_eq!(
+        ready,
+        vec![0],
+        "matching 1080p seed is placed first and starts"
+    );
+    assert_eq!(state.ordered[0].0.url, "https://x/hd.mp4");
+}
+
+#[test]
+fn fresh_cache_with_only_non_preferred_resolution_does_not_fast_start() {
+    let seeds = [link(2160, "https://x/uhd.mp4")];
+    let seeded = cache_with("fresh_mismatch", &seeds, 0);
+    let mut state = OpenState::with_preferred(app_services::PreferredResolution::Hd);
+    let ready = plant(
+        &mut state,
+        &seeded.open_cache,
+        &checker(&["https://x/uhd.mp4"]),
+    );
+    assert!(
+        ready.is_empty(),
+        "a cached 2160p seed must not fast-start when the viewer prefers 1080p"
+    );
+    assert_eq!(
+        state.play_index,
+        Some(0),
+        "it still remains available as a fallback if the live search finds no 1080p"
+    );
+}

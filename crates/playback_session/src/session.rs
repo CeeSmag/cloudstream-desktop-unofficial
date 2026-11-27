@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use app_services::StreamResolver;
+use app_services::{PreferredResolution, StreamResolver};
 use core_model::PlayableLink;
 
 use crate::checked_open::{open_with_seed, OpenSeed, OpenTarget};
@@ -108,6 +108,8 @@ pub struct OpenRequest<'a> {
     pub media_key: &'a str,
     /// Optional disk cache of prior sources.
     pub cache: Option<&'a Arc<TitleCache>>,
+    /// Preferred resolution group for automatic stream selection (largest working file in group).
+    pub preferred_resolution: PreferredResolution,
     /// Progress / update / ready hooks.
     pub on_progress: &'a (dyn Fn(OpenProgress) + Sync),
     /// Full snapshot after each batch or check.
@@ -135,6 +137,7 @@ pub fn run_open(request: OpenRequest<'_>) -> Result<CheckedOpen, OpenError> {
         streams: request.streams,
         provider: request.provider,
         data: request.data,
+        preferred_resolution: request.preferred_resolution,
     };
     let seed = open_cache.as_ref().map_or(OpenSeed::None, OpenSeed::Cache);
     open_with_seed(&target, seed, &hooks, &request.control.check_gate)
@@ -196,6 +199,7 @@ pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenE
         streams: request.streams,
         provider: request.provider,
         data: request.data,
+        preferred_resolution: PreferredResolution::Any,
     };
     let seed = request
         .playing_link

@@ -65,10 +65,14 @@ pub(crate) fn show_sources(ctx: &BridgeContext) {
             on: filter.subtitles.iter().any(|name| name == language.name),
         })
         .collect();
-    ui.set_source_info(menu_info(&menu, &filter.tiers, subtitles));
+    ui.set_source_info(menu_info(&menu, filter.tier, subtitles));
 }
 
-fn menu_info(menu: &SourceMenu, toggled: &[Tier], subtitles: Vec<FilterChip>) -> SourceMenuInfo {
+fn menu_info(
+    menu: &SourceMenu,
+    toggled: Option<Tier>,
+    subtitles: Vec<FilterChip>,
+) -> SourceMenuInfo {
     let tiers = TIERS
         .iter()
         .map(|(tier, label)| FilterChip {
@@ -79,7 +83,7 @@ fn menu_info(menu: &SourceMenu, toggled: &[Tier], subtitles: Vec<FilterChip>) ->
             }
             .to_string()
             .into(),
-            on: toggled.contains(tier),
+            on: toggled == Some(*tier),
         })
         .collect::<Vec<_>>();
     SourceMenuInfo {

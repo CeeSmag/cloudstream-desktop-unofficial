@@ -1,4 +1,4 @@
-use app_services::LinkHealth;
+use app_services::{LinkHealth, PreferredResolution};
 use core_model::{PlayableLink, SubtitleTrack};
 use player_api::find_language;
 
@@ -53,12 +53,15 @@ fn source_menu_hides_broken_streams_but_keeps_the_playing_one() {
 }
 
 #[test]
-fn source_menu_lists_the_best_first_and_says_kind_and_size() {
-    let mut hls = link("hls", 720);
+fn source_menu_sorts_by_file_size_by_default_without_resolution_filter() {
+    let mut hls = link("hls", 2160);
     hls.link_type = "M3U8".into();
     let links = vec![
         (hls, working(None, &[])),
-        (link("uhd", 2160), working(Some(1_400_000_000), &[])),
+        (link("small-4k", 2160), working(Some(900_000_000), &[])),
+        (link("big-1080", 1080), working(Some(2_800_000_000), &[])),
+        (link("mid-720", 720), working(Some(1_400_000_000), &[])),
+        (link("unsized-1080", 1080), working(None, &[])),
     ];
     let list = SourceList {
         links: &links,
@@ -67,20 +70,41 @@ fn source_menu_lists_the_best_first_and_says_kind_and_size() {
         preferred: &[],
     };
     let menu = source_menu(&list, &SourceFilter::default());
-    assert_eq!(indexes(&menu), [1, 0]);
-    let first = menu.rows.first();
-    assert_eq!(first.map(|row| row.size.as_str()), Some("1.3 GB"));
-    assert_eq!(menu.rows.get(1).map(|row| row.kind.as_str()), Some("HLS"));
-    assert_eq!(menu.rows.get(1).map(|row| row.size.as_str()), Some(""));
+    assert_eq!(
+        indexes(&menu),
+        [2, 3, 1, 0, 4],
+        "biggest known files first across all resolutions, then unknown sizes by quality"
+    );
+    assert_eq!(menu.rows.first().map(|r| r.size.as_str()), Some("2.6 GB"));
+    assert_eq!(menu.rows.get(3).map(|r| r.kind.as_str()), Some("HLS"));
+    assert_eq!(menu.rows.get(3).map(|r| r.size.as_str()), Some(""));
 }
 
 #[test]
-fn source_menu_resolution_filter_counts_groups_and_puts_biggest_first() {
+fn source_menu_keeps_video_above_larger_audio_only_stream() {
+    let mut audio = link("audio", 1080);
+    audio.url = "https://cdn.example.com/track.mp3".into();
+    let links = vec![
+        (audio, working(Some(50_000_000), &[])),
+        (link("video", 720), working(None, &[])),
+    ];
+    let list = SourceList {
+        links: &links,
+        subtitles: &[],
+        selected: 1,
+        preferred: &[],
+    };
+    let menu = source_menu(&list, &SourceFilter::default());
+    assert_eq!(indexes(&menu), [1, 0]);
+}
+
+#[test]
+fn source_menu_resolution_filter_counts_groups_and_keeps_biggest_first() {
     let links = vec![
         (link("small", 1080), working(Some(700_000_000), &[])),
         (link("unknown", 0), working(Some(9_000_000_000), &[])),
         (link("big", 720), working(Some(2_000_000_000), &[])),
-        (link("uhd", 2160), working(None, &[])),
+        (link("uhd", 2160), working(Some(4_000_000_000), &[])),
         (link("nosize", 1080), working(None, &[])),
     ];
     let list = SourceList {
@@ -92,20 +116,73 @@ fn source_menu_resolution_filter_counts_groups_and_puts_biggest_first() {
     let mut filter = SourceFilter::default();
     filter.toggle_tier(Tier::Hd);
     let menu = source_menu(&list, &filter);
-    assert_eq!(menu.hd_count, 3);
-    assert_eq!(menu.uhd_count, 1);
+    assert_eq!(
+        (menu.hd_count, menu.uhd_count, menu.resolution_shown),
+        (3, 1, 3)
+    );
     assert_eq!(
         indexes(&menu),
         [2, 0, 4],
         "sized biggest first, then unsized"
     );
-    assert_eq!(menu.resolution_shown, 3);
     assert!(
         !indexes(&menu).contains(&3),
         "the playing source is not kept: it would look like a match"
     );
+}
+
+#[test]
+fn source_filter_toggle_tier_allows_at_most_one_resolution() {
+    let links = vec![
+        (link("hd", 1080), working(Some(2_000_000_000), &[])),
+        (link("uhd", 2160), working(Some(4_000_000_000), &[])),
+    ];
+    let list = SourceList {
+        links: &links,
+        subtitles: &[],
+        selected: 0,
+        preferred: &[],
+    };
+    let mut filter = SourceFilter::default();
     filter.toggle_tier(Tier::Hd);
-    assert!(filter.tiers.is_empty(), "a second press turns it off");
+    assert_eq!(filter.tier, Some(Tier::Hd));
+    filter.toggle_tier(Tier::Uhd);
+    assert_eq!(
+        filter.tier,
+        Some(Tier::Uhd),
+        "replaces Hd instead of keeping both"
+    );
+    assert_eq!(indexes(&source_menu(&list, &filter)), [1]);
+    filter.toggle_tier(Tier::Uhd);
+    assert_eq!(filter.tier, None, "second press clears to none");
+    assert_eq!(indexes(&source_menu(&list, &filter)), [1, 0]);
+}
+
+#[test]
+fn source_filter_for_preferred_maps_each_setting_to_initial_tier() {
+    assert_eq!(
+        SourceFilter::for_preferred(PreferredResolution::Hd).tier,
+        Some(Tier::Hd)
+    );
+    assert_eq!(
+        SourceFilter::for_preferred(PreferredResolution::Uhd).tier,
+        Some(Tier::Uhd)
+    );
+    assert_eq!(
+        SourceFilter::for_preferred(PreferredResolution::Any).tier,
+        None
+    );
+}
+
+#[test]
+fn preferred_resolution_labels_round_trip() {
+    let labels = preferred_resolution_labels();
+    assert_eq!(labels, vec!["1080p", "2160p", "Any (largest file)"]);
+    for choice in PreferredResolution::ALL {
+        let label = preferred_resolution_label(choice);
+        assert_eq!(parse_preferred_resolution_label(label), Some(choice));
+    }
+    assert_eq!(parse_preferred_resolution_label("unknown"), None);
 }
 
 #[test]

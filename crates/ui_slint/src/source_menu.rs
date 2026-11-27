@@ -1,17 +1,15 @@
 //! The player's Sources menu: which streams it lists, in what order, and what each row says.
 //!
-//! Ported from the old app (`sourceRows.ts`, `resolutionFilter.ts`, `sourceFilter.ts`,
-//! `subtitleFlags.ts`). Broken streams are hidden except the one playing; the best come first. The
-//! viewer can keep only a resolution group (then the biggest files come first) and only streams
-//! with subtitles in some of their preferred languages. Each row says the stream's kind, whether it
-//! is still being checked, its file size when known and the preferred subtitle languages it offers.
+//! Broken streams are hidden except the one playing. Shown streams are always sorted by file size
+//! (largest first, unknown sizes last, video above audio-only, ties broken by quality then order).
+//! The viewer can filter to a single resolution group (`1080p` or `2160p`, or none) and to streams
+//! with subtitles in chosen preferred languages.
 
-use app_services::{full_label, link_rank, stream_kind, LinkHealth};
+use app_services::{
+    full_label, link_rank, stream_kind, LinkHealth, PreferredResolution, HD_MAX_QUALITY,
+};
 use core_model::{PlayableLink, SubtitleTrack};
 use player_api::Language;
-
-/// Qualities up to this belong to the 1080p group (1080p and lower); anything above to 2160p.
-const LOW_LIMIT: i32 = 1200;
 
 /// A resolution group the viewer can filter by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,22 +24,65 @@ pub(crate) enum Tier {
 pub(crate) fn tier_of(quality: i32) -> Option<Tier> {
     match quality {
         q if q <= 0 => None,
-        q if q <= LOW_LIMIT => Some(Tier::Hd),
+        q if q <= HD_MAX_QUALITY => Some(Tier::Hd),
         _ => Some(Tier::Uhd),
     }
+}
+
+/// Dropdown labels for Settings > Preferences > "Preferred resolution".
+pub(crate) fn preferred_resolution_labels() -> Vec<String> {
+    PreferredResolution::ALL
+        .iter()
+        .map(|choice| preferred_resolution_label(*choice).to_owned())
+        .collect()
+}
+
+/// Human-readable label for a [`PreferredResolution`] choice.
+pub(crate) fn preferred_resolution_label(resolution: PreferredResolution) -> &'static str {
+    match resolution {
+        PreferredResolution::Hd => "1080p",
+        PreferredResolution::Uhd => "2160p",
+        PreferredResolution::Any => "Any (largest file)",
+    }
+}
+
+/// Maps a Settings dropdown label back to its [`PreferredResolution`].
+pub(crate) fn parse_preferred_resolution_label(label: &str) -> Option<PreferredResolution> {
+    PreferredResolution::ALL
+        .into_iter()
+        .find(|choice| preferred_resolution_label(*choice) == label)
 }
 
 /// The filters the viewer toggled in the menu.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SourceFilter {
-    pub(crate) tiers: Vec<Tier>,
+    /// Selected resolution group (`None` shows every resolution; at most one may be active).
+    pub(crate) tier: Option<Tier>,
     /// Names of the wanted subtitle languages (`English`).
     pub(crate) subtitles: Vec<String>,
 }
 
 impl SourceFilter {
+    /// Initial filter for a newly opened video: starts with the Settings preferred resolution selected.
+    pub(crate) fn for_preferred(preferred: PreferredResolution) -> Self {
+        let tier = match preferred {
+            PreferredResolution::Hd => Some(Tier::Hd),
+            PreferredResolution::Uhd => Some(Tier::Uhd),
+            PreferredResolution::Any => None,
+        };
+        Self {
+            tier,
+            subtitles: Vec::new(),
+        }
+    }
+
+    /// Selects `tier` exclusively, or clears the resolution filter when toggled again.
     pub(crate) fn toggle_tier(&mut self, tier: Tier) {
-        toggle(&mut self.tiers, tier);
+        self.tier = if self.tier == Some(tier) {
+            None
+        } else {
+            Some(tier)
+        };
     }
 
     pub(crate) fn toggle_subtitle(&mut self, name: &str) {
@@ -119,8 +160,9 @@ pub(crate) fn source_menu(list: &SourceList<'_>, filter: &SourceFilter) -> Sourc
         c.index == list.selected || wanted.iter().all(|l| offers(&c.languages, l))
     };
     let keeps_tier = |c: &Candidate<'_>| {
-        filter.tiers.is_empty()
-            || tier_of(c.link.quality).is_some_and(|t| filter.tiers.contains(&t))
+        filter
+            .tier
+            .is_none_or(|wanted| tier_of(c.link.quality) == Some(wanted))
     };
     let count_tier = |tier| {
         candidates
@@ -132,10 +174,9 @@ pub(crate) fn source_menu(list: &SourceList<'_>, filter: &SourceFilter) -> Sourc
         .iter()
         .filter(|c| keeps_subtitles(c) && keeps_tier(c))
         .collect();
-    if !filter.tiers.is_empty() {
-        // Stable: streams of the same (or unknown) size keep the best-first order.
-        kept.sort_by_key(|c| std::cmp::Reverse(size_of(c.health)));
-    }
+    // Always sort largest file first (unknown sizes last), keeping video above audio-only;
+    // stable sort preserves offered()'s best-first (link_rank, index) tie-breaker.
+    kept.sort_by_key(|c| (link_rank(c.link) < 0, std::cmp::Reverse(size_of(c.health))));
     SourceMenu {
         rows: kept.iter().map(|c| row(c, list)).collect(),
         total: candidates.len(),

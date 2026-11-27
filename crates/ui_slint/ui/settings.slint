@@ -73,6 +73,8 @@ export component SettingsPage inherits Rectangle {
     /// The chosen subtitle languages ("EN  English"), in the viewer's order.
     in property <[string]> subtitle-chosen: [];
     in property <bool> subtitle-full: false;
+    in property <[string]> preferred-resolution-labels: [];
+    in property <string> preferred-resolution-value: "";
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
@@ -111,6 +113,7 @@ export component SettingsPage inherits Rectangle {
     callback set-audio(string);
     callback set-subtitle-add(string);
     callback remove-subtitle(int);
+    callback set-preferred-resolution(string);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
     callback set-stream-proxy(bool);
@@ -210,6 +213,8 @@ export component SettingsPage inherits Rectangle {
                 }
 
                 if root.page-index == 1: SettingsPreferencesPage {
+                    preferred-resolution-labels: root.preferred-resolution-labels;
+                    preferred-resolution-value: root.preferred-resolution-value;
                     autoplay-next: root.autoplay-next;
                     skip-lookup: root.skip-lookup;
                     stream-proxy: root.stream-proxy;
@@ -222,6 +227,7 @@ export component SettingsPage inherits Rectangle {
                     subtitle-add-value: root.subtitle-add-value;
                     subtitle-chosen: root.subtitle-chosen;
                     subtitle-full: root.subtitle-full;
+                    set-preferred-resolution(v) => { root.set-preferred-resolution(v); }
                     set-autoplay(v) => { root.set-autoplay(v); }
                     set-skip-lookup(v) => { root.set-skip-lookup(v); }
                     set-stream-proxy(v) => { root.set-stream-proxy(v); }

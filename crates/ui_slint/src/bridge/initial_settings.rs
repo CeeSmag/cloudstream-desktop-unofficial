@@ -11,16 +11,30 @@ use crate::performance_text::{
     video_renderer_label, video_renderer_labels,
 };
 use crate::posters::string_model;
+use crate::source_menu::{preferred_resolution_label, preferred_resolution_labels};
 use crate::CloudStream;
 
 /// Copies every saved setting into the window's properties and the player.
 pub(crate) fn apply_settings_to_ui(ui: &CloudStream, services: &UiServices) {
     apply_switches(ui, services);
+    apply_preferred_resolution(ui, services);
     show_tuning_values(ui, services);
     show_performance(ui, services);
     apply_languages(ui, services);
     apply_player_language_preferences(services);
     ui.set_update_label("Updates not checked yet".into());
+}
+
+fn apply_preferred_resolution(ui: &CloudStream, services: &UiServices) {
+    ui.set_preferred_resolution_labels(string_model(preferred_resolution_labels()));
+    let chosen = services
+        .settings
+        .preferred_resolution()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "could not read preferred resolution; showing default");
+            app_services::PreferredResolution::default()
+        });
+    ui.set_preferred_resolution_value(preferred_resolution_label(chosen).into());
 }
 
 /// Shows the video cache, storage limit and plugin process limit in force, with their choices.

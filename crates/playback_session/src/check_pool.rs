@@ -8,12 +8,12 @@ use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
 use app_services::{
-    check_worker_count, link_rank, LinkBatch, LinkHealth, LinkSearch, StreamChecker,
+    check_worker_count, LinkBatch, LinkHealth, LinkSearch, PreferredResolution, StreamChecker,
 };
 use core_model::{PlayableLink, SubtitleTrack};
 
 use crate::open_gate::{
-    beats, best_after_working, no_streams_timed_out, should_announce_ready, ReadyWhen,
+    best_after_working, check_priority_key, no_streams_timed_out, should_announce_ready, ReadyWhen,
 };
 use crate::open_run::{finish, OpenState, FIRST_WORKING_SECS, TOTAL_SECS};
 use crate::open_types::{CheckedOpen, OpenError, OpenHooks, OpenProgress};
@@ -123,7 +123,11 @@ impl SharedPool {
         if self.state.timed_out() && self.state.play_index.is_some() {
             return Claim::Done;
         }
-        if let Some(index) = pick_best_unclaimed(&self.state.ordered, &self.claimed) {
+        if let Some(index) = pick_best_unclaimed(
+            &self.state.ordered,
+            &self.claimed,
+            self.state.preferred_resolution,
+        ) {
             if let Some(slot) = self.claimed.get_mut(index) {
                 *slot = true;
             }
@@ -150,6 +154,7 @@ impl SharedPool {
                 self.state.play_index,
                 index,
                 &self.state.ordered,
+                self.state.preferred_resolution,
             ));
         }
         let announce_index = self.take_ready_if_due(skip);
@@ -179,22 +184,20 @@ impl SharedPool {
     }
 }
 
-/// Picks the highest-ranked unchecked, unclaimed link (earlier index breaks ties).
+/// Picks the highest-priority unchecked, unclaimed link (preferred resolution, then rank, then index).
 fn pick_best_unclaimed(
     ordered: &[(PlayableLink, Option<LinkHealth>)],
     claimed: &[bool],
+    preferred: PreferredResolution,
 ) -> Option<usize> {
-    let mut best: Option<(usize, i32)> = None;
-    for (index, (link, health)) in ordered.iter().enumerate() {
-        if health.is_some() || claimed.get(index).copied().unwrap_or(true) {
-            continue;
-        }
-        let rank = link_rank(link);
-        if best.is_none_or(|(other_i, other_r)| beats(rank, index, other_r, other_i)) {
-            best = Some((index, rank));
-        }
-    }
-    best.map(|(index, _)| index)
+    ordered
+        .iter()
+        .enumerate()
+        .filter(|(index, (_, health))| {
+            health.is_none() && !claimed.get(*index).copied().unwrap_or(true)
+        })
+        .max_by_key(|(index, (link, _))| check_priority_key(link, *index, preferred))
+        .map(|(index, _)| index)
 }
 
 fn emit_update(emit: &Emit, hooks: &OpenHooks<'_>) {

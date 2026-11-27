@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use app_services::LinkSearch;
-use app_services::{LinkHealth, StreamChecker};
+use app_services::{LinkHealth, PreferredResolution, StreamChecker};
 use core_model::{PlayableLink, SubtitleTrack};
 
 #[cfg(test)]
@@ -30,10 +30,16 @@ pub(crate) struct OpenState {
     pub(crate) started: Instant,
     pub(crate) search_done: bool,
     pub(crate) ready_announced: bool,
+    pub(crate) preferred_resolution: PreferredResolution,
 }
 
 impl OpenState {
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
+        Self::with_preferred(PreferredResolution::Any)
+    }
+
+    pub(crate) fn with_preferred(preferred_resolution: PreferredResolution) -> Self {
         Self {
             ordered: Vec::new(),
             subtitles: Vec::new(),
@@ -44,6 +50,7 @@ impl OpenState {
             started: Instant::now(),
             search_done: false,
             ready_announced: false,
+            preferred_resolution,
         }
     }
 
@@ -135,7 +142,12 @@ pub(crate) fn check_one(state: &mut OpenState, checker: &StreamChecker, hooks: &
     state.checked += 1;
     if is_ok {
         state.working += 1;
-        state.play_index = Some(best_after_working(state.play_index, index, &state.ordered));
+        state.play_index = Some(best_after_working(
+            state.play_index,
+            index,
+            &state.ordered,
+            state.preferred_resolution,
+        ));
     }
     state.next_to_check += 1;
     (hooks.on_progress)(state.progress());

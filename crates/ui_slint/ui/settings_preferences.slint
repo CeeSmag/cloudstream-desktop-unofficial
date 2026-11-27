@@ -5,6 +5,8 @@ import { Card, MutedLabel, SectionTitle, SettingDivider, SettingRow } from "widg
 
 /// Settings > Preferences: playback toggles, Home provider, audio & subtitle languages.
 export component SettingsPreferencesPage inherits VerticalLayout {
+    in property <[string]> preferred-resolution-labels: [];
+    in property <string> preferred-resolution-value: "";
     in property <bool> autoplay-next: true;
     in property <bool> skip-lookup: true;
     in property <bool> stream-proxy: true;
@@ -18,6 +20,7 @@ export component SettingsPreferencesPage inherits VerticalLayout {
     in property <[string]> subtitle-chosen: [];
     in property <bool> subtitle-full: false;
 
+    callback set-preferred-resolution(string);
     callback set-autoplay(bool);
     callback set-skip-lookup(bool);
     callback set-stream-proxy(bool);
@@ -47,6 +50,17 @@ export component SettingsPreferencesPage inherits VerticalLayout {
 
         VerticalLayout {
             spacing: 4px;
+            SettingRow {
+                label: "Preferred resolution";
+                description: "Automatically start on the largest working file in this resolution (falls back if unavailable)";
+                TvSelect {
+                    width: 200px;
+                    model: root.preferred-resolution-labels;
+                    current-value: root.preferred-resolution-value;
+                    selected(value) => { root.set-preferred-resolution(value); }
+                }
+            }
+            SettingDivider { }
             SettingRow {
                 label: "Autoplay next episode";
                 description: "Automatically advance to the next episode when the current one finishes";

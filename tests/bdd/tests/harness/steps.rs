@@ -453,6 +453,7 @@ async fn when_open_streams(world: &mut AppWorld, title: String, provider: String
         data: &title,
         media_key: &title,
         cache: None,
+        preferred_resolution: app_services::PreferredResolution::Any,
         on_progress: &|_| {},
         on_update: &|_| {},
         on_ready: &|_| {},

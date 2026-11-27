@@ -4,6 +4,7 @@ use app_services::UiServices;
 use player_api::{all_languages, Language};
 use slint::SharedString;
 
+use crate::source_menu::parse_preferred_resolution_label;
 use crate::CloudStream;
 
 use super::bridge_context::BridgeContext;
@@ -35,6 +36,8 @@ pub(crate) fn apply_player_language_preferences(services: &UiServices) {
 
 pub(crate) fn wire_preferences(ctx: &BridgeContext, ui: &CloudStream) {
     wire_switches(ctx, ui);
+    let c = ctx.clone();
+    ui.on_set_preferred_resolution(move |label| set_preferred_resolution(&c, label));
     let c = ctx.clone();
     ui.on_set_audio(move |label| set_audio(&c, label));
     let c = ctx.clone();
@@ -78,6 +81,21 @@ fn wire_switches(ctx: &BridgeContext, ui: &CloudStream) {
         apply_player_language_preferences(&c.services);
         c.window().inspect(|ui| ui.set_auto_subtitles(on));
     });
+}
+
+fn set_preferred_resolution(ctx: &BridgeContext, label: SharedString) {
+    let Some(resolution) = parse_preferred_resolution_label(&label) else {
+        tracing::warn!(%label, "unknown preferred resolution choice ignored");
+        return;
+    };
+    tracing::debug!(?resolution, "preferred resolution changed");
+    saved(
+        "preferred resolution",
+        ctx.services.settings.set_preferred_resolution(resolution),
+    );
+    if let Some(ui) = ctx.window() {
+        ui.set_preferred_resolution_value(label);
+    }
 }
 
 fn set_audio(ctx: &BridgeContext, label: SharedString) {

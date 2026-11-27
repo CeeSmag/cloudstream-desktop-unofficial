@@ -5,7 +5,8 @@ on a dedicated poller while checking candidates concurrently in rank order with 
 seeds from `TitleCache` (fresh titles start at once; stale titles get a short probe window),
 supports subtitle-priority gating of background checks (`CheckPriority`), and enforces the open gate
 (full search + all checks, viewer skip, or 60 s total cap; 30 s empty fail), picking the **best**
-working stream by `link_rank`.
+working stream (largest file matching `PreferredResolution`, falling back across resolutions, with
+`link_rank` as tie-breaker).
 
 | Part | Responsibility |
 |---|---|

@@ -121,6 +121,16 @@ fn verify_player_controls(ui: &CloudStream) {
     ui.on_select_source(move |idx| *src_ref.borrow_mut() = idx);
     ui.invoke_select_source(0);
     assert_eq!(*chosen_source.borrow(), 0);
+
+    ui.set_preferred_resolution_labels(strings(&["1080p", "2160p", "Any (largest file)"]));
+    ui.set_preferred_resolution_value("1080p".into());
+    assert_eq!(ui.get_preferred_resolution_labels().row_count(), 3);
+    assert_eq!(ui.get_preferred_resolution_value().as_str(), "1080p");
+    let chosen_res = Rc::new(RefCell::new(String::new()));
+    let res_ref = Rc::clone(&chosen_res);
+    ui.on_set_preferred_resolution(move |label| *res_ref.borrow_mut() = label.to_string());
+    ui.invoke_set_preferred_resolution("2160p".into());
+    assert_eq!(chosen_res.borrow().as_str(), "2160p");
 }
 
 fn verify_focus_controls(ui: &CloudStream) {

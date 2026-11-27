@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use app_services::{StreamChecker, StreamResolver};
+use app_services::{PreferredResolution, StreamChecker, StreamResolver};
 use core_model::PlayableLink;
 use extension_repo::UreqProbe;
 
@@ -38,6 +38,7 @@ pub fn check_and_pick(
         streams,
         provider,
         data,
+        preferred_resolution: PreferredResolution::Any,
     };
     open_with(&target, None, &hooks)
 }
@@ -50,6 +51,8 @@ pub struct OpenTarget<'a> {
     pub provider: &'a str,
     /// Episode / movie data payload for the link search.
     pub data: &'a str,
+    /// Preferred resolution group for automatic stream selection (largest working file in group).
+    pub preferred_resolution: PreferredResolution,
 }
 
 /// Optional initial seed for an open: either disk-cached links or an already-playing link.
@@ -78,7 +81,7 @@ pub(crate) fn open_with_seed(
     gate: &CheckGate,
 ) -> Result<CheckedOpen, OpenError> {
     let checker = StreamChecker::new(Arc::new(UreqProbe::default()));
-    let mut state = OpenState::new();
+    let mut state = OpenState::with_preferred(target.preferred_resolution);
     match seed {
         OpenSeed::Playing(link) => plant_playing(&mut state, link, hooks),
         OpenSeed::Cache(open_cache) => plant_saved(&mut state, open_cache, &checker, hooks),

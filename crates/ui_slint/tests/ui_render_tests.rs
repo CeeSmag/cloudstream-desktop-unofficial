@@ -132,6 +132,8 @@ fn populate_settings(ui: &CloudStream) {
     ui.set_worker_labels(strings(&["1", "2", "Unlimited"]));
     ui.set_worker_value("2".into());
     ui.set_update_label("Up to date · v0.4.8 installed".into());
+    ui.set_preferred_resolution_labels(strings(&["1080p", "2160p", "Any (largest file)"]));
+    ui.set_preferred_resolution_value("1080p".into());
     ui.set_audio_labels(strings(&["Stream default", "English", "Japanese"]));
     ui.set_audio_value("English".into());
     ui.set_subtitle_labels(strings(&["Spanish", "French", "German"]));

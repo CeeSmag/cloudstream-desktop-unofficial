@@ -27,8 +27,9 @@ tested with fakes and wired to real implementations only in `app_shell`. The UI-
 
 One `impl SettingsService` per group: providers / debug / autoplay / skip lookup / sources-valid-from
 (`settings_service.rs`); audio & subtitle languages (`language_settings.rs`, up to 3 preferred
-subs); stream proxy; video cache size & ahead share; storage cap GB; plugin worker limit;
-Cloudflare allowed hosts; home provider.
+subs); preferred resolution (`preferred_resolution_setting.rs`, default 1080p); stream proxy;
+video cache size & ahead share; storage cap GB; plugin worker limit; Cloudflare allowed hosts;
+home provider.
 
 ### Stream check
 
