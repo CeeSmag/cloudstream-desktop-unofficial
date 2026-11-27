@@ -6,9 +6,9 @@ use std::time::Duration;
 use core_model::DEFAULT_STREAM_USER_AGENT;
 
 /// How long one download may take in all; a host slower than this is given up on.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long connecting may take.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// The largest subtitle accepted; real ones are a few hundred kilobytes at most.
 const MAX_BYTES: u64 = 8 * 1024 * 1024;
 

@@ -23,8 +23,8 @@ pub struct LoadOptions {
 impl Default for LoadOptions {
     fn default() -> Self {
         Self {
-            attempts: 3,
-            backoff: Duration::from_millis(400),
+            attempts: 2,
+            backoff: Duration::from_millis(300),
         }
     }
 }
@@ -49,6 +49,12 @@ pub enum LoadError {
     /// The cleaned-up file could not be saved.
     #[error(transparent)]
     Save(#[from] CacheError),
+    /// Earlier downloads from this host already failed repeatedly in this session.
+    #[error("skipped: host {host} failed repeatedly")]
+    HostSkipped {
+        /// Normalized host name that tripped the circuit breaker.
+        host: String,
+    },
     /// Nobody wants the file any more.
     #[error("stopped: the file is no longer wanted")]
     Stopped,

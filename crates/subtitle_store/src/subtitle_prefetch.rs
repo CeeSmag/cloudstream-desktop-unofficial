@@ -9,15 +9,28 @@ use std::time::Instant;
 
 use core_model::SubtitleTrack;
 
+use crate::host_circuit::{host_of, HostCircuit};
 use crate::subtitle_cache::ReadySubtitle;
 use crate::subtitle_loader::{LoadError, SubtitleLoader};
 
 /// Called with each subtitle file as soon as it is ready.
 pub type ReadyCallback = Arc<dyn Fn(ReadySubtitle) + Send + Sync>;
+/// Called when a subtitle track fails to download/normalize or is skipped by the host circuit.
+pub type FailureCallback = Arc<dyn Fn(&SubtitleTrack, &str) + Send + Sync>;
 /// Asked before every download; `false` means nobody wants the files any more.
 pub type KeepGoing = Arc<dyn Fn() -> bool + Send + Sync>;
 /// Ranks a language label: lower is more wanted.
 pub type LanguageRank = Arc<dyn Fn(&str) -> usize + Send + Sync>;
+
+/// Callbacks invoked by [`SubtitlePrefetch`] workers.
+pub struct PrefetchCallbacks {
+    /// Called with each subtitle file as soon as it is ready on disk.
+    pub on_ready: ReadyCallback,
+    /// Called when a subtitle track could not be made ready (not called on intentional stop).
+    pub on_failed: FailureCallback,
+    /// Asked before every download; `false` stops remaining work.
+    pub keep_going: KeepGoing,
+}
 
 /// [`LanguageRank`] values at this rank are not downloaded (non-preferred languages).
 pub const SKIP_DOWNLOAD_RANK: usize = usize::MAX;
@@ -62,15 +75,19 @@ struct State {
     seen: HashSet<String>,
     submitted: usize,
     in_flight: usize,
+    paused: bool,
     closed: bool,
+    stopped: bool,
 }
 
 struct Shared {
     state: Mutex<State>,
     wake: Condvar,
     summary: Mutex<PrefetchSummary>,
+    circuit: HostCircuit,
     loader: Arc<SubtitleLoader>,
     on_ready: ReadyCallback,
+    on_failed: FailureCallback,
     keep_going: KeepGoing,
     rank_of: LanguageRank,
     workers_left: AtomicUsize,
@@ -92,14 +109,30 @@ impl SubtitlePrefetch {
         on_ready: ReadyCallback,
         keep_going: KeepGoing,
     ) -> (Self, Vec<JoinHandle<()>>) {
+        let callbacks = PrefetchCallbacks {
+            on_ready,
+            on_failed: Arc::new(|_, _| {}),
+            keep_going,
+        };
+        Self::start_with_callbacks(loader, config, callbacks)
+    }
+
+    /// Starts the workers with both ready and failure callbacks (used to refund budget slots).
+    pub fn start_with_callbacks(
+        loader: Arc<SubtitleLoader>,
+        config: &PrefetchConfig,
+        callbacks: PrefetchCallbacks,
+    ) -> (Self, Vec<JoinHandle<()>>) {
         let workers = config.workers.max(1);
         let shared = Arc::new(Shared {
             state: Mutex::default(),
             wake: Condvar::new(),
             summary: Mutex::default(),
+            circuit: HostCircuit::new(),
             loader,
-            on_ready,
-            keep_going,
+            on_ready: callbacks.on_ready,
+            on_failed: callbacks.on_failed,
+            keep_going: callbacks.keep_going,
             rank_of: Arc::clone(&config.rank_of),
             workers_left: AtomicUsize::new(workers),
             started: Instant::now(),
@@ -140,9 +173,20 @@ impl SubtitlePrefetch {
         self.shared.wake.notify_all();
     }
 
-    /// No more files will be queued; the workers end once the queue is empty.
+    /// Pauses or resumes pulling new downloads from the queue (in-flight downloads finish cleanly).
+    pub fn set_paused(&self, paused: bool) {
+        let mut state = self.shared.lock();
+        state.paused = paused;
+        drop(state);
+        self.shared.wake.notify_all();
+    }
+
+    /// No more files will be queued; the workers end once the queue is empty (unpauses if paused).
     pub fn finish(&self) {
-        self.shared.lock().closed = true;
+        let mut state = self.shared.lock();
+        state.closed = true;
+        state.paused = false;
+        drop(state);
         self.shared.wake.notify_all();
     }
 
@@ -150,7 +194,9 @@ impl SubtitlePrefetch {
     pub fn stop(&self) {
         let mut state = self.shared.lock();
         state.waiting.clear();
+        state.paused = false;
         state.closed = true;
+        state.stopped = true;
         drop(state);
         self.shared.wake.notify_all();
     }
@@ -176,22 +222,27 @@ impl Shared {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The most wanted waiting file (best language, then earliest); waits for one to be queued.
+    /// The most wanted waiting file (best language, then earliest); waits when empty or paused.
     fn next(&self) -> Option<Job> {
         let mut state = self.lock();
         loop {
-            let best = state
-                .waiting
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, job)| (job.rank, job.order))
-                .map(|(position, _)| position);
-            if let Some(position) = best {
-                state.in_flight += 1;
-                return Some(state.waiting.remove(position));
-            }
-            if state.closed {
+            if state.stopped {
                 return None;
+            }
+            if !state.paused {
+                let best = state
+                    .waiting
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, job)| (job.rank, job.order))
+                    .map(|(position, _)| position);
+                if let Some(position) = best {
+                    state.in_flight += 1;
+                    return Some(state.waiting.remove(position));
+                }
+                if state.closed {
+                    return None;
+                }
             }
             state = self
                 .wake
@@ -219,25 +270,62 @@ impl Shared {
 
     fn process(&self, job: &Job) {
         let started = Instant::now();
-        let outcome = self.loader.load(&job.track, &*self.keep_going);
+        let outcome = if self.circuit.is_tripped(&job.track.url) {
+            let host = host_of(&job.track.url).unwrap_or_default();
+            Err(LoadError::HostSkipped { host })
+        } else {
+            self.loader.load(&job.track, &*self.keep_going)
+        };
         let elapsed_ms = started.elapsed().as_millis();
-        let mut summary = self.summary.lock().unwrap_or_else(PoisonError::into_inner);
         match outcome {
-            Ok(loaded) => {
-                summary.ready += 1;
-                summary.from_cache += usize::from(loaded.from_cache);
-                drop(summary);
-                tracing::debug!(language = %job.track.lang, from_cache = loaded.from_cache, elapsed_ms, "subtitle file ready");
-                (self.on_ready)(loaded.ready);
-            }
+            Ok(loaded) => self.handle_ready(job, loaded, elapsed_ms),
             Err(LoadError::Stopped) => {}
-            Err(error) => {
-                summary.failed += 1;
-                *summary.reasons.entry(reason_of(&error)).or_default() += 1;
-                drop(summary);
-                tracing::warn!(%error, language = %job.track.lang, url = %job.track.url, elapsed_ms, "subtitle file could not be made ready");
+            Err(error) => self.handle_failure(job, &error, elapsed_ms),
+        }
+    }
+
+    fn handle_ready(
+        &self,
+        job: &Job,
+        loaded: crate::subtitle_loader::LoadedSubtitle,
+        elapsed_ms: u128,
+    ) {
+        if !loaded.from_cache {
+            self.circuit.record_success(&job.track.url);
+        }
+        let mut summary = self.summary.lock().unwrap_or_else(PoisonError::into_inner);
+        summary.ready += 1;
+        summary.from_cache += usize::from(loaded.from_cache);
+        drop(summary);
+        tracing::debug!(
+            language = %job.track.lang,
+            from_cache = loaded.from_cache,
+            elapsed_ms,
+            "subtitle file ready"
+        );
+        (self.on_ready)(loaded.ready);
+    }
+
+    fn handle_failure(&self, job: &Job, error: &LoadError, elapsed_ms: u128) {
+        if !matches!(error, LoadError::HostSkipped { .. }) {
+            if let Some(host) = self.circuit.record_failure(&job.track.url) {
+                tracing::warn!(
+                    %host,
+                    "subtitle host failed repeatedly; skipping remaining files from this host"
+                );
             }
         }
+        let reason = reason_of(error);
+        let mut summary = self.summary.lock().unwrap_or_else(PoisonError::into_inner);
+        summary.failed += 1;
+        *summary.reasons.entry(reason.clone()).or_default() += 1;
+        drop(summary);
+        if matches!(error, LoadError::HostSkipped { .. }) {
+            tracing::debug!(%error, language = %job.track.lang, url = %job.track.url, "skipped subtitle on failed host");
+        } else {
+            tracing::warn!(%error, language = %job.track.lang, url = %job.track.url, elapsed_ms, "subtitle file could not be made ready");
+        }
+        (self.on_failed)(&job.track, &reason);
     }
 
     fn log_summary(&self) {
@@ -267,6 +355,7 @@ impl Shared {
 fn reason_of(error: &LoadError) -> String {
     match error {
         LoadError::Download { reason, .. } => format!("download failed ({reason})"),
+        LoadError::HostSkipped { .. } => "host skipped".to_owned(),
         other => other.to_string(),
     }
 }

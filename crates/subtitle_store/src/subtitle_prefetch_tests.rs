@@ -399,3 +399,74 @@ fn files_already_on_disk_are_counted_as_from_the_cache() {
         (2, 2)
     );
 }
+
+#[test]
+fn host_circuit_skips_remaining_urls_on_failing_host_and_reports_failures() {
+    let scratch = Scratch::new();
+    let mut behavior = Behavior::instant();
+    behavior.failing = vec!["bad.test"];
+    let fetcher = Arc::new(behavior);
+    let loader = loader_over(&scratch, Arc::clone(&fetcher) as Arc<dyn SubtitleFetcher>);
+    let ready = Arc::new(Mutex::new(Vec::<String>::new()));
+    let failed = Arc::new(Mutex::new(Vec::<String>::new()));
+    let ready_cb = Arc::clone(&ready);
+    let failed_cb = Arc::clone(&failed);
+    let config = PrefetchConfig {
+        workers: 1,
+        rank_of: Arc::new(rank),
+    };
+    let (prefetch, handles) = SubtitlePrefetch::start_with_callbacks(
+        loader,
+        &config,
+        PrefetchCallbacks {
+            on_ready: Arc::new(move |sub| ready_cb.lock().expect("lock").push(sub.url)),
+            on_failed: Arc::new(move |t, _| failed_cb.lock().expect("lock").push(t.url.clone())),
+            keep_going: Arc::new(|| true),
+        },
+    );
+    let mut batch: Vec<_> = (0..10)
+        .map(|n| track("English", &format!("https://bad.test/{n}.vtt")))
+        .collect();
+    batch.push(track("English", "https://good.test/ok.vtt"));
+    prefetch.submit(batch);
+    prefetch.finish();
+    join(handles);
+
+    assert_eq!(ready.lock().expect("lock").len(), 1);
+    assert_eq!(failed.lock().expect("lock").len(), 10);
+    // 3 failing HTTP calls trip the host circuit + 1 healthy call = 4 total (not 11).
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        prefetch.summary().reasons.get("host skipped").copied(),
+        Some(7)
+    );
+}
+
+#[test]
+fn set_paused_holds_queued_downloads_until_resumed_or_stopped() {
+    let scratch = Scratch::new();
+    let fetcher = Arc::new(Behavior::instant());
+    let loader = loader_over(&scratch, Arc::clone(&fetcher) as Arc<dyn SubtitleFetcher>);
+    let (prefetch, handles) = start_over(&loader);
+
+    prefetch.set_paused(true);
+    prefetch.submit(vec![
+        track("English", "https://good.test/1.vtt"),
+        track("English", "https://good.test/2.vtt"),
+    ]);
+    std::thread::sleep(Duration::from_millis(40));
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 0);
+
+    prefetch.set_paused(false);
+    prefetch.finish();
+    join(handles);
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(prefetch.summary().ready, 2);
+
+    // Stopping while paused exits every worker cleanly without deadlock.
+    let (paused_stop, stop_handles) = start_over(&loader);
+    paused_stop.set_paused(true);
+    paused_stop.submit(vec![track("English", "https://good.test/3.vtt")]);
+    paused_stop.stop();
+    join(stop_handles);
+}

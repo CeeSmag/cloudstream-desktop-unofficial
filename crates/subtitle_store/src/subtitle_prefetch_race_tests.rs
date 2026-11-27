@@ -81,3 +81,54 @@ fn stopping_at_any_moment_ends_every_thread() {
         );
     }
 }
+
+fn spawn_pause_toggler(prefetch: &SubtitlePrefetch) -> JoinHandle<()> {
+    let prefetch = prefetch.clone();
+    std::thread::spawn(move || {
+        for i in 0..80 {
+            prefetch.set_paused(i % 2 == 0);
+            std::thread::yield_now();
+        }
+        prefetch.set_paused(false);
+    })
+}
+
+/// Concurrent submissions, pause/resume toggles, and failing/healthy hosts report every submitted
+/// track via either `on_ready` or `on_failed` exactly once with zero deadlocks.
+#[test]
+fn concurrent_pause_resume_and_host_failures_report_every_track_once() {
+    const TOTAL_PER_HOST: usize = 40;
+    let scratch = Scratch::new();
+    let mut behavior = Behavior::instant();
+    behavior.failing = vec!["bad.test"];
+    let loader = loader_over(&scratch, Arc::new(behavior));
+    let ready = Arc::new(AtomicUsize::new(0));
+    let failed = Arc::new(AtomicUsize::new(0));
+    let (ready_cb, failed_cb) = (Arc::clone(&ready), Arc::clone(&failed));
+    let config = PrefetchConfig {
+        workers: 6,
+        rank_of: Arc::new(rank),
+    };
+    let callbacks = PrefetchCallbacks {
+        on_ready: Arc::new(move |_| {
+            ready_cb.fetch_add(1, Ordering::SeqCst);
+        }),
+        on_failed: Arc::new(move |_, _| {
+            failed_cb.fetch_add(1, Ordering::SeqCst);
+        }),
+        keep_going: Arc::new(|| true),
+    };
+    let (prefetch, handles) = SubtitlePrefetch::start_with_callbacks(loader, &config, callbacks);
+    let toggler = spawn_pause_toggler(&prefetch);
+    for n in 0..TOTAL_PER_HOST {
+        prefetch.submit(vec![
+            track("English", &format!("https://bad.test/{n}.vtt")),
+            track("English", &format!("https://good.test/{n}.vtt")),
+        ]);
+    }
+    toggler.join().expect("toggler");
+    prefetch.finish();
+    join(handles);
+    assert_eq!(ready.load(Ordering::SeqCst), TOTAL_PER_HOST);
+    assert_eq!(failed.load(Ordering::SeqCst), TOTAL_PER_HOST);
+}
