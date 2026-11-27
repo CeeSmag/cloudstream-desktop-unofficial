@@ -2,7 +2,7 @@
 
 /// User-selected resource focus while sources and/or subtitles are still loading.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum LoadFocus {
+pub enum LoadFocus {
     /// Automatic policy: full parallel checks before playback; after Play-now, pause stream checks
     /// for up to 8 s until preferred subtitles are ready.
     #[default]
@@ -15,7 +15,7 @@ pub(crate) enum LoadFocus {
 
 impl LoadFocus {
     /// Toggles Sources focus on or off (turning off returns to [`Self::Auto`]).
-    pub(crate) fn toggle_sources(self) -> Self {
+    pub fn toggle_sources(self) -> Self {
         match self {
             Self::Sources => Self::Auto,
             Self::Auto | Self::Subtitles => Self::Sources,
@@ -23,7 +23,7 @@ impl LoadFocus {
     }
 
     /// Toggles Subtitles focus on or off (turning off returns to [`Self::Auto`]).
-    pub(crate) fn toggle_subtitles(self) -> Self {
+    pub fn toggle_subtitles(self) -> Self {
         match self {
             Self::Subtitles => Self::Auto,
             Self::Auto | Self::Sources => Self::Subtitles,
@@ -31,7 +31,7 @@ impl LoadFocus {
     }
 
     /// Releases manual Subtitles pin when the active stream fails and needs a fallback source.
-    pub(crate) fn on_playback_failed(self) -> Self {
+    pub fn on_playback_failed(self) -> Self {
         match self {
             Self::Subtitles => Self::Auto,
             Self::Auto | Self::Sources => self,

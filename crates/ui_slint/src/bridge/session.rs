@@ -1,7 +1,7 @@
 //! State the UI thread keeps between callbacks.
 
 use app_services::PlaybackItem;
-use playback_session::{LiveSources, OpenControl};
+use playback_session::{LiveSources, LoadFocus, OpenControl};
 
 use crate::browse_filters::BrowseFilters;
 use crate::click_sorter::ClickSorter;
@@ -15,7 +15,6 @@ use crate::source_menu::SourceFilter;
 use super::focus_screens::FocusScreen;
 use super::home_expanded::ExpandedShelfState;
 use super::home_loading::HomeShelf;
-use super::load_focus::LoadFocus;
 use super::player_timeline::Timeline;
 use super::security_dialog::PendingTrustAction;
 use super::subtitle_delivery::SubtitleDeliveryHandle;
@@ -179,6 +178,95 @@ impl Session {
         let ticket = self.tickets.issue(RequestKind::Open);
         (self.control.clone(), ticket)
     }
+
+    /// True when the active subtitle downloader reports preferred languages are satisfied.
+    pub(crate) fn is_preferred_subtitles_satisfied(&self) -> bool {
+        self.subtitle_delivery
+            .as_ref()
+            .is_some_and(SubtitleDeliveryHandle::is_preferred_satisfied)
+    }
+
+    /// Applies `focus` to stream checking and subtitle downloading for the current open.
+    pub(crate) fn apply_load_focus(&mut self, focus: LoadFocus, player_open: bool) {
+        self.load_focus = focus;
+        match focus {
+            LoadFocus::Sources => {
+                self.control.resume_checks_now();
+                if let Some(delivery) = &self.subtitle_delivery {
+                    delivery.set_paused(true);
+                }
+            }
+            LoadFocus::Subtitles => {
+                if let Some(delivery) = &self.subtitle_delivery {
+                    delivery.set_paused(false);
+                }
+                self.control.pin_subtitles_focus();
+            }
+            LoadFocus::Auto => {
+                let satisfied = self.is_preferred_subtitles_satisfied();
+                if let Some(delivery) = &self.subtitle_delivery {
+                    delivery.set_paused(false);
+                }
+                self.control.resume_checks_now();
+                if player_open && self.sources_searching && !satisfied {
+                    self.control.prioritize_subtitles();
+                }
+            }
+        }
+    }
+
+    /// Pauses background stream checks automatically once playback starts if subtitles still load.
+    pub(crate) fn on_stream_ready_focus(&self) {
+        if self.sources_searching
+            && self.load_focus == LoadFocus::Auto
+            && !self.is_preferred_subtitles_satisfied()
+        {
+            self.control.prioritize_subtitles();
+        }
+    }
+
+    /// Resumes automatic stream checks once preferred subtitles are ready.
+    pub(crate) fn on_subtitle_ready_focus(&self) {
+        if self.load_focus == LoadFocus::Auto && self.is_preferred_subtitles_satisfied() {
+            self.control.signal_subtitles_satisfied();
+        }
+    }
+
+    /// Releases manual Subtitles focus and resumes stream checks when playback needs a fallback.
+    pub(crate) fn on_playback_failed_focus(&mut self) -> LoadFocus {
+        let next = self.load_focus.on_playback_failed();
+        self.load_focus = next;
+        self.control.resume_checks_now();
+        if next != LoadFocus::Sources {
+            if let Some(delivery) = &self.subtitle_delivery {
+                delivery.set_paused(false);
+            }
+        }
+        next
+    }
+
+    /// Releases manual Subtitles focus when subtitle loading completes.
+    pub(crate) fn on_subtitles_finished_focus(&mut self) -> bool {
+        if self.load_focus == LoadFocus::Subtitles {
+            self.load_focus = LoadFocus::Auto;
+            self.control.resume_checks_now();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clears loading flags, resets focus to Auto, and closes subtitle discovery on open finish.
+    pub(crate) fn on_open_finished_cleanup(&mut self) {
+        self.sources_loading = false;
+        self.sources_searching = false;
+        self.sources_refreshing = false;
+        self.load_focus = LoadFocus::Auto;
+        if let Some(delivery) = &self.subtitle_delivery {
+            delivery.set_paused(false);
+            delivery.finish_discovery();
+        }
+    }
 }
 
 /// Keeps the playing stream selected by URL after `links` is replaced during open or refresh.
@@ -243,5 +331,173 @@ mod tests {
         assert!(!session.tickets.is_current(prior));
         assert!(session.tickets.is_current(ticket));
         assert!(!control.cancel.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn focus_transitions_drive_auto_and_manual_modes() {
+        use playback_session::CheckPriority;
+
+        let mut session = Session::default();
+        session.reset_for_new_open();
+        assert_eq!(
+            (session.load_focus, session.control.check_priority()),
+            (LoadFocus::Auto, CheckPriority::Normal)
+        );
+
+        session.on_stream_ready_focus();
+        assert!(matches!(
+            session.control.check_priority(),
+            CheckPriority::SubtitlesAuto { .. }
+        ));
+
+        session.apply_load_focus(LoadFocus::Sources, true);
+        assert_eq!(
+            (session.load_focus, session.control.check_priority()),
+            (LoadFocus::Sources, CheckPriority::Normal)
+        );
+
+        session.apply_load_focus(LoadFocus::Subtitles, true);
+        assert_eq!(
+            (session.load_focus, session.control.check_priority()),
+            (LoadFocus::Subtitles, CheckPriority::SubtitlesPinned)
+        );
+
+        session.apply_load_focus(LoadFocus::Auto, true);
+        assert!(matches!(
+            session.control.check_priority(),
+            CheckPriority::SubtitlesAuto { .. }
+        ));
+
+        session.apply_load_focus(LoadFocus::Auto, false);
+        assert_eq!(session.control.check_priority(), CheckPriority::Normal);
+    }
+
+    #[test]
+    fn focus_transitions_handle_fallback_and_subtitles_finished() {
+        use playback_session::CheckPriority;
+
+        let mut session = Session::default();
+        session.reset_for_new_open();
+
+        session.apply_load_focus(LoadFocus::Subtitles, true);
+        assert_eq!(
+            (
+                session.on_playback_failed_focus(),
+                session.control.check_priority()
+            ),
+            (LoadFocus::Auto, CheckPriority::Normal)
+        );
+
+        session.apply_load_focus(LoadFocus::Sources, true);
+        assert_eq!(session.on_playback_failed_focus(), LoadFocus::Sources);
+        assert!(!session.on_subtitles_finished_focus());
+
+        session.apply_load_focus(LoadFocus::Subtitles, true);
+        assert!(session.on_subtitles_finished_focus());
+        assert_eq!(
+            (session.load_focus, session.control.check_priority()),
+            (LoadFocus::Auto, CheckPriority::Normal)
+        );
+    }
+
+    #[test]
+    fn open_finished_cleanup_resets_loading_flags_and_focus() {
+        let mut session = Session::default();
+        session.reset_for_new_open();
+        session.apply_load_focus(LoadFocus::Sources, true);
+        session.on_open_finished_cleanup();
+        assert_eq!(
+            (
+                session.sources_loading,
+                session.sources_searching,
+                session.load_focus
+            ),
+            (false, false, LoadFocus::Auto)
+        );
+    }
+
+    fn attach_instant_delivery(session: &mut Session, dir: &std::path::Path) {
+        use std::collections::HashSet;
+        use std::sync::Arc;
+        use std::time::Duration;
+        use subtitle_store::{
+            FetchError, LoadOptions, SubtitleCache, SubtitleFetcher, SubtitleLoader,
+        };
+
+        struct InstantSub;
+        impl SubtitleFetcher for InstantSub {
+            fn fetch(&self, url: &str, _: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
+                Ok(format!("WEBVTT\n\n00:00.000 --> 00:05.000\n{url}\n").into_bytes())
+            }
+        }
+
+        let cache = Arc::new(SubtitleCache::new(
+            dir.to_path_buf(),
+            Duration::from_secs(60),
+        ));
+        let loader = Arc::new(SubtitleLoader::new(
+            cache,
+            Arc::new(InstantSub),
+            LoadOptions {
+                attempts: 1,
+                backoff: Duration::from_millis(1),
+            },
+        ));
+        let pump = crate::background_work::EventPump::new();
+        let ticket = session.tickets.issue(RequestKind::Open);
+        let delivery =
+            SubtitleDeliveryHandle::start(super::super::subtitle_delivery::DeliveryRequest {
+                loader,
+                title_key: "p\nt".into(),
+                preferred: vec![player_api::ENGLISH],
+                already_delivered: HashSet::new(),
+                ticket,
+                sender: pump.sender(),
+            });
+        session.subtitle_delivery = Some(delivery);
+    }
+
+    #[test]
+    fn subtitle_ready_focus_signals_open_control_when_preferred_satisfied() {
+        use playback_session::CheckPriority;
+        use std::time::Duration;
+
+        let dir = std::env::temp_dir().join(format!("cs_session_focus_{}", std::process::id()));
+        let mut session = Session::default();
+        session.reset_for_new_open();
+        attach_instant_delivery(&mut session, &dir);
+
+        session.on_stream_ready_focus();
+        assert!(matches!(
+            session.control.check_priority(),
+            CheckPriority::SubtitlesAuto { .. }
+        ));
+        session.apply_load_focus(LoadFocus::Sources, true);
+        session.apply_load_focus(LoadFocus::Subtitles, true);
+        session.on_playback_failed_focus();
+        session.apply_load_focus(LoadFocus::Auto, true);
+        if let Some(d) = &session.subtitle_delivery {
+            d.submit(&[
+                core_model::SubtitleTrack {
+                    lang: "English".into(),
+                    url: "https://s.test/1.vtt".into(),
+                    headers: None,
+                },
+                core_model::SubtitleTrack {
+                    lang: "English".into(),
+                    url: "https://s.test/2.vtt".into(),
+                    headers: None,
+                },
+            ]);
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while !d.is_preferred_satisfied() && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        session.on_subtitle_ready_focus();
+        assert_eq!(session.control.check_priority(), CheckPriority::Normal);
+        session.on_open_finished_cleanup();
+        session.abandon_open();
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -4994,6 +4994,8 @@ dependencies = [
  "core_model",
  "extension_api",
  "extension_repo",
+ "player_api",
+ "subtitle_store",
  "thiserror 2.0.21",
  "title_cache",
  "tracing",

@@ -11,7 +11,7 @@ worker thread (`background_work.rs`) and comes back as a `UiEvent` (`src/ui_even
 | `bridge/app_start.rs` | window, wiring, plugin load, the UI tick and the 16 ms video frame timer |
 | `bridge/*_callbacks.rs` | screen and settings buttons (home, catalog, details, player, preferences…) |
 | `bridge/*_loading.rs`, `bridge/title_search.rs` | Home shelves, title pages, Browse (TMDB + provider match), search |
-| `bridge/stream_opening.rs`, `bridge/stream_events.rs`, `bridge/load_focus.rs`, `bridge/subtitle_*.rs` | open / refresh sources via `playback_session`; failure-refunded subtitle delivery & Sources/Subtitles Focus controls |
+| `bridge/stream_opening.rs`, `bridge/stream_events.rs`, `bridge/subtitle_delivery.rs` | open / refresh sources via `playback_session`; failure-refunded subtitle delivery & Sources/Subtitles Focus controls |
 | `bridge/player_polling.rs` | playback status on the UI tick; frames on the 16 ms timer |
 | `bridge/event_dispatch.rs` + `*_events.rs` | show background results; answers of replaced requests are dropped |
 | `request_tickets.rs` | a ticket per request kind (home, search, browse, details, open, skips) |

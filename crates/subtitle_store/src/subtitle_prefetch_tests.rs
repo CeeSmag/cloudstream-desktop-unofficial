@@ -469,4 +469,142 @@ fn set_paused_holds_queued_downloads_until_resumed_or_stopped() {
     paused_stop.submit(vec![track("English", "https://good.test/3.vtt")]);
     paused_stop.stop();
     join(stop_handles);
+
+    // Finishing while paused automatically unpauses and drains queued work.
+    let (paused_finish, fin_handles) = start_over(&loader);
+    paused_finish.set_paused(true);
+    paused_finish.submit(vec![track("English", "https://good.test/4.vtt")]);
+    paused_finish.finish();
+    join(fin_handles);
+    assert_eq!(paused_finish.summary().ready, 1);
+}
+
+struct HtmlFetcher;
+
+impl SubtitleFetcher for HtmlFetcher {
+    fn fetch(&self, _: &str, _: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
+        Ok(b"<!DOCTYPE html><html><body>blocked</body></html>".to_vec())
+    }
+}
+
+#[test]
+fn invalid_subtitle_payload_reports_non_download_failure_reason() {
+    let scratch = Scratch::new();
+    let loader = loader_over(&scratch, Arc::new(HtmlFetcher));
+    let failed_reasons = Arc::new(Mutex::new(Vec::<String>::new()));
+    let reasons_cb = Arc::clone(&failed_reasons);
+    let config = PrefetchConfig {
+        workers: 1,
+        rank_of: Arc::new(rank),
+    };
+    let (prefetch, handles) = SubtitlePrefetch::start_with_callbacks(
+        loader,
+        &config,
+        PrefetchCallbacks {
+            on_ready: Arc::new(|_| {}),
+            on_failed: Arc::new(move |_, reason| {
+                reasons_cb.lock().expect("lock").push(reason.to_owned());
+            }),
+            keep_going: Arc::new(|| true),
+        },
+    );
+    prefetch.submit(vec![track("English", "https://html.test/sub.srt")]);
+    prefetch.finish();
+    join(handles);
+    assert_eq!(prefetch.summary().failed, 1);
+    assert_eq!(failed_reasons.lock().expect("lock").len(), 1);
+    assert!(
+        !prefetch.summary().reasons.contains_key("host skipped"),
+        "single invalid payload should record normalization reason"
+    );
+}
+
+#[test]
+fn keep_going_false_discards_queue_without_reporting_failure() {
+    let scratch = Scratch::new();
+    let fetcher = Arc::new(Behavior::instant());
+    let loader = loader_over(&scratch, Arc::clone(&fetcher) as Arc<dyn SubtitleFetcher>);
+    let failed = Arc::new(AtomicUsize::new(0));
+    let failed_cb = Arc::clone(&failed);
+    let config = PrefetchConfig {
+        workers: 1,
+        rank_of: Arc::new(rank),
+    };
+    let (prefetch, handles) = SubtitlePrefetch::start_with_callbacks(
+        loader,
+        &config,
+        PrefetchCallbacks {
+            on_ready: Arc::new(|_| {}),
+            on_failed: Arc::new(move |_, _| {
+                failed_cb.fetch_add(1, Ordering::SeqCst);
+            }),
+            keep_going: Arc::new(|| false),
+        },
+    );
+    prefetch.submit(vec![
+        track("English", "https://skip.test/1.vtt"),
+        track("English", "https://skip.test/2.vtt"),
+    ]);
+    prefetch.finish();
+    join(handles);
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(failed.load(Ordering::SeqCst), 0);
+}
+
+fn single_worker_prefetch(loader: Arc<SubtitleLoader>) -> (SubtitlePrefetch, Vec<JoinHandle<()>>) {
+    let config = PrefetchConfig {
+        workers: 1,
+        rank_of: Arc::new(rank),
+    };
+    SubtitlePrefetch::start(loader, &config, Arc::new(|_| {}), Arc::new(|| true))
+}
+
+#[test]
+fn cache_hit_does_not_reset_host_failure_streak() {
+    let scratch = Scratch::new();
+    let mut behavior = Behavior::instant();
+    behavior.failing = vec!["fail"];
+    let loader = loader_over(&scratch, Arc::new(behavior));
+
+    let (seed, seed_handles) = start_over(&loader);
+    seed.submit(vec![track("English", "https://flaky.test/cached.vtt")]);
+    seed.finish();
+    join(seed_handles);
+
+    // 2 failures + 1 cache hit + 1 more failure MUST trip (threshold = 3), skipping fail4.
+    let (prefetch, handles) = single_worker_prefetch(loader);
+    prefetch.submit(vec![
+        track("English", "https://flaky.test/fail1.vtt"),
+        track("English", "https://flaky.test/fail2.vtt"),
+        track("English", "https://flaky.test/cached.vtt"),
+        track("English", "https://flaky.test/fail3.vtt"),
+        track("English", "https://flaky.test/fail4.vtt"),
+    ]);
+    prefetch.finish();
+    join(handles);
+    assert_eq!(
+        prefetch.summary().reasons.get("host skipped").copied(),
+        Some(1)
+    );
+}
+
+#[test]
+fn fresh_network_success_resets_host_failure_streak() {
+    let scratch = Scratch::new();
+    let mut behavior = Behavior::instant();
+    behavior.failing = vec!["fail"];
+    let loader = loader_over(&scratch, Arc::new(behavior));
+
+    // 2 failures + 1 fresh network success resets the streak, so 2 more failures do NOT trip.
+    let (net, net_handles) = single_worker_prefetch(loader);
+    net.submit(vec![
+        track("English", "https://recover.test/fail1.vtt"),
+        track("English", "https://recover.test/fail2.vtt"),
+        track("English", "https://recover.test/ok.vtt"),
+        track("English", "https://recover.test/fail3.vtt"),
+        track("English", "https://recover.test/fail4.vtt"),
+    ]);
+    net.finish();
+    join(net_handles);
+    assert_eq!(net.summary().reasons.get("host skipped"), None);
 }

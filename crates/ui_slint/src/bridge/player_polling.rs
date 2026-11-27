@@ -73,17 +73,7 @@ pub(crate) fn sync_subtitles_indicator(ctx: &BridgeContext, ui: &CloudStream) {
             ui.set_subtitles_status(text.into());
         }
         None => {
-            let released = {
-                let mut session = ctx.session.borrow_mut();
-                if session.load_focus == super::load_focus::LoadFocus::Subtitles {
-                    session.load_focus = super::load_focus::LoadFocus::Auto;
-                    session.control.resume_checks_now();
-                    true
-                } else {
-                    false
-                }
-            };
-            if released {
+            if ctx.session.borrow_mut().on_subtitles_finished_focus() {
                 ui.set_focus_subtitles(false);
             }
             ui.set_subtitles_loading(false);

@@ -9,6 +9,8 @@ license.workspace = true
 app_services = { path = "../app_services" }
 core_model = { path = "../core_model" }
 extension_repo = { path = "../extension_repo" }
+player_api = { path = "../player_api" }
+subtitle_store = { path = "../subtitle_store" }
 thiserror.workspace = true
 title_cache = { path = "../title_cache" }
 tracing.workspace = true

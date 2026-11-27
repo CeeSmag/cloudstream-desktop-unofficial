@@ -41,6 +41,26 @@ struct ScriptedBatch {
     links: Vec<PlayableLink>,
     subtitles: Vec<SubtitleTrack>,
     done: bool,
+    failure: Option<String>,
+    poll_error: Option<String>,
+}
+
+impl ScriptedBatch {
+    fn ok(
+        delay: Duration,
+        links: Vec<PlayableLink>,
+        subtitles: Vec<SubtitleTrack>,
+        done: bool,
+    ) -> Self {
+        Self {
+            delay,
+            links,
+            subtitles,
+            done,
+            failure: None,
+            poll_error: None,
+        }
+    }
 }
 
 struct ScriptedGateway {
@@ -100,17 +120,24 @@ impl ProviderGateway for ScriptedGateway {
                 ..LinkSearchUpdate::default()
             });
         };
+        if let Some(error) = batch.poll_error {
+            return Err(GatewayError::Remote {
+                kind: "PollFailed".into(),
+                message: error,
+            });
+        }
         if !batch.delay.is_zero() {
             std::thread::sleep(batch.delay);
         }
         let next_link = cursor.links + batch.links.len();
         let next_subtitle = cursor.subtitles + batch.subtitles.len();
+        let success = batch.failure.is_none();
         Ok(LinkSearchUpdate {
             links: batch.links,
             subtitles: batch.subtitles,
             done: batch.done,
-            success: true,
-            failure: None,
+            success,
+            failure: batch.failure,
             next_link,
             next_subtitle,
         })
@@ -202,21 +229,21 @@ fn run_with_hooks(
 
 fn slow_probe_batches() -> Vec<ScriptedBatch> {
     vec![
-        ScriptedBatch {
-            delay: Duration::ZERO,
-            links: vec![link(1080, "https://hang.test/video.mp4")],
-            subtitles: vec![subtitle("English", "https://sub.test/1.vtt")],
-            done: false,
-        },
-        ScriptedBatch {
-            delay: Duration::from_millis(25),
-            links: vec![link(720, "https://fast.test/video.mp4")],
-            subtitles: vec![
+        ScriptedBatch::ok(
+            Duration::ZERO,
+            vec![link(1080, "https://hang.test/video.mp4")],
+            vec![subtitle("English", "https://sub.test/1.vtt")],
+            false,
+        ),
+        ScriptedBatch::ok(
+            Duration::from_millis(25),
+            vec![link(720, "https://fast.test/video.mp4")],
+            vec![
                 subtitle("Arabic", "https://sub.test/2.vtt"),
                 subtitle("French", "https://sub.test/3.vtt"),
             ],
-            done: true,
-        },
+            true,
+        ),
     ]
 }
 
@@ -255,18 +282,18 @@ fn pinned_focus_batches() -> Vec<ScriptedBatch> {
         .map(|i| link(720, &format!("https://s.test/{i}.mp4")))
         .collect();
     vec![
-        ScriptedBatch {
-            delay: Duration::ZERO,
+        ScriptedBatch::ok(
+            Duration::ZERO,
             links,
-            subtitles: vec![subtitle("English", "https://sub.test/1.vtt")],
-            done: false,
-        },
-        ScriptedBatch {
-            delay: Duration::from_millis(150),
-            links: vec![],
-            subtitles: vec![subtitle("Arabic", "https://sub.test/2.vtt")],
-            done: true,
-        },
+            vec![subtitle("English", "https://sub.test/1.vtt")],
+            false,
+        ),
+        ScriptedBatch::ok(
+            Duration::from_millis(150),
+            vec![],
+            vec![subtitle("Arabic", "https://sub.test/2.vtt")],
+            true,
+        ),
     ]
 }
 
@@ -309,18 +336,13 @@ fn pinned_subtitle_focus_pauses_stream_checks_until_search_finishes() {
 #[test]
 fn cancel_while_parked_in_pinned_subtitle_focus_exits_promptly() {
     let search = ScriptedGateway::search(vec![
-        ScriptedBatch {
-            delay: Duration::ZERO,
-            links: vec![link(1080, "https://c.test/1.mp4")],
-            subtitles: vec![],
-            done: false,
-        },
-        ScriptedBatch {
-            delay: Duration::from_millis(50),
-            links: vec![],
-            subtitles: vec![],
-            done: false,
-        },
+        ScriptedBatch::ok(
+            Duration::ZERO,
+            vec![link(1080, "https://c.test/1.mp4")],
+            vec![],
+            false,
+        ),
+        ScriptedBatch::ok(Duration::from_millis(50), vec![], vec![], false),
     ]);
     let probe = Arc::new(CountingProbe {
         calls: AtomicUsize::new(0),
@@ -363,18 +385,18 @@ fn race_batches(iteration: usize) -> Vec<ScriptedBatch> {
         })
         .collect();
     vec![
-        ScriptedBatch {
-            delay: Duration::ZERO,
-            links: batch1,
-            subtitles: vec![subtitle("English", "https://sub.test/en.vtt")],
-            done: false,
-        },
-        ScriptedBatch {
-            delay: Duration::from_millis(5),
-            links: batch2,
-            subtitles: vec![subtitle("Arabic", "https://sub.test/ar.vtt")],
-            done: true,
-        },
+        ScriptedBatch::ok(
+            Duration::ZERO,
+            batch1,
+            vec![subtitle("English", "https://sub.test/en.vtt")],
+            false,
+        ),
+        ScriptedBatch::ok(
+            Duration::from_millis(5),
+            batch2,
+            vec![subtitle("Arabic", "https://sub.test/ar.vtt")],
+            true,
+        ),
     ]
 }
 
@@ -437,4 +459,232 @@ fn race_concurrent_batches_priority_toggles_and_skip_check_each_link_once() {
     for iteration in 0..20 {
         race_iteration(iteration);
     }
+}
+
+#[test]
+fn batch_failure_errors_when_empty() {
+    let probe = Arc::new(CountingProbe {
+        calls: AtomicUsize::new(0),
+        delay: Duration::ZERO,
+    });
+    let checker = StreamChecker::new(probe as Arc<dyn HttpProbe>);
+    let (skip, cancel) = (AtomicBool::new(false), AtomicBool::new(false));
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let gate = CheckGate::default();
+    let config = PoolConfig::standard(&checker, &hooks, &gate);
+    let err_search = ScriptedGateway::search(vec![ScriptedBatch {
+        delay: Duration::ZERO,
+        links: vec![],
+        subtitles: vec![],
+        done: true,
+        failure: Some("provider exploded".into()),
+        poll_error: None,
+    }]);
+    let err = run_search_pool(err_search, OpenState::new(), &config).expect_err("must fail");
+    assert!(matches!(err, OpenError::Search(ref m) if m.contains("provider exploded")));
+}
+
+#[test]
+fn batch_failure_keeps_partial_links_and_deduplicates_across_batches() {
+    let probe = Arc::new(CountingProbe {
+        calls: AtomicUsize::new(0),
+        delay: Duration::ZERO,
+    });
+    let checker = StreamChecker::new(probe as Arc<dyn HttpProbe>);
+    let (skip, cancel) = (AtomicBool::new(false), AtomicBool::new(false));
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let partial = ScriptedGateway::search(vec![
+        ScriptedBatch::ok(
+            Duration::ZERO,
+            vec![link(1080, "https://p.test/ok.mp4")],
+            vec![subtitle("English", "https://sub.test/en.vtt")],
+            false,
+        ),
+        ScriptedBatch {
+            delay: Duration::ZERO,
+            links: vec![link(1080, "https://p.test/ok.mp4")],
+            subtitles: vec![subtitle("English", "https://sub.test/en.vtt")],
+            done: true,
+            failure: Some("late mirror failed".into()),
+            poll_error: None,
+        },
+    ]);
+    let opened = run_with_hooks(partial, &checker, &CheckGate::default(), &hooks);
+    assert_eq!(opened.links.len(), 1);
+    assert_eq!(opened.subtitles.len(), 1);
+}
+
+#[test]
+fn poll_transport_error_surfaces_as_open_error_search() {
+    let search = ScriptedGateway::search(vec![ScriptedBatch {
+        delay: Duration::ZERO,
+        links: vec![],
+        subtitles: vec![],
+        done: false,
+        failure: None,
+        poll_error: Some("sidecar pipe broken".into()),
+    }]);
+    let probe = Arc::new(CountingProbe {
+        calls: AtomicUsize::new(0),
+        delay: Duration::ZERO,
+    });
+    let checker = StreamChecker::new(probe as Arc<dyn HttpProbe>);
+    let (skip, cancel) = (AtomicBool::new(false), AtomicBool::new(false));
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let gate = CheckGate::default();
+    let config = PoolConfig::standard(&checker, &hooks, &gate);
+    let err = run_search_pool(search, OpenState::new(), &config).expect_err("poll fails");
+    assert!(matches!(err, OpenError::Search(ref m) if m.contains("sidecar pipe broken")));
+}
+
+#[test]
+fn pick_best_unclaimed_checks_highest_rank_first_with_earlier_tiebreak() {
+    let ordered = vec![
+        (link(480, "https://r/480.mp4"), None),
+        (link(1080, "https://r/1080a.mp4"), None),
+        (link(1080, "https://r/1080b.mp4"), None),
+        (link(720, "https://r/720.mp4"), None),
+    ];
+    let claimed = vec![false; 4];
+    assert_eq!(pick_best_unclaimed(&ordered, &claimed), Some(1));
+    assert_eq!(
+        pick_best_unclaimed(&ordered, &[false, true, false, false]),
+        Some(2)
+    );
+}
+
+fn zero_progress() -> OpenProgress {
+    OpenProgress {
+        found: 0,
+        checked: 0,
+        working: 0,
+        search_done: false,
+    }
+}
+
+#[test]
+fn skip_mid_search_announces_ready_before_search_completes() {
+    let search = ScriptedGateway::search(vec![
+        ScriptedBatch::ok(
+            Duration::ZERO,
+            vec![link(1080, "https://m.test/1.mp4")],
+            vec![],
+            false,
+        ),
+        ScriptedBatch::ok(Duration::from_millis(120), vec![], vec![], true),
+    ]);
+    let probe = Arc::new(CountingProbe {
+        calls: AtomicUsize::new(0),
+        delay: Duration::ZERO,
+    });
+    let checker = StreamChecker::new(probe as Arc<dyn HttpProbe>);
+    let (skip, cancel) = (AtomicBool::new(true), AtomicBool::new(false));
+    let (search_done, ready_early) = (AtomicBool::new(false), AtomicBool::new(false));
+    let last_progress = Mutex::new(zero_progress());
+    let on_progress = |p: OpenProgress| {
+        search_done.fetch_or(p.search_done, Ordering::SeqCst);
+        *last_progress.lock().expect("lock") = p;
+    };
+    let on_ready = |_| {
+        ready_early.fetch_or(!search_done.load(Ordering::SeqCst), Ordering::SeqCst);
+    };
+    let hooks = OpenHooks {
+        on_progress: &on_progress,
+        on_update: &|_| {},
+        on_ready: &on_ready,
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let opened = run_with_hooks(search, &checker, &CheckGate::default(), &hooks);
+    assert_eq!(opened.play_index, Some(0));
+    assert!(ready_early.load(Ordering::SeqCst));
+    let p = *last_progress.lock().expect("lock");
+    assert_eq!((p.found, p.checked, p.working), (1, 1, 1));
+}
+
+#[test]
+fn poll_error_stops_workers_without_probing_remaining_queued_links() {
+    let links = (0..6)
+        .map(|i| link(720, &format!("https://err.test/{i}.mp4")))
+        .collect();
+    let search = ScriptedGateway::search(vec![
+        ScriptedBatch::ok(Duration::ZERO, links, vec![], false),
+        ScriptedBatch {
+            delay: Duration::from_millis(20),
+            links: vec![],
+            subtitles: vec![],
+            done: false,
+            failure: None,
+            poll_error: Some("sidecar crashed".into()),
+        },
+    ]);
+    let probe = Arc::new(CountingProbe {
+        calls: AtomicUsize::new(0),
+        delay: Duration::ZERO,
+    });
+    let checker = StreamChecker::new(Arc::clone(&probe) as Arc<dyn HttpProbe>);
+    let gate = CheckGate::default();
+    // Hold workers paused until the poll error triggers guard.stopped = true + mark_search_done.
+    gate.pin_subtitles_focus();
+    let (skip, cancel) = (AtomicBool::new(false), AtomicBool::new(false));
+    let hooks = OpenHooks {
+        on_progress: &|_| {},
+        on_update: &|_| {},
+        on_ready: &|_| {},
+        skip: &skip,
+        cancel: &cancel,
+    };
+    let config = PoolConfig::standard(&checker, &hooks, &gate);
+    let err = run_search_pool(search, OpenState::new(), &config).expect_err("must fail");
+    assert!(matches!(err, OpenError::Search(_)));
+    assert_eq!(
+        probe.calls.load(Ordering::SeqCst),
+        0,
+        "workers must stop immediately on poll error without probing queued links"
+    );
+}
+
+#[test]
+fn timed_out_pool_stops_claiming_when_working_exists_and_fails_empty_search() {
+    let mut state = OpenState::new();
+    state.started = Instant::now() - Duration::from_secs(TOTAL_SECS + 5);
+    state.ordered = vec![
+        (
+            link(1080, "https://t/ok.mp4"),
+            Some(LinkHealth::Working {
+                size_bytes: None,
+                subtitles: vec![],
+            }),
+        ),
+        (link(720, "https://t/unchecked.mp4"), None),
+    ];
+    state.play_index = Some(0);
+    let mut pool = SharedPool::new(state);
+    assert!(matches!(pool.claim_next(false), Claim::Done));
+
+    let mut empty = OpenState::new();
+    empty.started = Instant::now() - Duration::from_secs(FIRST_WORKING_SECS + 5);
+    let shared = Mutex::new(SharedPool::new(empty));
+    assert!(matches!(
+        check_empty_timeout(&shared),
+        Err(OpenError::Empty)
+    ));
 }

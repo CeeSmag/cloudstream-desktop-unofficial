@@ -8,20 +8,20 @@ use player_api::{find_language, Language};
 use subtitle_store::host_of;
 
 /// Max active (in-flight + ready) external subtitle files in the viewer's preferred languages.
-pub(crate) const MAX_PREFERRED_EXTERNAL: usize = 12;
+pub const MAX_PREFERRED_EXTERNAL: usize = 12;
 /// Max active (in-flight + ready) external subtitle files in non-preferred languages.
-pub(crate) const MAX_OTHER_EXTERNAL: usize = 12;
+pub const MAX_OTHER_EXTERNAL: usize = 12;
 /// Max active files per single non-preferred language so duplicates do not crowd out other languages.
-pub(crate) const MAX_PER_OTHER_LANGUAGE: usize = 2;
+pub const MAX_PER_OTHER_LANGUAGE: usize = 2;
 /// Bounded reserve backlog of overflow tracks eligible for promotion when an active download fails.
-pub(crate) const MAX_RESERVE_TRACKS: usize = 96;
+pub const MAX_RESERVE_TRACKS: usize = 96;
 /// Working ready subtitles required per preferred language (or total when none configured) before
 /// automatic post-Play-now subtitle priority yields back to stream checking.
-pub(crate) const PREFERRED_READY_PER_LANGUAGE: usize = 2;
+pub const PREFERRED_READY_PER_LANGUAGE: usize = 2;
 
 /// Tracks accepted subtitle tracks, refunds failed downloads, promotes reserve backups from healthy
 /// hosts, and reports when preferred subtitle languages have enough working tracks.
-pub(crate) struct QueueBudget {
+pub struct QueueBudget {
     preferred: Vec<Language>,
     seen_urls: HashSet<String>,
     active_urls: HashSet<String>,
@@ -35,7 +35,8 @@ pub(crate) struct QueueBudget {
 }
 
 impl QueueBudget {
-    pub(crate) fn new(preferred: Vec<Language>, already_delivered: HashSet<String>) -> Self {
+    /// Creates a budget for one video open/refresh, skipping `already_delivered` URLs.
+    pub fn new(preferred: Vec<Language>, already_delivered: HashSet<String>) -> Self {
         let slot_count = preferred.len();
         Self {
             preferred,
@@ -52,7 +53,7 @@ impl QueueBudget {
     }
 
     /// Accepts a cached ready subtitle into the budget and counts it as already ready.
-    pub(crate) fn accept_cached(&mut self, track: &SubtitleTrack) -> bool {
+    pub fn accept_cached(&mut self, track: &SubtitleTrack) -> bool {
         if !self.accept(track) {
             return false;
         }
@@ -62,7 +63,7 @@ impl QueueBudget {
 
     /// Accepts newly discovered tracks up to the budget caps; overflow tracks go into the reserve
     /// backlog so failed downloads can be replaced automatically.
-    pub(crate) fn filter_accepted(&mut self, tracks: &[SubtitleTrack]) -> Vec<SubtitleTrack> {
+    pub fn filter_accepted(&mut self, tracks: &[SubtitleTrack]) -> Vec<SubtitleTrack> {
         let mut ordered: Vec<&SubtitleTrack> = tracks.iter().collect();
         ordered.sort_by_key(|track| {
             (
@@ -88,7 +89,7 @@ impl QueueBudget {
     }
 
     /// Records a working ready subtitle for preferred-language satisfaction tracking.
-    pub(crate) fn on_ready(&mut self, language: &str) {
+    pub fn on_ready(&mut self, language: &str) {
         self.ready_count += 1;
         let rank = subtitle_rank(&self.preferred, language);
         if let Some(slot) = self.preferred_ready_by_slot.get_mut(rank) {
@@ -98,7 +99,7 @@ impl QueueBudget {
 
     /// Refunds the budget slot of a failed subtitle download, marks its host as degraded, and
     /// promotes the best eligible reserve track (preferring healthy hosts).
-    pub(crate) fn on_failed(&mut self, track: &SubtitleTrack) -> Vec<SubtitleTrack> {
+    pub fn on_failed(&mut self, track: &SubtitleTrack) -> Vec<SubtitleTrack> {
         if let Some(host) = host_of(&track.url) {
             self.failed_hosts.insert(host);
         }
@@ -110,7 +111,7 @@ impl QueueBudget {
 
     /// True once at least [`PREFERRED_READY_PER_LANGUAGE`] working subtitles are ready for every
     /// configured preferred language (or total when no preferred languages are set).
-    pub(crate) fn is_preferred_satisfied(&self) -> bool {
+    pub fn is_preferred_satisfied(&self) -> bool {
         if self.preferred.is_empty() {
             self.ready_count >= PREFERRED_READY_PER_LANGUAGE
         } else {
@@ -221,7 +222,7 @@ impl QueueBudget {
 }
 
 /// True when `label` (`"en"`, `"eng"`, `"en-US"`, `"English"`, `"English (SDH)"`) names `language`.
-pub(crate) fn matches_subtitle_label(label: &str, language: &Language) -> bool {
+pub fn matches_subtitle_label(label: &str, language: &Language) -> bool {
     let trimmed = label.trim();
     if trimmed.is_empty() {
         return false;
@@ -238,7 +239,7 @@ pub(crate) fn matches_subtitle_label(label: &str, language: &Language) -> bool {
 }
 
 /// Lower rank downloads first: preferred languages get `0..preferred.len()`, others get `preferred.len()`.
-pub(crate) fn subtitle_rank(preferred: &[Language], label: &str) -> usize {
+pub fn subtitle_rank(preferred: &[Language], label: &str) -> usize {
     preferred
         .iter()
         .position(|language| matches_subtitle_label(label, language))

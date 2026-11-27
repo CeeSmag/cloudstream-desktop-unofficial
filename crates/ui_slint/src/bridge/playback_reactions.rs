@@ -9,7 +9,6 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
 use super::details_callbacks::play_episode;
-use super::load_focus::LoadFocus;
 use super::player_callbacks::report;
 use super::stream_events::sync_focus_ui;
 use super::stream_opening::{begin_open, switch_source};
@@ -48,15 +47,7 @@ fn fallback_to_source(ctx: &BridgeContext, ui: &CloudStream, index: usize) {
         let mut session = ctx.session.borrow_mut();
         let selected = session.selected;
         mark_selected_broken(&mut session.source_checks, selected);
-        let focus = session.load_focus.on_playback_failed();
-        session.load_focus = focus;
-        session.control.resume_checks_now();
-        if focus != LoadFocus::Sources {
-            if let Some(delivery) = &session.subtitle_delivery {
-                delivery.set_paused(false);
-            }
-        }
-        focus
+        session.on_playback_failed_focus()
     };
     sync_focus_ui(ui, next_focus);
     switch_source(ctx, index);

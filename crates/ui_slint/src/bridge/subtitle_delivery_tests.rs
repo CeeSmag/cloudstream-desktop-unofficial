@@ -11,9 +11,9 @@ use player_api::ENGLISH;
 use subtitle_store::{FetchError, LoadOptions, SubtitleCache, SubtitleFetcher, SubtitleLoader};
 
 use crate::background_work::EventPump;
-use crate::bridge::subtitle_budget::MAX_PREFERRED_EXTERNAL;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::UiEvent;
+use playback_session::MAX_PREFERRED_EXTERNAL;
 
 use super::*;
 
@@ -175,6 +175,24 @@ fn pausing_delivery_holds_downloads_until_resumed() {
     handle.finish_discovery();
     wait_until("resumed subtitle ready", || handle.snapshot().ready == 1);
     assert_eq!(fetcher.calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn empty_and_post_stop_submits_are_ignored_and_late_failures_do_not_promote() {
+    let scratch = Scratch::new();
+    let loader = routing_loader(&scratch, "dead.test");
+    let pump = EventPump::new();
+    let mut tickets = RequestTickets::default();
+    let ticket = tickets.issue(RequestKind::Open);
+    let handle = start_english(&loader, "prov\nnoop", ticket, &pump);
+
+    handle.submit(&[]);
+    assert_eq!(handle.snapshot().submitted, 0);
+
+    handle.stop();
+    handle.submit(&[sub("English", "https://good.test/late.vtt")]);
+    assert_eq!(handle.snapshot().submitted, 0);
+    assert!(!handle.is_preferred_satisfied());
 }
 
 fn start_english(

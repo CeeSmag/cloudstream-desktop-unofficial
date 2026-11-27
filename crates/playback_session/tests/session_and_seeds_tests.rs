@@ -642,3 +642,65 @@ fn run_open_deduplicates_identical_subtitle_urls() {
     .expect("open succeeds");
     assert_eq!(opened.subtitles.len(), 2);
 }
+
+#[test]
+fn open_control_priority_transitions() {
+    use playback_session::CheckPriority;
+
+    let control = OpenControl::default();
+    assert_eq!(control.check_priority(), CheckPriority::Normal);
+
+    control.prioritize_subtitles();
+    assert!(matches!(
+        control.check_priority(),
+        CheckPriority::SubtitlesAuto { .. }
+    ));
+
+    control.signal_subtitles_satisfied();
+    assert_eq!(control.check_priority(), CheckPriority::Normal);
+
+    control.pin_subtitles_focus();
+    assert_eq!(control.check_priority(), CheckPriority::SubtitlesPinned);
+    control.prioritize_subtitles();
+    assert_eq!(control.check_priority(), CheckPriority::SubtitlesPinned);
+    control.signal_subtitles_satisfied();
+    assert_eq!(control.check_priority(), CheckPriority::SubtitlesPinned);
+
+    control.resume_checks_now();
+    assert_eq!(control.check_priority(), CheckPriority::Normal);
+}
+
+#[test]
+fn refresh_sources_resets_pinned_priority_to_normal() {
+    use playback_session::CheckPriority;
+
+    let control = OpenControl::default();
+    control.pin_subtitles_focus();
+    let server = MockHttpServer::start(vec![(
+        "/ok.mp4".into(),
+        200,
+        "video/mp4".into(),
+        "00000000ftypisom".into(),
+    )]);
+    let gw = Arc::new(ScriptedGateway::single(
+        vec![make_link("OK", server.url("/ok.mp4"), 1080, "VIDEO")],
+        vec![],
+    ));
+    let resolver = StreamResolver::new(gw);
+    let live = LiveSources::new();
+    let refreshed = refresh_sources(RefreshRequest {
+        streams: &resolver,
+        provider: "Demo",
+        data: "reset_gate",
+        media_key: "reset_gate",
+        playing_link: None,
+        cache: None,
+        live: &live,
+        control: &control,
+        on_progress: &|_| {},
+        on_update: &|_| {},
+    })
+    .expect("refresh succeeds");
+    assert_eq!(refreshed.links.len(), 1);
+    assert_eq!(control.check_priority(), CheckPriority::Normal);
+}

@@ -1,8 +1,8 @@
 //! Downloads, normalizes, and delivers external subtitle files for the open video.
 //!
-//! Preferred languages are queued first (up to [`super::subtitle_budget::MAX_PREFERRED_EXTERNAL`]),
-//! followed by other languages up to [`super::subtitle_budget::MAX_OTHER_EXTERNAL`] (at most
-//! [`super::subtitle_budget::MAX_PER_OTHER_LANGUAGE`] per language). Failed downloads refund their
+//! Preferred languages are queued first (up to [`playback_session::MAX_PREFERRED_EXTERNAL`]),
+//! followed by other languages up to [`playback_session::MAX_OTHER_EXTERNAL`] (at most
+//! [`playback_session::MAX_PER_OTHER_LANGUAGE`] per language). Failed downloads refund their
 //! budget slot and automatically promote reserve tracks from healthy hosts.
 
 use std::collections::HashSet;
@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 use core_model::SubtitleTrack;
+use playback_session::{subtitle_rank, QueueBudget};
 use player_api::Language;
 use subtitle_store::{
     PrefetchCallbacks, PrefetchConfig, ReadySubtitle, SubtitleLoader, SubtitlePrefetch,
@@ -18,8 +19,6 @@ use subtitle_store::{
 use crate::background_work::UiSender;
 use crate::request_tickets::Ticket;
 use crate::ui_events::{ReadySubtitleEvent, UiEvent};
-
-use super::subtitle_budget::{subtitle_rank, QueueBudget};
 
 /// Parallel subtitle download workers; time is spent waiting on remote subtitle hosts.
 const DOWNLOADS_AT_ONCE: usize = 8;

@@ -12,7 +12,8 @@ working stream by `link_rank`.
 | `run_open` / `OpenRequest` | Full stream open with progress, incremental snapshot, and first-working hooks |
 | `refresh_sources` / `RefreshRequest` | Drops cached links and re-searches while keeping the playing stream pinned |
 | `open_with` / `check_and_pick` / `OpenTarget` | Core open loop over a `StreamResolver` and optional `OpenCache` |
-| `OpenControl` / `LiveSources` / `CheckPriority` | Shared skip/cancel/subtitle-priority controls and live snapshot of streams/subtitles |
+| `OpenControl` / `LiveSources` / `CheckPriority` / `LoadFocus` | Shared skip/cancel/subtitle-priority/focus controls and live snapshot of streams/subtitles |
+| `QueueBudget` / `subtitle_rank` / `matches_subtitle_label` | Failure-refunded external subtitle budget, reserve promotion, and preferred-language satisfaction |
 | `save_open_kept` / `cached_title_from_open` / `title_key` | Converts `CheckedOpen` into `CachedTitle` and saves under `TitleCache::keep_only` |
 | `OpenProgress` / `CheckedOpen` / `OpenError` | Progress counters, verified link + subtitle list, and structured failure reasons |
 

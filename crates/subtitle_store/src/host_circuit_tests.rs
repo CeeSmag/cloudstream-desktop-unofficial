@@ -93,3 +93,23 @@ fn host_circuit_concurrent_failures_trip_once_and_keep_healthy_host_open() {
     assert!(circuit.is_tripped("https://bad.test/after.vtt"));
     assert!(!circuit.is_tripped("https://good.test/after.vtt"));
 }
+
+#[test]
+fn host_circuit_ignores_malformed_urls_and_clamps_zero_threshold() {
+    assert_eq!(host_of(""), None);
+    assert_eq!(host_of("http://[unclosed/a.vtt"), None);
+    assert_eq!(host_of("https://  /a.vtt"), None);
+
+    let circuit = HostCircuit::with_threshold(0);
+    assert!(!circuit.is_tripped("not-a-url"));
+    circuit.record_success("not-a-url");
+    assert_eq!(circuit.record_failure("not-a-url"), None);
+    // Clamped threshold of 1 trips on the very first failure.
+    assert_eq!(
+        circuit.record_failure("https://once.test/a.vtt").as_deref(),
+        Some("once.test")
+    );
+    assert!(circuit.is_tripped("https://once.test/b.vtt"));
+    circuit.record_success("https://once.test/c.vtt");
+    assert!(!circuit.is_tripped("https://once.test/d.vtt"));
+}
