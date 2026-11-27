@@ -3,6 +3,7 @@ import { Theme } from "theme.slint";
 import { Icons, TvIcon } from "icons.slint";
 import { FilterChip, SourceItem, SourceMenuInfo } from "types.slint";
 import { TvBadge, TvButton, TvProgressBar } from "controls.slint";
+import { FocusChip, FocusTooltip } from "player_controls.slint";
 
 /// Small rounded metadata tag (stream kind, checking state, subtitle language, file size).
 component Tag inherits Rectangle {
@@ -180,11 +181,20 @@ export component SourcePanel inherits Rectangle {
     in property <bool> can-refresh;
     in property <bool> loading: false;
     in property <string> loading-text: "";
+    in property <bool> focus-active: false;
     callback refresh();
     callback pick(int);
     callback toggle-tier(int);
     callback toggle-subtitle(int);
+    callback toggle-focus();
     callback close();
+
+    property <bool> focus-hovered: false;
+    changed loading => {
+        if !root.loading {
+            root.focus-hovered = false;
+        }
+    }
 
     width: 432px;
     background: #0b101cd0;
@@ -263,11 +273,23 @@ export component SourcePanel inherits Rectangle {
         }
         if root.loading: VerticalLayout {
             spacing: 5px;
-            Text {
-                text: root.loading-text != "" ? root.loading-text : "Loading sources…";
-                color: Theme.accent-hi;
-                font-size: 11.5px;
-                font-weight: 600;
+            HorizontalLayout {
+                spacing: 8px;
+                cross-axis-alignment: center;
+                Text {
+                    text: root.loading-text != "" ? root.loading-text : "Loading sources…";
+                    color: Theme.accent-hi;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                FocusChip {
+                    active: root.focus-active;
+                    accessible-name: "Focus finding sources";
+                    changed hovered => { root.focus-hovered = self.hovered; }
+                    clicked => { root.toggle-focus(); }
+                }
             }
             TvProgressBar {
                 bar-height: 3px;
@@ -308,5 +330,11 @@ export component SourcePanel inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.loading && root.focus-hovered: FocusTooltip {
+        x: parent.width - self.width - 16px;
+        y: 84px;
+        text: "Prioritize finding and checking sources faster. Temporarily pauses subtitle downloads.";
     }
 }

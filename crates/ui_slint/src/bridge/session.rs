@@ -15,6 +15,7 @@ use crate::source_menu::SourceFilter;
 use super::focus_screens::FocusScreen;
 use super::home_expanded::ExpandedShelfState;
 use super::home_loading::HomeShelf;
+use super::load_focus::LoadFocus;
 use super::player_timeline::Timeline;
 use super::security_dialog::PendingTrustAction;
 use super::subtitle_delivery::SubtitleDeliveryHandle;
@@ -42,6 +43,8 @@ pub(crate) struct Session {
     pub(crate) sources_searching: bool,
     /// True when the active background source pass was triggered by Refresh Sources.
     pub(crate) sources_refreshing: bool,
+    /// User-selected resource focus while sources/subtitles are loading (Auto / Sources / Subtitles).
+    pub(crate) load_focus: LoadFocus,
     pub(crate) selected: usize,
     pub(crate) target: Option<PlaybackItem>,
     pub(crate) episode_data: String,
@@ -136,6 +139,7 @@ impl Session {
         self.sources_loading = false;
         self.sources_searching = false;
         self.sources_refreshing = false;
+        self.load_focus = LoadFocus::Auto;
         self.tickets.cancel(RequestKind::Open);
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
@@ -153,6 +157,7 @@ impl Session {
         self.sources_loading = true;
         self.sources_searching = true;
         self.sources_refreshing = false;
+        self.load_focus = LoadFocus::Auto;
         self.tickets.cancel(RequestKind::Skips);
         self.seeks.cancel();
         self.timeline = Timeline::default();
@@ -170,6 +175,7 @@ impl Session {
         self.sources_loading = true;
         self.sources_searching = true;
         self.sources_refreshing = true;
+        self.load_focus = LoadFocus::Auto;
         let ticket = self.tickets.issue(RequestKind::Open);
         (self.control.clone(), ticket)
     }

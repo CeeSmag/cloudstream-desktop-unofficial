@@ -125,8 +125,10 @@ export component CloudStream inherits Window {
     in-out property <bool> show-sources: false;
     in-out property <bool> sources-loading: false;
     in-out property <string> sources-status: "";
+    in-out property <bool> focus-sources: false;
     in-out property <bool> subtitles-loading: false;
     in-out property <string> subtitles-status: "";
+    in-out property <bool> focus-subtitles: false;
     in-out property <bool> show-wipe-confirm: false;
     in-out property <int> settings-page-index: 0;
     in-out property <bool> debug-indicator-hovered: false;
@@ -277,6 +279,8 @@ export component CloudStream inherits Window {
     callback select-episode-range(int);
     callback select-audio-track(int);
     callback select-subtitle-track(int);
+    callback toggle-focus-sources();
+    callback toggle-focus-subtitles();
     callback toggle-fullscreen();
 
     // Explicit origin prevents Slint 1.19 from merging child/conditional LayoutInfo into Window
@@ -612,8 +616,10 @@ export component CloudStream inherits Window {
             can-refresh: !sources-loading;
             sources-loading: sources-loading;
             sources-status: sources-status;
+            focus-sources: focus-sources;
             subtitles-loading: subtitles-loading;
             subtitles-status: subtitles-status;
+            focus-subtitles: focus-subtitles;
             toggle-tier(i) => { toggle-source-tier(i); }
             toggle-source-subtitle(i) => { toggle-source-subtitle(i); }
             audio-tracks: audio-tracks;
@@ -638,6 +644,8 @@ export component CloudStream inherits Window {
             select-source(i) => { select-source(i); }
             select-audio(v) => { select-audio-track(v); }
             select-subtitle(v) => { select-subtitle-track(v); }
+            toggle-focus-sources => { toggle-focus-sources(); }
+            toggle-focus-subtitles => { toggle-focus-subtitles(); }
             toggle-fullscreen => { toggle-fullscreen(); }
         }
 

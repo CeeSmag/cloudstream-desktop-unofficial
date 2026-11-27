@@ -47,8 +47,10 @@ export component PlayerOverlay inherits Rectangle {
     in property <bool> can-refresh: true;
     in property <bool> sources-loading: false;
     in property <string> sources-status: "";
+    in property <bool> focus-sources: false;
     in property <bool> subtitles-loading: false;
     in property <string> subtitles-status: "";
+    in property <bool> focus-subtitles: false;
     in property <[TrackChoice]> audio-tracks: [];
     in property <[TrackChoice]> subtitle-tracks: [];
 
@@ -73,6 +75,8 @@ export component PlayerOverlay inherits Rectangle {
     callback toggle-source-subtitle(int);
     callback select-audio(int);
     callback select-subtitle(int);
+    callback toggle-focus-sources();
+    callback toggle-focus-subtitles();
     callback toggle-fullscreen();
 
     property <float> last-nonzero-volume: 100;
@@ -549,7 +553,11 @@ export component PlayerOverlay inherits Rectangle {
         choices: root.subtitle-tracks;
         loading: root.subtitles-loading;
         loading-text: root.subtitles-status;
+        show-focus: true;
+        focus-active: root.focus-subtitles;
+        focus-tooltip: "Prioritize finding and downloading subtitles faster. Temporarily pauses source checking.";
         picked(v) => { root.select-subtitle(v); root.open-panel = 0; }
+        toggle-focus => { root.toggle-focus-subtitles(); }
         close => { root.open-panel = 0; }
     }
 
@@ -563,10 +571,12 @@ export component PlayerOverlay inherits Rectangle {
         can-refresh: root.can-refresh;
         loading: root.sources-loading;
         loading-text: root.sources-status;
+        focus-active: root.focus-sources;
         refresh => { root.refresh-sources(); }
         pick(index) => { root.select-source(index); }
         toggle-tier(i) => { root.toggle-tier(i); }
         toggle-subtitle(i) => { root.toggle-source-subtitle(i); }
+        toggle-focus => { root.toggle-focus-sources(); }
         close => { root.show-sources = false; }
     }
 

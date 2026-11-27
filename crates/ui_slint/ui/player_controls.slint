@@ -294,6 +294,69 @@ export component VolumeCapsule inherits Rectangle {
     }
 }
 
+/// Compact `Focus` toggle chip used on the Sources and Subtitles loading rows.
+export component FocusChip inherits Rectangle {
+    in property <bool> active: false;
+    in property <string> accessible-name: "Focus";
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    height: 22px;
+    width: label.preferred-width + 16px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 11px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent-hi : (touch.has-hover ? #ffffff40 : #ffffff24);
+    background: root.active
+        ? (touch.has-hover ? Theme.accent-hi : Theme.accent)
+        : (touch.has-hover ? #ffffff24 : #ffffff12);
+    animate background, border-color { duration: 110ms; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: root.accessible-name;
+    accessible-checked: root.active;
+    accessible-action-default => { root.clicked(); }
+
+    label := Text {
+        text: "Focus";
+        color: root.active ? #ffffff : Theme.text;
+        font-size: 11px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Floating obsidian glass tooltip bubble explaining a `Focus` toggle on hover.
+export component FocusTooltip inherits Rectangle {
+    in property <string> text;
+
+    width: 248px;
+    height: body.preferred-height + 16px;
+    border-radius: 10px;
+    background: #080b12f2;
+    border-width: 1px;
+    border-color: #ffffff2c;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000aa;
+
+    body := Text {
+        x: 10px;
+        y: 8px;
+        width: parent.width - 20px;
+        text: root.text;
+        color: Theme.text;
+        font-size: 11.5px;
+        font-weight: 500;
+        wrap: word-wrap;
+    }
+}
+
 /// Translucent obsidian track chooser dropdown (audio / subtitles).
 /// Absorbs wheel scrolling when hovered so scrolling the list never changes volume underneath.
 export component ChoicePanel inherits Rectangle {
@@ -302,8 +365,19 @@ export component ChoicePanel inherits Rectangle {
     in property <[TrackChoice]> choices;
     in property <bool> loading: false;
     in property <string> loading-text: "";
+    in property <bool> show-focus: false;
+    in property <bool> focus-active: false;
+    in property <string> focus-tooltip: "";
     callback picked(int);
+    callback toggle-focus();
     callback close();
+
+    property <bool> focus-hovered: false;
+    changed loading => {
+        if !root.loading {
+            root.focus-hovered = false;
+        }
+    }
 
     width: 320px;
     height: min(max(132px, root.choices.length * 46px + 88px + (root.loading ? 36px : 0px)), 460px);
@@ -381,11 +455,23 @@ export component ChoicePanel inherits Rectangle {
 
         if root.loading: VerticalLayout {
             spacing: 5px;
-            Text {
-                text: root.loading-text != "" ? root.loading-text : "Loading…";
-                color: Theme.accent-hi;
-                font-size: 11.5px;
-                font-weight: 600;
+            HorizontalLayout {
+                spacing: 8px;
+                cross-axis-alignment: center;
+                Text {
+                    text: root.loading-text != "" ? root.loading-text : "Loading…";
+                    color: Theme.accent-hi;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                if root.show-focus: FocusChip {
+                    active: root.focus-active;
+                    accessible-name: "Focus " + root.title;
+                    changed hovered => { root.focus-hovered = self.hovered; }
+                    clicked => { root.toggle-focus(); }
+                }
             }
             TvProgressBar {
                 bar-height: 3px;
@@ -459,6 +545,12 @@ export component ChoicePanel inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.loading && root.show-focus && root.focus-hovered && root.focus-tooltip != "": FocusTooltip {
+        x: parent.width - self.width - 15px;
+        y: 92px;
+        text: root.focus-tooltip;
     }
 }
 

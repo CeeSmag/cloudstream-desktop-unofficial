@@ -9,7 +9,9 @@ use crate::CloudStream;
 use super::bridge_context::BridgeContext;
 use super::catalog_events::show_continue_watching;
 use super::details_callbacks::play_episode;
+use super::load_focus::LoadFocus;
 use super::player_callbacks::report;
+use super::stream_events::sync_focus_ui;
 use super::stream_opening::{begin_open, switch_source};
 
 /// Lets [`crate::playback_watch::PlaybackWatch`] decide on `state`, then does it.
@@ -32,20 +34,32 @@ pub(crate) fn react_to_status(ctx: &BridgeContext, ui: &CloudStream, state: &Pla
     };
     match action {
         WatchAction::Nothing => {}
-        WatchAction::TrySource(index) => {
-            tracing::warn!(index, "the playing source failed; trying the next one");
-            ui.set_notice("This source stopped working — trying the next one…".into());
-            {
-                let mut session = ctx.session.borrow_mut();
-                let selected = session.selected;
-                mark_selected_broken(&mut session.source_checks, selected);
-            }
-            switch_source(ctx, index);
-        }
+        WatchAction::TrySource(index) => fallback_to_source(ctx, ui, index),
         WatchAction::PlayNextEpisode => play_next_episode(ctx),
         WatchAction::ClosePlayer => close_after_end(ctx, ui, None),
         WatchAction::GiveUp(reason) => close_after_end(ctx, ui, Some(reason)),
     }
+}
+
+fn fallback_to_source(ctx: &BridgeContext, ui: &CloudStream, index: usize) {
+    tracing::warn!(index, "the playing source failed; trying the next one");
+    ui.set_notice("This source stopped working — trying the next one…".into());
+    let next_focus = {
+        let mut session = ctx.session.borrow_mut();
+        let selected = session.selected;
+        mark_selected_broken(&mut session.source_checks, selected);
+        let focus = session.load_focus.on_playback_failed();
+        session.load_focus = focus;
+        session.control.resume_checks_now();
+        if focus != LoadFocus::Sources {
+            if let Some(delivery) = &session.subtitle_delivery {
+                delivery.set_paused(false);
+            }
+        }
+        focus
+    };
+    sync_focus_ui(ui, next_focus);
+    switch_source(ctx, index);
 }
 
 fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>) {
@@ -60,6 +74,8 @@ fn close_after_end(ctx: &BridgeContext, ui: &CloudStream, reason: Option<String>
     ui.set_sources_status("".into());
     ui.set_subtitles_loading(false);
     ui.set_subtitles_status("".into());
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(false);
     ui.set_player_open_panel(0);
     ui.set_player_open(false);
     show_continue_watching(ctx, ui);

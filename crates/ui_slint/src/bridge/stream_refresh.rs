@@ -14,6 +14,8 @@ pub(crate) fn refresh_playing(ctx: &BridgeContext) {
     if let Some(ui) = ctx.window() {
         ui.set_sources_loading(true);
         ui.set_sources_status("Refreshing sources…".into());
+        ui.set_focus_sources(false);
+        ui.set_focus_subtitles(false);
     }
     let sender = ctx.sender();
     spawn_work("refresh-sources", move || {

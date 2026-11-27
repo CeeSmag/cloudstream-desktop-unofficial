@@ -18,6 +18,7 @@ use super::player_feedback::show_feedback;
 use super::player_polling::clear_video_frame;
 use super::player_seeking::wire_seeking;
 use super::source_persist::persist_playing_sources;
+use super::stream_events::{toggle_focus_sources, toggle_focus_subtitles};
 use super::stream_opening::switch_source;
 use super::stream_refresh::refresh_playing;
 
@@ -109,10 +110,26 @@ fn wire_player_panels(ctx: &BridgeContext, ui: &CloudStream) {
             switch_source(&c, index);
         }
     });
+    wire_focus_toggles(ctx, ui);
     let weak = ctx.ui.clone();
     ui.on_toggle_fullscreen(move || {
         if let Some(ui) = weak.upgrade() {
             toggle_fullscreen(&ui);
+        }
+    });
+}
+
+fn wire_focus_toggles(ctx: &BridgeContext, ui: &CloudStream) {
+    let c = ctx.clone();
+    ui.on_toggle_focus_sources(move || {
+        if let Some(ui) = c.window() {
+            toggle_focus_sources(&c, &ui);
+        }
+    });
+    let c = ctx.clone();
+    ui.on_toggle_focus_subtitles(move || {
+        if let Some(ui) = c.window() {
+            toggle_focus_subtitles(&c, &ui);
         }
     });
 }
@@ -185,6 +202,8 @@ fn reset_player_ui(ctx: &BridgeContext, ui: &CloudStream) {
     ui.set_sources_status("".into());
     ui.set_subtitles_loading(false);
     ui.set_subtitles_status("".into());
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(false);
     ui.set_player_open_panel(0);
     ui.set_player_open(false);
 }

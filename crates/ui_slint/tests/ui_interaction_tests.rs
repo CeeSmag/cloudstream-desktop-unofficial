@@ -123,6 +123,42 @@ fn verify_player_controls(ui: &CloudStream) {
     assert_eq!(*chosen_source.borrow(), 0);
 }
 
+fn verify_focus_controls(ui: &CloudStream) {
+    ui.set_sources_loading(true);
+    ui.set_subtitles_loading(true);
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(false);
+
+    let sources_toggles = Rc::new(RefCell::new(0usize));
+    let src_ref = Rc::clone(&sources_toggles);
+    ui.on_toggle_focus_sources(move || *src_ref.borrow_mut() += 1);
+    let subs_toggles = Rc::new(RefCell::new(0usize));
+    let sub_ref = Rc::clone(&subs_toggles);
+    ui.on_toggle_focus_subtitles(move || *sub_ref.borrow_mut() += 1);
+
+    ui.set_show_sources(true);
+    ui.invoke_toggle_focus_sources();
+    ui.set_focus_sources(true);
+    assert!(ui.get_focus_sources());
+    assert!(!ui.get_focus_subtitles());
+
+    ui.set_show_sources(false);
+    ui.set_player_open_panel(2);
+    ui.invoke_toggle_focus_subtitles();
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(true);
+    assert!(!ui.get_focus_sources());
+    assert!(ui.get_focus_subtitles());
+    assert_eq!(*sources_toggles.borrow(), 1);
+    assert_eq!(*subs_toggles.borrow(), 1);
+
+    ui.set_sources_loading(false);
+    ui.set_subtitles_loading(false);
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(false);
+    ui.set_player_open_panel(0);
+}
+
 fn verify_tracks_and_cloudflare(ui: &CloudStream) {
     ui.set_subtitle_tracks(ModelRc::new(VecModel::from(vec![
         TrackChoice {
@@ -365,6 +401,7 @@ fn headless_ui_bindings_callbacks_and_navigation_flows() {
     verify_provider_and_search(&ui);
     verify_details_and_episodes(&ui);
     verify_player_controls(&ui);
+    verify_focus_controls(&ui);
     verify_tracks_and_cloudflare(&ui);
     verify_extensions_and_shelves(&ui);
     verify_home_shelves(&ui);

@@ -7,10 +7,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use core_model::SubtitleTrack;
-use player_api::{find_language, ENGLISH};
+use player_api::ENGLISH;
 use subtitle_store::{FetchError, LoadOptions, SubtitleCache, SubtitleFetcher, SubtitleLoader};
 
 use crate::background_work::EventPump;
+use crate::bridge::subtitle_budget::MAX_PREFERRED_EXTERNAL;
 use crate::request_tickets::{RequestKind, RequestTickets};
 use crate::ui_events::UiEvent;
 
@@ -87,43 +88,93 @@ fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
     }
 }
 
-#[test]
-fn matches_subtitle_label_handles_iso_codes_and_qualified_names() {
-    let arabic = find_language("ara").expect("Arabic");
-    assert!(matches_subtitle_label("en", &ENGLISH));
-    assert!(matches_subtitle_label("eng", &ENGLISH));
-    assert!(matches_subtitle_label("en-US", &ENGLISH));
-    assert!(matches_subtitle_label("English (SDH)", &ENGLISH));
-    assert!(matches_subtitle_label("English - Forced", &ENGLISH));
-    assert!(matches_subtitle_label("Arabic [CC]", &arabic));
-    assert!(!matches_subtitle_label("French", &ENGLISH));
-    assert!(!matches_subtitle_label("", &ENGLISH));
+struct HostRoutingFetcher {
+    blocked_host: String,
+    calls: AtomicUsize,
+}
+
+impl SubtitleFetcher for HostRoutingFetcher {
+    fn fetch(&self, url: &str, _headers: &[(String, String)]) -> Result<Vec<u8>, FetchError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if url.contains(&self.blocked_host) {
+            return Err(FetchError::Status { status: 403 });
+        }
+        Ok(format!("WEBVTT\n\n00:00.000 --> 00:05.000\n{url}\n").into_bytes())
+    }
+}
+
+fn routing_loader(scratch: &Scratch, blocked_host: &str) -> Arc<SubtitleLoader> {
+    let cache = Arc::new(SubtitleCache::new(
+        scratch.0.clone(),
+        Duration::from_secs(3600),
+    ));
+    let fetcher = Arc::new(HostRoutingFetcher {
+        blocked_host: blocked_host.into(),
+        calls: AtomicUsize::new(0),
+    });
+    let options = LoadOptions {
+        attempts: 1,
+        backoff: Duration::from_millis(1),
+    };
+    Arc::new(SubtitleLoader::new(
+        cache,
+        fetcher as Arc<dyn SubtitleFetcher>,
+        options,
+    ))
 }
 
 #[test]
-fn budget_prioritizes_preferred_and_caps_non_preferred_per_language() {
-    let arabic = find_language("ara").expect("Arabic");
-    let mut budget = QueueBudget::new(vec![arabic, ENGLISH], HashSet::new());
-    let tracks = vec![
-        sub("French", "https://s/fr1"),
-        sub("French", "https://s/fr2"),
-        sub("French", "https://s/fr3"),
-        sub("English (SDH)", "https://s/en1"),
-        sub("ar", "https://s/ar1"),
-        sub("ar", "https://s/ar1"),
-    ];
-    let accepted = budget.filter_accepted(&tracks);
-    let urls: Vec<&str> = accepted.iter().map(|t| t.url.as_str()).collect();
+fn failing_host_refunds_budget_and_promotes_working_reserve_tracks() {
+    let scratch = Scratch::new();
+    let loader = routing_loader(&scratch, "dead.test");
+    let pump = EventPump::new();
+    let mut tickets = RequestTickets::default();
+    let ticket = tickets.issue(RequestKind::Open);
+    let handle = start_english(&loader, "prov\nrefund", ticket, &pump);
+
+    let mut tracks: Vec<SubtitleTrack> = (0..MAX_PREFERRED_EXTERNAL)
+        .map(|i| sub("English", &format!("https://dead.test/{i}.vtt")))
+        .collect();
+    tracks.push(sub("English", "https://good.test/1.vtt"));
+    tracks.push(sub("English", "https://good.test/2.vtt"));
+    handle.submit(&tracks);
+    handle.finish_discovery();
+
+    let mut ready_urls = Vec::new();
+    wait_until("reserve healthy subtitles delivered", || {
+        for event in pump.drain() {
+            if let UiEvent::SubtitleReady(_, r) = event {
+                ready_urls.push(r.remote_url);
+            }
+        }
+        !handle.snapshot().busy && ready_urls.len() == 2
+    });
+    ready_urls.sort();
     assert_eq!(
-        urls,
-        [
-            "https://s/ar1",
-            "https://s/en1",
-            "https://s/fr1",
-            "https://s/fr2"
-        ],
-        "preferred ordered first, duplicate URL dropped, non-preferred capped at 2 per language"
+        ready_urls,
+        ["https://good.test/1.vtt", "https://good.test/2.vtt"]
     );
+    assert!(handle.is_preferred_satisfied());
+}
+
+#[test]
+fn pausing_delivery_holds_downloads_until_resumed() {
+    let scratch = Scratch::new();
+    let (loader, fetcher) = loader_in(&scratch, Duration::ZERO);
+    let pump = EventPump::new();
+    let mut tickets = RequestTickets::default();
+    let ticket = tickets.issue(RequestKind::Open);
+    let handle = start_english(&loader, "prov\npause", ticket, &pump);
+
+    handle.set_paused(true);
+    handle.submit(&[sub("English", "https://s/paused.vtt")]);
+    std::thread::sleep(Duration::from_millis(40));
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 0);
+
+    handle.set_paused(false);
+    handle.finish_discovery();
+    wait_until("resumed subtitle ready", || handle.snapshot().ready == 1);
+    assert_eq!(fetcher.calls.load(Ordering::SeqCst), 1);
 }
 
 fn start_english(

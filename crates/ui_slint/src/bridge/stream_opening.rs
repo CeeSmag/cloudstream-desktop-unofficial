@@ -121,6 +121,8 @@ fn show_opening_started(ui: &CloudStream, shown_title: &str) {
     ui.set_sources_status("Finding sources…".into());
     ui.set_subtitles_loading(true);
     ui.set_subtitles_status("Searching for subtitles…".into());
+    ui.set_focus_sources(false);
+    ui.set_focus_subtitles(false);
     ui.set_player_title(shown_title.into());
 }
 
