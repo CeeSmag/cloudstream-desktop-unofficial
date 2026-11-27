@@ -6,12 +6,14 @@
 //! short probe window first.
 #![forbid(unsafe_code)]
 
+mod check_pool;
 mod checked_open;
 mod open_gate;
 mod open_run;
 mod open_seeds;
 mod open_types;
 mod session;
+mod subtitle_priority;
 
 pub use checked_open::{check_and_pick, open_with, OpenTarget};
 pub use open_types::{
@@ -21,3 +23,4 @@ pub use open_types::{
 pub use session::{
     refresh_sources, run_open, LiveSources, OpenControl, OpenRequest, RefreshRequest,
 };
+pub use subtitle_priority::{CheckPriority, SUBTITLE_PRIORITY_GRACE};

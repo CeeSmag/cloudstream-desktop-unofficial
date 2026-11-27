@@ -10,9 +10,11 @@ use app_services::{StreamChecker, StreamResolver};
 use core_model::PlayableLink;
 use extension_repo::UreqProbe;
 
-use crate::open_run::{finish, run_search, OpenState};
+use crate::check_pool::{run_search_pool, PoolConfig};
+use crate::open_run::{finish, OpenState};
 use crate::open_seeds::{plant_playing, plant_saved};
 use crate::open_types::{CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
+use crate::subtitle_priority::CheckGate;
 
 /// Searches for streams of `provider`/`data`, checks them, and picks the best working one.
 ///
@@ -50,28 +52,37 @@ pub struct OpenTarget<'a> {
     pub data: &'a str,
 }
 
+/// Optional initial seed for an open: either disk-cached links or an already-playing link.
+pub(crate) enum OpenSeed<'a> {
+    None,
+    Cache(&'a OpenCache),
+    Playing(&'a PlayableLink),
+}
+
 /// Full open: optional cache seeds, deferred `on_ready` (best working), live `on_update`, skip.
 pub fn open_with(
     target: &OpenTarget<'_>,
     cache: Option<&OpenCache>,
     hooks: &OpenHooks<'_>,
 ) -> Result<CheckedOpen, OpenError> {
-    open_with_playing(target, cache, None, hooks)
+    let gate = CheckGate::default();
+    let seed = cache.map_or(OpenSeed::None, OpenSeed::Cache);
+    open_with_seed(target, seed, hooks, &gate)
 }
 
-/// Same as [`open_with`], optionally seeding an already-playing link (for Refresh Sources).
-pub(crate) fn open_with_playing(
+/// Same as [`open_with`], with an explicit [`OpenSeed`] and [`CheckGate`].
+pub(crate) fn open_with_seed(
     target: &OpenTarget<'_>,
-    cache: Option<&OpenCache>,
-    playing: Option<&PlayableLink>,
+    seed: OpenSeed<'_>,
     hooks: &OpenHooks<'_>,
+    gate: &CheckGate,
 ) -> Result<CheckedOpen, OpenError> {
     let checker = StreamChecker::new(Arc::new(UreqProbe::default()));
     let mut state = OpenState::new();
-    if let Some(link) = playing {
-        plant_playing(&mut state, link, hooks);
-    } else if let Some(open_cache) = cache {
-        plant_saved(&mut state, open_cache, &checker, hooks);
+    match seed {
+        OpenSeed::Playing(link) => plant_playing(&mut state, link, hooks),
+        OpenSeed::Cache(open_cache) => plant_saved(&mut state, open_cache, &checker, hooks),
+        OpenSeed::None => {}
     }
     if hooks.cancel.load(Ordering::SeqCst) {
         return finish(state);
@@ -80,7 +91,8 @@ pub(crate) fn open_with_playing(
         .streams
         .open_search(target.provider, target.data)
         .map_err(|error| OpenError::Search(error.to_string()))?;
-    run_search(search, state, &checker, hooks)
+    let config = PoolConfig::standard(&checker, hooks, gate);
+    run_search_pool(search, state, &config)
 }
 
 #[cfg(test)]

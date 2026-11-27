@@ -6,21 +6,23 @@ use std::sync::{Arc, Mutex};
 use app_services::StreamResolver;
 use core_model::PlayableLink;
 
-use crate::checked_open::{open_with, open_with_playing, OpenTarget};
+use crate::checked_open::{open_with_seed, OpenSeed, OpenTarget};
 use crate::open_types::{title_key, CheckedOpen, OpenCache, OpenError, OpenHooks, OpenProgress};
+use crate::subtitle_priority::{CheckGate, CheckPriority};
 use title_cache::TitleCache;
 
-/// Shared control flags for an in-flight open.
+/// Shared control flags and priority gate for an in-flight open.
 #[derive(Clone, Default)]
 pub struct OpenControl {
     /// Skip remaining checks once a working stream exists.
     pub skip: Arc<AtomicBool>,
     /// Cancel the whole open.
     pub cancel: Arc<AtomicBool>,
+    check_gate: Arc<CheckGate>,
 }
 
 impl OpenControl {
-    /// Ask the open loop to stop checking and return with the best working stream.
+    /// Ask the open loop to start playback now on the best working stream.
     pub fn skip_checks(&self) {
         self.skip.store(true, Ordering::SeqCst);
     }
@@ -28,6 +30,34 @@ impl OpenControl {
     /// Abandon the open.
     pub fn cancel_open(&self) {
         self.cancel.store(true, Ordering::SeqCst);
+        self.check_gate.cancel();
+    }
+
+    /// Automatically pause new HTTP stream checks while subtitles arrive (capped by the 8 s grace
+    /// window unless pinned by [`Self::pin_subtitles_focus`]).
+    pub fn prioritize_subtitles(&self) {
+        self.check_gate.prioritize_subtitles_auto();
+    }
+
+    /// Manually pin subtitle focus (pauses stream checks until search ends, focus changes, or
+    /// playback needs a fallback).
+    pub fn pin_subtitles_focus(&self) {
+        self.check_gate.pin_subtitles_focus();
+    }
+
+    /// Signals that preferred subtitles are satisfied so automatic subtitle priority resumes checks.
+    pub fn signal_subtitles_satisfied(&self) {
+        self.check_gate.signal_subtitles_satisfied();
+    }
+
+    /// Immediately resumes HTTP stream checks (overrides both auto and pinned subtitle pause).
+    pub fn resume_checks_now(&self) {
+        self.check_gate.resume_checks_now();
+    }
+
+    /// Current stream-check priority mode.
+    pub fn check_priority(&self) -> CheckPriority {
+        self.check_gate.mode()
     }
 }
 
@@ -106,7 +136,8 @@ pub fn run_open(request: OpenRequest<'_>) -> Result<CheckedOpen, OpenError> {
         provider: request.provider,
         data: request.data,
     };
-    open_with(&target, open_cache.as_ref(), &hooks)
+    let seed = open_cache.as_ref().map_or(OpenSeed::None, OpenSeed::Cache);
+    open_with_seed(&target, seed, &hooks, &request.control.check_gate)
 }
 
 /// Arguments for [`refresh_sources`].
@@ -140,6 +171,7 @@ pub struct RefreshRequest<'a> {
 pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenError> {
     request.control.skip.store(false, Ordering::SeqCst);
     request.control.cancel.store(false, Ordering::SeqCst);
+    request.control.check_gate.reset();
     if let Some(cache) = request.cache {
         let key = title_key(request.provider, request.media_key);
         let _ = cache.forget(&key);
@@ -165,7 +197,10 @@ pub fn refresh_sources(request: RefreshRequest<'_>) -> Result<CheckedOpen, OpenE
         provider: request.provider,
         data: request.data,
     };
-    let opened = open_with_playing(&target, None, request.playing_link, &hooks)?;
+    let seed = request
+        .playing_link
+        .map_or(OpenSeed::None, OpenSeed::Playing);
+    let opened = open_with_seed(&target, seed, &hooks, &request.control.check_gate)?;
     let pinned = pin_playing_index(&opened, playing_url);
     request.live.publish(pinned.clone());
     Ok(pinned)

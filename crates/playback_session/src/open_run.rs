@@ -3,13 +3,17 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use app_services::{LinkHealth, LinkSearch, StreamChecker};
+#[cfg(test)]
+use app_services::LinkSearch;
+use app_services::{LinkHealth, StreamChecker};
 use core_model::{PlayableLink, SubtitleTrack};
 
-use crate::open_gate::{
-    best_after_working, no_streams_timed_out, should_announce_ready, ReadyWhen,
-};
+#[cfg(test)]
+use crate::check_pool::{run_search_pool, PoolConfig};
+use crate::open_gate::{best_after_working, should_announce_ready, ReadyWhen};
 use crate::open_types::{CheckedOpen, OpenError, OpenHooks, OpenProgress};
+#[cfg(test)]
+use crate::subtitle_priority::CheckGate;
 
 /// Cap how long we wait with no streams at all before failing the open.
 pub(crate) const FIRST_WORKING_SECS: u64 = 30;
@@ -60,12 +64,12 @@ impl OpenState {
         }
     }
 
-    fn timed_out(&self) -> bool {
+    pub(crate) fn timed_out(&self) -> bool {
         self.started.elapsed() >= Duration::from_secs(TOTAL_SECS)
     }
 
-    fn all_checked(&self) -> bool {
-        self.next_to_check >= self.ordered.len()
+    pub(crate) fn all_checked(&self) -> bool {
+        self.ordered.iter().all(|(_, health)| health.is_some())
     }
 
     pub(crate) fn announce_ready(&mut self, hooks: &OpenHooks<'_>) {
@@ -95,85 +99,16 @@ impl OpenState {
     }
 }
 
-/// True when the open should stop polling the search.
-/// Skipping ("Play now") starts playback immediately via `maybe_announce_ready`, while leaving
-/// this loop running in the background to gather remaining sources and subtitles.
-fn should_stop_search(state: &OpenState, hooks: &OpenHooks<'_>) -> bool {
-    hooks.cancel.load(Ordering::SeqCst)
-        || state.timed_out()
-        || no_streams_timed_out(
-            state.ordered.len(),
-            state.started.elapsed().as_secs(),
-            FIRST_WORKING_SECS,
-        )
-}
-
+#[cfg(test)]
 pub(crate) fn run_search(
-    mut search: LinkSearch,
-    mut state: OpenState,
+    search: LinkSearch,
+    state: OpenState,
     checker: &StreamChecker,
     hooks: &OpenHooks<'_>,
 ) -> Result<CheckedOpen, OpenError> {
-    while !should_stop_search(&state, hooks) {
-        let batch = search
-            .poll(Duration::from_millis(200))
-            .map_err(|error| OpenError::Search(error.to_string()))?;
-        if let Some(failure) = &batch.failure {
-            if state.ordered.is_empty() {
-                search.cancel();
-                return Err(OpenError::Search(failure.clone()));
-            }
-        }
-        absorb_batch(&mut state, batch.links, batch.subtitles, hooks);
-        check_pending(&mut state, checker, hooks);
-        state.maybe_announce_ready(hooks);
-        if batch.done {
-            state.search_done = true;
-            (hooks.on_progress)(state.progress());
-            check_pending(&mut state, checker, hooks);
-            state.maybe_announce_ready(hooks);
-            break;
-        }
-    }
-    if state.ordered.is_empty()
-        && no_streams_timed_out(0, state.started.elapsed().as_secs(), FIRST_WORKING_SECS)
-    {
-        search.cancel();
-        return Err(OpenError::Empty);
-    }
-    state.maybe_announce_ready(hooks);
-    if state.timed_out() && !state.ready_announced {
-        check_pending(&mut state, checker, hooks);
-        state.maybe_announce_ready(hooks);
-    }
-    search.cancel();
-    finish(state)
-}
-
-fn absorb_batch(
-    state: &mut OpenState,
-    links: Vec<PlayableLink>,
-    tracks: Vec<SubtitleTrack>,
-    hooks: &OpenHooks<'_>,
-) {
-    let mut added = false;
-    for link in links {
-        if state.ordered.iter().any(|(known, _)| known.url == link.url) {
-            continue;
-        }
-        state.ordered.push((link, None));
-        added = true;
-    }
-    for track in tracks {
-        if !state.subtitles.iter().any(|known| known.url == track.url) {
-            state.subtitles.push(track);
-            added = true;
-        }
-    }
-    if added {
-        (hooks.on_progress)(state.progress());
-        (hooks.on_update)(&state.snapshot());
-    }
+    let gate = CheckGate::default();
+    let config = PoolConfig::standard(checker, hooks, &gate);
+    run_search_pool(search, state, &config)
 }
 
 pub(crate) fn check_pending(state: &mut OpenState, checker: &StreamChecker, hooks: &OpenHooks<'_>) {
@@ -205,6 +140,32 @@ pub(crate) fn check_one(state: &mut OpenState, checker: &StreamChecker, hooks: &
     state.next_to_check += 1;
     (hooks.on_progress)(state.progress());
     (hooks.on_update)(&state.snapshot());
+}
+
+#[cfg(test)]
+pub(crate) fn absorb_batch(
+    state: &mut OpenState,
+    links: Vec<PlayableLink>,
+    tracks: Vec<SubtitleTrack>,
+    hooks: &OpenHooks<'_>,
+) {
+    let mut added = false;
+    for link in links {
+        if !state.ordered.iter().any(|(known, _)| known.url == link.url) {
+            state.ordered.push((link, None));
+            added = true;
+        }
+    }
+    for track in tracks {
+        if !state.subtitles.iter().any(|known| known.url == track.url) {
+            state.subtitles.push(track);
+            added = true;
+        }
+    }
+    if added {
+        (hooks.on_progress)(state.progress());
+        (hooks.on_update)(&state.snapshot());
+    }
 }
 
 pub(crate) fn finish(state: OpenState) -> Result<CheckedOpen, OpenError> {
